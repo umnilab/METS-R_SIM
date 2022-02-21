@@ -1,0 +1,7 @@
+<model name="EvacSim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://repast.org/scenario/user_path">
+	<classpath>
+		<agents path="../bin" filter="evacSim.vehiclecontext.Vehicle" />
+		<entry path="../lib" />
+	</classpath>
+</model>
+

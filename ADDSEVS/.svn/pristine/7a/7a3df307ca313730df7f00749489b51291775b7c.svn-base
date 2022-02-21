@@ -1,0 +1,22 @@
+<context id="context" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://repast.org/scenario/context">
+  
+  <context id="CityContext"> 
+    <context id="RoadContext">
+      <projection id="RoadGeography" type="geography"></projection>
+    </context>
+    <context id="JunctionContext">
+      <projection id="JunctionGeography" type="geography"></projection>
+      <projection id="RoadNetwork" type="network"></projection>
+    </context>
+    <context id="ZoneContext">
+      <projection id="ZoneGeography" type="geography"></projection>
+    </context>
+    <context id="LaneContext">
+      <projection id="LaneGeography" type="geography"></projection>
+    </context>
+  </context>
+  <context id="VehicleContext">
+    <projection id="VehicleGeography" type="geography"></projection>
+    <projection id="continuousSpace" type="continuous space"></projection>
+  </context>
+</context>

@@ -1,0 +1,9 @@
+eclipse.preferences.version=1
+encoding//src/addsEVs/GlobalVariables.java=UTF-8
+encoding//src/addsEVs/citycontext/CityContext.java=UTF-8
+encoding//src/addsEVs/citycontext/Road.java=UTF-8
+encoding//src/addsEVs/citycontext/Zone.java=UTF-8
+encoding//src/addsEVs/data/DataCollectionContext.java=UTF-8
+encoding//src/addsEVs/data/DataCollector.java=UTF-8
+encoding//src/addsEVs/network/Connection.java=UTF-8
+encoding//src/addsEVs/vehiclecontext/Vehicle.java=UTF-8

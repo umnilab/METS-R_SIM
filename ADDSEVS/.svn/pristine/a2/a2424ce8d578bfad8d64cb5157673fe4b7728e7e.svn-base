@@ -1,0 +1,126 @@
+package evacSim;
+
+import evacSim.ContextCreator;
+import evacSim.citycontext.Road;
+
+public class ThreadedScheduler {
+	private boolean roadFinishedStepping;
+	
+	
+	public synchronized void paraStep() {
+		this.roadFinishedStepping = false;
+		(new Thread(new ThreadController(this))).start();
+		while (!this.roadFinishedStepping){
+			try{
+				this.wait(); // Wait for the Threaded Controller to call setRoadFinishStepping()
+				
+			} catch (InterruptedException e){
+				ContextCreator.stopSim(e, ThreadedScheduler.class);
+			}
+		}
+	}
+	
+	public synchronized void setRoadFinishStepping(){
+		this.roadFinishedStepping = true;
+		this.notifyAll();
+	}
+
+}
+
+
+class ThreadController implements Runnable {
+	private ThreadedScheduler cc;
+	private int numCPUs;
+	private boolean[] cpuStatus;
+	
+	public ThreadController(ThreadedScheduler cc){
+		this.cc = cc;
+		this.numCPUs = Runtime.getRuntime().availableProcessors();
+		this.cpuStatus = new boolean[this.numCPUs];
+		for (int i = 0; i< this.numCPUs; i++){
+			this.cpuStatus[i] = true;
+		}
+	}
+	
+	public void run(){
+		// Iterate all roads and assign the computation to a thread
+		for (Road r : ContextCreator.getRoadContext().getObjects(Road.class)) {
+			if (r.getVehicleNum() > 0){
+				boolean foundFreeCPU = false;
+				
+				while (!foundFreeCPU){
+					synchronized(this){
+						cpus: for (int i = 0; i< this.numCPUs; i++){
+							if (this.cpuStatus[i]){
+								// Start a new thread and assign the step function
+								foundFreeCPU = true;
+								this.cpuStatus[i] = false;
+								(new Thread(new roadThread(this, i, r))).start();
+								break cpus;
+							}
+						}
+						if (!foundFreeCPU){
+							this.waitForThread();
+						}
+					}
+				}
+			}
+		}
+		
+		// Finished stepping over all roads, now wait for all to finish
+		boolean allFinished = false;
+		while (!allFinished){
+			allFinished = true;
+			synchronized (this){
+				cpus: for (int i = 0; i< this.cpuStatus.length; i++){
+					if (!this.cpuStatus[i]){
+						allFinished = false;
+						break cpus;
+					}
+				}
+				if (!allFinished){
+					this.waitForThread();
+				}
+			}
+		}
+		
+		this.cc.setRoadFinishStepping();
+	}
+	
+	// Wait for a working thread to notify it that it has finished and the CPU becomes free
+	private synchronized void waitForThread(){
+		try {
+			this.wait();
+		} catch (InterruptedException e){
+			ContextCreator.stopSim(e, ThreadedScheduler.class);
+		}
+	}
+	
+	// free the thread
+	public synchronized void setCPUFree(int cpuNumber){
+		this.cpuStatus[cpuNumber] = true;
+		this.notifyAll();
+	}
+}
+
+/* Single thread to call road's step() method */
+class roadThread implements Runnable{
+	private Road cur_road;
+	private ThreadController tc;
+	private int cpuNumber;
+	
+	public roadThread(ThreadController tc, int cpuNumber, Road r){
+		this.tc = tc;
+		this.cpuNumber = cpuNumber;
+		this.cur_road = r;
+	}
+	
+	public void run() {
+		try {
+			this.cur_road.step();
+		} catch (Exception ex) {
+			ContextCreator.stopSim(ex, this.getClass());
+		}
+		tc.setCPUFree(cpuNumber);
+	}
+}

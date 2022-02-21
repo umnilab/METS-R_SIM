@@ -1,0 +1,237 @@
+#Config File by Zhan
+#Input Files 
+
+
+#ROADS_SHAPEFILE = data/MiamiDadeHybrid/road.shp
+#LANES_SHAPEFILE = data/MiamiDadeHybrid/lane.shp
+#ZONES_SHAPEFILE = data/MiamiDadeHybrid/house.shp
+#HOUSES_CSV = data/Manhattan2/person.csv
+#ACTIVITY_SEQ_CSV = data/MiamiDadeHybrid/activitySequence.csv
+
+
+#ROADS_SHAPEFILE = data/Manhattan6/road.shp
+#LANES_SHAPEFILE = data/Manhattan6/lane.shp
+#ZONES_SHAPEFILE = data/Manhattan6/household.shp
+#HOUSES_CSV = data/Manhattan2/person.csv
+#ACTIVITY_SEQ_CSV = data/Manhattan6/activity_sequence_real.csv
+
+#### dynamic_reading.csv contains the lines in the demand file that the simulation will read in different time intervals
+#DYNAMIC_CSV = data/Manhattan6/dynamic_reading.csv
+#ACTIVITY_SEQ_CSV = data/Manhattan6/sortedModifiedData3.csv
+
+
+ROADS_SHAPEFILE = data/shape/road.shp
+LANES_SHAPEFILE = data/shape/lane.shp
+ZONES_SHAPEFILE = data/shape/house.shp
+#HOUSES_CSV = data/shape/person.csv
+#ACTIVITY_SEQ_CSV = data/shape/sortedModifiedData.csv
+#ACTIVITY_SEQ_CSV = data/shape/sortedFilteredModifieddemand.csv
+#DYNAMIC_CSV = data/shape/dynamic_reading.csv
+#ACTIVITY_SEQ_CSV = data/shape/sorted_Filtered_Modified_data_06.csv
+#ACTIVITY_SEQ_CSV = data/Year2005/evacuation_intermediate_2005_test.csv
+#ACTIVITY_SEQ_CSV = data/Year2005/evacuation_intermediate_2005_reduced.csv
+#ACTIVITY_SEQ_CSV = data/Year2005/evacuation_intermediate_2005_new.csv
+#ACTIVITY_SEQ_CSV = data/Year2005/evacuation_intermediate_2005duplicate.csv
+#ACTIVITY_SEQ_CSV = data/Year2005/evacuation_intermediate_2005test_negVehnum.csv
+#ACTIVITY_SEQ_CSV = data/evacuation_only_2005_new.csv
+#ACTIVITY_SEQ_CSV = data/newcode_demand_debug.csv
+ACTIVITY_SEQ_CSV = data/newcode_demand.csv
+
+#ROADS_SHAPEFILE = data/Manhattan6_old/road.shp
+#LANES_SHAPEFILE = data/Manhattan6_old/lane.shp
+#ZONES_SHAPEFILE = data/Manhattan6_old/household.shp
+#HOUSES_CSV = data/Manhattan2/person.csv
+#ACTIVITY_SEQ_CSV = data/Manhattan6_old/activity_sequence_real.csv
+
+#ROADS_SHAPEFILE = data/MiamiActivity/road.shp
+#LANES_SHAPEFILE = data/MiamiActivity/lane.shp
+#ZONES_SHAPEFILE = data/MiamiActivity/house.shp
+#HOUSES_CSV = data/GridNetwork/person.csv
+#ACTIVITY_SEQ_CSV = data/MiamiActivity/activitySequence10.csv
+#ACTIVITY_SEQ_CSV = data/MiamiActivity/activitySequence.csv
+#ACTIVITY_SEQ_CSV = data/MiamiActivity/activitySequence_New.csv
+
+MULTI_THREADING = true
+
+SIGNALS_SHAPEFILE = data/Signal.shp
+
+#Simulation Setup 
+SIMULATION_STEP_SIZE = 0.3
+SIMULATION_INTERVAL_SIZE = 100
+SIMULATION_STOP_TIME = 2500000
+TRAVEL_PER_TURN = 0.00001
+
+#Number of Partitions: 1 not allowed, only number of partition=2^k can produce correct partitions
+N_PARTITION = 8
+
+#Veh 1917 on 101732(1) -> 101080 & Veh 14928
+Global_Vehicle_ID = 10134791
+Global_Road_ID = 101609
+Debug_On_Road = false
+
+XXXX_BUFFER = 10.0
+
+HEADWAY_UPPER = 1.36
+HEADWAY_LOWER = 0.5
+
+MAX_ACCELERATION = 3.0
+MAX_DECELERATION = -3.0
+
+DEFAULT_VEHICLE_WIDTH = 1.8
+DEFAULT_VEHICLE_LENGTH = 5.5
+
+SPEED_EPSILON = 0.001
+ACC_EPSILON = 0.001
+
+Agents_Per_House = 1
+
+ROAD_MOVE_SIZE = 3.0
+LANE_WIDTH = 3.5
+MIN_ROAD_LENGTH = 1000
+Vehicle_Per_House = 50
+
+FREE_SPEED=13.4112f
+H_UPPER = 1.36
+H_LOWER = 0.5
+
+FLT_INF = Float.MAX_VALUE
+FLT_EPSILON = 1.0 / FLT_INF
+
+#some constants
+#STATUS_REGIME = 0x00000180
+#STATUS_REGIME_FREEFLOWING = 0x00000000
+#STATUS_REGIME_CARFOLLOWING = 0x00000080
+#STATUS_REGIME_EMERGENCY = 0x00000100
+#STATUS_REGIME = 384
+STATUS_REGIME_FREEFLOWING = 0
+STATUS_REGIME_CARFOLLOWING = 128
+STATUS_REGIME_EMERGENCY =256
+
+#Car following model constants
+ALPHA_DEC = 1.55
+BETA_DEC = 1.08
+GAMMA_DEC = 1.65
+
+ALPHA_ACC = 2.15
+BETA_ACC = -1.67
+GAMMA_ACC = -0.89
+
+# SH - created these variable to enable dynamic routing
+APPROX_DYNAMIC_ROUTING = true
+SINGLE_SHORTEST_PATH = false
+K_SHORTEST_PATH = true
+
+#Both SINGLE_SHORTEST_PATH and K_SHORTEST_PATH can't be true or false if
+#APPROX_DYNAMIC_ROUTING= true
+
+K_VALUE = 3
+THETA_LOGIT = 0.25
+
+#when the simulation will start implementing the traffic light
+SIGNAL_STARTING_TIME = 100
+
+#at which interval it will make new decisions
+SIGNAL_REPEATING_TIME = 100
+SIG_THRESHOLD = 0.0000000483
+
+#Aziz- This is the switch for signal control
+IMPLEMENT_SIGNAL_CONTROL = false
+
+DEFAULT_DisFromJunc = 5
+
+#------------------------Rodrigo----------------------------------
+#Variable BELOW are NOT USED in the program 
+#Proportions taken from the Ethnographic Method by Gladwin, Gladwin, and Peacock 2001
+#These proportion are used to implement the Pseudo Code for Social Agent Based Simulation
+
+ETHNO_SENIORCITIZENHH = 153 / 954f
+
+#Parameters used on MAIN RPGRAM
+ETHNO_OAWARENESS = 249 / 334f
+ETHNO_FOLLOWORDER = 99 / 249f
+
+#Parameters used on SUBROUTINE RISKY
+ETHNO_DANGEROUS = 379 / 467f
+
+#Parameters used on SUBROUTINE SENIORCITIZEN
+ETHNO_TOOOLD = 17 / 153f
+ETHNO_MOVE = 107 / 135f
+ETHNO_BETHOME = 66 / 107f
+ETHNO_ROADDANGER = 8 / 40f
+ETHNO_HASSLE = 8 / 32f
+ETHNO_PETSAFE = 2 / 24f
+
+#Parameters used on SUBROUTINE PLACE
+ETHNO_HOMESAFE = 240 / 379f
+ETHNO_STRATEGY = 78 / 139f
+ETHNO_PETS = 9 / 61f
+ETHNO_SAFERO = 10 / 52f
+
+#Temporal variable while a congestion metric is defined from the Traffic ABM simulation (question C10 from ethnographic model)
+ETHNO_PLACE_HWC = 6 / 10f 
+
+#Parameters used on SUBROUTINE HOMESAFERPLACE
+ETHNO_MIAMIOPTIONS = 10 / 42f
+ETHNO_CASH = 15 / 21f
+ETHNO_RELATIVE = 5 / 6f
+
+#Temporal variable while a congestion metric is defined from the Traffic ABM simulation (question C10 from ethnographic model)
+ETHNO_HSPLACE_HWC = 6 / 10f
+
+#Parameters used on SUBROUTINE STUCK
+ETHNO_STUCKRISK = 7 / 20f
+
+#Parameters used on SUBROUTINE NOEVAC
+ETHNO_SPOUSESTAY = 86 / 683f
+ETHNO_CONVINCE = 38 / 597f
+ETHNO_UNDERSTAND = 19 / 38f
+
+#Parameters used on SUBROUTINE NOEVACSENIOR
+ETHNO_CONVINCESR = 8 / 127f
+ETHNO_UNDERSTANDSR = 2 / 8f
+
+#Parameters used on SUBROUTINE EVACNOW
+ETHNO_ONLYWITH = 72 / 116f
+ETHNO_SPOUSEEVAC = 70 / 72f
+
+#Parameters used on SUBROUTINE NOW
+ETHNO_PREPARED = 89 / 114f
+ETHNO_LONGER = 12 / 24f
+
+#Parameters used on SUBROUTINE LASTMINUTE
+ETHNO_PREVENT = 5/98f
+ETHNO_NOTACCEPTED = 1/93f
+
+
+# true runs from Households_Per_Zone
+SET_DEMAND_FROM_ACTIVITY_MODELS = true
+
+#true runs the dynamic loading of demand file
+SET_DYNAMIC_DEMAND = true
+
+# true runs from Households_Per_Zone.   False runs from Vehicles_per_zone
+SET_DEMAND_FROM_BEHAVIORAL_MODELS = false
+
+#Parameter used on HouseholdsPerZones as flag for CSV or Database query
+#true runs from database   false runs from CSV file
+HOUSEHOLDS_PER_ZONE_DATABASE = false
+
+#Parameter used on VehiclesPerZone as flag for CSV or Database query
+#true runs from database   false runs from CSV file
+VEHICLES_PER_ZONE_DATABASE = false
+
+#Parameter used as Database URL when using DB instead of CSV for inputs
+#Change this to "jdbc:mysql://localhost:3306/DB_NAME_HERE" to run locally
+#(for running locally, my DB is named 'helmsd', but it could be different
+#   depending on how you set up your local DB)
+#Access DB values via http://web.ics.purdue.edu/software/phpMyAdmin/
+#User: helmsd
+#Pass: H3lms0108
+DB_URL = jdbc:mysql://mydb.ics.purdue.edu:3306/helmsd
+
+
+
+#These code ABOVE are NOT USED in the program
+#------------------------Rodrigo----------------------------------
+
+whosRunning = r

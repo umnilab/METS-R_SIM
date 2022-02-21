@@ -1,0 +1,76 @@
+package evacSim.citycontext;
+
+import java.io.File;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import repast.simphony.context.DefaultContext;
+import repast.simphony.context.space.gis.GeographyFactoryFinder;
+import repast.simphony.space.gis.Geography;
+import repast.simphony.space.gis.GeographyParameters;
+import repast.simphony.space.gis.ShapefileLoader;
+import evacSim.GlobalVariables;
+import evacSim.demand.DatasetOfHouseholdsPerZones;
+
+public class ZoneContext extends DefaultContext<Zone> {
+
+	public ZoneContext() {
+
+		super("ZoneContext");
+		
+		System.out.println("ZoneContext creation");
+		/*
+		 * GIS projection for spatial information about Roads. This is used to
+		 * then create junctions and finally the road network.
+		 */
+		GeographyParameters<Zone> geoParams = new GeographyParameters<Zone>();
+		// geoParams.setCrs("EPSG:32618");
+		Geography<Zone> zoneGeography = GeographyFactoryFinder
+				.createGeographyFactory(null).createGeography("ZoneGeography",
+						this, geoParams);
+
+		/* Read in the data and add to the context and geography */
+		File zoneFile = null;
+		ShapefileLoader<Zone> zoneLoader = null;
+		try {
+			zoneFile = new File(GlobalVariables.ZONES_SHAPEFILE);
+			URI uri=zoneFile.toURI();
+			zoneLoader = new ShapefileLoader<Zone>(Zone.class,
+					uri.toURL(), zoneGeography, this);
+			while (zoneLoader.hasNext()) {
+				zoneLoader.next();
+			}
+
+		} catch (java.net.MalformedURLException e) {
+			System.err
+					.println("Malformed URL exception when reading housesshapefile.");
+			e.printStackTrace();
+		}
+
+
+		// SH - for implementing activity simulator
+		if (GlobalVariables.SET_DEMAND_FROM_ACTIVITY_MODELS) {
+			DatasetOfHouseholdsPerZones dataset;
+			//String h_filepath = GlobalVariables.HOUSES_CSV;
+			String a_filepath = GlobalVariables.ACTIVITY_CSV;
+			System.out.println("data file: "+a_filepath);
+			dataset = new DatasetOfHouseholdsPerZones(a_filepath);
+
+			HashMap<Integer, ArrayList<House>> housesbyzone = new HashMap<Integer, ArrayList<House>>(); // turnOnAfterTest
+			housesbyzone = dataset.getHousesByZone();
+			for (Zone z : zoneGeography.getAllObjects()) {
+				int keyzone = z.getIntegerID();
+				if (housesbyzone.containsKey(keyzone)){
+					ArrayList<House> temparraylist = housesbyzone.get(keyzone);
+					z.setHouses(temparraylist);
+					for (House hh : z.getHouses()) {
+						hh.setZone(z);
+					}
+				}
+//				// Update the total demand
+//				z.setEvacuationDemand();
+			}
+		}
+	}
+}

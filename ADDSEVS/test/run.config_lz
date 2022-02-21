@@ -1,0 +1,13 @@
+# java options
+
+java_path = /usr/lib/jvm/java-1.8.0-openjdk-amd64/bin/java
+java_options = -Xss256M -Xms1024M -Xmx4G -Xshare:off -Dfile.encoding=UTF-8
+
+# paths to sources and jars
+evacsim_dir = /home/leizengxiang/git/doe-mets-r/EvacSim/
+groovy_dir = /home/leizengxiang/myproject/doe_test/eclipse/plugins/org.codehaus.groovy_2.4.17.v201906292136-e1906-RELEASE/
+repast_plugin_dir = /home/leizengxiang/myproject/doe_test/eclipse/plugins/repast.simphony.runtime_2.7.0/
+
+# simulation options
+num_sim_instances = 2
+socket_port_numbers =  35883, 42463

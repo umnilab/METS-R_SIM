@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Scenario simphonyVersion="2.6.0">
+<repast.simphony.dataLoader.engine.ClassNameDataLoaderAction context="context" file="repast.simphony.dataLoader.engine.ClassNameDataLoaderAction_0.xml" />
+</Scenario>

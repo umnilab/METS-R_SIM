@@ -1,0 +1,75 @@
+package evacSim.citycontext;
+
+import java.io.File;
+import java.net.URI;
+import java.util.HashMap;
+import java.util.Map;
+
+import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.Geometry;
+
+
+
+
+import repast.simphony.context.DefaultContext;
+import repast.simphony.context.space.gis.GeographyFactoryFinder;
+import repast.simphony.space.gis.Geography;
+import repast.simphony.space.gis.GeographyParameters;
+import repast.simphony.space.gis.ShapefileLoader;
+import evacSim.GlobalVariables;
+
+public class RoadContext extends DefaultContext<Road> {
+
+	// NM: Cache every coordinate which forms a road so that Route.onRoad() is
+	// quicker.
+	private static Map<Coordinate, ?> coordCache;
+
+	public RoadContext() {
+		super("RoadContext");
+		System.out.println("RoadContext creation");
+
+		// Create the cache:
+		coordCache = new HashMap<Coordinate, Object>();
+		
+		/*
+		 * GIS projection for spatial information about Roads. This is used to
+		 * then create junctions and finally the road network.
+		 */
+		GeographyParameters<Road> geoParams = new GeographyParameters<Road>();
+		//geoParams.setCrs("EPSG:32618");
+		Geography<Road> roadGeography = GeographyFactoryFinder
+				.createGeographyFactory(null).createGeography("RoadGeography",
+						this, geoParams);
+		
+		/* Read in the data and add to the context and geography */
+		File roadFile = null;
+		ShapefileLoader<Road> roadLoader = null;
+		
+		try {
+			roadFile = new File(GlobalVariables.ROADS_SHAPEFILE);
+			URI uri=roadFile.toURI();
+			roadLoader = new ShapefileLoader<Road>(Road.class,
+					uri.toURL(), roadGeography, this);
+
+			while (roadLoader.hasNext()) {
+				Road road = roadLoader.next();
+				// SH: Create lanes for this road
+				Geometry roadGeom = roadGeography.getGeometry(road);
+				for (Coordinate c : roadGeom.getCoordinates()) {
+					coordCache.put(c, null);
+				}
+			}
+			
+
+		} catch (java.net.MalformedURLException e) {
+			System.out
+					.println("ContextCreator: malformed URL exception when reading roadshapefile. Check the 'roadLoc' parameter is correct");
+			e.printStackTrace();
+		}
+	}
+
+	public static boolean onRoad(Coordinate c) {
+		return coordCache.containsKey(c);
+	}
+
+}

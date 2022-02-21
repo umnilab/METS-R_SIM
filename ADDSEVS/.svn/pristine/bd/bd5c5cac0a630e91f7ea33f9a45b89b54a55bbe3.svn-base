@@ -1,0 +1,164 @@
+package evacSim.partition;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+import com.vividsolutions.jts.geom.Coordinate;
+
+import galois.objects.graph.GNode;
+import galois.objects.graph.IntGraph;
+import galois.objects.graph.MorphGraph;
+import edu.uci.ics.jung.graph.Graph;
+import repast.simphony.context.space.graph.ContextJungNetwork;
+import repast.simphony.space.projection.ProjectionEvent;
+import repast.simphony.space.projection.ProjectionListener;
+import repast.simphony.space.gis.Geography;
+import repast.simphony.space.graph.EdgeCreator;
+import repast.simphony.space.graph.JungNetwork;
+import repast.simphony.space.graph.Network;
+import repast.simphony.space.graph.RepastEdge;
+import evacSim.citycontext.*;
+import evacSim.ContextCreator;
+
+
+public class GaliosGraphConverter<T> implements ProjectionListener<T> {
+	public Graph<T, RepastEdge<T>> RepastGraph; // Repast graph
+	public static Network<Junction> roadNetwork; // Repast network projection
+	public IntGraph<MetisNode> GaliosGraph;
+	Geography<Zone> zoneGeography;
+	public MetisGraph metisGraph;
+	public static CityContext cityContext;
+	private HashMap<T, Integer> Node2GaliosID;
+	private HashMap<Integer, T> GaliosID2Node;
+	int nodeNum;
+	int edgeNum;
+	
+	
+	public GaliosGraphConverter(){
+		cityContext = ContextCreator.getCityContext();
+		RepastGraph = null;
+		GaliosGraph = new MorphGraph.IntGraphBuilder().backedByVector(true).directed(true).create();
+		metisGraph = new MetisGraph();
+	    assert GaliosGraph != null;
+	    this.Node2GaliosID = new HashMap<T, Integer>();
+	    this.GaliosID2Node = new HashMap<Integer, T>();
+	    nodeNum = 0;
+	    edgeNum = 0;
+	    zoneGeography = ContextCreator.getZoneGeography();
+	}
+	
+	/* Convert from Repast graph to Galios graph:
+	 * Contains two modes:
+	 * mode : true, used for initial stage, load vertex weight as the number of vehicles on each zone + 1
+	 * 		  false, used for later stage in simulation, use vertex weight as 1 */
+	public MetisGraph RepastToGaliosGraph(boolean mode){
+		int i = 0;
+		int nodeWeight;
+		
+		try{
+			roadNetwork = ContextCreator.getRoadNetwork();
+		    // Load Repast network
+			RepastGraph = null;
+			
+			if (roadNetwork instanceof JungNetwork)
+				RepastGraph = ((JungNetwork) roadNetwork).getGraph();
+			else if (roadNetwork instanceof ContextJungNetwork)
+				RepastGraph = ((ContextJungNetwork) roadNetwork).getGraph();
+			
+			// Create the MetisNode list
+		    ArrayList<GNode<MetisNode>> nodes = new ArrayList<GNode<MetisNode>>();
+		    nodeNum = RepastGraph.getVertexCount();
+		    
+		    /* Assign demand to the nearest junction of the zone */
+		    HashMap<T, Integer> vertexDemand = new HashMap<T, Integer>();
+		    
+		    if (mode){
+			    for (Zone zone : zoneGeography.getAllObjects()){
+			    	// We only need to track the zones with positive demand
+			    	if (zone.getHouses().size() > 0){
+			    		Coordinate Zcoord = zone.getCoord();
+			    		T nearestVertex = null;
+			    		double minDist = Double.MAX_VALUE;
+			    		double thisDist;
+			    		for (T vertex : RepastGraph.getVertices()){
+			    			Junction j = (Junction) vertex;
+			    			Coordinate Jcoord = j.getCoordinate();
+			    			// Compute the distance
+			    			thisDist = cityContext.squaredEuclideanDistance(Zcoord, Jcoord);
+			    			if (minDist > thisDist){
+			    				minDist = thisDist;
+			    				nearestVertex = vertex;
+			    			}
+			    		}
+			    		vertexDemand.put(nearestVertex, zone.getHouses().size() + 1);
+			    	}
+			    }
+		    }
+		    
+		    // Add vertices to IntGraph
+		    for (T vertex : RepastGraph.getVertices()){
+		    	 nodeWeight = 1;
+		    	 Node2GaliosID.put(vertex, i);
+		    	 GaliosID2Node.put(i, vertex);
+		    	 
+		    	 if (mode){
+		    		 /* Retrieve the vertex weight */
+		    		 if (vertexDemand.containsKey(vertex)){
+		    			 nodeWeight = vertexDemand.get(vertex);
+		    		 }
+		    	 }
+		    	 
+		    	 GNode<MetisNode> n = GaliosGraph.createNode(new MetisNode(i, nodeWeight)); 
+		    	 
+		         nodes.add(n);
+		         GaliosGraph.add(n);
+		         i++;
+		    }
+		    
+		    // Add Edges to IntGraph
+		    for (RepastEdge<T> edge : RepastGraph.getEdges()){
+		    	T source = RepastGraph.getSource(edge);
+		        T dest = RepastGraph.getDest(edge);
+		        
+		        Junction j1 = (Junction) source;
+				Junction j2 = (Junction) dest;
+				
+				Road road = cityContext.findRoadBetweenJunctionIDs(
+						j1.getJunctionID(), j2.getJunctionID());
+				
+				// Number of vehicles + 1 on the road, used as the edge weight
+				int edgeWeight = road.getVehicleNum() + 1; // Use plus one to avoid 0
+		        
+		        GNode<MetisNode> n1 = nodes.get(Node2GaliosID.get(source));
+		        GNode<MetisNode> n2 = nodes.get(Node2GaliosID.get(dest));
+		        
+		        GaliosGraph.addEdge(n1, n2, edgeWeight);
+		        GaliosGraph.addEdge(n2, n1, edgeWeight); // We input an undirected graph
+		        n1.getData().addEdgeWeight(edgeWeight); // This update the sum of weights for edges adjacent this node
+		        n1.getData().incNumEdges();
+		        n2.getData().addEdgeWeight(edgeWeight);
+		        n2.getData().incNumEdges();
+		        edgeNum++;
+		    }
+		    metisGraph.setNumEdges(edgeNum);
+		    metisGraph.setGraph(GaliosGraph);
+		    System.out.println("finshied reading Repast graph " + GaliosGraph.size() + " " + metisGraph.getNumEdges());
+		    return metisGraph;
+		} catch (Exception e){
+			e.printStackTrace();
+		}
+	    return null;
+	}
+	
+//	public GetRedpastGraph(){
+//		
+//	}
+
+	@Override
+	public void projectionEventOccurred(ProjectionEvent<T> evt) {
+		// TODO Auto-generated method stub
+		
+	}
+
+}

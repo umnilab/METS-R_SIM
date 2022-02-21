@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER">
+		<attributes>
+			<attribute name="module" value="true"/>
+		</attributes>
+	</classpathentry>
+	<classpathentry kind="lib" path="lib/servlet-api-3.1.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-client-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-http-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-io-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-server-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/jetty-util-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/websocket-api-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/websocket-client-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/websocket-common-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/websocket-server-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/websocket-servlet-9.4.5.v20170502.jar"/>
+	<classpathentry kind="lib" path="lib/iss-ant.jar"/>
+	<classpathentry kind="lib" path="lib/trove-3.0.0a1.jar"/>
+	<classpathentry kind="con" path="REPAST_SIMPHONY_SUPPORT"/>
+	<classpathentry kind="lib" path="lib/jgrapht-jdk1.6.jar"/>
+	<classpathentry kind="lib" path="lib/java-json.jar"/>
+	<classpathentry kind="lib" path="lib/json-simple-1.1.jar"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>
