@@ -129,15 +129,15 @@ public class Zone {
 	}
 	
 	public void step(){
-		//Zone serve passenger, passenger wait
+		// Zone serve passenger, passenger wait
 		this.servePassengerByTaxi();
 		this.passengerWaitTaxi();
 		this.passengerWaitBus(); // Passenger wait
 		this.relocateTaxi();
 		this.taxiWaitPassenger();
-		if(GlobalVariables.HUB_INDEXES.contains(this.integerID)){
-			System.out.println(this.integerID + "Vehicle: "+ this.vehicleStock + "Pass: "+ this.nPassForTaxi);
-		}
+		// if(GlobalVariables.HUB_INDEXES.contains(this.integerID)){
+			// System.out.println(this.integerID + "Vehicle: "+ this.vehicleStock + "Pass: "+ this.nPassForTaxi);
+		// }
 	}
 	
 	public void generatePassenger(){
@@ -152,7 +152,7 @@ public class Zone {
 		}
 		Passenger current_taxi_pass = this.firstPassInQueueForTaxi;
 		Passenger current_bus_pass = this.firstPassInQueueForBus;
-		// be prepared to add new pass, ZL: why not using linked list?
+		// Be prepared to add new pass, ZL: why not using linked list?
 		if(current_taxi_pass!=null){
 			while(current_taxi_pass.nextPassengerInQueue()!=null){
 				current_taxi_pass = current_taxi_pass.nextPassengerInQueue();
@@ -176,8 +176,7 @@ public class Zone {
             	numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
             	numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				for (int i = 0; i < numToGenerate; i++) {
-					Passenger new_pass = new Passenger(this.integerID, destination, 24000);
-					// Placeholder: LZ, need to replace this by the choice model
+					Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Wait for at most 2 hours
 					float threshold = getSplitRatio(destination);
 					if ((Math.random() > threshold && hasBus) || !hasBus) {
 						nPassForTaxi += 1;
@@ -246,8 +245,7 @@ public class Zone {
 							}
 							
 							// this.passQueueForTaxi.add(new_pass);
-							// System.out.println("One taxi passenger
-							// generated");
+							// System.out.println("One taxi passenger generated");
 							this.numberOfGeneratedTaxiPass += 1;
 						} else {
 							nPassForBus += 1;

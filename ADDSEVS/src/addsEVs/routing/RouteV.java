@@ -201,23 +201,23 @@ public class RouteV {
 	
 	//July,2020
 	// Use ecoRoute to decide route
-	public static Pair<List<Road>,Integer> ecoRouteBus(int origin, int destination){
-		String key = Integer.toString(origin) + ',' + destination;
-		// System.out.println(ContextCreator.route_UCB);
-		// System.out.println(ContextCreator.routeResult_received);
-		if(!ContextCreator.routeResult_received_bus.containsKey(key)){
-			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
-		}
-		int choice = ContextCreator.routeResult_received_bus.get(key);
-		List<Integer> path = (ContextCreator.route_UCB_bus.get(key)).get(choice);
-		// Return a list of link
-		List<Road> result = new ArrayList<Road>();
-		for (int link_id : path) {
-			result.add(cityContext.findRoadWithID(link_id));
-		}
-		Pair<List<Road>,Integer> final_result = new Pair<> (result, choice);
-		return final_result;
-	}
+//	public static Pair<List<Road>,Integer> ecoRouteBus(int origin, int destination){
+//		String key = Integer.toString(origin) + ',' + destination;
+//		// System.out.println(ContextCreator.route_UCB);
+//		// System.out.println(ContextCreator.routeResult_received);
+//		if(!ContextCreator.routeResult_received_bus.containsKey(key)){
+//			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
+//		}
+//		int choice = ContextCreator.routeResult_received_bus.get(key);
+//		List<Integer> path = (ContextCreator.route_UCB_bus.get(key)).get(choice);
+//		// Return a list of link
+//		List<Road> result = new ArrayList<Road>();
+//		for (int link_id : path) {
+//			result.add(cityContext.findRoadWithID(link_id));
+//		}
+//		Pair<List<Road>,Integer> final_result = new Pair<> (result, choice);
+//		return final_result;
+//	}
 
 	public static void printRoute(List<Road> path){
 		System.out.print("Route:");

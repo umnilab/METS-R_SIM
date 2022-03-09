@@ -131,8 +131,7 @@ public class Bus extends Vehicle{
 	// function 4: updateBatteryLevel
 	 @Override
 	public void updateBatteryLevel() {
-		double tickEnergy = calculateEnergy(); // the energy consumption(kWh)
-												// for this tick
+		double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick
 		tickConsume = tickEnergy;
 		totalConsume += tickEnergy;
 
@@ -270,9 +269,9 @@ public class Bus extends Vehicle{
 			if (nextStop == busStop.size()-1) { // arrive at the last stop
 				nextStop = 0;
 				ContextCreator.busSchedule.popSchedule(this.busStop.get(0), this);
-				System.out.println("Bus "+this.id+" finished one loop!");
+				// System.out.println("Bus "+this.id+" finished one loop!");
 				// Update the schedule if reaching the next_update_time
-				//System.out.println(this.activityplan.get(0).getDestID());
+				// System.out.println(this.activityplan.get(0).getDestID());
 			}
 			else{
 				nextStop = Math.min(nextStop + 1, this.busStop.size()-1);        //arrive at the other bus stop
@@ -454,11 +453,11 @@ public class Bus extends Vehicle{
 	}
 	
 	//July,2020,JiaweiXue
-	public void recLinkSnaphotForUCBBus() {
-		//System.out.println("Record data for UCB!");
-		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getLinkid(),this.getLinkConsume());
-		this.resetLinkConsume(); // Reset link consumption to 0
-	}
+//	public void recLinkSnaphotForUCBBus() {
+//		//System.out.println("Record data for UCB!");
+//		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getLinkid(),this.getLinkConsume());
+//		this.resetLinkConsume(); // Reset link consumption to 0
+//	}
 	
 	public void updateSchedule(int newID, ArrayList<Integer> newRoute, int departureTime) {
 		if(newID==-1) {

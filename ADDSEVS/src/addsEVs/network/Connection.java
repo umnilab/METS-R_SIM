@@ -437,24 +437,24 @@ public class Connection implements DataConsumer {
 					ContextCreator.routeResult_received.put(OD, result_int);
 					index +=1;
 				}
-			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
-
-				System.out.println("Received bus route result!");
-				 
-				// clear the current map
-				// ContextCreator.routeResult_received.clear();
-				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
-				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-				int index = 0; // skip prefix
-				while (index < list_OD.size()) {
-					Long result = (Long) list_result.get(index);
-					int result_int = result.intValue();
-					String OD = (String) list_OD.get(index);
-					//System.out.println("string OD parsed");
-					//System.out.println(OD);
-					ContextCreator.routeResult_received_bus.put(OD, result_int);
-					index +=1;
-				}
+//			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
+//
+//				System.out.println("Received bus route result!");
+//				 
+//				// clear the current map
+//				// ContextCreator.routeResult_received.clear();
+//				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
+//				JSONArray list_result = (JSONArray) jsonMsg.get("result");
+//				int index = 0; // skip prefix
+//				while (index < list_OD.size()) {
+//					Long result = (Long) list_result.get(index);
+//					int result_int = result.intValue();
+//					String OD = (String) list_OD.get(index);
+//					//System.out.println("string OD parsed");
+//					//System.out.println(OD);
+//					ContextCreator.routeResult_received_bus.put(OD, result_int);
+//					index +=1;
+//				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BUS_SCHEDULE")){
 				System.out.println("Received bus schedule result!");
 				JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
@@ -604,25 +604,25 @@ public class Connection implements DataConsumer {
 			}
 		}
 
-		Collection<Integer> linkIDBus = tick.getLinkIDListBus();
-
-		for (Integer id : linkIDBus) {
-			// July,2020,JiaweiXue
-			// Oct 15, 2020, ZL: create a new for loop to handle this
-			ArrayList<Double> energyListBus = tick.getLinkEnergyListBus(id);
-
-			if (energyListBus != null) {
-				HashMap<String, Object> entryObj = new HashMap<String, Object> ();
-				entryObj.put("values", Connection.createEnergyMesssage(energyListBus));
-				entryObj.put("TYPE", "BE");
-				entryObj.put("hour", hour);
-				entryObj.put("ID", id);
-				entries.add(entryObj);
-//				line = "BE," + id + ";" + hour + "," + line;
-//				lines.add(line);
-			}
-
-		}
+//		Collection<Integer> linkIDBus = tick.getLinkIDListBus();
+//
+//		for (Integer id : linkIDBus) {
+//			// July,2020,JiaweiXue
+//			// Oct 15, 2020, ZL: create a new for loop to handle this
+//			ArrayList<Double> energyListBus = tick.getLinkEnergyListBus(id);
+//
+//			if (energyListBus != null) {
+//				HashMap<String, Object> entryObj = new HashMap<String, Object> ();
+//				entryObj.put("values", Connection.createEnergyMesssage(energyListBus));
+//				entryObj.put("TYPE", "BE");
+//				entryObj.put("hour", hour);
+//				entryObj.put("ID", id);
+//				entries.add(entryObj);
+////				line = "BE," + id + ";" + hour + "," + line;
+////				lines.add(line);
+//			}
+//
+//		}
 		jsonObj.put("entries", entries);
 		//System.out.println("sent ticket message is");
 		//System.out.println(jsonObj);
@@ -822,135 +822,4 @@ public class Connection implements DataConsumer {
 			Connection.this.consuming = false;
 		}
 	} // class SendingRunnable
-
-	/**
-	 * This is the body of a thread which runs periodically while the connection is
-	 * open and sends "pings" to the remote program just to keep the socket
-	 * connection open and preventing it from closing due to any kind of a timeout
-	 * either within the jetty library or some other layer of network stack outside
-	 * Java which may detect the connection as dormant.
-	 * 
-	 * This could also be a mechanism in the future for sending automatic periodic
-	 * general status updates about the state of the simulation.
-	 */
-	private class HeartbeatRunnable implements Runnable {
-
-		public HeartbeatRunnable() {
-			ConnectionManager.printDebug(id + "-CTRL", "Created heartbeat thread.");
-		}
-
-		@Override
-		public void run() {
-			int count = 0;
-
-			// wait for session to exist if it hasn't been created yet
-			while (session == null) {
-				try {
-					Thread.sleep(GlobalVariables.NETWORK_STATUS_REFRESH);
-				} catch (InterruptedException ie) {
-					ConnectionManager.printDebug(id + "-CTRL", "Heartbeat stop.");
-					return;
-				}
-			}
-
-			// loop as long as session is open and periodically send a message
-			while (session.isOpen()) {
-				// wait a bit before firing off another ping message
-				try {
-					Thread.sleep(GlobalVariables.NETWORK_STATUS_REFRESH);
-				} catch (InterruptedException ie) {
-					ConnectionManager.printDebug(id + "-CTRL", "Heartbeat stop.");
-					return;
-				}
-
-				// send an inconsequential message over the socket just to
-				// prevent it from being dormant, though in the future this
-				// could be some kind of a generic simulation status message
-				try {
-					// get the "environment" for the sim so we can poll it
-					RunEnvironment runEnv = RunEnvironment.getInstance();
-
-					// get the current state of the simulation
-					String state = "Not running";
-					if (runEnv != null) {
-						// the "schedule" holding the simulation state
-						ISchedule schedule = runEnv.getCurrentSchedule();
-
-						if (schedule != null) {
-							double tick = schedule.getTickCount();
-
-							if (tick < 0.0) {
-								// the model is still initializing
-								state = "Loading simulation";
-							} else {
-								state = "Running @ tick #" + tick;
-							}
-						}
-					}
-
-					// send the status message over the socket
-					String message = "STATUS," + (new java.util.Date()).toString() + "\n" + state;
-					session.getRemote().sendString(message);
-				} catch (IOException ioe) {
-					ConnectionManager.printDebug(id + "-ERR", ioe.getMessage());
-				} catch (Throwable t) {
-					ConnectionManager.printDebug(id + "-ERR", t.getMessage());
-				}
-			}
-		}
-	} // class HeartbeatRunnable
-
-	// This method parses the string and creates an event from it
-	private NetworkEventObject ParseString(String message) {
-
-		String delims = ",";
-		String[] nextLine = message.split(delims);
-
-		// ** For Road closure message, it has the following format: EVENT, startTime,
-		// endTime, eventID, roadID*/
-		int startTime = Math.round(Integer.parseInt(nextLine[1]) / GlobalVariables.SIMULATION_STEP_SIZE);
-		int endTime = Math.round(Integer.parseInt(nextLine[2]) / GlobalVariables.SIMULATION_STEP_SIZE);
-		// Make StartTime and endTime divisible by EVENT_CHECK_FREQUENCY
-		startTime = startTime - (startTime % GlobalVariables.EVENT_CHECK_FREQUENCY);
-		endTime = endTime - (endTime % GlobalVariables.EVENT_CHECK_FREQUENCY);
-		int eventID = Integer.parseInt(nextLine[3]);
-		int roadID = Integer.parseInt(nextLine[4]);
-		double value1 = GlobalVariables.BLOCKAGE_SPEED_FOREVENTS;
-		double value2 = -999;// A default value being stored for some new future use
-
-		NetworkEventObject EventObject = new NetworkEventObject(startTime, endTime, eventID, roadID, value1, value2);
-		return EventObject;
-	}
-
-	// HG: This method inserts an event received from network communication into
-	// newEventQueue based on event's starting time
-	public void insertExternalEvent(NetworkEventObject event) {
-		int startTimeExternalEvent = event.startTime;
-		if (GlobalVariables.newEventQueue.peek() == null) {// If the list is empty then no need for comparison with
-															// other events
-			if ((int) RepastEssentials.GetTickCount() < event.endTime) { // Only add if the event's end time has not
-																			// already passed
-				GlobalVariables.newEventQueue.add(event);
-			}
-		} else {
-			boolean flag = true; // a tag to identify the first event in newEventQueue that starts later than the
-									// external event
-			int queueSize = GlobalVariables.newEventQueue.size();
-			for (int index = 0; index < queueSize; index++) { // start iterating from the top of the queue
-				if (flag == false) {
-					break;
-				}
-				if (startTimeExternalEvent < GlobalVariables.newEventQueue.get(index).startTime) { // add the new event
-					GlobalVariables.newEventQueue.add(index, event);
-					flag = false;
-				}
-			}
-			if (flag == true) {
-				// the new event does not start any event already in the queue, so add it to the
-				// end
-				GlobalVariables.newEventQueue.add(event);
-			}
-		}
-
-	}
 }

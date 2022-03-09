@@ -106,11 +106,13 @@ public class BusSchedule{
 		
 		for(ArrayList<Integer> route: this.busRoute) {
 			int i = 0;
-			for(int zoneID: route){
-				Zone zone = ContextCreator.getCityContext().findHouseWithDestID(zoneID);
-				zone.setBusInfo(this.busGap.get(i));
+			if(busNum.get(i)>1) {
+				for(int zoneID: route){
+					Zone zone = ContextCreator.getCityContext().findHouseWithDestID(zoneID);
+					zone.setBusInfo(this.busGap.get(i));
+				}
+				i += 1;
 			}
-			i += 1;
 		}
 		
 		this.processSchedule();
@@ -133,7 +135,7 @@ public class BusSchedule{
 	}
 	
 	public void popSchedule(int startZone, Bus b) {
-		System.out.println("BUS SCHEDULE UPDATED!");
+		// System.out.println("BUS SCHEDULE UPDATED!");
 		if(this.pendingSchedules!=null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule
 			if(this.pendingSchedules.get(startZone).size()>0) {

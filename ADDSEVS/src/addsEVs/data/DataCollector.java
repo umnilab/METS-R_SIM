@@ -5,7 +5,6 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentLinkedDeque;
-
 import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.GlobalVariables;
@@ -66,7 +65,7 @@ public class DataCollector {
     private int cleanupCount;
     
     /** A calculator for storing the energy consumption metrics. */
-    private EnergyCalculator energeCalculator;
+//    private EnergyCalculator energeCalculator;
   
     
     /**
@@ -141,7 +140,7 @@ public class DataCollector {
         }
         
         // set the energy calcuator
-        this.energeCalculator = new EnergyCalculator();
+//        this.energeCalculator = new EnergyCalculator();
         
         // set the running flags to running
         this.collecting = true;
@@ -656,7 +655,6 @@ public class DataCollector {
     public static void printDebug(String msg) {
         DataCollector.printDebug(null, msg);
     }
-    
     
     /**
      * Logs the given message to the standard output if data collection

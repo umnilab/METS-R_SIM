@@ -166,7 +166,7 @@ public class ConnectionManager {
         	// Chairtha : Wait until the route_UCB in ContextCreator is populated
         	// otherwise route_UCB map will not be correctly received by the RemoteDataClientManager
         	while(!ContextCreator.isRouteUCBMapPopulated()); 
-        	while(!ContextCreator.isRouteUCBBusMapPopulated()); 
+//        	while(!ContextCreator.isRouteUCBBusMapPopulated()); 
             this.server.start();
             ConnectionManager.printDebug("CTRL", "Started.");
         }

@@ -391,11 +391,11 @@ public class Vehicle {
 						this.setReachDest();
 						return;
 					}
-					else if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !this.onChargingRoute()){
-						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestinationID());
-						this.roadPath = route_result.getFirst();
-						evBus.setRouteChoice(route_result.getSecond());
-					}
+//					else if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !this.onChargingRoute()){
+//						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestinationID());
+//						this.roadPath = route_result.getFirst();
+//						evBus.setRouteChoice(route_result.getSecond());
+//					}
 				}
 					// Compute new route 
 				if (this.roadPath.isEmpty()) {
@@ -1077,7 +1077,6 @@ public class Vehicle {
 	}
 
 	public int closeToRoad(Road road) {
-		// SH Temp
 		Coordinate currentCoord = this.getCurrentCoord();
 //		GeometryFactory geomFac = new GeometryFactory();
 		Coordinate nextCoord;
@@ -1090,7 +1089,6 @@ public class Vehicle {
 //		Geometry geom1 = geomFac.createPoint(currentCoord);
 //		Geometry geom2 = geomFac.createPoint(nextCoord);
 //		DistanceOp dist1 = new DistanceOp(geom1, geom2);
-//		System.out.println(distance(currentCoord, nextCoord));
 		if (distance(currentCoord, nextCoord) < GlobalVariables.TRAVEL_PER_TURN) {
 //			System.out.println("THIS");
 			return 1;
@@ -1128,8 +1126,6 @@ public class Vehicle {
 
 	public void appendToMacroList(Road road) {
 		macroTrailing_ = null;
-		//LZ: Oct 14, 2020 update
-		//This has trouble with the advanceInMacroList 
 		//If the macroLeading is modified in advanceInMacroList by other thread
 		//Then this vehicle will be misplaced in the Linked List
 		if (road.lastVehicle() != null){
@@ -1280,7 +1276,7 @@ public class Vehicle {
 		this.currentCoord_.z = coord.z;
 	}
 
-	public int nearlyArrived(){//HG: If nearly arrived then return 1 else 0
+	public int nearlyArrived(){ // If nearly arrived then return 1 else 0
 		if(this.nextRoad_ == null){
 			return 1;
 		}else{
@@ -2183,16 +2179,14 @@ public class Vehicle {
 		if(this.getVehicleClass() == 1){ //EV
 			((ElectricVehicle) this).recLinkSnaphotForUCB();
 			((ElectricVehicle) this).recSpeedVehicle();
-		}else if(this.getVehicleClass() == 2){ //Bus
-			((Bus) this).recLinkSnaphotForUCBBus();
 		}
+//		else if(this.getVehicleClass() == 2){ //Bus
+//			((Bus) this).recLinkSnaphotForUCBBus();
+//		}
 		
-//		if (this.distance_ <= 0) {
 		if (this.changeRoad() == 0){
 			return 0;
 		}
-			
-//		}
 		
 		return 1;
 	}

@@ -53,7 +53,7 @@ public class TickSnapshot {
     // LZ: link energy consumptions for UCB
     private Map<Integer, ArrayList<Double>> link_UCB; // 
     
-  //July,2020,JiaweiXue
+    //July,2020,JiaweiXue
     private Map<Integer, ArrayList<Double>> link_UCB_BUS; // the link energy consumption for bus.
     private Map<Integer, ArrayList<Double>> speed_vehicle; // used for shadow bus construction.
     
@@ -95,7 +95,7 @@ public class TickSnapshot {
         // LZ: setup the map for holding the link energy consumption, which is a map of linkid: link of passed vehicles, we store this for each tick
         this.link_UCB = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
         
-      //July,2020,JiaweiXue
+        //July,2020,JiaweiXue
         this.link_UCB_BUS = Collections.synchronizedMap (new HashMap<Integer, ArrayList<Double>>());
         this.speed_vehicle = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
     }
@@ -523,7 +523,6 @@ public class TickSnapshot {
 				this.link_UCB.put(id, new ArrayList<Double>());
 			}
 			this.link_UCB.get(id).add(linkConsume);
-			//System.out.println(this.link_UCB);
 		}
 	}
 	
@@ -534,7 +533,6 @@ public class TickSnapshot {
 				this.link_UCB_BUS.put(id, new ArrayList<Double>());
 			}
 			this.link_UCB_BUS.get(id).add(linkConsume);
-//			System.out.println("Bus "+this.link_UCB_BUS);
 		}
 	}
 	
