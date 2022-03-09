@@ -472,7 +472,13 @@ public class Connection implements DataConsumer {
 				ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
 				int index = 0; // skip prefix
 				while (index < list_num.size()) {
-					Double number = (Double) list_num.get(index);
+					Double number;
+					if(list_num.get(index) instanceof Long) {
+						number = ((Long) list_num.get(index)).doubleValue();
+					}
+					else{
+						number = (Double) list_num.get(index);
+					}
 					int number_int = number.intValue();
 					//System.out.println("number_int");
 					//System.out.println(number_int);
