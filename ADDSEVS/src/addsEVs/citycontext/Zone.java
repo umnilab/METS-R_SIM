@@ -46,15 +46,21 @@ public class Zone {
 	// demand generation model end
 	
 	// mode choice model start
-	private static float busTicketPrice = 10; //Placeholder for bus ticket prices to every other zones
+	private static float busTicketPrice = 15; //Placeholder for bus ticket prices to every other zones
 	private static float alpha = -0.078725f; //$
 	private static float beta = -0.020532f; //minutes
-	private static float basePriceTaxi  = 0.9695f; //Placeholder, taxi fees per miles
+	private static float basePriceTaxi  = 2.0f; //Placeholder, taxi fees per miles
 	private static float initialPriceTaxi = 2.5f;
 	private static float taxiBase = -0.672839f;
 	private static float busBase = -1.479586f;
 	private boolean hasBus;
 	private int busGap;
+	
+	// utility function
+	//	float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
+	//			beta*(taxiTravelTime.get(destID)/60+5)+taxiBase;
+	//	float busUtil = (float) (alpha*busTicketPrice+
+	//			beta*(busTravelTime.get(destID)/60+this.busGap/2)+busBase);
 	
 	public Map<Integer, Float> taxiTravelTime;
 	public Map<Integer, Float> taxiTravelDistance;
@@ -152,7 +158,7 @@ public class Zone {
 		}
 		Passenger current_taxi_pass = this.firstPassInQueueForTaxi;
 		Passenger current_bus_pass = this.firstPassInQueueForBus;
-		// Be prepared to add new pass, ZL: why not using linked list?
+		// Be prepared to add new passengers
 		if(current_taxi_pass!=null){
 			while(current_taxi_pass.nextPassengerInQueue()!=null){
 				current_taxi_pass = current_taxi_pass.nextPassengerInQueue();
