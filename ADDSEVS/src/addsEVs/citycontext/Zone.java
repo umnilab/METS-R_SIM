@@ -54,7 +54,8 @@ public class Zone {
 	private static float taxiBase = -0.672839f;
 	private static float busBase = -1.479586f;
 	private boolean hasBus;
-	private int busGap;
+	public int busGap;
+	// change into public int due to the change in Busschedule.java 03/15/2022 zhengyu
 	
 	// utility function
 	//	float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
@@ -183,7 +184,10 @@ public class Zone {
             	numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				for (int i = 0; i < numToGenerate; i++) {
 					Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Wait for at most 2 hours
-					float threshold = getSplitRatio(destination);
+					//System.out.println("current destination is"); 
+					//System.out.println(destination); 
+					float threshold = getSplitRatio(destination);	
+					//System.out.println("current split ratio is"+threshold); 
 					if ((Math.random() > threshold && hasBus) || !hasBus) {
 						nPassForTaxi += 1;
 						if(new_pass.isShareable()) {
@@ -216,6 +220,8 @@ public class Zone {
 				}
 				j+=1;
 			}
+			//System.out.println("current buss pass is"+this.numberOfGeneratedBusPass); 
+			//System.out.println("current taxi pass is"+this.numberOfGeneratedTaxiPass);
 		}
 		else if (this.zoneClass == 1) { //From hub to other place
 			int j = GlobalVariables.HUB_INDEXES.indexOf(this.integerID);
@@ -269,6 +275,8 @@ public class Zone {
 				}
 			}
 		}
+		//System.out.println("current buss pass is"+this.numberOfGeneratedBusPass); 
+		//System.out.println("current taxi pass is"+this.numberOfGeneratedTaxiPass);
 		if(this.lastUpdateHour!=hour){
 			this.lastUpdateHour = hour;
 		}
@@ -529,12 +537,20 @@ public class Zone {
 	}
 	
 	public float getSplitRatio(int destID){
+//		System.out.println("Zone "+ this.getIntegerID() + "  destID: " + destID + " has Bus: " + this.hasBus);
+//		System.out.println("Current bus travel time is "+busTravelTime); 
+		//System.out.println("current destid is"+destID);
+		//System.out.println("current id is"+this.getIntegerID());
 		if(busTravelTime.containsKey(destID) && taxiTravelTime.containsKey(destID)){
+			// 131 140 180 index
+			System.out.println("Bus Time for Zone "+this.getIntegerID()+": " + busTravelTime.get(destID));
+			System.out.println("Bus Gap for Zone "+this.getIntegerID()+": " + this.busGap);
+			System.out.println("Taxi Time for Zone "+this.getIntegerID()+": " + taxiTravelTime.get(destID));
 			float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
 					beta*(taxiTravelTime.get(destID)/60+5)+taxiBase;
 			float busUtil = (float) (alpha*busTicketPrice+
 					beta*(busTravelTime.get(destID)/60+this.busGap/2)+busBase);
-			return (float) (Math.exp(busUtil)/(Math.exp(taxiUtil)+Math.exp(busUtil)));
+			return (float) (Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 		}
 		else{
 			return 0;

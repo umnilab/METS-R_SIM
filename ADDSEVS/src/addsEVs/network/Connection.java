@@ -334,15 +334,15 @@ public class Connection implements DataConsumer {
 			 */
 			for (String OD : ContextCreator.getUCBRouteODPairs()) {
 				// JSONString
-				System.out.println("Send EV OD");
+				// System.out.println("Send EV OD");
 				String msg = ContextCreator.getUCBRouteStringForOD(OD);
 //				System.out.println(msg);
 				session.getRemote().sendString(msg);
 			}
 			// July,2020,JiaweiXue
-			System.out.println("UCB route bus OD size = " + ContextCreator.getUCBRouteODPairsBus().size());
+			// System.out.println("UCB route bus OD size = " + ContextCreator.getUCBRouteODPairsBus().size());
 			for (String OD : ContextCreator.getUCBRouteODPairsBus()) {
-				System.out.println("Send Bus OD");
+				// System.out.println("Send Bus OD");
 				String msg = ContextCreator.getUCBRouteStringForODBus(OD);
 				//System.out.println(msg);
 				session.getRemote().sendString(msg);
@@ -463,6 +463,8 @@ public class Connection implements DataConsumer {
 				JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
 				Long hour = (Long) jsonMsg.get("Bus_currenthour");
 				int newhour=hour.intValue();
+				System.out.println("current hour value is");
+				System.out.println(newhour);
 				// Placeholder for test
 				// Json array to array list
 				int array_size=list_num.size();
@@ -485,6 +487,7 @@ public class Connection implements DataConsumer {
 						newBusNum.add(number_int);
 					    Double gap = (Double) list_gap.get(index);
 					    int gap_int = gap.intValue();
+					    // multiply by 60 for seconds
 					    newBusGap.add(gap_int);
 					    Long routename = (Long) list_routename.get(index);
 					    int list_routename_int = routename.intValue();
@@ -503,8 +506,7 @@ public class Connection implements DataConsumer {
 				         route_int.add(route_int_i-1);
 				         index_route+=1;
 				        }
-				        
-					    System.out.println(route_int);
+					    //System.out.println(route_int);
 					    newRoutes.add(route_int);
 					    //System.out.println("newRoutes");
 					    //System.out.println(newRoutes);					  
