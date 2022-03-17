@@ -17,6 +17,9 @@ import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 
+/* 
+ * Inherit from ARESCUE simulation
+ */
 public class Road {
 	private int id;
 	private int linkid;

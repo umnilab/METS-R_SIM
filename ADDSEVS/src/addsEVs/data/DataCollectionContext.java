@@ -129,7 +129,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
 	    		ContextCreator.zone_logger.newLine();
 	    		ContextCreator.zone_logger.flush();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
     	}
@@ -162,7 +161,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.network_logger.flush();
 			ContextCreator.link_logger.flush();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} 
     	if(GlobalVariables.ENABLE_METRICS_DISPLAY){

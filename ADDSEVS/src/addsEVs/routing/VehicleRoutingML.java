@@ -22,7 +22,6 @@ public class VehicleRoutingML extends VehicleRouting {
 		public RouteMap data;
 		private String inputFileName;
 		public RouteReader(String fileName) {
-			// TODO Auto-generated constructor stub
 			this.data = new RouteMap();
 			this.inputFileName = fileName; 
 		}
@@ -32,7 +31,7 @@ public class VehicleRoutingML extends VehicleRouting {
 		public void run() {
 			while(true) {
 				
-				// update routing info
+				// Update routing info
 				BufferedReader reader;
 				try {
 					reader = new BufferedReader(new FileReader(this.inputFileName));
@@ -40,7 +39,7 @@ public class VehicleRoutingML extends VehicleRouting {
 					while (line != null) {
 						
 						this.data.updateRoute(line);
-						// read next line
+						// Read next line
 						line = reader.readLine();
 					}
 					reader.close();
@@ -48,7 +47,7 @@ public class VehicleRoutingML extends VehicleRouting {
 					e.printStackTrace();
 				}
 				
-				// sleep for some time
+				// Sleep for some time
 				try {
 					Thread.sleep(2000);
 				}
@@ -68,7 +67,7 @@ public class VehicleRoutingML extends VehicleRouting {
 		this.predictionFile = predFile;
 		this.reader = new RouteReader(this.predictionFile);
 		
-		// create a new thread and run it
+		// Create a new thread and run it
 		Thread readerThread = new Thread(this.reader);
 		readerThread.start();
 		
@@ -80,11 +79,11 @@ public class VehicleRoutingML extends VehicleRouting {
 	
 		List<Road> roadPath;
 		
-		// read the route from routeMap
+		// Read the route from routeMap
 		roadPath = new ArrayList<Road>();
 		roadPath.add(currentRoad);
 		
-		// get the route for the srcJunc,destJunc pair
+		// Get the route for the srcJunc,destJunc pair
 		String key = currJunc.toString() + "," + destJunc.toString();
 		ArrayList<Integer> pathLinks = this.reader.data.getRoute(key);
 		

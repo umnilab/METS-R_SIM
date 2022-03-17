@@ -5,25 +5,22 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Map;
-import java.util.Queue;
 import java.util.TreeMap;
 
-import addsEVs.citycontext.CityContext;
 import addsEVs.citycontext.Road;
 import addsEVs.data.DataCollector;
-import addsEVs.network.ConnectionManager;
 import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 import au.com.bytecode.opencsv.CSVReader;
 
 /* Author: Xianyuan Zhan and Hemant Gehlot
- * Schedules and handles the supplyside Events to be executed
+ * Schedules and handles the events to be executed
+ * Inherit from ARESCUE simulation
  * */
 
 public class NetworkEventHandler {
-	// Queue that store unhappened events
+	// Queue that store pending events
 	// Queue operations see https://docs.oracle.com/javase/7/docs/api/java/util/Queue.html
 	// A sorted list storing the running events, sorted following the order of the end time
 	// We use a treeMap and use the end time as the key
@@ -31,7 +28,7 @@ public class NetworkEventHandler {
 	private TreeMap<Integer, ArrayList<NetworkEventObject>> runningQueue;
 	
 	// Connection manager maintains the socket server for remote programs
-	private static final ConnectionManager manager = ConnectionManager.getInstance();
+	// private static final ConnectionManager manager = ConnectionManager.getInstance();
 	
 	
 	// Constructor: initialize everything
@@ -44,7 +41,6 @@ public class NetworkEventHandler {
 	public void readEventFile(){
 		// Hemant: implement the file read and insert to the event queue
 		// Note queue is first in first out, so the eventfile should order event start time in ascending order, earliest comes first
-		
 		File eventFile = new File(GlobalVariables.EVENT_FILE);
 		CSVReader csvreader = null;
 		String[] nextLine;

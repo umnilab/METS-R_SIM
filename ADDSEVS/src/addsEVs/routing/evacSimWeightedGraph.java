@@ -3,7 +3,6 @@ package addsEVs.routing;
 import org.jgrapht.*;
 import org.jgrapht.graph.*;
 
-import addsEVs.ContextCreator;
 import repast.simphony.space.graph.RepastEdge;
 
 public class evacSimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E>
@@ -12,7 +11,6 @@ public class evacSimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E
    public evacSimWeightedGraph(EdgeFactory ef)
    {
       super(ef);
-      // TODO Auto-generated constructor stub
    }
 
    public evacSimWeightedGraph(Class<? extends E> edgeClass)

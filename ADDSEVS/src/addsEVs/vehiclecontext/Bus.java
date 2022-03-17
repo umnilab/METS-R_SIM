@@ -31,11 +31,11 @@ public class Bus extends Vehicle{
 	private int numSeat;                        //capacity of the bus.
 	private int nextStop;                       //nextStop =i  means the i-th entry of ArrayList<Integer> busStop. i=0,1,2,...,17.
 	private ArrayList<Integer> busStop;         
-	//each entry represents a bus stop (zone) along the bus route.
-	//For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
+	// Each entry represents a bus stop (zone) along the bus route.
+	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
 	private Dictionary<Integer, Integer> stopBus; // LZ: reverse table for track the zone in the busStop;
 	
-	//LZ: Timetable variable here, the next departure time
+	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
 	private int roundTripTime;
 	
@@ -86,13 +86,12 @@ public class Bus extends Vehicle{
 	public static double c = 45;
 	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
 	
-	//July,2020,JiaweiXue
 	private int originID = -1;
 	private int destinationID = -1;
-	// parameter to show which route has been chosen in eco-routing.
+	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
 	
-	//function 1: constructors
+	// Function 1: constructors
 	public Bus(int routeID, ArrayList<Integer> route, int nextDepartureTime){
 		super(Vehicle.EBUS); // Class 2 means bus
 //		System.out.println("Bus id:"+this.vehicleID_); // See if this id appear in the output file
@@ -110,7 +109,7 @@ public class Bus extends Vehicle{
 		this.setInitialParams();
 	}
 	
-	// function 2: setInitialParams
+	// Function 2: setInitialParams
 	public void setInitialParams() {
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size()-1);
@@ -128,7 +127,7 @@ public class Bus extends Vehicle{
 		this.splinef = f; 
 	}
 	
-	// function 4: updateBatteryLevel
+	// Function 4: updateBatteryLevel
 	 @Override
 	public void updateBatteryLevel() {
 		double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick
@@ -235,8 +234,6 @@ public class Bus extends Vehicle{
 			this.setState(Vehicle.CHARGING_TRIP);
 			this.setNextPlan();	
 			this.addPlan(current_dest_zone, current_dest_coord, Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime)); // Follow the old schedule
-			//System.out.println("STEP 3: "+this.activityplan);
-//			System.out.println("Bus "+this.id+" is go charging");
 			this.tripConsume=0;
 			this.accummulatedDistance_=0;
 			this.departure(cs.getIntegerID());
@@ -289,8 +286,7 @@ public class Bus extends Vehicle{
 	}
 
 	private void servePassenger() {
-		// servePassengerByBus
-		//System.out.println("Bus serve passengers!");
+		// ServePassengerByBus
 		Zone arrivedZone = ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop));
 		ArrayList<Passenger> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
 		for(Passenger p: passOnBoard){
@@ -300,7 +296,7 @@ public class Bus extends Vehicle{
 		this.setPassNum(this.getPassNum()+passOnBoard.size());
 	}
 
-	// xue: charge the battery.
+	// Charge the battery.
 	public void chargeItself(double batteryValue) {
 		charging_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		batteryLevel_ += batteryValue;
@@ -332,16 +328,16 @@ public class Bus extends Vehicle{
     }
     
     public double calculateEnergy(){		
-		double velocity = currentSpeed();   // obtain the speed
-		double acceleration = currentAcc(); // obtain the acceleration
+		double velocity = currentSpeed();   // Obtain the speed
+		double acceleration = currentAcc(); // Obtain the acceleration
 		if(!this.movingFlag){
 			velocity = 0;
 			acceleration = 0;
 		}
-		double slope = 0.0f;          //positive: uphill; negative: downhill
+		double slope = 0.0f;          // Positive: uphill; negative: downhill
 		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval. the length of one tick. 0.3
 		double currentSOC = Math.min(Math.max(getBatteryLevel()/(Bus.batteryCapacity+0.001), 0.001),0.99);     // currentSOC
-		//step 1: use the model: Fte = Frr + Fad + Fhc + Fla + Fwa. And Fwa = 0.
+		// Step 1: use the model: Fte = Frr + Fad + Fhc + Fla + Fwa. And Fwa = 0.
 		double Frr = Bus.urr * (mass_+ avgPersonMass_* passNum) * Bus.gravity;
 		double Fad = 0.5 * Bus.densityAir * Bus.A * Bus.Cd * velocity * velocity;
 		double Fhc = (mass_+ avgPersonMass_* passNum) * Bus.gravity * Math.sin(slope); //can be positive, can be negative  // mass loss // m = 1.05
@@ -349,7 +345,7 @@ public class Bus extends Vehicle{
 		double Fte = Frr + Fad + Fhc + Fla;     //can be positive, can be negative
 		double Pte = Math.abs(Fte) * velocity;  //positive unit: W
 		
-		//step 2: two cases
+		// Step 2: two cases
 		double Pbat = 0.0f;
 		if (Fte >= 0){      //driven case
 			Pbat = (Pte+Bus.Pconst)/Bus.etaM/Bus.etaG;		   //positive	
@@ -359,21 +355,19 @@ public class Bus extends Vehicle{
 		double rIn = splinef.value(currentSOC)*Bus.c;          //c?		
 		double Pmax = Bus.Voc*Bus.Voc/4.0/rIn;               //rIn
 		
-		//step 3: energy calculation
+		// Step 3: energy calculation
 		double kt = Bus.k/1.03*(1.027 - 0.001122*Bus.T + 1.586*Math.pow(10, -5*Bus.T*Bus.T));  //kt depends on T also.
 		double cpt = Bus.cp/2.482*(2.482 + 0.0373*Bus.T - 1.65*Math.pow(10, -4*Bus.T*Bus.T));  //cpt depends on T also. //real capacity: not 77 AH
 		
 		double CR = 0.0f;
 		double I = 0.0f;
 		if (Pbat > Pmax){ 
-			//System.out.println("Error process, output error, need to recalculate vi");
 			Pbat = Pmax;
 		}
 		
 		if(Pbat >= 0){  //driven case
 			I = (Bus.Voc - Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat + 1e-6))/(2*rIn);// Prevent negative value by adding a tiny error
 			CR = Math.pow(I, kt)*dt;     //unit: AS                                       // I_kt??
-			//System.out.println("VID: "+ this.vehicleID_ + " Pte: "+ Pte + "Frr: " + Frr + " Fad: " + Fad + "Fhc: " + Fhc + "Fla: " + Fla +"V:" + velocity + "a: "+acceleration);
 		}else{              //regenerative case
 			I = (0.0f - Bus.Voc + Math.sqrt(Bus.Voc*Bus.Voc + 4 * rIn * Pbat + 1e-6))/(2*rIn);     // Prevent negative value by adding a tiny error
 			CR = -I * dt;    //unit: AS  //?

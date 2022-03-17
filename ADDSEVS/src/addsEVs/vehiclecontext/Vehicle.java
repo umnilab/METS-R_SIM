@@ -28,7 +28,7 @@ import util.Pair;
 public class Vehicle {
 	protected int id;
 	protected int vehicleID_;
-	// constants
+	// Constants
 	public final static int GASOLINE = 0;
 	public final static int ETAXI = 1;
 	public final static int EBUS = 2;
@@ -74,7 +74,7 @@ public class Vehicle {
 	protected boolean onlane = false;
 	protected boolean atOrigin = true;
 	
-	// a set of zone for the vehicle to visit
+	// A set of zone for the vehicle to visit
 	protected ArrayList<Plan> activityplan;
 	protected Road road; 
 	private Road nextRoad_; 
@@ -136,7 +136,7 @@ public class Vehicle {
 		this.laneGeography = ContextCreator.getLaneGeography();
 		this.coordMap = new ArrayList<Coordinate>();
 		this.setDestRoadID(0);
-		// upload the vehicle into the queue of the corresponding link
+		// Upload the vehicle into the queue of the corresponding link
 		this.lastStepMove_ = 0;
 		this.vehicleID_ = this.id;
 		this.accummulatedDistance_ = 0;

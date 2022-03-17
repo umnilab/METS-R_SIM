@@ -39,30 +39,26 @@ public class ChargingStationContext extends DefaultContext<ChargingStation>{
 			URI uri=chargingStationFile.toURI();
 			chargingStationLoader = new ShapefileLoader<ChargingStation>(ChargingStation.class,
 					uri.toURL(), chargingStationGeography, this);
-			// LZ: read the charging station's attributes CSV file
-			chargerCsvName = GlobalVariables.CHARGER_CSV;
+			chargerCsvName = GlobalVariables.CHARGER_CSV; // Read the charging station's attributes CSV file
 			BufferedReader br = new BufferedReader(new FileReader(chargerCsvName));
-			br.readLine(); //Skip the head line
-			int int_id =  -1; //LZ: use negative value to identify charging stations
+			br.readLine(); // Skip the head line
+			int int_id =  -1; // Use negative value to identify charging stations
 			while (chargingStationLoader.hasNext()) {
 				String line = br.readLine();
 				String[] result = line.split(",");
 				if(result.length == 13){ // If we choose the real scenario
 					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[11])), (int) Math.round(Double.parseDouble(result[12]))); //Using customize parameters
 				}
-				else if(result.length == 2){
-					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0); //Using customize parameters
+				else if(result.length == 2){ // Use customize parameters
+					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0); 
 				}
 				else{
 					System.err.println("Incorrect format for charging station plan. Is there anything wrong in data/NYC/charger_jiawei?");
 				}
-				//zoneLoader.next(); //Using default parameters
 				int_id -=1;
 			}
-			System.out.println("Charging Station generated, total number: " + (-int_id));
+			br.close();
 		} catch (Exception e) {
-//			System.err
-//					.println("Malformed URL exception when reading housesshapefile.");
 			e.printStackTrace();
 		}
 	}

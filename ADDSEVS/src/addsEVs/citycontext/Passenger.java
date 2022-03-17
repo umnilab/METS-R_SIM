@@ -4,7 +4,7 @@ import addsEVs.GlobalVariables;
 
 /*
  * Passenger class
- * 
+ * Author: Zengxiang Lei
  */
 
 public class Passenger {

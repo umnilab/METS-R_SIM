@@ -8,6 +8,7 @@ import addsEVs.vehiclecontext.Vehicle;
 
 /*
  * @Author Samiul Hasan and Binh Luong 
+ * Inherit from ARESCUE simulation
  */
 @SuppressWarnings("unused")
 public class Lane {
