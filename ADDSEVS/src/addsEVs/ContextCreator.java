@@ -763,8 +763,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 						travel_time += r.getTravelTime();
 					}
 				}
-				hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
-				hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
+				if(hub.busTravelDistance.containsKey(z2.getIntegerID())) {
+					hub.busTravelDistance.put(z2.getIntegerID(), Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_distance));
+					hub.busTravelTime.put(z2.getIntegerID(), Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_time));
+				}
+				else {
+					hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
+					hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
+				}
 				z1 = z2;
 			}
 			// Retrieve stations in back order, from other places to hub
@@ -780,8 +786,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 						travel_time += r.getTravelTime();
 					}
 				}
-				z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
-				z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
+				if(z1.busTravelDistance.containsKey(hub.getIntegerID())) {
+					z1.busTravelDistance.put(hub.getIntegerID(), Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_distance));
+					z1.busTravelTime.put(hub.getIntegerID(), Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_time));
+				}
+				else {
+					z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
+					z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
+				}
 				z2 = z1;
 			}
 		}
