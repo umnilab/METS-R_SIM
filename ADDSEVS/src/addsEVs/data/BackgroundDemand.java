@@ -13,19 +13,19 @@ import au.com.bytecode.opencsv.CSVReader;
 import java.util.*;
 
 /* Author: Zengxiang Lei
- * Read hourly demand into treemap with roadid as key and hourly from hub and to hub travel demand as arraylists
+ * read hourly demand into treemap with roadid as key and hourly from hub and to hub travel demand as arraylists
  * */
 
 
 public class BackgroundDemand{
 	public TreeMap<Integer,ArrayList<Double>> travelDemand;
-	// Initialize demand data
+	//initialize everything
 	public BackgroundDemand(){
 		System.out.print("Read demand.");
 		travelDemand=new TreeMap<Integer,ArrayList<Double>>();
 		readEventFile();
 	}
-	// Read and parse CSV files
+	// read and parse CSV files
 	public void readEventFile() {
 		File dmeventFile = new File(GlobalVariables.DM_EVENT_FILE);;
 		CSVReader csvreader = null;
@@ -36,7 +36,7 @@ public class BackgroundDemand{
 			// This while loop is used to read the CSV iterating through the row
 			int ind = 0;
 			while ((nextLine = csvreader.readNext()) != null) {
-				// Skip the first row (header)
+				// Do not read the first row (header)
 				if (readingheader) {
 					readingheader = false;
 					
@@ -45,6 +45,7 @@ public class BackgroundDemand{
 					for (int i=0 ; i<GlobalVariables.HOUR_OF_DEMAND ; i++ ){
 						value.set(i, Double.parseDouble(nextLine[i]));
 					}
+					//System.out.println("roadID = "+ roadID+"value =" + value);
 					this.travelDemand.put(ind,value);
 		            }
 				ind++;

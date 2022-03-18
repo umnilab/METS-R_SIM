@@ -85,13 +85,13 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		System.out.println("Total EV vehicles generated " + total_vehicles);
 	}
 	
-	// Initialize buses for each route, if station is assigned to specified location, replace zoneGeography to stationGeography
+	// initialize buses for each route, if station is assigned to specified location, replace zoneGeography to stationGeography
 	public void createBusContextFromZone(Geography<Zone> zoneGeography, 
 //			ArrayList<ArrayList<Integer>>routes, 
 //			ArrayList<Integer> vehicle_nums, 
 //			ArrayList<Integer> vehicle_gaps, 
 			int bus_num){
-		// Go through all routes, generate vehicle_num[i] buses in the beginning of the routes
+		// go through all routes, generate vehicle_num[i] buses in the beginning of the routes
 		int num_per_hub = (int) Math.ceil(bus_num * 100/ GlobalVariables.HUB_INDEXES.size());
 		try{
 		for(int startZone: GlobalVariables.HUB_INDEXES){
@@ -132,15 +132,95 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	
-	// Return the list of vehicles for certain zone
+	// return the list of vehicles for certain zone
 	public LinkedBlockingQueue<ElectricVehicle> getVehicles(int integerID) {
 		return this.vehicleList.get(integerID);
 	}
 	
 	
-	// Add vehicle to zones 
+	// add vehicle to zones 
 	public void addVehicle(ElectricVehicle v, int integerID){
 		this.vehicleList.get(integerID).add(v);
 	}
+
 	
+//	public void createVehicleContextFromActivityModels(
+//			Geography<Zone> zoneGeography, Geography<Vehicle> vehicleGeography) {
+//		for (Zone z : zoneGeography.getAllObjects()) {
+//			Geometry hgeom = zoneGeography.getGeometry(z);
+//			Coordinate coord = hgeom.getCoordinate();
+//			
+//			for (House h : z.getHouses()) {
+//				GeometryFactory fac = new GeometryFactory();
+//				Vehicle v;
+//				
+//				//TODO: Code a mechanism to generate vehicles with different parameters (like max acceleration)
+////				if (GlobalVariables.ENABLE_MULTICLASS_ROUTING){//Gehlot: Generate multi-class vehicles
+////					if((double) Math.random() > GlobalVariables.PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + GlobalVariables.PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES){
+////						v = new Vehicle(h);
+////					}else if((double) Math.random() < (GlobalVariables.PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES)/(GlobalVariables.PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + GlobalVariables.PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES)){
+////						v = new Vehicle_predefinedroutes(h);
+////					}else{
+////						v = new Vehicle_less_frequent_routing(h);
+////					}
+////				}else{
+////					v = new Vehicle(h);
+////				}
+//				
+//				v = new ElectricVehicle(h);
+//				
+//				this.add(v);
+//				v.setOriginalCoord(coord);
+//				Point geom = fac.createPoint(coord);
+//				vehicleGeography.move(v, geom);
+//			}
+//		}
+//	}
+//	
+	
+//	public void createVehicleContextFromManualDemand(
+//			Geography<Zone> zoneGeography, Geography<Vehicle> vehicleGeography) {
+//		/***
+//		 * Reads manually from CSV file or Database depending on the Global
+//		 * Variable VEHICLES_PER_ZONE_DATABASE in config file
+//		 */
+//		VehicleCreatorFromManualData vehicleCreator;
+//
+////		vehicleCreator = new VehicleCreatorFromManualData(
+////					GlobalVariables.VEHICLES_CSV, GlobalVariables.READING_CSV);
+//		vehicleCreator = new VehicleCreatorFromManualData();
+//
+//		for (Zone z : zoneGeography.getAllObjects()) {
+////			System.out
+////					.println("VehicleContext: createVehicleContextFromManualDemand: zone: "
+////							+ z.getIntegerID());
+//
+//			Geometry hgeom = zoneGeography.getGeometry(z);
+//			Coordinate coord = hgeom.getCoordinate();
+//
+//			// Creates a temporal array list of vehicles
+//			ArrayList<Vehicle> evacuatingVehicles = new ArrayList<Vehicle>();
+//			// gets the ID of the current zone
+//			int zoneId = z.getIntegerID();
+//			// sets the temporal array list of vehicles as the array of vehicles
+//			// evacuating from this zone
+//			if (vehicleCreator.getVehiclesByZone(zoneId) != null) {
+//				evacuatingVehicles = vehicleCreator.getVehiclesByZone(zoneId);
+//				/*
+//				 * System.out.println(
+//				 * "VehicleContext: createVehicleContextFromManualDemand: Evacuating vehicles size: "
+//				 * + evacuatingVehicles.size());
+//				 */
+//				for (int i = 0; i < evacuatingVehicles.size(); i++) {
+//					GeometryFactory fac = new GeometryFactory();
+//					Vehicle v = evacuatingVehicles.get(i);
+//					this.add(v);
+//					v.setOriginalCoord(coord);
+//					Point geom = fac.createPoint(coord);
+//					vehicleGeography.move(v, geom);
+//
+//				}
+//			}
+//		}
+//	}
 }

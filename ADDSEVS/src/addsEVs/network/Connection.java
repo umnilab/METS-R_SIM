@@ -11,6 +11,8 @@ import java.util.List;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.*;
 
+import repast.simphony.engine.environment.RunEnvironment;
+import repast.simphony.engine.schedule.ISchedule;
 import repast.simphony.essentials.RepastEssentials;
 //import org.json.JSONException;
 //import org.json.simple.JSONArray;
@@ -30,6 +32,7 @@ import addsEVs.data.TickSnapshot;
 import addsEVs.data.VehicleSnapshot;
 
 /**
+ * evacSim.network.Connection
  * 
  * When a request from a remote program for a network connection is received,
  * the network connection manager will produce a new WebSocket connection to be
@@ -39,10 +42,10 @@ import addsEVs.data.VehicleSnapshot;
  * the remote program and the interface methods of a data consumer which uses
  * the data collection buffer built into the simulation. A thread
  * 
- * @author1 Christopher Thompson (thompscs@purdue.edu)
+ * @author Christopher Thompson (thompscs@purdue.edu)
  * @version 1.0
  * @date 17 October 2017
- * @author2 Zengxiang Lei (lei67@purdue.edu)
+ * @author Zengxiang Lei (lei67@purdue.edu)
  * @version 2.0
  * @date 4 August 2021
  * 
@@ -71,10 +74,10 @@ public class Connection implements DataConsumer {
 	/** Prefix for event */
 	private static final String START_MSG = "START";
 
-	/** Prefix for route result */
+	/** Charitha : Prefix for route result */
 	private static final String RR_MSG = "RR";
 
-	/** Prefix for bus route result */
+	/** Zengxiang : Prefix for bus route result */
 	private static final String BRR_MSG = "BRR";
 
 	/// private static final String = null;

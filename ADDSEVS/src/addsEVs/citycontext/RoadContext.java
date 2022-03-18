@@ -22,10 +22,6 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 
-/*
- * Inherit from ARESCUE simulation
- */
-
 public class RoadContext extends DefaultContext<Road> {
 
 	// NM: Cache every coordinate which forms a road so that Route.onRoad() is

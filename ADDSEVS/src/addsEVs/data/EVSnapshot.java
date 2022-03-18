@@ -7,15 +7,19 @@ import addsEVs.vehiclecontext.ElectricVehicle;
 
 
 /**
+ * evacSim.data.VehicleSnapshot
+ * 
  * This class is the simple data object for capturing the state 
- * of an EVs at a particular point in time.
+ * of an EvacSim vehicle at a particular point in time.
  * 
  * This object is immutable and composed of simple data variables.
  * It should be trivial to serialize and reconstruct this object.
  * All values are available directly as public members and through
  * "get" methods.
  * 
- * Modified from Vehicle Snapshot from ARESCUE
+ * @author Christopher Thompson (thompscs@purdue.edu)
+ * @version 1.0
+ * @date 28 June 2017
  */
 public class EVSnapshot {
     
@@ -41,7 +45,7 @@ public class EVSnapshot {
     final public int origin_id;
     final public int dest_id;
     
-//    /** The origin X-axis (longitude) position within the simulation. */ 
+//    /** The origin X-axis (longitude) position within the simulation. */      /** @author Jiawei Xue */
 //    final public double originX;
 //    
 //    /** The origin Y position of the vehicle within the simulation. */
@@ -99,7 +103,7 @@ public class EVSnapshot {
            	 vehicle.currentSpeed(),
            	 vehicle.getOriginID(),
            	 vehicle.getDestinationID(),
-//        	 vehicle.getTripOrigin().x,                   
+//        	 vehicle.getTripOrigin().x,                   /** @author Jiawei Xue */
 //        	 vehicle.getTripOrigin().y,
 //        	 vehicle.getDestCoord().x,
 //        	 vehicle.getDestCoord().y,
@@ -133,7 +137,7 @@ public class EVSnapshot {
                            float speed,
                            int origin_id,
                            int dest_id,
-//            			   double originX,                       
+//            			   double originX,                          /** @author Jiawei Xue */
 //                           double originY,
 //                           double destX, 
 //                           double destY,
@@ -148,10 +152,10 @@ public class EVSnapshot {
                            //int arrival,
                            //float distance,
                            ) throws Throwable {
-        // All values are passed in as primitaves instead of objects,
+        // all values are passed in as primitaves instead of objects,
         // so the compiler won't allow any to be null, no need to check
         
-        // Do basic validity checks against the values provided
+        // do basic validity checks against the values provided
 //        if (roadID < 0) {
 //            throw new Exception("Road ID cannot be negative.");
 //        }
@@ -176,7 +180,7 @@ public class EVSnapshot {
         if (Double.isNaN(y) || Double.isInfinite(y)) {
             throw new NumberFormatException("Y-axis value is invalid.");
         }
-        // The model doesn't use the Z-axis
+        // the model doesn't use the Z-axis
         //if (Double.isNaN(z) || Double.isInfinite(z)) {
         //    throw new NumberFormatException("Z-axis value is invalid.");
         //}
@@ -195,7 +199,15 @@ public class EVSnapshot {
         
         // TODO: check the distance traveled value is valid
         
-        // Store the values in the object
+        //HGehlot: Not putting these conditions for previous coordinates because they will be null at time step 0.
+//        if (Double.isNaN(prev_x) || Double.isInfinite(x)) {
+//            throw new NumberFormatException("Previous X-axis value is invalid.");
+//        }
+//        if (Double.isNaN(prev_y) || Double.isInfinite(y)) {
+//            throw new NumberFormatException("Previous Y-axis value is invalid.");
+//        }
+        
+        // store the values in the object
         this.id = id;
         this.prev_x = (float) prev_x;
         this.prev_y = (float) prev_y;
@@ -204,7 +216,7 @@ public class EVSnapshot {
         this.speed = speed;
         this.origin_id = origin_id;
         this.dest_id = dest_id;
-//        this.originX = originX;                    
+//        this.originX = originX;                     /** @author Jiawei Xue */
 //        this.originY = originY;
 //        this.destX = destX;
 //        this.destY = destY;
@@ -214,10 +226,10 @@ public class EVSnapshot {
 //        this.vehicleClass = vehicleClass;
         this.roadID = roadID;
         this.served_pass = served_pass;
-//        this.z = 0.0d;
-//        this.departure = departure;
-//        this.arrival = arrival;
-//        this.distance = distance;
+        //this.z = 0.0d;
+        //this.departure = departure;
+        //this.arrival = arrival;
+        //this.distance = distance;
 
     }
     

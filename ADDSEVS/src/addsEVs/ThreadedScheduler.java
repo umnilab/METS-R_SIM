@@ -4,11 +4,15 @@ import java.util.concurrent.*;
 
 import addsEVs.ContextCreator;
 import addsEVs.citycontext.Road;
+import addsEVs.partition.MetisPartition;
+
 import java.util.*;
 
 import repast.simphony.engine.environment.RunEnvironment;
 
+
 public class ThreadedScheduler {
+//	private boolean roadFinishedStepping;
 	private ExecutorService executor;
 	private int N_Partition;
 	private int N_threads;
@@ -32,7 +36,7 @@ public class ThreadedScheduler {
 	public void paraStep() {
 		// Load the road partitions
 		ArrayList<ArrayList<Road>> PartitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
-//		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
+		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
 		
 		// Creates an list of tasks
 		List<PartitionThread> tasks = new ArrayList<PartitionThread>();

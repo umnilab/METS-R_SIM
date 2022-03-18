@@ -17,8 +17,8 @@ import addsEVs.ContextCreator;
 
 /**
  * Context which holds junction objects and also the RoadNetwork.
+ * 
  * @author Nick Malleson
- * Inherit from ARESCUE simulation
  */
 public class JunctionContext extends DefaultContext<Junction>
 {

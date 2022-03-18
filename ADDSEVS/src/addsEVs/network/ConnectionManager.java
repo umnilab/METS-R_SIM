@@ -5,14 +5,18 @@ import java.util.Vector;
 
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
+import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.eclipse.jetty.websocket.server.WebSocketHandler;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
+
+import com.sun.security.ntlm.Client;
 
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 
 
 /**
+ * evacSim.network.ConnectionManager
  * 
  * The connection manager is created with the start of the simulation
  * program and monitors the network for any incoming connections to the

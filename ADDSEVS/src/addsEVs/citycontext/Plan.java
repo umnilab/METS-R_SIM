@@ -6,7 +6,6 @@ import com.vividsolutions.jts.geom.Coordinate;
  * Vechicle plan
  * location: destination zone id
  * duration: waiting time (hour) of starting this plan 
- * Author: Zengxiang Lei
  */
 
 public class Plan {

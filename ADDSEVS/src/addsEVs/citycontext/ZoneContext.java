@@ -39,10 +39,12 @@ public class ZoneContext extends DefaultContext<Zone> {
 			int int_id =  0; 
 			while (zoneLoader.hasNext()) {
 				//zoneLoader.next(); //Using default parameters
-				zoneLoader.nextWithArgs(int_id); //Using customize parameters
+				Zone zone = zoneLoader.nextWithArgs(int_id); //Using customize parameters
 				int_id +=1;
+//				System.out.print("int_ID" + zone.getIntegerID()+","+zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
-			ContextCreator.logger.info("Zone generated, total number: " + int_id);
+			System.out.println("Zone generated, total number: " + int_id);
+
 		} catch (java.net.MalformedURLException e) {
 			System.err
 					.println("Malformed URL exception when reading housesshapefile.");

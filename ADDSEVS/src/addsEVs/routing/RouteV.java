@@ -34,12 +34,15 @@ public class RouteV {
 	public static int validRouteTime; // The time that the routing information will stay valid
 
 	// Buffers used for efficiency (so don't have to search for objects in
-	// entire space)
-	public static double little_buffer_distance; // Used when searching for a point on a road
-	public static double big_buffer_distance; // Used when searching nearby objects
+	// entire space), not sure if these values are any good
+	public static double little_buffer_distance; // Used when searching for a
+													// point on a road
+	public static double big_buffer_distance; // Used when searching nearby
+												// objects
 
 	/* Initialize route object */
 	public static void createRoute() throws Exception {
+	//	System.out.println("Creating Vehicle-based routing");
 //		vehicleGeography = ContextCreator.getVehicleGeography();
 		junctionGeography = ContextCreator.getJunctionGeography();
 		roadNetwork = ContextCreator.getRoadNetwork();
@@ -95,7 +98,8 @@ public class RouteV {
 		Coordinate destCoord = destination;
 		
 		Coordinate nearestRoadCoord;
-
+		
+		// System.out.println("Here1");
 		if (!onRoad(originCoord)) {
 			nearestRoadCoord = getNearestRoadCoord(originCoord);
 			originCoord = nearestRoadCoord;
@@ -103,15 +107,19 @@ public class RouteV {
 		
 		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
 		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
-
+		
+//		System.out.println(originRoad.getLinkid()+" to "+destRoad.getLinkid());
+		
+		// System.out.println("Here2");
 		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord,
 				originRoad);
 		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
 				destRoad);
-
+		
+		// System.out.println("Here3");
 		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad, originDownstreamJunc, destDownstreamJunc);
 		
-		// Transform the paths into a list of link_ids
+		//Transform the paths into a list of link_ids
 		List<List<Integer>> result = new ArrayList<List<Integer>>();
 		for (List<Road> path : paths) {
 			result.add(new ArrayList<Integer>());
@@ -164,16 +172,19 @@ public class RouteV {
 		vehicle.setLastRouteTime(time);
 		
 		List<Road> path = vbr.computeRoute(currentRoad, destRoad, curDownstreamJunc, destDownstreamJunc);
-
-//		if( path == null || path.size()==0){
-//			System.out.println("Route fails for vehicle: " +vehicle.getVehicleID()+ " On charging route: " + vehicle.onChargingRoute() + "Plan: "+ vehicle.getPlan());
-//			System.out.println("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
-//		}
+//		System.out.println("Vehicle: " + vehicle.getId());
+//		printRoute(path);
+		if( path == null || path.size()==0){
+			System.out.println("Route fails for vehicle: " +vehicle.getVehicleID()+ " On charging route: " + vehicle.onChargingRoute() + "Plan: "+ vehicle.getPlan());
+			System.out.println("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
+		}
 		return path;
 	}
 	// Use ecoRoute to decide route
 	public static Pair<List<Road>,Integer> ecoRoute(int origin, int destination){
 		String key = Integer.toString(origin) + ',' + destination;
+		// System.out.println(ContextCreator.route_UCB);
+		// System.out.println(ContextCreator.routeResult_received);
 		if(!ContextCreator.routeResult_received.containsKey(key)){
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
@@ -219,7 +230,8 @@ public class RouteV {
 	
 	public static Coordinate getNearestRoadCoord(Coordinate coord) {
 		double time = System.currentTimeMillis();
-		// Search all roads in the vicinity, looking for the point which is the nearest
+		// Search all roads in the vicinity, looking for the point which is
+		// nearest the person
 		double minDist = Double.MAX_VALUE;
 		// Road nearestRoad = null;
 		Coordinate nearestPoint = null;
@@ -268,7 +280,8 @@ public class RouteV {
 		Junction j1 = null;
 		Junction j2 = null;
 		edge = cityContext.getEdgeFromIDNum(road.getID());
-		// Find which Junction connected to the edge is closest to the coordinate.
+		// Find which Junction connected to the edge is closest to the
+		// coordinate.
 		j1 = (Junction) edge.getSource();
 		j2 = (Junction) edge.getTarget();
 

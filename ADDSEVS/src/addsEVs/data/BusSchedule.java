@@ -96,7 +96,7 @@ public class BusSchedule{
 		
 		System.out.println("Loaded bus schedule from offline files.");
 	}
-	// For changing bus route schedule
+	// Place_holder for changing bus route schedule
 	public void updateEvent(int newhour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes, ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap){
 		this.currentHour = newhour;
 		routeName = newRouteName;
@@ -106,13 +106,13 @@ public class BusSchedule{
 		
 		for(ArrayList<Integer> route: this.busRoute) {
 			int i = 0;
-			if(busNum.get(i)>0) {
+			if(busNum.get(i)>1) {
 				for(int zoneID: route){
 					Zone zone = ContextCreator.getCityContext().findHouseWithDestID(zoneID);
 					zone.setBusInfo(this.busGap.get(i));
 				}
+				i += 1;
 			}
-			i += 1;
 		}
 		
 		this.processSchedule();

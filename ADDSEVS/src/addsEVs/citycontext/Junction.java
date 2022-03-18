@@ -13,7 +13,7 @@ import addsEVs.ContextCreator;
 
 public class Junction {
 	private int ID;
-	private int junctionID; // From shape file
+	private int junctionID; //from shape file
 	private Coordinate coord;
 	protected int hasControl;
 	private ArrayList<Road> roads = new ArrayList<Road>(); 

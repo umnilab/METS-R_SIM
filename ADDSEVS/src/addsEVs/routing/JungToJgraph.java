@@ -14,10 +14,7 @@ import repast.simphony.space.graph.RepastEdge;
  * A Converter class that converts a Jung graph to that used in the Jgraph library.
  * 
  * @author Samiul Hasan
- * 
- * Inherit from ARESCUE
  */
-
 @SuppressWarnings("serial")
 public class JungToJgraph<T>
 {
