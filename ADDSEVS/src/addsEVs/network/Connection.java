@@ -470,16 +470,16 @@ public class Connection implements DataConsumer {
 				ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
 				ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
 				int index = 0; // skip prefix                               
-				//System.out.println("list_num size");
-				//System.out.println(list_num.size());
+				System.out.println("list_num size");
+				System.out.println(list_num.size());
                 while (index < list_num.size()) {                                      
-                	//System.out.println("the element");
-    				//System.out.println(list_num.get(index));
+                	System.out.println("the element");
+    				System.out.println(list_num.get(index));
                 	Double number = (Double) list_num.get(index);
                     int number_int = number.intValue();
                     //int number_int = ((Long) list_num.get(index)).intValue();
-					//System.out.println("number_int");
-					//System.out.println(number_int);
+					System.out.println("number_int");
+					System.out.println(number_int);
 					if (number_int>0) {
 						newBusNum.add(number_int);
 					    Double gap = (Double) list_gap.get(index);
@@ -505,24 +505,21 @@ public class Connection implements DataConsumer {
 				        }
 					    //System.out.println(route_int);
 					    newRoutes.add(route_int);
-					    //System.out.println("newRoutes");
-					    //System.out.println(newRoutes);					  
+					    System.out.println("newRoutes");
+					    System.out.println(newRoutes);					  
 					}
 					index +=1;
 				}
-                //System.out.println(newhour);
-                //System.out.println(newRouteName);
-                //System.out.println(newRoutes);
-                //System.out.println(newBusNum);
-                //System.out.println(newBusGap);
+                System.out.println(newhour);
+                System.out.println(newRouteName);
+                System.out.println(newRoutes);
+                System.out.println(newBusNum);
+                System.out.println(newBusGap);
 				ContextCreator.busSchedule.updateEvent(newhour,newRouteName, newRoutes, newBusNum, newBusGap);
 			}
 		} catch (ParseException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		// Charitha : update routeResult_received when routeResult is received
-	 
 	}
 
 	/**
