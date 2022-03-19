@@ -856,6 +856,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 //			}
 		}
 		for (List<Integer> route : busSchedule.busRoute) {
+			System.out.println(route);
 			// retrieve stations in order, from hub to other places
 			double travel_distance = 0;
 			double travel_time = 0;
@@ -881,6 +882,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 				z1 = z2;
 			}
+			System.out.print(hub.busTravelDistance);
+			System.out.print(hub.busTravelTime);
 			// retrieve stations in back order, from other places to hub
 			travel_distance = 0;
 			travel_time = 0;
@@ -904,6 +907,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 				z2 = z1;
 			}
+			System.out.print(z1.busTravelDistance);
+			System.out.print(z1.busTravelTime);
 		}
 	}
 
