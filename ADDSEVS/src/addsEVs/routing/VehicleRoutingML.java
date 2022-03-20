@@ -11,9 +11,14 @@ import addsEVs.citycontext.Junction;
 import addsEVs.citycontext.Road;
 import repast.simphony.space.graph.Network;
 
-// This class facilitates the machine learning based routing
-// class is extended from VehicleRouting and overrides the computeRoute method
-// author : Charitha Saumya
+
+/**
+ * 
+ * This class facilitates the machine learning based routing
+ * class is extended from VehicleRouting and overrides the computeRoute method
+ * @author Charitha Saumya
+ *
+ */
 
 public class VehicleRoutingML extends VehicleRouting {
 	
@@ -22,7 +27,6 @@ public class VehicleRoutingML extends VehicleRouting {
 		public RouteMap data;
 		private String inputFileName;
 		public RouteReader(String fileName) {
-			// TODO Auto-generated constructor stub
 			this.data = new RouteMap();
 			this.inputFileName = fileName; 
 		}

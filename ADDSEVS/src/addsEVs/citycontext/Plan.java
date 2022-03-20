@@ -2,11 +2,13 @@ package addsEVs.citycontext;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-/*
+/**
  * Vechicle plan
  * location: destination zone id
  * duration: waiting time (hour) of starting this plan 
- */
+ * 
+ * @author: Zengxiang Lei
+ **/
 
 public class Plan {
 //	private Integer location;

@@ -74,10 +74,10 @@ public class Connection implements DataConsumer {
 	/** Prefix for event */
 	private static final String START_MSG = "START";
 
-	/** Charitha : Prefix for route result */
+	/** Prefix for route result */
 	private static final String RR_MSG = "RR";
 
-	/** Zengxiang : Prefix for bus route result */
+	/** Prefix for bus route result */
 	private static final String BRR_MSG = "BRR";
 
 	/// private static final String = null;

@@ -5,7 +5,6 @@ import java.util.Collection;
 
 
 /**
- * evacSim.data.DataConsumer
  * 
  * Classes wishing to read data from the EvacSim data collection buffer
  * should implement the methods of this interface and be registered with

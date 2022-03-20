@@ -8,8 +8,11 @@ import java.util.Random;
  * @author Nick Malleson
  * @author Samiul Hasan (SH)
  * @author Xianyuan Zhan
- * Above are authors for A-RESCUE
+ * @author Xinwu Qian
+ * @author Hemant Gehlot
+ * Above are the authors for A-RESCUE 1.0 and 2.0
  * @author Zengxiang Lei
+ * @author Jiawei Xue
  */
 
 /*
@@ -41,11 +44,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Properties;
 
-//
 public class GlobalVariables {
 private static Properties config;
     
-	// Loading properties from ConfigFile, by Zhan. Modified by Chris later.
+    //Loading properties from configuration files, initialized used in ARESCUE credit to Xianyuan Zhan and Christopher Thompson.
 	private static String loadConfig(String property) {
 	    if (config == null) {
 	        config = new Properties();
@@ -61,8 +63,7 @@ private static Properties config;
 		return config.getProperty(property);
 	}
 
-	// Following global variables are reading from the ConfigFile, by Zhan
-	// Input Files
+	/* Input Files */
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");
 
 	public static final String LANES_SHAPEFILE = loadConfig("LANES_SHAPEFILE");
@@ -91,10 +92,9 @@ private static Properties config;
 	public static final String BT_EVENT_FILE=loadConfig("BT_EVENT_FILE");
 	public static final String BT_STD_FILE=loadConfig("BT_STD_FILE");
 	public static final String DM_EVENT_FILE=loadConfig("DM_EVENT_FILE");
+	
 	/* Simulation Setup */
-	public static final Random RandomGenerator = new Random(123456777); // 123456777
-																		// generate
-																		// problem
+	public static final Random RandomGenerator = new Random(123456777); 
 	
 	public static final String AGG_DEFAULT_PATH = loadConfig("AGG_DEFAULT_PATH");
 	
@@ -122,7 +122,7 @@ private static Properties config;
 	public static final int THRESHOLD_VEHICLE_NUMBER = Integer
 			.valueOf(loadConfig("THRESHOLD_VEHICLE_NUMBER"));
 	public static int SIMULATION_SLEEPS = Integer
-			.valueOf(loadConfig("SIMULATION_SLEEPS"));//Gehlot and Qian: This variable decides if simulator pauses for sometime to listen visualization. If zero then it waits, else it moves forward. 
+			.valueOf(loadConfig("SIMULATION_SLEEPS"));// This variable decides if simulator pauses for sometime to listen visualization. If zero then it waits, else it moves forward. 
 	
 	/* For global variables of the adaptive network weighting */
 	public static final int PART_ALPHA = Integer
@@ -134,7 +134,7 @@ private static Properties config;
 	// Number of times that the partition interval is larger than the network refresh interval
 	public static final int PART_REFRESH_MULTIPLIER = (int) (SIMULATION_PARTITION_REFRESH_INTERVAL / SIMULATION_NETWORK_REFRESH_INTERVAL);
 	public static final boolean SIMULATION_MULTIPLE_DEMAND_INPUTS = Boolean
-			.valueOf(loadConfig("SIMULATION_MULTIPLE_DEMAND_INPUTS"));//Gehlot: If this is true then we input multiple demand files for batch runs, else we run single demand file that is inputed by ACTIVITY_CSV
+			.valueOf(loadConfig("SIMULATION_MULTIPLE_DEMAND_INPUTS"));// If this is true then we input multiple demand files for batch runs, else we run single demand file that is inputed by ACTIVITY_CSV
 	public static final int SIMULATION_INTERVAL_SIZE = Integer
 			.valueOf(loadConfig("SIMULATION_INTERVAL_SIZE"));
 	public static final int SIMULATION_STOP_TIME = Integer
@@ -150,8 +150,8 @@ private static Properties config;
 			.valueOf(loadConfig("Debug_On_Road"));
 
 	public static final double XXXX_BUFFER = Double
-			.valueOf(loadConfig("XXXX_BUFFER")); // USed in
-													// CityContext.getRoadAtCoords()
+			.valueOf(loadConfig("XXXX_BUFFER")); // USed in CityContext.getRoadAtCoords()
+	
 	public static final boolean MULTI_THREADING = Boolean
 			.valueOf(loadConfig("MULTI_THREADING"));
 	
@@ -210,21 +210,13 @@ private static Properties config;
 	public static final float GAMMA_ACC = Float
 			.valueOf(loadConfig("GAMMA_ACC"));
 
-//	public static final boolean APPROX_DYNAMIC_ROUTING = Boolean
-//			.valueOf(loadConfig("APPROX_DYNAMIC_ROUTING")); // SH - created this
-//															// variable to
-//	// enable dynamic routing
+	
 	public static final boolean SINGLE_SHORTEST_PATH = Boolean
-			.valueOf(loadConfig("SINGLE_SHORTEST_PATH")); // SH - created this
-															// variable to
-															// enable
-	// dynamic routing
-	// Both SINGLE_SHORTEST_PATH and K_SHORTEST_PATH can't be true or false if
-	// APPROX_DYNAMIC_ROUTING= true
+			.valueOf(loadConfig("SINGLE_SHORTEST_PATH")); // enable dynamic routing
+	
+	// Both SINGLE_SHORTEST_PATH and K_SHORTEST_PATH can't be true or false if APPROX_DYNAMIC_ROUTING= true
 	public static final boolean K_SHORTEST_PATH = Boolean
-			.valueOf(loadConfig("K_SHORTEST_PATH")); // SH - created this
-														// variable to enable
-	// dynamic routing
+			.valueOf(loadConfig("K_SHORTEST_PATH")); // enable dynamic routing
 
 	public static final int K_VALUE = Integer.valueOf(loadConfig("K_VALUE"));
 	public static final double THETA_LOGIT = Double
@@ -233,11 +225,9 @@ private static Properties config;
 	// Number of future road segments to be considered in counting shadow vehicles
 	public static final int N_SHADOW = Integer.valueOf(loadConfig("N_SHADOW"));
 
-	/*
-	 * BL: Following are parameters used in lane changing model
-	 */
-	// public static final double minLead = 0.914; //(m/sec)
-	// public static final double minLag = 1.524; //(m/sec)
+	// Following are parameters used in lane changing model
+	//public static final double minLead = 0.914; //(m/sec)
+	//public static final double minLag = 1.524; //(m/sec)
 	public static final double minLead = 3.0; // (m/sec)
 	public static final double minLag = 5.0; // (m/sec)
 
@@ -272,7 +262,7 @@ private static Properties config;
 
 	 * CSV_BUFFER_REFRESH and NETWORK_BUFFER_REFRESH determine how long that wait is.  For the CSV writing, it is 5 seconds, and for the network sending it is 2.5 seconds.  There抯 no real reason why they need to be these values.  
 	 * They just seemed like reasonable times to use.Separate from the actual data sending, the socket is also periodically reporting the status of the simulation  (not running, loading, processing tick #2345, etc.) to the remote programs that are listening.  
-	 * NETWORK_STATUS_REFRESH is how often those status message send.  It is set to 5 seconds. NETWORK_LISTEN_PORT is the port number to use when connecting to the simulation.  As I mentioned last week, the default is 8080 but that is a very commonly used port by web servers which may already be in use or blocked by a firewall.  I抳e set it for now as 33131, which is a reference to Miami (the zipcode of the downtown area).  You can change this to any value higher than 1024 and lower than 65535.NETWORK_MAX_MESSAGE_SIZE is the size (in bytes) of the largest message to be sent over the socket.  Sockets technically have no size limitation, but some of the socket libraries have a very low default limit on what they will accept if you do not explicitly set this value.  I set it to 16MB which is multiple magnitudes higher than any sizes I抳e seen during testing, but we may need to increase it in the future if the number of vehicle movements in one tick gets very larger.The remaining three values pertain to the CSV file location.  The CSV file writer allows you to specify exactly where the file is to be placed on disk if we add a UI element to handle that or just code in a fixed location.  If you do not give it a location, though, it will do what it is doing now:  write a file with a unique filename to a default location.  It will be written to the location <CSV_DEFAULT_PATH>/<CSV_DEFAULT_FILENAME>_<current timestamp>.<CSV_DEFAULT_EXTENSION>.  If the CSV_DEFAULT_PATH value is blank (as I抳e committed it), the user抯 home directory will be used.  So, as it is committed right now, every time the simulation is run, it will create something like �?�vacSimOutput_2017-11-29-0255.csv� in your home directory.*/
+	 * NETWORK_STATUS_REFRESH is how often those status message send.  It is set to 5 seconds. NETWORK_LISTEN_PORT is the port number to use when connecting to the simulation.  As I mentioned last week, the default is 8080 but that is a very commonly used port by web servers which may already be in use or blocked by a firewall.  I抳e set it for now as 33131, which is a reference to Miami (the zipcode of the downtown area).  You can change this to any value higher than 1024 and lower than 65535.NETWORK_MAX_MESSAGE_SIZE is the size (in bytes) of the largest message to be sent over the socket.  Sockets technically have no size limitation, but some of the socket libraries have a very low default limit on what they will accept if you do not explicitly set this value.  I set it to 16MB which is multiple magnitudes higher than any sizes I抳e seen during testing, but we may need to increase it in the future if the number of vehicle movements in one tick gets very larger.The remaining three values pertain to the CSV file location.  The CSV file writer allows you to specify exactly where the file is to be placed on disk if we add a UI element to handle that or just code in a fixed location.  If you do not give it a location, though, it will do what it is doing now:  write a file with a unique filename to a default location.  It will be written to the location <CSV_DEFAULT_PATH>/<CSV_DEFAULT_FILENAME>_<current timestamp>.<CSV_DEFAULT_EXTENSION>.  If the CSV_DEFAULT_PATH value is blank (as I抳e committed it), the user抯 home directory will be used.  So, as it is committed right now, every time the simulation is run, it will create something like �?�vacSimOutput_2017-11-29-0255.csv� in your home directory.*/
 
 	
 	// Parameters for the data collection buffer
@@ -342,7 +332,7 @@ private static Properties config;
 	
 	public static LinkedList<NetworkEventObject> newEventQueue = new LinkedList<NetworkEventObject>();//Global queue for storing events
 	
-	//Parameters for handling multiclass routing. Note that the proportion of original routing vehicles being generated is equal to 1 - (PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES). 
+	// Parameters for handling multiclass routing. Note that the proportion of original routing vehicles being generated is equal to 1 - (PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES). 
 	public static final boolean ENABLE_MULTICLASS_ROUTING =
 	        Boolean.valueOf(loadConfig("ENABLE_MULTICLASS_ROUTING"));
 	public static final double PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES =
@@ -352,7 +342,7 @@ private static Properties config;
 	public static final double PROBABILITY_OF_UPDATING_ROUTING =
 	        Double.valueOf(loadConfig("PROBABILITY_OF_UPDATING_ROUTING"));
 	
-	//Parameters for multiclass vehicles (having different parameters). TODO:Code a mechanism to generate vehicles with different parameters
+	// Parameters for multiclass vehicles (having different parameters). TODO:Code a mechanism to generate vehicles with different parameters
 	public static final boolean ENABLE_MULTICLASS_VEHICLES_DIFF_PARAMETERS =
 	        Boolean.valueOf(loadConfig("ENABLE_MULTICLASS_VEHICLES_DIFF_PARAMETERS"));
 	public static final double RATIO_OF_ORIGINIAL_CLASS =
@@ -361,39 +351,35 @@ private static Properties config;
 			.valueOf(loadConfig("MAX_ACCELERATION_2")); // meter/sec2
 	public static final float MAX_DECELERATION_2 = Float
 			.valueOf(loadConfig("MAX_DECELERATION_2")); // meter/sec2
-    
-	//Parameters for energy calculation, Xue, Juan, 2019/12/12
-	//LZ moved these to EV and Bus classes since their parameters are different
-	
+
 	//Switch of operational algorithms
 	public static final boolean ENABLE_ECO_ROUTING_EV = Boolean
 			.valueOf(loadConfig("ECO_ROUTING_EV"));
 	
-	//Xue, July 23, 2020, eco_routing_bus
 	public static final boolean ENABLE_ECO_ROUTING_BUS = Boolean
 			.valueOf(loadConfig("ECO_ROUTING_BUS"));
 	
 	public static final boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 	
-	//LZ, Oct 14, 2020 displaying useful metrics
+	//Displaying useful metrics
 	public static final boolean ENABLE_METRICS_DISPLAY =
 			Boolean.valueOf(loadConfig("ENABLE_METRICS_DISPLAY"));
 	public static final int METRICS_DISPLAY_INTERVAL =
 			Integer.valueOf(loadConfig("METRICS_DISPLAY_INTERVAL"));
 
-	//LZ, Oct 25, 2020, designating the hub ID in ZONE_SHP, JFK, LGA, Penn
+	//Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
 	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>(Arrays.asList(131,140,180));
 	
-	//LZ, Oct 25, 2020, number of eco-routing's candidate routes
+	//Number of eco-routing's candidate routes
 	public static int NUM_CANDIDATE_ROUTES = Integer.valueOf(loadConfig("NUM_CANDIDATE_ROUTES"));
 	
-	// Oct 25 2020, demand factor for passenger generation
+	// Demand factor for passenger generation
 	public static final double PASSENGER_DEMAND_FACTOR = Double.valueOf(loadConfig("PASSENGER_DEMAND_FACTOR"));
 	public static final double PASSENGER_SHARE_PERCENTAGE = Double.valueOf(loadConfig("PASSENGER_SHARE_PERCENTAGE"));
 	
 	public static final int MAX_STUCK_TIME = Integer.valueOf(loadConfig("MAX_STUCK_TIME"));
 	
-	// Nov 30, Charitha : Demand prediction related global vars
+	// Demand prediction related global variables
 	public static final String DEMAND_PREDICTION_RESULTS_PATH = loadConfig("DEMAND_PREDICTION_RESULTS_PATH");
 	public static final String DEMAND_PREDICTION_HUBS =  loadConfig("DEMAND_PREDICTION_HUBS");
 	

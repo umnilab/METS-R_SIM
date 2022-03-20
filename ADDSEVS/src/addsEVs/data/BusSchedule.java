@@ -68,7 +68,6 @@ public class BusSchedule{
 			for (Long name: (ArrayList<Long>) jsonObject.get("names")){
 				routeName.add(name.intValue());
 			}
-//			System.out.println(routeName);
 			for(ArrayList<Long> route: (ArrayList<ArrayList<Long>>) jsonObject.get("routes")){
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>(); 
 				for(Long station: route){
@@ -76,15 +75,12 @@ public class BusSchedule{
 				}
 				busRoute.add(oneRoute);
 			}
-//			System.out.println(busRoute);
 			for(Long num: (ArrayList<Long>) jsonObject.get("nums")){
 				busNum.add(num.intValue());
 			}
-//			System.out.println(busNum);
 			for(Long gap: (ArrayList<Long>) jsonObject.get("gaps")){
 				busGap.add(gap.intValue());
 			}
-//			System.out.println(busGap);
 		}
 		catch(FileNotFoundException e){
 			e.printStackTrace();
@@ -96,7 +92,7 @@ public class BusSchedule{
 		
 		System.out.println("Loaded bus schedule from offline files.");
 	}
-	// Place_holder for changing bus route schedule
+	// For changing bus route schedule
 	public void updateEvent(int newhour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes, ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap){
 		this.currentHour = newhour;
 		routeName = newRouteName;
@@ -106,13 +102,13 @@ public class BusSchedule{
 		
 		for(ArrayList<Integer> route: this.busRoute) {
 			int i = 0;
-			if(busNum.get(i)>1) {
+			if(busNum.get(i)>0) {
 				for(int zoneID: route){
 					Zone zone = ContextCreator.getCityContext().findHouseWithDestID(zoneID);
 					zone.setBusInfo(this.busGap.get(i));
 				}
-				i += 1;
 			}
+			i += 1;
 		}
 		
 		this.processSchedule();

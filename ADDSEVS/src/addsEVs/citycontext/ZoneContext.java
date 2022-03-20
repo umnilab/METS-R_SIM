@@ -41,9 +41,9 @@ public class ZoneContext extends DefaultContext<Zone> {
 				//zoneLoader.next(); //Using default parameters
 				Zone zone = zoneLoader.nextWithArgs(int_id); //Using customize parameters
 				int_id +=1;
-//				System.out.print("int_ID" + zone.getIntegerID()+","+zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
+//				ContextCreator.logger.debug("int_ID" + zone.getIntegerID()+","+zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
-			System.out.println("Zone generated, total number: " + int_id);
+			ContextCreator.logger.info("Zone generated, total number: " + int_id);
 
 		} catch (java.net.MalformedURLException e) {
 			System.err

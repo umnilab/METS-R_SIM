@@ -1,6 +1,3 @@
-/*
- * 
-*/
 package addsEVs.citycontext;
 
 import java.util.ArrayList;

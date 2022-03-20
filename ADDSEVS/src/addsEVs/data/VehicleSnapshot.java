@@ -7,7 +7,6 @@ import addsEVs.vehiclecontext.Vehicle;
 
 
 /**
- * evacSim.data.VehicleSnapshot
  * 
  * This class is the simple data object for capturing the state 
  * of an EvacSim vehicle at a particular point in time.

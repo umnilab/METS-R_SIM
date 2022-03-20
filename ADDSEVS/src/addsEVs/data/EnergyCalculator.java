@@ -9,6 +9,12 @@ import addsEVs.ContextCreator;
 import addsEVs.vehiclecontext.ElectricVehicle;
 import addsEVs.vehiclecontext.Vehicle;
 
+/**
+ * An energy calculator class for debugging
+ * 
+ * @author Zengxiang Lei
+ *
+ */
 public class EnergyCalculator{
 	private double cumulativeConsumption;     //totalEnergyConsumption
 	private double tickConsumption;           //energyConsumptionPerTick
@@ -19,7 +25,7 @@ public class EnergyCalculator{
 		this.tickConsumption = 0.0f;
 	}
 	
-	//function 2: calculate whole energy
+	// function 2: calculate whole energy
 	public void calculateEnergy(){
 		this.tickConsumption = 0.0f;
 		this.cumulativeConsumption = 0.0f;

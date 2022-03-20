@@ -6,9 +6,11 @@ import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.vehiclecontext.Vehicle;
 
-/*
- * @Author Samiul Hasan and Binh Luong 
- */
+/**
+ * @author Samiul Hasan and Binh Luong 
+ * 
+ * Inherit from ARESCUE simulation
+ **/
 @SuppressWarnings("unused")
 public class Lane {
 	private int id; // SH: An auto-generated id from ContextCreater

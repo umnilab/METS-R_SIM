@@ -12,9 +12,11 @@ import au.com.bytecode.opencsv.CSVReader;
 
 import java.util.*;
 
-/* Author: Wenbo Zhang
- * read background traffic into treemap with roadid as key and hourly link speed as arraylist
- * */
+/**
+ * @author: Wenbo Zhang
+ * Read background traffic into treemap with roadid as key and hourly link speed as arraylist
+ *
+ **/
 
 
 public class BackgroundTraffic{

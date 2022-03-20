@@ -15,6 +15,13 @@ import addsEVs.citycontext.Road;
 import addsEVs.data.DataCollector;
 import repast.simphony.essentials.RepastEssentials;
 
+
+/**
+ * 
+ * @author Zengxiang Lei, Jiawei Xue, Juan Suarez
+ *
+ */
+
 public class ElectricVehicle extends Vehicle{
 	// local variables
 	private int numPeople_; // no of people inside the vehicle
@@ -83,7 +90,7 @@ public class ElectricVehicle extends Vehicle{
 		this.setInitialParams();
 	}
 	
-	// LZ: find the closest charging station and update the activity plan
+	// find the closest charging station and update the activity plan
 	public void goCharging(int originID){
 		this.leaveNetwork();
 		int current_dest_zone = this.destinationZone;
@@ -95,7 +102,6 @@ public class ElectricVehicle extends Vehicle{
 		this.onChargingRoute_ = true;
 		this.setState(Vehicle.CHARGING_TRIP);
 		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
-		//System.out.print("Previous Plan: " + this.getPlan());
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
 		Coordinate currentCoord = this.getCurrentCoord();
@@ -104,7 +110,6 @@ public class ElectricVehicle extends Vehicle{
 		this.destinationID = cs.getIntegerID();
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
-		//System.out.print("After Plan: " + this.getPlan());
 		//ContextCreator.logger.info("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
 		//this.setNextPlan();
 	}
@@ -112,24 +117,12 @@ public class ElectricVehicle extends Vehicle{
     @Override
 	public void updateBatteryLevel() {
 		//double usage = (mass_ + numPeople_*avgPersonMass_)*this.usageRate_;
-    	// Xue, Juan 20191212
     	double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick, LZ: for display, I enlarge this by 5 times 
     	tickConsume = tickEnergy;
     	linkConsume += tickEnergy; // update energy consumption on current link
     	totalConsume += tickEnergy;
     	tripConsume += tickEnergy;
-//    	if(Math.random()>0.99){ //Sample 1% data to debug the energy model
-//    		//LZ: Log the trip consume here
-//			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + ","+ this.getVehicleClass()+","+ Double.toString(this.currentSpeed()) + ',' + Double.toString(tickConsume);
-//			try{
-//				ContextCreator.bw2.write(formated_msg);
-//				ContextCreator.bw2.newLine();
-//			} catch(IOException e){
-//				e.printStackTrace();
-//			}
-//    	}
     	batteryLevel_ -= tickEnergy;
-		// if battery level go below some the minlevel go to charge
 	}
 	
 	// relocate vehicle
@@ -151,10 +144,9 @@ public class ElectricVehicle extends Vehicle{
 		this.setState(Vehicle.RELOCATION_TRIP);
 	}
 	
-	// serve passenger from the airport
-	// TODO: make it can handle multiple destinations
+	// serve passenger from the airport, make it can handle multiple destinations
 	/**
-	 * @param p
+	 * @param list of passengers
 	 */
 	public void servePassenger(List<Passenger> plist) {
 		if(!plist.isEmpty()) {
@@ -195,12 +187,11 @@ public class ElectricVehicle extends Vehicle{
 			//Add to the charging station
 			ContextCreator.logger.info("Vehicle arriving at charging station:"+this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationZoneID());
-			//System.out.println(cs);
 			cs.receiveVehicle(this);
 			this.endTime = (int) RepastEssentials.GetTickCount();
 			this.reachActLocation = true;
 		} else {
-			//LZ: Log the trip consume here
+			// log the trip consume here
 			String formated_msg = RepastEssentials.GetTickCount() + "," + 
 			this.getVehicleID() + ","+this.getState()+","+ this.getOriginID()+","+
 					this.getDestinationID()+"," + this.accummulatedDistance_ + "," + this.getDepTime()+","+this.getTripConsume()+","+this.getRouteChoice()+ "," + this.getNumPeople();
@@ -212,9 +203,9 @@ public class ElectricVehicle extends Vehicle{
 				e.printStackTrace();
 			}
 			
-			this.originID = this.destinationID; // Next trip starts from the previous destination
+			this.originID = this.destinationID; // next trip starts from the previous destination
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
-				this.setNumPeople(this.getNumPeople() - 1); // Passenger arrived
+				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
 			}
 			if(!onChargingRoute_ && batteryLevel_ <= batteryRechargeLevel_ && this.getNumPeople() == 0) {
 				this.setState(Vehicle.CHARGING_TRIP);
@@ -404,19 +395,17 @@ public class ElectricVehicle extends Vehicle{
 //		return energyConsumption;
 //	}
 	
-	// Xue, Juan 20191212: spline interpolation 
+	// spline interpolation 
 	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
 		SplineInterpolator splineInt = new SplineInterpolator();
 		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
 		return polynomialSpl;
 	}
 
-	// Xue, Juan 20191212
 	public double getTickConsume() {
 		return tickConsume;
 	}
 
-	// Xue, Juan 20191212
 	public double getTotalConsume() {
 		return totalConsume;
 	}
@@ -453,13 +442,10 @@ public class ElectricVehicle extends Vehicle{
 		this.linkConsume = 0;
 	}
 	public void recLinkSnaphotForUCB() {
-//		System.out.println("Recording UCB data!");
-		//System.out.println("Record data for UCB!");
 		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getLinkid(),this.getLinkConsume());
 //		this.resetLinkConsume(); // Reset link consumption to 0
 	}
 	
-	//July, 2020, Jiawei Xue
 	public void recSpeedVehicle(){
 		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getLinkid(),this.currentSpeed());
 	}

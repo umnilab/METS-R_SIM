@@ -2,10 +2,12 @@ package addsEVs.citycontext;
 
 import addsEVs.GlobalVariables;
 
-/*
+/**
  * Passenger class
  * 
- */
+ * @author: Zengxiang Lei
+ * 
+ **/
 
 public class Passenger {
 	private Integer origin;

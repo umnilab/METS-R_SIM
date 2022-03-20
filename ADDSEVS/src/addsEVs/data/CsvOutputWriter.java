@@ -14,7 +14,6 @@ import addsEVs.GlobalVariables;
 
 
 /**
- * evacSim.data.CsvOutputWriter
  * 
  * This data consumer writes the contents of the simulation output buffer
  * to disk in the CSV format.  If no file is specified, the output will
@@ -280,7 +279,6 @@ public class CsvOutputWriter implements DataConsumer {
                         writeCount++;
                     }
                     catch (IOException ioe) {
-                        // TODO: Handle being unable to write output lines?
                         String errMsg = "WRITE ERROR: " + ioe.getMessage();
                         DataCollector.printDebug("CSV" + errMsg);
                     }

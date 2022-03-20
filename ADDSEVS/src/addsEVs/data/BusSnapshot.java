@@ -7,19 +7,16 @@ import addsEVs.vehiclecontext.Bus;
 
 
 /**
- * evacSim.data.VehicleSnapshot
  * 
  * This class is the simple data object for capturing the state 
- * of an EvacSim vehicle at a particular point in time.
+ * of EV buses at a particular point in time.
  * 
  * This object is immutable and composed of simple data variables.
  * It should be trivial to serialize and reconstruct this object.
  * All values are available directly as public members and through
  * "get" methods.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @version 1.0
- * @date 28 June 2017
+ * Modified from Vehicle Snapshot from ARESCUE
  */
 public class BusSnapshot {
     

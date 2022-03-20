@@ -17,7 +17,6 @@ import repast.simphony.engine.environment.RunEnvironment;
 
 
 /**
- * evacSim.data.DataCollector
  * 
  * This class is a collection system and data buffer for capturing all the
  * data about an EvacSim execution that other pieces of code within the
@@ -133,7 +132,7 @@ public class DataCollector {
         DataCollector.printDebug("CTRL", "START COLLECTION");
         
         
-        // are we resuming a previously paused collection?
+        // resuming a previously paused collection?
         if (!this.collecting && this.paused) {
             this.resumeDataCollection();
             return;
@@ -216,7 +215,6 @@ public class DataCollector {
      */
     public void pauseDataCollection() {
         DataCollector.printDebug("CTRL", "PAUSE COLLECTION");
-        
         // set the running flags to paused
         this.paused = true;
         this.collecting = false;

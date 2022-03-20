@@ -151,7 +151,7 @@ public class Vehicle {
 		this.setState(NONE_OF_THE_ABOVE);
 	}
 
-	//Gehlot: This is a new subclass of Vehicle class that has some different parameters like max acceleration and max deceleration 
+	// This is a new subclass of Vehicle class that has some different parameters like max acceleration and max deceleration 
 	public Vehicle(float maximumAcceleration, float maximumDeceleration, int vClass) {
 		this.id = ContextCreator.generateAgentID();
 		this.currentCoord_ = new Coordinate();

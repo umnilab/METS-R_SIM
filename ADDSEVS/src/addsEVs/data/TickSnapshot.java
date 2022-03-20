@@ -18,7 +18,6 @@ import addsEVs.vehiclecontext.Vehicle;
 
 
 /**
- * evacSim.data.TickSnapshot
  * 
  * The tick "snapshot" is the basic bundle of data for the EvacSim output
  * data buffer.  All pieces of data collected about the simulation during

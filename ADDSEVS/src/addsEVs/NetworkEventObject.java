@@ -1,8 +1,11 @@
 package addsEVs;
 
-/* Author: Xianyuan Zhan
- * Event object that holds supply side event information
- * */
+/** 
+ * @author: Xianyuan Zhan
+ * Event object that holds event information
+ * Inherit from ARESCUE simulation
+ * 
+ **/
 public class NetworkEventObject {
 	// Fields in the event data file
 	public int startTime;

@@ -12,9 +12,11 @@ import au.com.bytecode.opencsv.CSVReader;
 
 import java.util.*;
 
-/* Author: Zengxiang Lei
- * read hourly demand into treemap with roadid as key and hourly from hub and to hub travel demand as arraylists
- * */
+/**
+ * @author: Zengxiang Lei
+ * Read hourly demand into treemap with roadid as key and hourly from hub and to hub travel demand as arraylists
+ * 
+ **/
 
 
 public class BackgroundDemand{
@@ -36,7 +38,7 @@ public class BackgroundDemand{
 			// This while loop is used to read the CSV iterating through the row
 			int ind = 0;
 			while ((nextLine = csvreader.readNext()) != null) {
-				// Do not read the first row (header)
+				// skip the first row (header)
 				if (readingheader) {
 					readingheader = false;
 					
@@ -45,7 +47,7 @@ public class BackgroundDemand{
 					for (int i=0 ; i<GlobalVariables.HOUR_OF_DEMAND ; i++ ){
 						value.set(i, Double.parseDouble(nextLine[i]));
 					}
-					//System.out.println("roadID = "+ roadID+"value =" + value);
+					//ContextCreator.logger.debug("roadID = "+ roadID+"value =" + value);
 					this.travelDemand.put(ind,value);
 		            }
 				ind++;

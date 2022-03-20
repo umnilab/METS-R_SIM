@@ -21,7 +21,6 @@ import addsEVs.GlobalVariables;
 
 
 /**
- * evacSim.data.JsonOutputWriter
  * 
  * This data consumer writes the contents of the simulation output buffer
  * to disk in the JSON format.  If no file is specified, the output will
@@ -249,7 +248,7 @@ public class JsonOutputWriter implements DataConsumer {
                         }
                     }
                     
-                    // get the next item from the buffer. HGehlot: I have changed from 1 to GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ to only send the data at the new frequency for viz interpolation
+                    // get the next item from the buffer. 
                     double nextTick = JsonOutputWriter.this.currentTick + GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
                     TickSnapshot snapshot = collector.getNextTick(nextTick); 
                     // System.out.println(snapshot);
@@ -282,17 +281,12 @@ public class JsonOutputWriter implements DataConsumer {
                         }
                     }
                     // update the currently processing tick index to this item
-//                    System.out.println(snapshot.getTickNumber());
                     if(snapshot.getTickNumber() == 5000){
-                    	long old_time=System.currentTimeMillis();  
-//                    	System.out.println(old_time);   
+                    	long old_time=System.currentTimeMillis();   
                     }
                     if(snapshot.getTickNumber() ==6000){
                     	long new_time=System.currentTimeMillis();  
-//                    	System.out.println(new_time);
                     }
-//                    JsonOutputWriter.this.currentTick = 
-//                            snapshot.getTickNumber();
                     JsonOutputWriter.this.currentTick += GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
                     // process the current item into lines in the output file
                     try {
@@ -842,15 +836,6 @@ public class JsonOutputWriter implements DataConsumer {
 
 
         return vehicleArray;
-        // build the json line and return it
-        //return (id + "," + x + "," + y + "," + OriginalX + "," + OriginalY + "," + DestX + "," + DestY + "," + roadID + ","
-        //+ speed + "," +departure + "," + arrival + "," + distance + "," + nearlyArrived + "," + vehicleClass + "," + prev_x + "," + prev_y);
-//        return (id + "," + prev_x + "," + prev_y + "," + x + "," + y + "," + speed + "," +
-//        		originalX + "," + originalY + "," + destX + "," + destY + "," +
-//                nearlyArrived + "," + vehicleClass + "," + roadID);
-        //departure + "," +
-        //arrival + "," +
-        //distance + "," +
     }
     
     /**

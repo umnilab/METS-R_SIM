@@ -99,7 +99,7 @@ public class RouteV {
 		
 		Coordinate nearestRoadCoord;
 		
-		// System.out.println("Here1");
+		// ContextCreator.logger.debug("Here1");
 		if (!onRoad(originCoord)) {
 			nearestRoadCoord = getNearestRoadCoord(originCoord);
 			originCoord = nearestRoadCoord;
@@ -108,18 +108,16 @@ public class RouteV {
 		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
 		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
 		
-//		System.out.println(originRoad.getLinkid()+" to "+destRoad.getLinkid());
-		
-		// System.out.println("Here2");
+		// ContextCreator.logger.debug("Here2");
 		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord,
 				originRoad);
 		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
 				destRoad);
 		
-		// System.out.println("Here3");
+		// ContextCreator.logger.debug("Here3");
 		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad, originDownstreamJunc, destDownstreamJunc);
 		
-		//Transform the paths into a list of link_ids
+		// Transform the paths into a list of link_ids
 		List<List<Integer>> result = new ArrayList<List<Integer>>();
 		for (List<Road> path : paths) {
 			result.add(new ArrayList<Integer>());
@@ -199,8 +197,7 @@ public class RouteV {
 		return final_result;
 	}
 	
-	//July,2020
-	// Use ecoRoute to decide route
+	// Use ecoRoute to decide route, uncommented this if you want to test ecorouting for buses
 //	public static Pair<List<Road>,Integer> ecoRouteBus(int origin, int destination){
 //		String key = Integer.toString(origin) + ',' + destination;
 //		// System.out.println(ContextCreator.route_UCB);

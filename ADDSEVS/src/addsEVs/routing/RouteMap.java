@@ -6,12 +6,17 @@ import java.util.HashMap;
 import addsEVs.ContextCreator;
 import edu.uci.ics.jung.graph.util.Pair;
 
-// route matrix stores the routing information in a map
-// the map is organised as follows
-// src_junc,dest_junc -> array of linkIDs
-// key  	: src_junc_ID,dest_junc_ID (as a string)
-// value 	: array of linkIDs
-// author : Charitha Saumya
+/**
+ * 
+ * Route matrix stores the routing information in a map
+ * the map is organised as follows
+ * src_junc,dest_junc -> array of linkIDs
+ * key  	: src_junc_ID,dest_junc_ID (as a string)
+ * value 	: array of linkIDs
+ * @author Charitha Saumya
+ *
+ */
+
 public class RouteMap {
 	
 	private HashMap<String, ArrayList<Integer>> storage = new HashMap<String, ArrayList<Integer>>();

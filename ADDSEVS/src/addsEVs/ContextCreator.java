@@ -63,18 +63,18 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	private static int agentID = 0; // Used to generate unique agent ids
 
-	public static double startTime;
+	public static double startTime; // Start time of the simulation
 
-	private static int duration_ = (int) (3600 / GlobalVariables.SIMULATION_STEP_SIZE);
+	private static int duration_ = (int) (3600 / GlobalVariables.SIMULATION_STEP_SIZE); // Refreshing the background speed per hour (3600s)
 
-	private static int duration02_ = GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL;
+	private static int duration02_ = GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL; // Refreshing the network for routing
 
-	private static int duration03_ = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
+	private static int duration03_ = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL; // Time gap to repartition the network
 
-	// Create the network partitioning object
+	// Creating the network partitioning object
 	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition);
 
-	// Create the event handler object
+	// Creating the event handler object
 	public static NetworkEventHandler eventHandler = new NetworkEventHandler();
 
 	// Reading background traffic file into treemap
@@ -90,36 +90,21 @@ public class ContextCreator implements ContextBuilder<Object> {
 	VehicleContext vehicleContext;
 	DataCollectionContext dataContext;
 
-	public static HashMap<String, List<List<Integer>>> route_UCB = new HashMap<String, List<List<Integer>>>(); // id: OD
-																												// pair,
-																												// value:
-																												// n
-																												// paths,
-																												// each
-																												// path
-																												// is an
-																												// ArrayList
-	public static HashMap<String, List<List<Integer>>> route_UCB_bus = new HashMap<String, List<List<Integer>>>(); // id:
-																													// OD
-																													// pair,
-																													// value:
-																													// n
-																													// paths,
-																													// each
-																													// path
-																													// is
-																													// an
-																													// ArrayList
+	// Candidate path sets for eco-routing, id: origin-destination pair, value: n paths, each path is a list of LinkID
+	public static HashMap<String, List<List<Integer>>> route_UCB = new HashMap<String, List<List<Integer>>>(); 
 
-	// Charitha : We keep a volatile (thread-read-safe) flag to check if the
-	// route_UCB is fully populated
+	// Candidate path sets for transit eco-routing, id: origin-destination pari, value: n paths, each path is a list of LinkID
+	public static HashMap<String, List<List<Integer>>> route_UCB_bus = new HashMap<String, List<List<Integer>>>(); 
+
+	// A volatile (thread-read-safe) flag to check if the route_UCB is fully populated
 	public static volatile boolean isRouteUCBPopulated = false;
-	// public static volatile boolean isRouteUCBBusPopulated = false;
+	//public static volatile boolean isRouteUCBBusPopulated = false;
 
-	// Charitha : Route result received from RemoteDataClient
+	// Route results received from RemoteDataClient
 	public static ConcurrentHashMap<String, Integer> routeResult_received = new ConcurrentHashMap<String, Integer>();
-
-	// public static ConcurrentHashMap<String, Integer> routeResult_received_bus = new ConcurrentHashMap<String, Integer>();
+	//public static ConcurrentHashMap<String, Integer> routeResult_received_bus = new ConcurrentHashMap<String, Integer>();
+	
+	// Reading simulation properties stored at data/Data.properties
 	public Properties readPropertyFile() {
 		Properties propertiesFile = new Properties();
 		String working_dir = System.getProperty("user.dir");
@@ -130,7 +115,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		return propertiesFile;
 	}
-
+	
+	// Pausing the simulation
 	public void handleSimulationSleep() {
 		while (GlobalVariables.SIMULATION_SLEEPS == 0) {
 			try {
@@ -143,7 +129,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		}
 	}
-
+	
+	// Initializing sub-components, including: city (network + zone), vehicle, data collector
 	public void buildSubContexts() {
 		// create city context
 		this.cityContext = new CityContext();
@@ -169,40 +156,35 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 
-		// ZL: create the map of <(O,D), k potential paths>, in the beginning, choose
-		// k=30
-		createUCBRoutes(); // Generate UCB routes before the simulation is started, store one copy of it,
-							// then make this process offline
-		// createUCBBusRoutes();// Generate Bus UCB routes before the simulation is started, store one copy of
-								// it, then make this process offline
+		// create the map of <(O,D), k potential paths>
+		createUCBRoutes(); // generate UCB routes before the simulation is started, we store one copy of it to save time
+		// createUCBBusRoutes(); // generate Bus UCB routes before the simulation is started, we store one copy of it to save time
 
+		// create output files
 		String outDir = GlobalVariables.AGG_DEFAULT_PATH;
-		// get the current timestamp
-		String timestamp = new SimpleDateFormat("YYYY-MM-dd-hh-mm-ss").format(new Date());
-		// create the overall file path, named after the demand filename
-		String outpath = outDir + File.separatorChar + GlobalVariables.NUM_OF_EV + "_" + GlobalVariables.NUM_OF_BUS;
+		String timestamp = new SimpleDateFormat("YYYY-MM-dd-hh-mm-ss").format(new Date()); // get the current timestamp
+		String outpath = outDir + File.separatorChar + GlobalVariables.NUM_OF_EV + "_" + GlobalVariables.NUM_OF_BUS; // create the overall file path, named after the demand filename
 		try {
 			Files.createDirectories(Paths.get(outpath));
 		} catch (IOException e1) {
-			// TODO Auto-generated catch block
 			e1.printStackTrace();
 		}
 
-		// ZL: initialize Vehicle Logger
-		System.out.println("Vehicle logger creating...");
+		// initialize Vehicle Logger
+		logger.info("Vehicle logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
 			ev_logger = new BufferedWriter(fw);
 			ev_logger.write("tick,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
 			ev_logger.newLine();
 			ev_logger.flush();
-			System.out.println("EV logger created!");
+			logger.info("EV logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("EV logger failed.");
+			logger.error("EV logger failed.");
 		}
 
-		System.out.println("Bus logger creating...");
+		logger.info("Bus logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "BusLog-" + timestamp + ".csv", false);
 			bus_logger = new BufferedWriter(fw);
@@ -210,28 +192,28 @@ public class ContextCreator implements ContextBuilder<Object> {
 					"tick,vehicleID,routeID,tripType,originID,destID,distance,departureTime,cost,choice,passOnBoard");
 			bus_logger.newLine();
 			bus_logger.flush();
-			System.out.println("Bus logger created!");
+			logger.info("Bus logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("Bus logger failed.");
+			logger.error("Bus logger failed.");
 		}
 
-		// ZL: initialize EnergyLogger
-		System.out.println("Link energy logger creating...");
+		// initialize EnergyLogger
+	    logger.info("Link energy logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "LinkLog-" + timestamp + ".csv", false);
 			link_logger = new BufferedWriter(fw);
 			link_logger.write("tick,linkID,flow,consumption");
 			link_logger.newLine();
 			link_logger.flush();
-			System.out.println("Energy logger created!");
+			logger.info("Energy logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("Energy logger failed.");
+			logger.error("Energy logger failed.");
 		}
 
-		// ZL: initialize NetworkLogger
-		System.out.println("Network logger creating...");
+		// initialize NetworkLogger
+		logger.info("Network logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
 			network_logger = new BufferedWriter(fw);
@@ -239,14 +221,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,taxiServedPass,taxiLeavedPass,numWaitingTaxiPass,generatedBusPass,busServedPass,busLeavedPass,numWaitingBusPass");
 			network_logger.newLine();
 			network_logger.flush();
-			System.out.println("Network logger created!");
+			logger.info("Network logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("Network logger failed.");
+			logger.error("Network logger failed.");
 		}
 
-		// ZL: initialize Zone Logger
-		System.out.println("Zone logger creating...");
+		// initialize Zone Logger
+		logger.info("Zone logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
 			zone_logger = new BufferedWriter(fw);
@@ -254,14 +236,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,taxiLeavedPass,busLeavedPass,taxiWaitingTime");
 			zone_logger.newLine();
 			zone_logger.flush();
-			System.out.println("Zone logger created!");
+			logger.info("Zone logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("Zone logger failed.");
+			logger.error("Zone logger failed.");
 		}
 
-		// ZL: initialize Charger Logger
-		System.out.println("Charger logger creating...");
+		// initialize Charger Logger
+		logger.info("Charger logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ChargerLog-" + timestamp + ".csv", false);
 			charger_logger = new BufferedWriter(fw);
@@ -269,14 +251,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel");
 			charger_logger.newLine();
 			charger_logger.flush();
-			System.out.println("Charger logger created!");
+			logger.info("Charger logger created!");
 		} catch (IOException e) {
 			e.printStackTrace();
-			System.out.println("Charger logger failed.");
+			logger.error("Charger logger failed.");
 		}
 	}
 
-	// ZL: update route_UCB
+	// update route_UCB
 	@SuppressWarnings("unchecked")
 	private void createUCBRoutes() {
 		// Refresh road status
@@ -286,13 +268,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes.ser");
 			ObjectInputStream in = new ObjectInputStream(fileIn);
 			ContextCreator.route_UCB = (HashMap<String, List<List<Integer>>>) in.readObject();
-			// System.out.print(ContextCreator.route_UCB.keySet());
-			System.out.println("Serialized data is loaded from data/candidate_routes.ser");
+			logger.info("Serialized data is loaded from data/candidate_routes.ser");
 			in.close();
 			fileIn.close();
 		} catch (FileNotFoundException i) { // File does not exist, let's create one
 			// i.printStackTrace();
-			System.out.println("Candidate routes initialization ...");
+			logger.info("Candidate routes initialization ...");
 			// Get list of zones
 			Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
 			// Geography<ChargingStation> chargingStationGeography =
@@ -300,12 +281,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 			// Loop over all OD pairs
 			for (Zone origin : zoneGeography.getAllObjects()) {
-				// if (house.getId()%GlobalVariables.Total_Person_Number==id)
 				for (Zone destination : zoneGeography.getAllObjects()) {
 					if (origin.getIntegerID() != destination.getIntegerID()
 							&& (GlobalVariables.HUB_INDEXES.contains(origin.getIntegerID())
 									|| GlobalVariables.HUB_INDEXES.contains(destination.getIntegerID()))) {
-						System.out.println(
+						logger.info(
 								"Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
 						try {
 							List<List<Integer>> candidate_routes = RouteV.UCBRoute(origin.getCoord(),
@@ -337,7 +317,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				out.writeObject(ContextCreator.route_UCB);
 				out.close();
 				fileOut.close();
-				System.out.println("Serialized data is saved in data/candidate_routes.ser");
+				logger.info("Serialized data is saved in data/candidate_routes.ser");
 			} catch (IOException o) { // Result cannot be save
 				o.printStackTrace();
 				return;
@@ -350,12 +330,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 			return;
 		}
 
-		// Charitha : mark route_UCB is populated. This flag is checked in
-		// ConnectionManager before starting the data server
+		// Mark route_UCB is populated. This flag is checked in rdcm before starting the data server
 		ContextCreator.isRouteUCBPopulated = true;
 	}
 
-	// ZL: update route_BusUCB
+	// update route_BusUCB, unused in the final experiment
 //	@SuppressWarnings("unchecked")
 //	private void createUCBBusRoutes() {
 //		// Refresh road status
@@ -365,12 +344,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 //			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes_bus.ser");
 //			ObjectInputStream in = new ObjectInputStream(fileIn);
 //			ContextCreator.route_UCB_bus = (HashMap<String, List<List<Integer>>>) in.readObject();
-//			System.out.println("Serialized data is loaded from data/candidate_routes_bus.ser");
+//			logger.info("Serialized data is loaded from data/candidate_routes_bus.ser");
 //			in.close();
 //			fileIn.close();
 //		} catch (FileNotFoundException i) { // File does not exist, let's create one
 //			// i.printStackTrace();
-//			System.out.println("Candidate routes initialization ...");
+//			logger.info("Candidate routes initialization ...");
 //			// Geography<ChargingStation> chargingStationGeography =
 //			// ContextCreator.getChargingStationGeography();
 //			Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
@@ -379,14 +358,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 //				// if (house.getId()%GlobalVariables.Total_Person_Number==id)
 //				for (Zone destination : zoneGeography.getAllObjects()) {
 //					if (origin.getIntegerID() != destination.getIntegerID()) {
-//						System.out.println(
+//						logger.info(
 //								"Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
 //						try {
 //							ContextCreator.route_UCB_bus.put(
 //									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
 //									RouteV.UCBRoute(origin.getCoord(), destination.getCoord()));
 //						} catch (Exception e) {
-//							// TODO Auto-generated catch block
 //							e.printStackTrace();
 //						}
 //					}
@@ -399,7 +377,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 //				out.writeObject(ContextCreator.route_UCB_bus);
 //				out.close();
 //				fileOut.close();
-//				System.out.println("Serialized data is saved in data/candidate_routes_bus.ser");
+//				logger.info("Serialized data is saved in data/candidate_routes_bus.ser");
 //			} catch (IOException o) { // Result cannot be save
 //				o.printStackTrace();
 //				return;
@@ -412,8 +390,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 //			return;
 //		}
 //
-//		// Charitha : mark route_UCB is populated. This flag is checked in
-//		// ConnectionManager before starting the data server
+//		// Mark route_UCB is populated. This flag is checked in rdcm before starting the data server
 //		ContextCreator.isRouteUCBBusPopulated = true;
 //	}
 
@@ -424,18 +401,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		List<List<Integer>> roadLists = ContextCreator.route_UCB.get(OD);
 		jsonObj.put("road_lists", roadLists);
 		String line = JSONObject.toJSONString(jsonObj);
-
-//			String line = new String("");
-//			line += "OD,"; // NOTE : check this prefix when receiving
-//			line += OD + ",";
-//			List<List<Integer>> roadLists = ContextCreator.route_UCB.get(OD);
-//			for(List<Integer> roadList : roadLists) {
-//				line += "RD,";
-//				for(Integer r : roadList) {
-//					line += r+",";
-//				}
-//			}
-
 		return line;
 	}
 
@@ -446,18 +411,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		List<List<Integer>> roadLists = ContextCreator.route_UCB_bus.get(OD);
 		jsonObj.put("road_lists", roadLists);
 		String line = JSONObject.toJSONString(jsonObj);
-
-//			String line = new String("");
-//			line += "BOD,"; // NOTE : check this prefix when receiving
-//			line += OD + ",";
-//			List<List<Integer>> roadLists = ContextCreator.route_UCB_bus.get(OD);
-//			for(List<Integer> roadList : roadLists) {
-//				line += "RD,";
-//				for(Integer r : roadList) {
-//					line += r+",";
-//				}
-//			}
-
 		return line;
 	}
 
@@ -466,7 +419,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public static Set<String> getUCBRouteODPairsBus() {
-		// TODO Auto-generated method stub
 		return ContextCreator.route_UCB_bus.keySet();
 	}
 
@@ -483,7 +435,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
 
-		System.out.println("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
+		logger.info("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
 		// schedule start of sim
 		ScheduleParameters startParams = ScheduleParameters.createOneTime(1);
 		schedule.schedule(startParams, this, "start");
@@ -504,8 +456,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public void scheduleFreeFlowSpeedRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		// BL: speedProfileParams is the schedule parameter to update free flow speed
-		// for each road every hour
+		// speedProfileParams is the schedule parameter to update free flow speed for each road every hour
 		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(0, duration_, 4);
 		for (Road r : getRoadContext().getObjects(Road.class)) {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
@@ -513,13 +464,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (Zone z : getZoneGeography().getAllObjects()) {
 			schedule.schedule(speedProfileParams, z, "updateTravelEstimation");
 		}
-		// ZL: update the travel time estimation in each zone
+		// update the travel time estimation in each zone
 		schedule.schedule(speedProfileParams, this, "refreshTravelTime");
 	}
 
 	public void scheduleNetworkEventHandling() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		// ZH: schedule the check of the supply side events
+		// schedule the check of the supply side events
 		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
 		schedule.schedule(supplySideEventParams, eventHandler, "checkEvents");
@@ -528,13 +479,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public void schedulePassengerArrivalAndServe() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 
-		// ZL: schedule the passenger serve events
+		// schedule the passenger serving events
 		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL, 1);
 		for (Zone a : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, a, "step");
 		}
-		// ZL: schedule the passenger arrival events
+		// schedule the passenger arrival events
 		ScheduleParameters demandGenerationParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_PASSENGER_ARRIVAL_INTERVAL, 1);
 		for (Zone a : getZoneContext().getObjects(Zone.class)) {
@@ -557,15 +508,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(1, 1, 0);
 		schedule.schedule(agentParaParams, s, "paraStep");
-		// Schedule shutting down the parallel thread pool
+		// schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
 
-		// Schedule the time counter
+		// schedule the time counter
 		ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(1, duration03_, 0);
 		schedule.schedule(timerParaParams, s, "reportTime");
 
-		/* Schedule Parameters for the graph partitioning */
+		// schedule Parameters for the graph partitioning
 		ScheduleParameters partitionParams = ScheduleParameters.createRepeating(duration03_, duration03_, 2);
 		ScheduleParameters initialPartitionParams = ScheduleParameters.createOneTime(0, 2);
 		schedule.schedule(initialPartitionParams, partitioner, "first_run");
@@ -610,15 +561,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public Context<Object> build(Context<Object> context) {
-		System.out.println("Reading property files");
+		logger.info("Reading property files");
 		readPropertyFile();
 		ContextCreator.mainContext = context;
 		handleSimulationSleep();
-		System.out.println("Building subcontexts");
+		logger.info("Building subcontexts");
 		buildSubContexts();
 
-		// Check if link length and geometry are consistent, fix the inconsistency if
-		// there is one.
+		// check if link length and geometry are consistent, fix the inconsistency if there is one.
 		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
 			double distance = 0;
@@ -636,7 +586,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedulePassengerArrivalAndServe();
 		scheduleChargingStation();
 
-		// Schedule parameters for both serial and parallel road updates
+		// schedule parameters for both serial and parallel road updates
 		if (GlobalVariables.MULTI_THREADING) {
 			scheduleMultiThreadedRoadStep();
 
@@ -669,6 +619,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - startTime));
 		try {
+			ev_logger.flush();
+			bus_logger.flush();
+			link_logger.flush();
+			network_logger.flush();
+			zone_logger.flush();
 			ev_logger.close();
 			bus_logger.close();
 			link_logger.close();
@@ -787,8 +742,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	private double getDistance(Coordinate c1, Coordinate c2) {
-		// GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator
-		// .getRoadGeography().getCRS());
+		//GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getRoadGeography().getCRS());
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(c1.x, c1.y);
 		calculator.setDestinationGeographicPoint(c2.x, c2.y);
@@ -803,60 +757,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public void refreshTravelTime() {
-		System.out.println("Update the estimation of travel time...");
+		logger.info("Update the estimation of travel time...");
 		for (Zone z1 : getZoneGeography().getAllObjects()) {
-//			z1.taxiTravelTime = new HashMap<Integer, Float>();
-//			z1.taxiTravelDistance = new HashMap<Integer, Float>();
 			z1.busTravelTime = new HashMap<Integer, Float>();
 			z1.busTravelDistance = new HashMap<Integer, Float>();
-//			
-//			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
-//			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
-//			//Is hub
-//			if(GlobalVariables.HUB_INDEXES.contains(z1.getIntegerID())){
-//				//shortest path travel time to all other zones
-//				for(Zone z2: getZoneGeography().getAllObjects()){
-//					if(z1.getIntegerID() != z2.getIntegerID()){
-//						double travel_time = 0;
-//						double travel_distance = 0;
-//						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
-//						if(path!=null){
-//							for(Road r: path){
-//								travel_distance += r.getLength();
-//								travel_time += r.getTravelTime();
-//							}
-//						}
-//						travelDistanceMap.put(z2.getIntegerID(), (float)travel_distance);
-//						travelTimeMap.put(z2.getIntegerID(), (float)travel_time);
-//					}
-//				}
-//				z1.setTaxiTravelDistanceMap(travelDistanceMap);
-//				z1.setTaxiTravelTimeMap(travelTimeMap);
-//			}
-//			else{
-//				//shortest path to hubs
-//				for(int z2_id: GlobalVariables.HUB_INDEXES){
-//					Zone z2 = this.cityContext.findHouseWithDestID(z2_id);
-//					if(z1.getIntegerID() != z2.getIntegerID()){
-//						double travel_time = 0;
-//						double travel_distance = 0;
-//						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
-//						if(path!=null){
-//							for(Road r: path){
-//								travel_distance += r.getLength();
-//								travel_time += r.getTravelTime();
-//							}
-//						}
-//						travelDistanceMap.put(z2.getIntegerID(), (float)travel_distance);
-//						travelTimeMap.put(z2.getIntegerID(), (float)travel_time);
-//					}
-//				}
-//				z1.setTaxiTravelDistanceMap(travelDistanceMap);
-//				z1.setTaxiTravelTimeMap(travelTimeMap);
-//			}
 		}
 		for (List<Integer> route : busSchedule.busRoute) {
-			System.out.println(route);
+			logger.debug(route);
 			// retrieve stations in order, from hub to other places
 			double travel_distance = 0;
 			double travel_time = 0;
@@ -882,14 +789,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 				z1 = z2;
 			}
-			System.out.print(hub.busTravelDistance);
-			System.out.print(hub.busTravelTime);
+			logger.debug(hub.busTravelDistance);
+			logger.debug(hub.busTravelTime);
 			// retrieve stations in back order, from other places to hub
 			travel_distance = 0;
 			travel_time = 0;
 			z2 = hub;
 			for (int i = route.size() - 1; i > 0; i--) {
-				z1 = this.cityContext.findHouseWithDestID(i);
+				z1 = this.cityContext.findHouseWithDestID(route.get(i));
 				List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
 				if (path != null) {
 					for (Road r : path) {
@@ -906,21 +813,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 					z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
 				}
 				z2 = z1;
+				logger.debug(z1.busTravelDistance);
+				logger.debug(z1.busTravelTime);
 			}
-			System.out.print(z1.busTravelDistance);
-			System.out.print(z1.busTravelTime);
 		}
 	}
-
-//	public static void printRouteResultMap() {
-//		synchronized (ContextCreator.routeResult_received) {
-//			for(String OD : ContextCreator.routeResult_received.keySet()) {
-//				System.out.println(OD+" = "+
-//						ContextCreator.routeResult_received.get(OD));
-//				
-//			}
-//		}
-//		
-//	}
 
 }

@@ -9,7 +9,7 @@ class LinkSnapshot {
 	final int id;
 	
 	/** Current time mean speed (unit most likely meters/second) */
-	// TODO: change this to space mean speed as this is a snapshot in space
+	// Remark: could change this to space mean speed as this is a snapshot in space
 	final float speed;
 	
 	/** Number of vehicles currently on the road,
@@ -23,7 +23,7 @@ class LinkSnapshot {
 	LinkSnapshot(int id, double speed, int nVehicles, double energy, int flow) {
 		this.id = id;
 		this.speed = (float) speed;
-		this.nVehicles = nVehicles; //LZ: Oct 19, replaced getNumVehicles with this.
+		this.nVehicles = nVehicles;
 		this.energy = (float) energy;
 		this.flow = flow;
 		

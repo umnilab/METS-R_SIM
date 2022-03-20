@@ -18,12 +18,14 @@ import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 import au.com.bytecode.opencsv.CSVReader;
 
-/* Author: Xianyuan Zhan and Hemant Gehlot
- * Schedules and handles the supplyside Events to be executed
- * */
-
+/**
+ * @author: Xianyuan Zhan and Hemant Gehlot
+ * Schedules and handles the events to be executed
+ * Inherit from ARESCUE simulation
+ * 
+ **/
 public class NetworkEventHandler {
-	// Queue that store unhappened events
+	// Queue that store pending events
 	// Queue operations see https://docs.oracle.com/javase/7/docs/api/java/util/Queue.html
 	// A sorted list storing the running events, sorted following the order of the end time
 	// We use a treeMap and use the end time as the key
@@ -44,7 +46,6 @@ public class NetworkEventHandler {
 	public void readEventFile(){
 		// Hemant: implement the file read and insert to the event queue
 		// Note queue is first in first out, so the eventfile should order event start time in ascending order, earliest comes first
-		
 		File eventFile = new File(GlobalVariables.EVENT_FILE);
 		CSVReader csvreader = null;
 		String[] nextLine;

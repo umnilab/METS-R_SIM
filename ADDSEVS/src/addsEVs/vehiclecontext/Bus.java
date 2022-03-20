@@ -20,9 +20,10 @@ import addsEVs.citycontext.Zone;
 import addsEVs.data.DataCollector;
 import repast.simphony.essentials.RepastEssentials;
 
-/* For test stage, we have 10 zones: 0,1,2,3,4,5,6,7,8,9.
- * We assume the bus route is a cycle. 
- * For instance, the bus route is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1]. It starts at zone 0 and comes back to zone 0.
+/**
+ * 
+ * @author Zengxiang Lei, Jiawei Xue
+ *
  */
 
 public class Bus extends Vehicle{
@@ -31,16 +32,16 @@ public class Bus extends Vehicle{
 	private int numSeat;                        //capacity of the bus.
 	private int nextStop;                       //nextStop =i  means the i-th entry of ArrayList<Integer> busStop. i=0,1,2,...,17.
 	private ArrayList<Integer> busStop;         
-	//each entry represents a bus stop (zone) along the bus route.
-	//For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
+	// Each entry represents a bus stop (zone) along the bus route.
+	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
 	private Dictionary<Integer, Integer> stopBus; // LZ: reverse table for track the zone in the busStop;
 	
-	//LZ: Timetable variable here, the next departure time
+	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
 	private int roundTripTime;
 	
 	private ArrayList<Integer> destinationDemandOnBus;  
-	// the destination distribution of passengers on the bus now.  
+	// The destination distribution of passengers on the bus now.  
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having the destination of zone i.
 	
 	private boolean onChargingRoute_ = false;
@@ -59,13 +60,12 @@ public class Bus extends Vehicle{
 	private double tickConsume;
 	private double totalConsume;
 	
-	//July,2020,JiaweiXue
-	private double linkConsume; // LZ: For UCB eco-routing, energy spent for passing current link, will be reset to zero once this ev entering a new road.
-	private double tripConsume; // LZ: For UCB testing
+	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to zero once this ev entering a new road.
+	private double tripConsume; // for UCB testing
 	
 	private PolynomialSplineFunction splinef;   // spline result
 	
-	//Parameter for Frr calculation
+	// Parameter for Frr calculation
 	public static double urr = 0.005; // 1996_1998_General Motor Model
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
 	// Parameters for Fad calculation
@@ -86,16 +86,14 @@ public class Bus extends Vehicle{
 	public static double c = 45;
 	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
 	
-	//July,2020,JiaweiXue
 	private int originID = -1;
 	private int destinationID = -1;
-	// parameter to show which route has been chosen in eco-routing.
+	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
 	
-	//function 1: constructors
+	// function 1: constructors
 	public Bus(int routeID, ArrayList<Integer> route, int nextDepartureTime){
 		super(Vehicle.EBUS); // Class 2 means bus
-//		System.out.println("Bus id:"+this.vehicleID_); // See if this id appear in the output file
 		this.routeID = routeID;
 		this.busStop = route;  
 		this.originID = route.get(0);
@@ -105,7 +103,6 @@ public class Bus extends Vehicle{
 		}
 		this.nextDepartureTime = nextDepartureTime;
 //		this.roundTripTime = roundTripTime;
-//		System.out.println("Bus route "+ this.busStop+"  Route bus "+ this.stopBus + " depature time " + this.nextDepartureTime+ " round trip time " + this.roundTripTime);
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
 		this.setInitialParams();
 	}
@@ -135,25 +132,11 @@ public class Bus extends Vehicle{
 		tickConsume = tickEnergy;
 		totalConsume += tickEnergy;
 
-		// July,2020,JiaweiXue
 		linkConsume += tickEnergy;
 		tripConsume += tickEnergy;
-//		if (Math.random() > 0.99) { // Sample 1% data
-//			// LZ: Log the trip consume here
-//			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + ","
-//					+ this.getVehicleClass() + "," + Double.toString(this.currentSpeed()) + ','
-//					+ Double.toString(tickConsume);
-//			try {
-//				ContextCreator.bw2.write(formated_msg);
-//				ContextCreator.bw2.newLine();
-//			} catch (IOException e) {
-//				e.printStackTrace();
-//			}
-//		}
-
-		// System.out.println( Double.toString(totalConsume) +','+
+		// ContextCreator.logger.debug( Double.toString(totalConsume) +','+
 		// Double.toString(this.accummulatedDistance_));
-		// System.out.println( Double.toString(tickConsume) +','+
+		// ContextCreator.logger.debug( Double.toString(tickConsume) +','+
 		// Double.toString(this.currentSpeed()));
 		batteryLevel_ -= tickEnergy;
 	}
@@ -168,7 +151,7 @@ public class Bus extends Vehicle{
 		Coordinate currentCoord = this.getOriginalCoord();
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
-//		System.out.println("Bus "+this.vehicleID_+" is re-entering the Road " + road.getID());
+//		ContextCreator.logger.debug("Bus "+this.vehicleID_+" is re-entering the Road " + road.getID());
 	}
 	
 	//The setReachDest() function applies for three cases: 
@@ -191,9 +174,8 @@ public class Bus extends Vehicle{
 				e.printStackTrace();
 			}
 			this.leaveNetwork();                // remove the bus from the network
-			ContextCreator.logger.info("Bus arriving at charging station:"+this.getId());
+//			ContextCreator.logger.info("Bus arriving at charging station:"+this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationZoneID());
-//			System.out.println(cs);
 			cs.receiveBus(this);
 			this.originID = cs.getIntegerID();
 			this.endTime = (int) RepastEssentials.GetTickCount();
@@ -223,20 +205,19 @@ public class Bus extends Vehicle{
 			
 			// drop off passengers.
 			this.leaveNetwork();
-			ContextCreator.logger.info("Bus arriving at origin stop: " + nextStop);
+//			ContextCreator.logger.info("Bus arriving at origin stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
 			
 			// add the plan to the charging station.
 			ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
 			this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount()); // instantly go to charging station
-			ContextCreator.logger.info("Bus "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
+//			ContextCreator.logger.info("Bus "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
 			this.onChargingRoute_ = true;
 			this.setState(Vehicle.CHARGING_TRIP);
 			this.setNextPlan();	
 			this.addPlan(current_dest_zone, current_dest_coord, Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime)); // Follow the old schedule
-			//System.out.println("STEP 3: "+this.activityplan);
-//			System.out.println("Bus "+this.id+" is go charging");
+//			ContextCreator.logger.info("Bus "+this.id+" is go charging");
 			this.tripConsume=0;
 			this.accummulatedDistance_=0;
 			this.departure(cs.getIntegerID());
@@ -269,9 +250,6 @@ public class Bus extends Vehicle{
 			if (nextStop == busStop.size()-1) { // arrive at the last stop
 				nextStop = 0;
 				ContextCreator.busSchedule.popSchedule(this.busStop.get(0), this);
-				// System.out.println("Bus "+this.id+" finished one loop!");
-				// Update the schedule if reaching the next_update_time
-				// System.out.println(this.activityplan.get(0).getDestID());
 			}
 			else{
 				nextStop = Math.min(nextStop + 1, this.busStop.size()-1);        //arrive at the other bus stop
@@ -281,7 +259,7 @@ public class Bus extends Vehicle{
 					ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop)).getCoord(), 
 					Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime));
 			this.setNextPlan();
-//			System.out.println("Bus "+this.id+" has arrive the next station: " +nextStop);
+//			ContextCreator.logger.info("Bus "+this.id+" has arrive the next station: " +nextStop);
 			this.tripConsume=0;
 			this.accummulatedDistance_=0;
 			this.departure(this.busStop.get(nextStop));
@@ -290,7 +268,6 @@ public class Bus extends Vehicle{
 
 	private void servePassenger() {
 		// servePassengerByBus
-		//System.out.println("Bus serve passengers!");
 		Zone arrivedZone = ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop));
 		ArrayList<Passenger> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
 		for(Passenger p: passOnBoard){
@@ -300,7 +277,7 @@ public class Bus extends Vehicle{
 		this.setPassNum(this.getPassNum()+passOnBoard.size());
 	}
 
-	// xue: charge the battery.
+	// charge the battery.
 	public void chargeItself(double batteryValue) {
 		charging_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		batteryLevel_ += batteryValue;
@@ -382,31 +359,29 @@ public class Bus extends Vehicle{
 		double capacityConsumption = CR/(cpt*3600);   //unit: AH 
 		double energyConsumption = capacityConsumption * Bus.batteryCapacity;  //unit: kWh
 //		if(Double.isNaN(energyConsumption)){
-//			System.out.println("v: "+ velocity + " acc: "+acceleration + " currentSOC: " + currentSOC);
-//			System.out.println("Frr: "+ Frr + " Fad: "+Fad + " Fhc: " + Fhc + " Fla: " + Fla);
-//			System.out.println("Fte: "+ Fte + " Pte: "+Pte + " Pbat: " + Pbat);
-//			System.out.println("rIn:"+ rIn + " Pmax: "+Pmax + " kt: " + kt);
-//			System.out.println("cpt:"+ cpt + " CR: "+CR + " I: " + I);
-//			System.out.println("energyConsumption: "+ energyConsumption);
-//			System.out.println("LLLL: "+  (Bus.Voc*Bus.Voc -4 * rIn * Pbat));
-//			System.out.println("LLLLL: "+  Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat));
+//			ContextCreator.logger.debug("v: "+ velocity + " acc: "+acceleration + " currentSOC: " + currentSOC);
+//			ContextCreator.logger.debug("Frr: "+ Frr + " Fad: "+Fad + " Fhc: " + Fhc + " Fla: " + Fla);
+//			ContextCreator.logger.debug("Fte: "+ Fte + " Pte: "+Pte + " Pbat: " + Pbat);
+//			ContextCreator.logger.debug("rIn:"+ rIn + " Pmax: "+Pmax + " kt: " + kt);
+//			ContextCreator.logger.debug("cpt:"+ cpt + " CR: "+CR + " I: " + I);
+//			ContextCreator.logger.debug("energyConsumption: "+ energyConsumption);
+//			ContextCreator.logger.debug("LLLL: "+  (Bus.Voc*Bus.Voc -4 * rIn * Pbat));
+//			ContextCreator.logger.debug("LLLLL: "+  Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat));
 //			return -1;
 //		}
 		return energyConsumption;
 	}
-    // Xue, Juan 20191212: spline interpolation 
+    // spline interpolation 
  	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
  		SplineInterpolator splineInt = new SplineInterpolator();
  		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
  		return polynomialSpl;
  	}
 
- 	// Xue, Juan 20191212
  	public double getTickConsume() {
  		return tickConsume;
  	}
 
- 	// Xue, Juan 20191212
  	public double getTotalConsume() {
  		return totalConsume;
  	}
@@ -426,33 +401,27 @@ public class Bus extends Vehicle{
  		this.onChargingRoute_ = false;
  	}
  	
- 	//July,2020,JiaweiXue
 	public int getOriginID(){
 		return this.originID;
 	}
 	
-	//July,2020,JiaweiXue
 	public int getDestinationID(){
 		return this.destinationID;
 	}
 	
-	//July,2020,JiaweiXue
 	public void setRouteChoice(int i) {
 		this.routeChoice = i;
 	}
 	
-	//July,2020,JiaweiXue
 	public double getLinkConsume(){
 		return linkConsume;
 	}
 	
-	//July,2020,JiaweiXue
-	// Reset link consume once a ev has passed a link
+	// Reset link consume once a EV has passed a link
 	public void resetLinkConsume(){ 
 		this.linkConsume = 0;
 	}
 	
-	//July,2020,JiaweiXue
 //	public void recLinkSnaphotForUCBBus() {
 //		//System.out.println("Record data for UCB!");
 //		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getLinkid(),this.getLinkConsume());
