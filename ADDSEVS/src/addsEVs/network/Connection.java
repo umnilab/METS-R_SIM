@@ -334,22 +334,16 @@ public class Connection implements DataConsumer {
 			 */
 			for (String OD : ContextCreator.getUCBRouteODPairs()) {
 				// JSONString
-				// System.out.println("Send EV OD");
 				String msg = ContextCreator.getUCBRouteStringForOD(OD);
-//				System.out.println(msg);
 				session.getRemote().sendString(msg);
 			}
 			// July,2020,JiaweiXue
-			// System.out.println("UCB route bus OD size = " + ContextCreator.getUCBRouteODPairsBus().size());
 			for (String OD : ContextCreator.getUCBRouteODPairsBus()) {
-				// System.out.println("Send Bus OD");
 				String msg = ContextCreator.getUCBRouteStringForODBus(OD);
-				//System.out.println(msg);
 				session.getRemote().sendString(msg);
 			}
 
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 

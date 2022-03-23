@@ -624,11 +624,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 			link_logger.flush();
 			network_logger.flush();
 			zone_logger.flush();
+			charger_logger.flush();
 			ev_logger.close();
 			bus_logger.close();
 			link_logger.close();
 			network_logger.close();
 			zone_logger.close();
+			charger_logger.close();
 			// stopSim(null, null);
 		} catch (IOException e) {
 			e.printStackTrace();

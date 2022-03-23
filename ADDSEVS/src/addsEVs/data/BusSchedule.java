@@ -16,6 +16,7 @@ import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.Zone;
 import addsEVs.vehiclecontext.Bus;
+import repast.simphony.essentials.RepastEssentials;
 
 class The_Comparator implements Comparator<OneBusSchedule> {
     public int compare(OneBusSchedule s1, OneBusSchedule s2)
@@ -132,20 +133,22 @@ public class BusSchedule{
 	
 	public void popSchedule(int startZone, Bus b) {
 		// System.out.println("BUS SCHEDULE UPDATED!");
+		int current_tick = (int) RepastEssentials.GetTickCount();
 		if(this.pendingSchedules!=null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule
 			if(this.pendingSchedules.get(startZone).size()>0) {
-				OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
-				b.updateSchedule(obs.routeID, 
-						obs.busRoute,
-						obs.departureTime);
+				if(this.pendingSchedules.get(startZone).peek().departureTime<(current_tick+3600/GlobalVariables.SIMULATION_STEP_SIZE)) {
+					OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
+					b.updateSchedule(obs.routeID, 
+							obs.busRoute,
+							obs.departureTime);
+					return;
+				}
 			}
 		}
-		else {
-			// Set a null schedule
-			b.updateSchedule(-1, 
-					new ArrayList<Integer> (),
-					0);
-		}
+		// Set a null schedule
+		b.updateSchedule(-1, 
+				new ArrayList<Integer> (),
+				0);
 	}
 }

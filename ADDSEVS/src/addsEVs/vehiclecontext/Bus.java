@@ -239,7 +239,6 @@ public class Bus extends Vehicle{
 			this.originID = this.destinationID;
 			this.leaveNetwork();                           
 			ContextCreator.logger.info("Bus arriving at bus stop: " + nextStop);
-			
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
 			
@@ -271,10 +270,13 @@ public class Bus extends Vehicle{
 		Zone arrivedZone = ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop));
 		ArrayList<Passenger> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
 		for(Passenger p: passOnBoard){
+			// System.out.println(arrivedZone.getIntegerID());
+			// System.out.println(p.getDestination());
 			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestination()),destinationDemandOnBus.get(this.stopBus.get(p.getDestination()))+1);
 		}
 		this.served_pass+=passOnBoard.size();
 		this.setPassNum(this.getPassNum()+passOnBoard.size());
+		// System.out.print(destinationDemandOnBus);
 	}
 
 	// charge the battery.
@@ -432,7 +434,7 @@ public class Bus extends Vehicle{
 		if(newID==-1) {
 			this.routeID = -1;
 			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
-			this.nextDepartureTime = (int) (RepastEssentials.GetTickCount()+3600/GlobalVariables.SIMULATION_STEP_SIZE);
+			this.nextDepartureTime = (int) (RepastEssentials.GetTickCount()+600/GlobalVariables.SIMULATION_STEP_SIZE); // wait for 10 min
 		}
 		else {
 			this.routeID = newID;
@@ -445,6 +447,7 @@ public class Bus extends Vehicle{
 		}
 		this.originID = busStop.get(0);
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
+		this.setPassNum(0);
 	}
 	
 	

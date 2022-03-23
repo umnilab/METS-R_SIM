@@ -267,7 +267,7 @@ public class Zone {
 				if(passQueue.size()>0 && ContextCreator.getVehicleContext().getVehicles(this.integerID).size()>0) {
 					int pass_num = passQueue.size();
 					int v_num = ContextCreator.getVehicleContext().getVehicles(this.integerID).size();
-					v_num = (int) Math.min(Math.ceil(pass_num/4),v_num);
+					v_num = (int) Math.min(Math.ceil(pass_num/4.0),v_num);
 					for(int i=0; i<v_num; i++) {
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(this.integerID).poll();
 						ArrayList<Passenger> tmp_pass = new ArrayList<Passenger>();
@@ -276,10 +276,12 @@ public class Zone {
 							tmp_pass.add(p);
 						    // record served passengers
 							this.nPassForTaxi-=1;
+							this.taxiServedPass += 1;
 							GlobalVariables.SERVE_PASS += 1;
 							this.taxiPassWaitingTime += p.getWaitingTime();
 						}
 						v.servePassenger(tmp_pass);
+						this.removeVehicleStock(1);
 						pass_num = pass_num - tmp_pass.size();
 					}
 				}

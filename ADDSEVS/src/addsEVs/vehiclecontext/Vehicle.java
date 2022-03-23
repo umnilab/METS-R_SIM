@@ -965,7 +965,6 @@ public class Vehicle {
 		if (distance_ < 0) {
 			distance_=0;
 		}
-		//LZ: For debugging, here we observed that this.distance_ can be set to NaN, but other values are valid (even in the first time this message occured)
 		if(distTravelled>0){
 			this.movingFlag = true;
 		}
