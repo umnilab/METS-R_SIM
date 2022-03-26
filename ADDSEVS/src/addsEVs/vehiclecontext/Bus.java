@@ -169,6 +169,7 @@ public class Bus extends Vehicle{
 			try{
 				ContextCreator.bus_logger.write(formated_msg);
 				ContextCreator.bus_logger.newLine();
+				ContextCreator.bus_logger.flush();
 				this.accummulatedDistance_=0;
 			} catch(IOException e){
 				e.printStackTrace();
@@ -192,6 +193,7 @@ public class Bus extends Vehicle{
 				try {
 					ContextCreator.bus_logger.write(formated_msg);
 					ContextCreator.bus_logger.newLine();
+					ContextCreator.bus_logger.flush();
 					this.accummulatedDistance_ = 0;
 				} catch (IOException e) {
 					e.printStackTrace();
@@ -395,6 +397,7 @@ public class Bus extends Vehicle{
 		try {
 			ContextCreator.charger_logger.write(formated_msg);
 			ContextCreator.charger_logger.newLine();
+			ContextCreator.charger_logger.flush();
 			this.charging_waiting_time = 0;
 			this.charging_time = 0;
 		} catch (IOException e) {
