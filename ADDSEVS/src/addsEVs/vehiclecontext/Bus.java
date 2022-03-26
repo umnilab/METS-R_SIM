@@ -63,27 +63,43 @@ public class Bus extends Vehicle{
 	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to zero once this ev entering a new road.
 	private double tripConsume; // for UCB testing
 	
-	private PolynomialSplineFunction splinef;   // spline result
+	// parameters for Fiori (2016) model, 
+	// modified frontal area and draft coefficient according to Bus 2 in "Aerodynamic Exterior Body Design of Bus"
+	public static double p0 = 1.2256;
+	public static double A = 6.93; // frontal area of the vehicle
+	public static double cd = 0.68; // draft coefficient
+	public static double cr = 1.75;
+	public static double c1 = 0.0328;
+	public static double c2 = 4.575;
+	public static double etaM = 0.92;
+	public static double etaG = 0.91;
+//	public static double cp = 70000;
+	public static double Pconst = 700;
 	
-	// Parameter for Frr calculation
-	public static double urr = 0.005; // 1996_1998_General Motor Model
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-	// Parameters for Fad calculation
-	public static double densityAir = 1.25; // air density = 1.25kg/m3
-	public static double A = 8; // A = 1.89m2
-	public static double Cd = 0.4; // Cv
-	// Parameter for Fhc, Fla calculation
-	public static double etaM = 0.95; // etaM
-	public static double etaG = 0.95; // etaG
-	public static double Pconst = 10000.0; // pConst
-	public static double Voc = 600.0; // nominal system voltage ///???
-										// 325?350?343?
-	public static double rIn = 0.0; // ///??? c= 6.0?
-	public static double T = 20.0; // assume the temperature is 20 Celsius
-									// degree;
-	public static double k = 1.03; // k is the Peukert coefficient, k = 1.03;
-	public static double cp = 216.0; // cp = 216; ///nominal capacity: 216 AH
-	public static double c = 45;
+	
+//	private PolynomialSplineFunction splinef;   // spline result
+//	
+//	// Parameter for Frr calculation
+//	public static double urr = 0.005; // 1996_1998_General Motor Model
+//	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
+//	// Parameters for Fad calculation
+//	public static double densityAir = 1.25; // air density = 1.25kg/m3
+//	public static double A = 8; // A = 1.89m2
+//	public static double Cd = 0.4; // Cv
+//	// Parameter for Fhc, Fla calculation
+//	public static double etaM = 0.95; // etaM
+//	public static double etaG = 0.95; // etaG
+//	public static double Pconst = 10000.0; // pConst
+//	public static double Voc = 600.0; // nominal system voltage ///???
+//										// 325?350?343?
+//	public static double rIn = 0.0; // ///??? c= 6.0?
+//	public static double T = 20.0; // assume the temperature is 20 Celsius
+//									// degree;
+//	public static double k = 1.03; // k is the Peukert coefficient, k = 1.03;
+//	public static double cp = 216.0; // cp = 216; ///nominal capacity: 216 AH
+//	public static double c = 45;
+	
 	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
 	
 	private int originID = -1;
@@ -121,8 +137,8 @@ public class Bus extends Vehicle{
 		this.totalConsume = 0.0; //kWh
 		double soc[] = {0.00, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00};             
 		double r[] = {0.0419, 0.0288, 0.0221, 0.014, 0.0145, 0.0145, 0.0162}; 
-		PolynomialSplineFunction f = splineFit(soc,r);                         
-		this.splinef = f; 
+//		PolynomialSplineFunction f = splineFit(soc,r);                         
+//		this.splinef = f; 
 	}
 	
 	// function 4: updateBatteryLevel
@@ -169,7 +185,6 @@ public class Bus extends Vehicle{
 			try{
 				ContextCreator.bus_logger.write(formated_msg);
 				ContextCreator.bus_logger.newLine();
-				ContextCreator.bus_logger.flush();
 				this.accummulatedDistance_=0;
 			} catch(IOException e){
 				e.printStackTrace();
@@ -312,69 +327,106 @@ public class Bus extends Vehicle{
     	return this.routeID;
     }
     
-    public double calculateEnergy(){		
-		double velocity = currentSpeed();   // obtain the speed
-		double acceleration = currentAcc(); // obtain the acceleration
-		if(!this.movingFlag){
-			velocity = 0;
-			acceleration = 0;
-		}
-		double slope = 0.0f;          //positive: uphill; negative: downhill
-		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval. the length of one tick. 0.3
-		double currentSOC = Math.min(Math.max(getBatteryLevel()/(Bus.batteryCapacity+0.001), 0.001),0.99);     // currentSOC
-		//step 1: use the model: Fte = Frr + Fad + Fhc + Fla + Fwa. And Fwa = 0.
-		double Frr = Bus.urr * (mass_+ avgPersonMass_* passNum) * Bus.gravity;
-		double Fad = 0.5 * Bus.densityAir * Bus.A * Bus.Cd * velocity * velocity;
-		double Fhc = (mass_+ avgPersonMass_* passNum) * Bus.gravity * Math.sin(slope); //can be positive, can be negative  // mass loss // m = 1.05
-		double Fla = (mass_+ avgPersonMass_* passNum) * acceleration;       //can be positive, can be negative
-		double Fte = Frr + Fad + Fhc + Fla;     //can be positive, can be negative
-		double Pte = Math.abs(Fte) * velocity;  //positive unit: W
-		
-		//step 2: two cases
-		double Pbat = 0.0f;
-		if (Fte >= 0){      //driven case
-			Pbat = (Pte+Bus.Pconst)/Bus.etaM/Bus.etaG;		   //positive	
-		}else{              //regenerative case
-			Pbat = (Pte+Bus.Pconst)*Bus.etaM*Bus.etaG;         //positive
-		}	
-		double rIn = splinef.value(currentSOC)*Bus.c;          //c?		
-		double Pmax = Bus.Voc*Bus.Voc/4.0/rIn;               //rIn
-		
-		//step 3: energy calculation
-		double kt = Bus.k/1.03*(1.027 - 0.001122*Bus.T + 1.586*Math.pow(10, -5*Bus.T*Bus.T));  //kt depends on T also.
-		double cpt = Bus.cp/2.482*(2.482 + 0.0373*Bus.T - 1.65*Math.pow(10, -4*Bus.T*Bus.T));  //cpt depends on T also. //real capacity: not 77 AH
-		
-		double CR = 0.0f;
-		double I = 0.0f;
-		if (Pbat > Pmax){ 
-			//System.out.println("Error process, output error, need to recalculate vi");
-			Pbat = Pmax;
-		}
-		
-		if(Pbat >= 0){  //driven case
-			I = (Bus.Voc - Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat + 1e-6))/(2*rIn);// Prevent negative value by adding a tiny error
-			CR = Math.pow(I, kt)*dt;     //unit: AS                                       // I_kt??
-			//System.out.println("VID: "+ this.vehicleID_ + " Pte: "+ Pte + "Frr: " + Frr + " Fad: " + Fad + "Fhc: " + Fhc + "Fla: " + Fla +"V:" + velocity + "a: "+acceleration);
-		}else{              //regenerative case
-			I = (0.0f - Bus.Voc + Math.sqrt(Bus.Voc*Bus.Voc + 4 * rIn * Pbat + 1e-6))/(2*rIn);     // Prevent negative value by adding a tiny error
-			CR = -I * dt;    //unit: AS  //?
-		}
-		
-		double capacityConsumption = CR/(cpt*3600);   //unit: AH 
-		double energyConsumption = capacityConsumption * Bus.batteryCapacity;  //unit: kWh
-//		if(Double.isNaN(energyConsumption)){
-//			ContextCreator.logger.debug("v: "+ velocity + " acc: "+acceleration + " currentSOC: " + currentSOC);
-//			ContextCreator.logger.debug("Frr: "+ Frr + " Fad: "+Fad + " Fhc: " + Fhc + " Fla: " + Fla);
-//			ContextCreator.logger.debug("Fte: "+ Fte + " Pte: "+Pte + " Pbat: " + Pbat);
-//			ContextCreator.logger.debug("rIn:"+ rIn + " Pmax: "+Pmax + " kt: " + kt);
-//			ContextCreator.logger.debug("cpt:"+ cpt + " CR: "+CR + " I: " + I);
-//			ContextCreator.logger.debug("energyConsumption: "+ energyConsumption);
-//			ContextCreator.logger.debug("LLLL: "+  (Bus.Voc*Bus.Voc -4 * rIn * Pbat));
-//			ContextCreator.logger.debug("LLLLL: "+  Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat));
-//			return -1;
+    public double getMass() {
+    	return this.mass_ + this.avgPersonMass_* passNum;
+    }
+    
+    // New EV energy consumption model
+ 	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle energy consumption model: Model development and validation. Applied Energy, 168, 257�268.
+ 	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0 AC_Dv^2+mgsin(\theta))v
+ 	public double calculateEnergy(){
+ 		double velocity = currentSpeed();   // obtain the speed
+ 		double acceleration = currentAcc(); // obtain the acceleration
+ 		if(!this.movingFlag){
+ 			velocity = 0;
+ 			acceleration = 0;
+ 		}
+ 		double slope = 0.0f;          //positive: uphill; negative: downhill, this is always 0, change this if the slope data is available
+ 		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval, the length of one tick. 0.3
+ 		double f1 = getMass() * acceleration;
+ 		double f2 = getMass() * gravity * Math.cos(slope)*cr/1000*(c1*velocity+c2);
+ 		double f3 = 1/2*p0*A*cd*velocity*velocity;
+ 		double f4 = getMass() * gravity * Math.sin(slope);
+ 		double F = f1+f2+f3+f4;
+ 		double Pte = F*velocity;
+ 		double Pbat;
+ 		if(acceleration>=0){
+ 			Pbat = (Pte + Pconst)/(etaM*etaG);
+ 		}
+ 		else{
+ 			double nrb = 1/Math.exp(0.0411/Math.abs(acceleration));
+ 			Pbat = (Pte + Pconst)*nrb;
+ 		}
+ 		double energyConsumption = Pbat*dt/(3600*1000);
+ 		
+	    // System.out.println("Bus"+velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
+ 		return energyConsumption;
+ 	}
+    
+// 	public double calculateEnergy(){		
+//		double velocity = currentSpeed();   // obtain the speed
+//		double acceleration = currentAcc(); // obtain the acceleration
+//		if(!this.movingFlag){
+//			velocity = 0;
+//			acceleration = 0;
 //		}
-		return energyConsumption;
-	}
+//		double slope = 0.0f;          //positive: uphill; negative: downhill
+//		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval. the length of one tick. 0.3
+//		double currentSOC = Math.min(Math.max(getBatteryLevel()/(Bus.batteryCapacity+0.001), 0.001),0.99);     // currentSOC
+//		//step 1: use the model: Fte = Frr + Fad + Fhc + Fla + Fwa. And Fwa = 0.
+//		double Frr = Bus.urr * (mass_+ avgPersonMass_* passNum) * Bus.gravity;
+//		double Fad = 0.5 * Bus.densityAir * Bus.A * Bus.Cd * velocity * velocity;
+//		double Fhc = (mass_+ avgPersonMass_* passNum) * Bus.gravity * Math.sin(slope); //can be positive, can be negative  // mass loss // m = 1.05
+//		double Fla = (mass_+ avgPersonMass_* passNum) * acceleration;       //can be positive, can be negative
+//		double Fte = Frr + Fad + Fhc + Fla;     //can be positive, can be negative
+//		double Pte = Math.abs(Fte) * velocity;  //positive unit: W
+//		
+//		//step 2: two cases
+//		double Pbat = 0.0f;
+//		if (Fte >= 0){      //driven case
+//			Pbat = (Pte+Bus.Pconst)/Bus.etaM/Bus.etaG;		   //positive	
+//		}else{              //regenerative case
+//			Pbat = (Pte+Bus.Pconst)*Bus.etaM*Bus.etaG;         //positive
+//		}	
+//		double rIn = splinef.value(currentSOC)*Bus.c;          //c?		
+//		double Pmax = Bus.Voc*Bus.Voc/4.0/rIn;               //rIn
+//		
+//		//step 3: energy calculation
+//		double kt = Bus.k/1.03*(1.027 - 0.001122*Bus.T + 1.586*Math.pow(10, -5*Bus.T*Bus.T));  //kt depends on T also.
+//		double cpt = Bus.cp/2.482*(2.482 + 0.0373*Bus.T - 1.65*Math.pow(10, -4*Bus.T*Bus.T));  //cpt depends on T also. //real capacity: not 77 AH
+//		
+//		double CR = 0.0f;
+//		double I = 0.0f;
+//		if (Pbat > Pmax){ 
+//			//System.out.println("Error process, output error, need to recalculate vi");
+//			Pbat = Pmax;
+//		}
+//		
+//		if(Pbat >= 0){  //driven case
+//			I = (Bus.Voc - Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat + 1e-6))/(2*rIn);// Prevent negative value by adding a tiny error
+//			CR = Math.pow(I, kt)*dt;     //unit: AS                                       // I_kt??
+//			//System.out.println("VID: "+ this.vehicleID_ + " Pte: "+ Pte + "Frr: " + Frr + " Fad: " + Fad + "Fhc: " + Fhc + "Fla: " + Fla +"V:" + velocity + "a: "+acceleration);
+//		}else{              //regenerative case
+//			I = (0.0f - Bus.Voc + Math.sqrt(Bus.Voc*Bus.Voc + 4 * rIn * Pbat + 1e-6))/(2*rIn);     // Prevent negative value by adding a tiny error
+//			CR = -I * dt;    //unit: AS  //?
+//		}
+//		
+//		double capacityConsumption = CR/(cpt*3600);   //unit: AH 
+//		double energyConsumption = capacityConsumption * Bus.batteryCapacity;  //unit: kWh
+////		if(Double.isNaN(energyConsumption)){
+////			ContextCreator.logger.debug("v: "+ velocity + " acc: "+acceleration + " currentSOC: " + currentSOC);
+////			ContextCreator.logger.debug("Frr: "+ Frr + " Fad: "+Fad + " Fhc: " + Fhc + " Fla: " + Fla);
+////			ContextCreator.logger.debug("Fte: "+ Fte + " Pte: "+Pte + " Pbat: " + Pbat);
+////			ContextCreator.logger.debug("rIn:"+ rIn + " Pmax: "+Pmax + " kt: " + kt);
+////			ContextCreator.logger.debug("cpt:"+ cpt + " CR: "+CR + " I: " + I);
+////			ContextCreator.logger.debug("energyConsumption: "+ energyConsumption);
+////			ContextCreator.logger.debug("LLLL: "+  (Bus.Voc*Bus.Voc -4 * rIn * Pbat));
+////			ContextCreator.logger.debug("LLLLL: "+  Math.sqrt(Bus.Voc*Bus.Voc -4 * rIn * Pbat));
+////			return -1;
+////		}
+//		System.out.println("Bus"+velocity*3.6/1.609 + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/0.3*3600));
+//		return energyConsumption;
+//	}
     // spline interpolation 
  	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
  		SplineInterpolator splineInt = new SplineInterpolator();
@@ -397,7 +449,7 @@ public class Bus extends Vehicle{
 		try {
 			ContextCreator.charger_logger.write(formated_msg);
 			ContextCreator.charger_logger.newLine();
-			ContextCreator.charger_logger.flush();
+//			ContextCreator.charger_logger.flush();
 			this.charging_waiting_time = 0;
 			this.charging_time = 0;
 		} catch (IOException e) {

@@ -159,14 +159,6 @@ public class MetisPartition {
 					+ " edges");
 			System.err.println();
 		}*/
-		try{
-			ContextCreator.ev_logger.flush();
-			ContextCreator.bus_logger.flush();
-			ContextCreator.charger_logger.flush();
-		} catch (IOException e){
-			e.printStackTrace();
-		}
-		
 		System.gc(); // For gabage collection
 		
 		long time = System.nanoTime();

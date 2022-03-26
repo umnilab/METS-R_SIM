@@ -27,7 +27,7 @@ public class ElectricVehicle extends Vehicle{
 	private int numPeople_; // no of people inside the vehicle
 	private double avgPersonMass_; // average mass of a person in lbs
 	private double batteryLevel_; // current battery level
-	private double batteryRechargeLevel_ = 20;
+	private double batteryRechargeLevel_ = 10;
 	private double mass; // mass of the vehicle in kg
 	private boolean onChargingRoute_ = false;
 	private Coordinate tripOrigin; // Because setNextPlan will alter the origin, we need this variable to retain the true origin of a trip.
@@ -38,7 +38,6 @@ public class ElectricVehicle extends Vehicle{
 	private double linkConsume; // LZ: For UCB eco-routing, energy spent for passing current link, will be reset to zero once this ev entering a new road.
 	private double tripConsume; // LZ: For UCB testing
 	
-    // private PolynomialSplineFunction splinef;   // spline result
 	private int originID = -1;
 	private int destinationID = -1;
 	
@@ -55,14 +54,14 @@ public class ElectricVehicle extends Vehicle{
 	
 	// parameters for Fiori (2016) model
 	public static double p0 = 1.2256;
-	public static double A = 2.33;
+	public static double A = 2.3316;
 	public static double cd = 0.28;
 	public static double cr = 1.75;
 	public static double c1 = 0.0328;
 	public static double c2 = 4.575;
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
-	public static double cp = 70000;
+	// public static double cp = 70000;
 	public static double Pconst = 700;
 	
 	// Parameters for Maia (2012) model
@@ -140,7 +139,7 @@ public class ElectricVehicle extends Vehicle{
 		this.tripOrigin = currentCoord;
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
-		this.tripConsume = 0; // Start recording the tripConsume
+//		this.tripConsume = 0; // Start recording the tripConsume
 		this.setState(Vehicle.RELOCATION_TRIP);
 	}
 	
@@ -164,7 +163,7 @@ public class ElectricVehicle extends Vehicle{
 			this.tripOrigin = currentCoord;
 			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 			road.addVehicleToNewQueue(this);
-			this.tripConsume = 0; // Start recording the tripConsume
+//			this.tripConsume = 0; // Start recording the tripConsume
 			this.setState(Vehicle.OCCUPIED_TRIP);
 		}
 	}
@@ -190,6 +189,7 @@ public class ElectricVehicle extends Vehicle{
 			cs.receiveVehicle(this);
 			this.endTime = (int) RepastEssentials.GetTickCount();
 			this.reachActLocation = true;
+			this.tripConsume = 0; 
 		} else {
 			// log the trip consume here
 			String formated_msg = RepastEssentials.GetTickCount() + "," + 
@@ -202,6 +202,7 @@ public class ElectricVehicle extends Vehicle{
 			} catch(IOException e){
 				e.printStackTrace();
 			}
+			this.tripConsume = 0; 
 			
 			this.originID = this.destinationID; // next trip starts from the previous destination
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
@@ -267,7 +268,7 @@ public class ElectricVehicle extends Vehicle{
 	}
 	
 	public double getMass() {
-		return 1.05*(mass+numPeople_*avgPersonMass_);
+		return 1.05*mass+numPeople_*avgPersonMass_;
 	}
 	
 	@Override
@@ -299,10 +300,10 @@ public class ElectricVehicle extends Vehicle{
 		double slope = 0.0f;          //positive: uphill; negative: downhill, this is always 0, change this if the slope data is available
 		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval, the length of one tick. 0.3
 		double f1 = getMass() * acceleration;
-		double f2 = getMass() * gravity + Math.cos(slope)*cr/1000*(c1*velocity+c2);
+		double f2 = getMass() * gravity * Math.cos(slope)*cr/1000*(c1*velocity+c2);
 		double f3 = 1/2*p0*A*cd*velocity*velocity;
 		double f4 = getMass() * gravity * Math.sin(slope);
-		double F = Math.abs(f1+f2+f3+f4);
+		double F = f1+f2+f3+f4;
 		double Pte = F*velocity;
 		double Pbat;
 		if(acceleration>=0){
@@ -312,7 +313,9 @@ public class ElectricVehicle extends Vehicle{
 			double nrb = 1/Math.exp(0.0411/Math.abs(acceleration));
 			Pbat = (Pte + Pconst)*nrb;
 		}
-		double energyConsumption = Pbat*dt/(3600*cp);
+		double energyConsumption = Pbat*dt/(3600*1000); //wh to kw
+		
+	    // System.out.println("Taxi"+velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
 		return energyConsumption;
 	}
 	
