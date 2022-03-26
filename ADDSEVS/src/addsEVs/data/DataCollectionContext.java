@@ -161,6 +161,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.network_logger.newLine();
 			ContextCreator.network_logger.flush();
 			ContextCreator.link_logger.flush();
+			ContextCreator.charger_logger.flush();
+			ContextCreator.bus_logger.flush();
+			ContextCreator.ev_logger.flush();
 		} catch (IOException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
