@@ -1,5 +1,3 @@
-# [Doc] METS-R
-
 # About METS-R
 
 # 1 Overall framework
