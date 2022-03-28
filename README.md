@@ -301,7 +301,8 @@ As a response to this code, a new folder or an indicated folder will be created 
     3. pass: number of newly served passengers.
     4. link: linkID, cumulative flow, averge speed, cumulative energy consumption aggregated by link
     An example file of the output `JSON` is shown below:
-    ```jsx
+
+```jsx
 {
   "1000.0": { // tick at which the snapshot is taken (1 tick = 0.3 second)
     "ev": [ // evs currently on the road network [43200.0,-73.9799,40.746502,-73.9801,40.74659,2.8872762,228.0,180.0,49.562504,0.43749437,106140.0,1.0],[46914.0,-73.97441,40.74739,-73.97436,40.747364,0.44704,159.0,180.0,49.866077,0.13392286,106133.0,2.0],
