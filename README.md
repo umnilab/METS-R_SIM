@@ -1,8 +1,8 @@
-# About METS-R
-
-# 1 Overall framework
+# Welcome to the METS-R simulator!
 
 METS-R ADDSEVS simulator is a high fidelity, parallel, agent-based evacuation simulator for **multi-modal energy-optimal trip scheduling in real-time (METS-R)** at transportation hubs.It consists of two modules. The first one is the traffic simulator module; the second one is the high-performance computing (HPC) module.
+
+# 1 Overall framework
 
 ![Simulation framework](res/simulation_framework1.png)
 
@@ -66,7 +66,7 @@ To run the HPC module, you need to first download and build the simulator by fol
     
 2. View the HPC configuration json file. Currently, this HPC module consists of 3 modules: eco-routing, bus-scheduling, and ridesharing. As shown in the figure below, all configuration parameters are defined at `run.config.scenario.json`.   
     
-    ![Example of run.config.scenario.json](run_config_scenario.png)
+    ![Example of run.config.scenario.json](res/run_config_scenario.png)
     
 3. Modify the existing `run.config.scenario.json` file with the configurations you want:
     - `java_path` - set the absolute path of your java installation.
