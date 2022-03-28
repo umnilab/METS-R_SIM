@@ -137,7 +137,7 @@ public class Zone {
 		//double sim_time = tickcount*GlobalVariables.SIMULATION_STEP_SIZE;
 		int hour = (int) Math.floor(tickcount
 				* GlobalVariables.SIMULATION_STEP_SIZE / 3600);
-		hour = hour % 169;
+		hour = hour % 169; //at most one week
 		if(this.lastUpdateHour!=hour){
 			this.futureDemand = 0;
 			this.futureSupply = 0;
@@ -159,14 +159,14 @@ public class Zone {
 		if(this.zoneClass == 0){ //From other place to hub
             int j = 0;
             for(int destination : GlobalVariables.HUB_INDEXES){
-            	double numToGenerate =ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
+            	double numToGenerate = ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
         				GlobalVariables.NUM_OF_ZONE).get(hour) / 12;
             	if(this.lastUpdateHour!=hour){
             		this.futureDemand+=numToGenerate;
             		this.futureSupply+=ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) / 12;
             	}
-            	numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
             	numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
+            	numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
 				for (int i = 0; i < numToGenerate; i++) {
 					Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Wait for at most 2 hours
 					float threshold = getSplitRatio(destination);	

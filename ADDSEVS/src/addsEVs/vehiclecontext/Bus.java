@@ -66,7 +66,7 @@ public class Bus extends Vehicle{
 	// parameters for Fiori (2016) model, 
 	// modified frontal area and draft coefficient according to Bus 2 in "Aerodynamic Exterior Body Design of Bus"
 	public static double p0 = 1.2256;
-	public static double A = 6.93; // frontal area of the vehicle
+	public static double A = 8; // frontal area of the vehicle // we used 6.93 to run the experiment
 	public static double cd = 0.68; // draft coefficient
 	public static double cr = 1.75;
 	public static double c1 = 0.0328;
@@ -74,7 +74,7 @@ public class Bus extends Vehicle{
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
 //	public static double cp = 70000;
-	public static double Pconst = 700;
+	public static double Pconst = 5500; // we used 700 to run the experiment, turned out to be underestimated
 	
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
 	
@@ -358,8 +358,9 @@ public class Bus extends Vehicle{
  			Pbat = (Pte + Pconst)*nrb;
  		}
  		double energyConsumption = Pbat*dt/(3600*1000);
- 		
-	    // System.out.println("Bus"+velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
+// 		if(Math.random()>0.95) {
+//	        System.out.println("Bus"+ "," +velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
+// 		}
  		return energyConsumption;
  	}
     

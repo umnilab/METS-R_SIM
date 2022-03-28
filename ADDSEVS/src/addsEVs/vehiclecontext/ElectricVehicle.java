@@ -62,7 +62,7 @@ public class ElectricVehicle extends Vehicle{
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
 	// public static double cp = 70000;
-	public static double Pconst = 700;
+	public static double Pconst = 1500; // we used 700 to run the experiment, turned out to be underestimated
 	
 	// Parameters for Maia (2012) model
 	//	public static double urr = 0.005; // 1996_1998_General Motor Model
@@ -109,7 +109,7 @@ public class ElectricVehicle extends Vehicle{
 		this.destinationID = cs.getIntegerID();
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
-		//ContextCreator.logger.info("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
+//		ContextCreator.logger.info("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
 		//this.setNextPlan();
 	}
 	
@@ -315,7 +315,10 @@ public class ElectricVehicle extends Vehicle{
 		}
 		double energyConsumption = Pbat*dt/(3600*1000); //wh to kw
 		
-	    // System.out.println("Taxi"+velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
+//		if(Math.random()>0.99) {
+//			System.out.println("Taxi"+ "," + velocity + "," + acceleration + ","+ (velocity*3.6/1.609)/(energyConsumption/dt*3600));
+//		}
+	    
 		return energyConsumption;
 	}
 	

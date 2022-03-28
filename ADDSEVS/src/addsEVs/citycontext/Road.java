@@ -584,7 +584,7 @@ public class Road {
 	}
 	
 	public double getRandomFreeSpeed() {
-		return Math.max(this.freeSpeed_ + GlobalVariables.RandomGenerator.nextGaussian()*this.freeSpeedStd_, 5*0.44704); // at least 5 mph
+		return Math.max(this.freeSpeed_ + GlobalVariables.RandomGenerator.nextGaussian()*this.freeSpeedStd_, 1*0.44704); // at least 1 mph
 	}
 
 	public float calcSpeed() {
