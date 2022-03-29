@@ -16,7 +16,7 @@ METS-R ADDSEVS simulator is a high fidelity, parallel, agent-based evacuation si
 3. Clone the METS-R repository using `git` to a suitable location.
     
     ```
-    git clone <METS-R GitHub URL>
+    git clone <https://github.com/umnilab/METS-R_ADDSEVS/>
     ```
     
 4. Open Eclipse and go to File -> *Open Projects from File System…*
