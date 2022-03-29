@@ -20,8 +20,8 @@ METS-R ADDSEVS simulator is a high fidelity, parallel, agent-based evacuation si
     ```
     
 4. Open Eclipse and go to File -> *Open Projects from File System…*
-5. In the *Import Projects from File System or Archive* window click on *Directory* and open the *doe-mets-r* directory you cloned in step 3.
-6. Under *Folder* check *doe-mets-r/ADDSEVS* only and click *Finish*. This should open the METS-R java code in Eclipse as shown in the following figure.   
+5. In the *Import Projects from File System or Archive* window click on *Directory* and open the *ADDSEVS* directory you cloned in step 3.
+6. Under *Folder* check *ADDSEVS* only and click *Finish*. This should open the METS-R java code in Eclipse as shown in the following figure.   
     
     ![Load the ADDSEVS project in Eclipse](res/load_sim_in_eclipse.png)                                                        
     
@@ -41,7 +41,7 @@ METS-R ADDSEVS simulator is a high fidelity, parallel, agent-based evacuation si
     VM arguments : -Xss1024M -Xms1024M -Xmx8G
     ```
     
-11. Click Run and you should see the *Repast Symphony* simulation window as shown in Figure 3 (You can also use *Run* button in the toolbar).
+11. Click Run and you should see the below *Repast Symphony* simulation window (You can also use *Run* button in the toolbar).
     
     ![Example of ADDSEVS](res/addsevs_interface.png)
     
