@@ -62,7 +62,7 @@ public class ElectricVehicle extends Vehicle{
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
 	// public static double cp = 70000;
-	public static double Pconst = 1500; // we used 700 to run the experiment, turned out to be underestimated
+	public static double Pconst = 1500; // energy consumption by auxiliary accessories
 	
 	// Parameters for Maia (2012) model
 	//	public static double urr = 0.005; // 1996_1998_General Motor Model

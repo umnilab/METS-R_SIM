@@ -58,7 +58,6 @@ public class Zone {
 	private boolean hasBus;
 	public int busGap;
 	// change into public int due to the change in Busschedule.java 03/15/2022 zhengyu
-	
 	// utility function
 	//	float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
 	//			beta*(taxiTravelTime.get(destID)/60+5)+taxiBase;
@@ -103,6 +102,12 @@ public class Zone {
 		this.hasBus = false;
 		this.busGap = -1;
 		this.destDistribution = new ArrayList<Float>();
+		if(GlobalVariables.HUB_INDEXES.contains(this.integerID)) {
+			this.zoneClass = 1;
+		}
+		else {
+			this.zoneClass = 0;
+		}
 		//Initialize metrices
 		this.numberOfGeneratedTaxiPass = 0;
 		this.numberOfGeneratedBusPass = 0;
@@ -137,7 +142,7 @@ public class Zone {
 		//double sim_time = tickcount*GlobalVariables.SIMULATION_STEP_SIZE;
 		int hour = (int) Math.floor(tickcount
 				* GlobalVariables.SIMULATION_STEP_SIZE / 3600);
-		hour = hour % 169; //at most one week
+//		System.out.println("Zone " + this.integerID + "Hour " + hour);
 		if(this.lastUpdateHour!=hour){
 			this.futureDemand = 0;
 			this.futureSupply = 0;
@@ -160,16 +165,16 @@ public class Zone {
             int j = 0;
             for(int destination : GlobalVariables.HUB_INDEXES){
             	double numToGenerate = ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-        				GlobalVariables.NUM_OF_ZONE).get(hour) / 12;
+        				GlobalVariables.NUM_OF_ZONE).get(hour) / 12.0;
             	if(this.lastUpdateHour!=hour){
-            		this.futureDemand+=numToGenerate;
-            		this.futureSupply+=ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) / 12;
+            		this.futureDemand+=numToGenerate * GlobalVariables.PASSENGER_DEMAND_FACTOR;
+            		this.futureSupply+=ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) * GlobalVariables.PASSENGER_DEMAND_FACTOR / 12.0;
             	}
             	numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
             	numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
 				for (int i = 0; i < numToGenerate; i++) {
 					Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Wait for at most 2 hours
-					float threshold = getSplitRatio(destination);	
+					float threshold = getSplitRatio(destination);
 					if ((Math.random() > threshold && hasBus) || !hasBus) {
 						nPassForTaxi += 1;
 						if(new_pass.isShareable()) {
@@ -205,15 +210,16 @@ public class Zone {
 		}
 		else if (this.zoneClass == 1) { //From hub to other place
 			int j = GlobalVariables.HUB_INDEXES.indexOf(this.integerID);
-			for (int i = 1; i < ContextCreator.getZoneGeography().size(); i++) {
+			for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
 				int destination = i;
-				double numToGenerate =ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) / 12;
+				double numToGenerate =ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) / 12.0;
+				
 				if(this.lastUpdateHour!=hour){
-            		this.futureDemand+=numToGenerate;
-            		this.futureSupply+=ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2+GlobalVariables.NUM_OF_ZONE).get(hour) / 12;
+            		this.futureDemand+=numToGenerate*GlobalVariables.PASSENGER_DEMAND_FACTOR;
+            		this.futureSupply+=ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2+GlobalVariables.NUM_OF_ZONE).get(hour)*GlobalVariables.PASSENGER_DEMAND_FACTOR / 12.0;
             	}
-				numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
 				numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
+				numToGenerate = Math.floor(numToGenerate) + (Math.random()<(numToGenerate-Math.floor(numToGenerate))?1:0);
 	            if (destination != this.integerID) {
 					for (int k = 0; k < numToGenerate; k++) {
 						Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Pass wait for two hours

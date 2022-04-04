@@ -74,7 +74,7 @@ public class Bus extends Vehicle{
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
 //	public static double cp = 70000;
-	public static double Pconst = 5500; // we used 700 to run the experiment, turned out to be underestimated
+	public static double Pconst = 5500; // energy consumption by auxiliary accessories
 	
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
 	
@@ -144,17 +144,19 @@ public class Bus extends Vehicle{
 	// function 4: updateBatteryLevel
 	 @Override
 	public void updateBatteryLevel() {
-		double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick
-		tickConsume = tickEnergy;
-		totalConsume += tickEnergy;
+		if(this.routeID>=0) {
+			double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick
+			tickConsume = tickEnergy;
+			totalConsume += tickEnergy;
 
-		linkConsume += tickEnergy;
-		tripConsume += tickEnergy;
-		// ContextCreator.logger.debug( Double.toString(totalConsume) +','+
-		// Double.toString(this.accummulatedDistance_));
-		// ContextCreator.logger.debug( Double.toString(tickConsume) +','+
-		// Double.toString(this.currentSpeed()));
-		batteryLevel_ -= tickEnergy;
+			linkConsume += tickEnergy;
+			tripConsume += tickEnergy;
+			// ContextCreator.logger.debug( Double.toString(totalConsume) +','+
+			// Double.toString(this.accummulatedDistance_));
+			// ContextCreator.logger.debug( Double.toString(tickConsume) +','+
+			// Double.toString(this.currentSpeed()));
+			batteryLevel_ -= tickEnergy;
+		}
 	}
 	 
 	public double getTripConsume(){
