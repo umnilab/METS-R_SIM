@@ -79,8 +79,8 @@ public class ChargingStation{
 		ev.initial_charging_state = ev.getBatteryLevel();
 		this.numChargedVehicle += 1;
 		if ((num2>0)&&(num3>0)){
-			double utilityL2 = -alpha * totalTimeL2(ev) - chargingCostL2(ev);
-			double utilityL3 = -alpha * totalTimeL3(ev) - chargingCostL3(ev);
+			double utilityL2 = -alpha * totalTimeL2(ev)/3600 - chargingCostL2(ev);
+			double utilityL3 = -alpha * totalTimeL3(ev)/3600 - chargingCostL3(ev);
 			double shareOfL2 = Math.exp(utilityL2)/(Math.exp(utilityL2) + Math.exp(utilityL3));
 			double random = Math.random();	
 			if (random < shareOfL2){  
