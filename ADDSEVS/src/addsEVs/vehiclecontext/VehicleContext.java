@@ -38,19 +38,28 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	public void createVehicleContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
 		int total_vehicles = 0;
-		int num_total = (vehicle_num + 1) * 500;
-		int num_hub = num_total / 2 / GlobalVariables.HUB_INDEXES.size();
-		int num_per_zone = (int) Math.ceil(vehicle_num * 500 / 2.0 / zoneGeography.size());
+		int num_total = vehicle_num;
+		// 1/2 of vehicles initialized in hubs
+		int num_hub;
+		if (GlobalVariables.HUB_INDEXES.size() > 0) {
+			num_hub = 0;
+		}
+		else{
+			num_hub = (int) Math.ceil((float) num_total / 2 / GlobalVariables.HUB_INDEXES.size());
+		}
+		// generate the rest vehicles in other zones
+		int num_per_zone = (int) Math.ceil((float) vehicle_num / 2.0 / (zoneGeography.size() - GlobalVariables.HUB_INDEXES.size()));
 		for (Zone z : zoneGeography.getAllObjects()) {
 			Geometry hgeom = zoneGeography.getGeometry(z);
 			Coordinate coord = hgeom.getCoordinate();
 			LinkedBlockingQueue<ElectricVehicle> tmpQueue = new LinkedBlockingQueue<ElectricVehicle>();
 			int vehicle_num_to_generate = 0;
-			if (num_total < num_per_zone) {
-				vehicle_num_to_generate = num_total;
+			if (GlobalVariables.HUB_INDEXES.contains(z.getIntegerID())) {
+				vehicle_num_to_generate = num_hub;
 			} else {
 				vehicle_num_to_generate = num_per_zone;
 			}
+			vehicle_num_to_generate = num_total <= num_per_zone ? num_total : vehicle_num_to_generate;
 			num_total -= num_per_zone;
 			if (GlobalVariables.HUB_INDEXES.contains(z.getIntegerID())) {
 				vehicle_num_to_generate = num_hub;
@@ -82,7 +91,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 //			ArrayList<Integer> vehicle_gaps, 
 			int bus_num){
 		// go through all routes, generate vehicle_num[i] buses in the beginning of the routes
-		int num_per_hub = (int) Math.ceil(bus_num * 100/ GlobalVariables.HUB_INDEXES.size());
+		int num_per_hub = (int) Math.ceil(bus_num/ GlobalVariables.HUB_INDEXES.size());
 		try{
 		for(int startZone: GlobalVariables.HUB_INDEXES){
 			ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));

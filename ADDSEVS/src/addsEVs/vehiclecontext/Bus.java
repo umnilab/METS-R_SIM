@@ -169,7 +169,7 @@ public class Bus extends Vehicle{
 		Coordinate currentCoord = this.getOriginalCoord();
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
-//		ContextCreator.logger.debug("Bus "+this.vehicleID_+" is re-entering the Road " + road.getID());
+		ContextCreator.logger.debug("Bus "+this.vehicleID_+" is re-entering the Road " + road.getID());
 	}
 	
 	//The setReachDest() function applies for three cases: 
@@ -192,7 +192,7 @@ public class Bus extends Vehicle{
 				e.printStackTrace();
 			}
 			this.leaveNetwork();                // remove the bus from the network
-//			ContextCreator.logger.info("Bus arriving at charging station:"+this.getId());
+			ContextCreator.logger.debug("Bus arriving at charging station:"+this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationZoneID());
 			cs.receiveBus(this);
 			this.originID = cs.getIntegerID();
@@ -224,19 +224,18 @@ public class Bus extends Vehicle{
 			
 			// drop off passengers.
 			this.leaveNetwork();
-//			ContextCreator.logger.info("Bus arriving at origin stop: " + nextStop);
+			ContextCreator.logger.debug("Bus arriving at origin stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
 			
 			// add the plan to the charging station.
 			ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
 			this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount()); // instantly go to charging station
-//			ContextCreator.logger.info("Bus "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
+			ContextCreator.logger.debug("Bus "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
 			this.onChargingRoute_ = true;
 			this.setState(Vehicle.CHARGING_TRIP);
 			this.setNextPlan();	
 			this.addPlan(current_dest_zone, current_dest_coord, Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime)); // Follow the old schedule
-//			ContextCreator.logger.info("Bus "+this.id+" is go charging");
 			this.tripConsume=0;
 			this.accummulatedDistance_=0;
 			this.departure(cs.getIntegerID());
@@ -257,7 +256,7 @@ public class Bus extends Vehicle{
 			
 			this.originID = this.destinationID;
 			this.leaveNetwork();                           
-			ContextCreator.logger.info("Bus arriving at bus stop: " + nextStop);
+			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
 			
@@ -277,7 +276,7 @@ public class Bus extends Vehicle{
 					ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop)).getCoord(), 
 					Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime));
 			this.setNextPlan();
-//			ContextCreator.logger.info("Bus "+this.id+" has arrive the next station: " +nextStop);
+			ContextCreator.logger.debug("Bus "+this.id+" has arrive the next station: " +nextStop);
 			this.tripConsume=0;
 			this.accummulatedDistance_=0;
 			this.departure(this.busStop.get(nextStop));
