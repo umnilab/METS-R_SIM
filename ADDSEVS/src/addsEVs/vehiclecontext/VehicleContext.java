@@ -42,10 +42,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		// 1/2 of vehicles initialized in hubs
 		int num_hub;
 		if (GlobalVariables.HUB_INDEXES.size() > 0) {
-			num_hub = 0;
+			num_hub = (int) Math.ceil((float) num_total / 2 / GlobalVariables.HUB_INDEXES.size());
 		}
 		else{
-			num_hub = (int) Math.ceil((float) num_total / 2 / GlobalVariables.HUB_INDEXES.size());
+			num_hub = 0;
 		}
 		// generate the rest vehicles in other zones
 		int num_per_zone = (int) Math.ceil((float) vehicle_num / 2.0 / (zoneGeography.size() - GlobalVariables.HUB_INDEXES.size()));
