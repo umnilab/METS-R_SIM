@@ -102,11 +102,11 @@ public class ChargingStation{
 		if (chargingVehicleL2.size() > 0){   // the number of vehicles that are at chargers.
 			for (int i=0; i < chargingVehicleL2.size(); i++) {
 				ElectricVehicle ev = chargingVehicleL2.get(i);   
-				double maxChargingDemand = 50.0 - ev.getBatteryLevel();  // the maximal battery level is 50.0kWh
+				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel();  // the maximal battery level is 50.0kWh
 				
 				//double maxChargingSupply = chargingRateL2/3600.0 * GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
 				//		*GlobalVariables.SIMULATION_STEP_SIZE;   // the maximal charging supply(kWh) within every 100 ticks. 
-				double C_car = 50.0;
+				double C_car = GlobalVariables.EV_BATTERY ;
 				double SOC_i = ev.getBatteryLevel()/C_car;
 				double P = chargingRateL2;
 				double t = GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL * GlobalVariables.SIMULATION_STEP_SIZE/3600.0;

@@ -106,7 +106,7 @@ public class ElectricVehicle extends Vehicle{
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
 		road.addVehicleToNewQueue(this);
 		ContextCreator.logger.debug("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
-		this.setNextPlan();
+//		this.setNextPlan();
 	}
 	
     @Override
@@ -225,7 +225,7 @@ public class ElectricVehicle extends Vehicle{
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;
-		this.batteryLevel_ =  GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
+		this.batteryLevel_ =  0.1 * GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
 		this.mass = 1521; // 4000
 		this.avgPersonMass_ = 60; //180
 		this.tripOrigin = null;
