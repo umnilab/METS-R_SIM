@@ -91,7 +91,7 @@ public class BusSchedule{
 		}
 		this.processSchedule();
 		
-		System.out.println("Loaded bus schedule from offline files.");
+		ContextCreator.logger.info("Loaded bus schedule from offline files.");
 	}
 	// For changing bus route schedule
 	public void updateEvent(int newhour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes, ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap){

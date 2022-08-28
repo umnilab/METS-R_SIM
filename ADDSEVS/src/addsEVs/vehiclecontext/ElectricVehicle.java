@@ -177,7 +177,7 @@ public class ElectricVehicle extends Vehicle{
 			this.leaveNetwork(); // remove from the network
 			// Add to the charging station
 			ContextCreator.logger.info("Vehicle arriving at charging station:"+this.getId());
-			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationZoneID());
+			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationID());
 			cs.receiveVehicle(this);
 			this.endTime = (int) RepastEssentials.GetTickCount();
 			this.reachActLocation = true;

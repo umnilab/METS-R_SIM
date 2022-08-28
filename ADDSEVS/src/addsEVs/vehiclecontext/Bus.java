@@ -31,7 +31,7 @@ public class Bus extends Vehicle{
 	private ArrayList<Integer> busStop;         
 	// Each entry represents a bus stop (zone) along the bus route.
 	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
-	private Dictionary<Integer, Integer> stopBus; // LZ: reverse table for track the zone in the busStop;
+	private Dictionary<Integer, Integer> stopBus; // Reverse table for track the zone in the busStop;
 	
 	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
@@ -157,7 +157,7 @@ public class Bus extends Vehicle{
 			}
 			this.leaveNetwork();                // remove the bus from the network
 			ContextCreator.logger.debug("Bus arriving at charging station:"+this.getId());
-			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationZoneID());
+			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestinationID());
 			cs.receiveBus(this);
 			this.originID = cs.getIntegerID();
 			this.endTime = (int) RepastEssentials.GetTickCount();
