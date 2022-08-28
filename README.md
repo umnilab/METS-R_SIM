@@ -16,7 +16,7 @@ The overallframwork of the METS-R simulator is shown in the following figure. In
 2. Clone the METS-R repository using `git` to a target folder.
     
     ```
-    git clone <https://github.com/umnilab/METS-R_ADDSAEVS.git/>
+    git clone https://github.com/umnilab/METS-R_ADDSAEVS.git
     ```
 3. If started from HPC module, *Python* (version >= 3.7) and the folowing packages are needed:
 + [lapsolver] (https://github.com/cheind/py-lapsolver)
