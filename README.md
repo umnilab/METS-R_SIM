@@ -1,63 +1,68 @@
 # Welcome to the METS-R simulator!
 
-METS-R ADDSEVS simulator is a high fidelity, parallel, agent-based evacuation simulator for **multi-modal energy-optimal trip scheduling in real-time (METS-R)** at transportation hubs.It consists of two modules. The first one is the traffic simulator module; the second one is the high-performance computing (HPC) module.
+The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulator is a high fidelity, parallel, agent-based simulator for simulating large-scale electric vehicle services. It consists of a traffic simulator module that is able to model EV taxis and EV transits and a control center with high-performance computing (HPC) architecture.
 
 # 1 Overall framework
 
-![Simulation framework](res/simulation_framework1.png)
+The overallframwork of the METS-R simulator is shown in the following figure. In this framework, multiple instances are connected under a single remote data client manager. The benefits are two-fold:
+1. For testing some operational algorithms (e.g., reinforcement learning algorithms) which require large amount of simulation trajectories, such framework has better data collection efficiency; 2. For some opeartional algorithms that need to solve an optimization (e.g., ILP), this framework allows to cache the solutions so one can reuse them in multiple simulation instances.
 
+![Simulation framework](res/simulation_framework1.png)
 
 # 2 Installation
 
-## 2.1 Building and running the simulator
+## 2.1 Prerequisite
+1. Download and install *Eclipse IDE with *Repast Simphony* 2.6 from [here](https://github.com/Repast/repast.simphony/releases).
+2. Clone the METS-R repository using `git` to a target folder.
+    
+    ```
+    git clone <https://github.com/umnilab/METS-R_ADDSAEVS.git/>
+    ```
+3. If started from HPC module, *Python* (version >= 3.7) and the folowing packages are needed:
++ [lapsolver] (https://github.com/cheind/py-lapsolver)
++ [geopandas] (https://geopandas.org/en/stable/getting_started/install.html)
++ [seaborn] (https://seaborn.pydata.org/installing.html)
++ [psutil] (https://pypi.org/project/psutil/) 
+**NOTE** : HPC module only works for Linux machines.
 
-1. Download and install *Eclipse IDE for Java Developers* from [here](http://www.eclipse.org/downloads/packages/release/2021-03/r/eclipse-ide-java-developers).
-2. Install *Repast Simphony* plugin in Eclipse using the instructions provided [here](https://repast.github.io/download.html#update-site-install).
-3. Clone the METS-R repository using `git` to a suitable location.
-    
-    ```
-    git clone <https://github.com/umnilab/METS-R_ADDSEVS/>
-    ```
-    
-4. Open Eclipse and go to File -> *Open Projects from File System…*
-5. In the *Import Projects from File System or Archive* window click on *Directory* and open the *ADDSEVS* directory you cloned in step 3.
-6. Under *Folder* check *ADDSEVS* only and click *Finish*. This should open the METS-R java code in Eclipse as shown in the following figure.   
+## 2.2 Start a single simulation instance
+The following steps only run the traffic simulator (built-in Java) without the HPC module. In order to run the HPC module, please follow the steps in *[Running simulation with HPC module]*.
+
+1. Open Eclipse and go to File -> *Open Projects from File System…*
+2. In the *Import Projects from File System or Archive* window click on *Directory* and open the *ADDSEVS* directory you cloned in step 3.
+3. Under *Folder* check *ADDSEVS* only and click *Finish*. This should open the METS-R java code in Eclipse as shown in the following figure.   
     
     ![Load the ADDSEVS project in Eclipse](res/load_sim_in_eclipse.png)                                                        
     
-7. If required, modify the inputs of the simulation run scenario according to your needs in the configuration file ( `ADDSEVS/data/Data.properties`).
-8. Go to *Run -> Run Configurations.*
-9. In *Main* tab use (These values may be auto-filled, in that case, skip steps 9 and 10).
+4. If required, modify the inputs of the simulation run scenario according to your needs in the configuration file ( `ADDSEVS/data/Data.properties`).
+5. Go to *Run -> Run Configurations.*
+6. In *Main* tab use (These values may be auto-filled, in that case, skip steps 9 and 10).
     
     ```
     Project : ADDSEVS
     Main class : repast.simphony.runtime.RepastMain
     ```
     
-10. In *Arguments* tab use (note that VM arguments can be changed depending on the available memory on your machine).
+7. In *Arguments* tab use (note that VM arguments can be changed depending on the available memory on your machine).
     
     ```
     Program Arguments : "${workspace_loc:ADDSEVS}/ADDSEVS.rs"
     VM arguments : -Xss1024M -Xms1024M -Xmx8G
     ```
     
-11. Click Run and you should see the below *Repast Symphony* simulation window (You can also use *Run* button in the toolbar).
+8. Click Run and you should see the below *Repast Symphony* simulation window (After specified in the first time, you can also use *Run* button in the Eclipse toolbar).
     
     ![Example of ADDSEVS](res/addsevs_interface.png)
     
-12. Click on *Initialize Run* (power) and then the *Start Run* button to begin the simulation.
+9. Click on the *Start Run* button in the pop-up window to begin the simulation.
 
-The above steps only run the traffic simulator (built-in Java) without the HPC module. In order to run the HPC module, please follow the steps in *[Running simulation with HPC module]*.
+10. The simulation outputs can be found in the agg_output folder, one can also obtain the vehicle trajectories by following the 
 
-## 2.2 Running simulation with HPC module
+## 2.3 Running simulation with HPC module (Linux)
 
-To run the HPC module, you need to first download and build the simulator by following the steps in *[Building and Running the Simulator](https://www.notion.so/Doc-METS-R-c214ed52a2234f9783bee2bedb3d4615).*
+### 2.3.1 Running HPC module
 
-**NOTE** : HPC module is only tested on Ubuntu/Linux machines.
-
-### 2.2.1 Running HPC module
-
-1. You must download the `METSR_HPC` code to run the HPC module.
+1. Download the `METSR_HPC` code to run the HPC module.
     
     ```
     git clone git@github.com:umnilab/METSR_HPC.git
@@ -76,24 +81,23 @@ To run the HPC module, you need to first download and build the simulator by fol
     - `repast_plugin_dir` - absolute path pf your repast plugin installation.
     - `charger_plan` - the charging plan for EVs.
     - `num_sim_instances` - number of parallel simulation instances you need to run.
-    - `socket_port_numbers` - specify a list of free socket port numbers in your machines separated by a comma. You need to specify N ports where N is the number of parallel simulation instances you want to run. If you don't know free port numbers, run `FindFreePorts.java` using eclipse. This will print up to 16 free ports numbers available in your machine.
 4. Finally, run
     
     ```
     python3 run_hpc.py -s 0 -c 0 -p 1 -e -b
     ```
-    
     - `-s 0` means the scenario index is 0. The available indexes are 0,1,2 and 3.
     - `-c 0` denotes that the case index is 0. It can range from 0 to 9.
     - `-p 1` shows that ride-sharing module is performed and the ridesharing percentage is 100%.
     - `-e` means the eco-routing module is open.
     - `-b` means the bus scheduling module is open.
+    - More options can be found in `run_hpc.py`
 5. This will start the simulation instances in parallel and run RDCM. All the files related to each simulation run will be created in a separate directory `eco_true_bus_true_share_100/scenario<i>/<j>_<k>` , where `i` means i'th scenario index, `j`  is j'th case index, and `k` represents the k’th instance index. You should see several log files and output folders as shown in the following figure.
     
     ![Example of the output directory](res/output_directory.png)
-    
 
-### 2.2.2 Advanced options: change demand files data preparation
+
+### 2.3.2 Advanced options: change demand files
 
 1. The demand prediction module is hosted in METRS_HPC repo. Clone it if you have not done that.
 2. Download and process the data required to train the models.
@@ -121,19 +125,16 @@ To run the HPC module, you need to first download and build the simulator by fol
         - `taxiZone` : taxi zone number
     - `public void RefreshResult()` : Use this function to repopulate the prediction result from the `.csv` file. This is useful if you want to update the demand prediction while the simulator is also running.
 
-### 2.2.3 Advanced options: utilize prepared bus scheduling files without gurobi license
+### 2.3.3 Advanced options: utilize dynamic bus scheduling planning with gurobi license
 
 1 It should be noted that the bus scheduling module in the HPC part utilizes the gurobi package to solve the optimization problem. If users want to use the bus scheduling module, users need to install the packages of gurobi provided [here](https://www.gurobi.com/documentation/9.5/quickstart_mac/cs_python_installation_opt.html) and lapsolver provided [here](https://pypi.org/project/lapsolver/). 
 
-2 If the user do not have gurobi license, please modify the [rdcm.py](http://rdcm.py) file to use the prepared bus scheduling data `bus_scheduling_read` to run the simulation.  
+2 If the user has gurobi license, one can modify the [rdcm.py](http://rdcm.py) file to replace the prepared bus scheduling data `bus_scheduling_read` with the optimization algorithm to run the simulation.  
 
 ```
 bus_scheduling_read_raw = open(bus_scheduling_read)
 busPlanningResults = json.load(bus_scheduling_read_raw)
 ```
-
-# How it works
-
 # 3. Structure of METS-R simulator
 
 METS-R simulator is written in `java` and it consists of various classes to represent different entities in a transportation network. This section describes the main components of the simulator including the variables and functionalities of the important classes used.
@@ -351,11 +352,11 @@ Initially, prediction models were formulated for the total outgoing hourly rider
 
 We designed an LSTM model for taxi zone level ridership prediction. The model consists of an aggregation layer, LSTM layers, and a dis-aggregation layer. The aggregation layer performs matrix multiplication that transforms the data from taxi zone space to community space, this layer is fixed and initialized to 24 community partitions. Each LSTM layer contains a stack of LSTM cells that consumes the sequential data in community space and outputs the prediction in low dimensional latent space. The disaggregation layer is a linear transformation (fully connected layer without non-linearity) that projects the prediction to taxi zone space. The whole model was trained end-to-end using Adam optimizer. Bayesian optimization was used to tune hyper-parameters like the time window size, the number of LSTM layers, and the learning rate.
 
-## 4 Structure of HPC module
+# 4 Structure of remote data client manager (RDCM)
 
-### 4.1 HPC framework
+## 4.1 HPC framework
 
-The HPC module is connected with multiple simulation instances that can run and send data over a socket to a remote host to analyze and build useful machine learning models. All these connections are managed by the *RemoteDataClientManager* (i.e. RDCM). RDCM's job is to manage these data senders (i.e. multiple simulation instances) and receive their data to separate buffer to be used by the ML algorithms. RDCM is independent of the simulator and runs as a separate process. 
+The HPC framework is used to connect multiple simulation instances that can run and send data over a socket to a remote host to analyze and build useful machine learning models. All these connections are managed by the *RemoteDataClientManager* (i.e. RDCM). RDCM's job is to manage these data senders (i.e. multiple simulation instances) and receive their data to separate buffer to be used by the ML algorithms. RDCM is independent of the simulator and runs as a separate process. 
 
 - RemoteDataClient Class
 
@@ -365,7 +366,7 @@ This class is the client end of the data communication with the simulation insta
 
 This class is used to manage all the RemoteDataClients. Each RemoteDataClient is executed in a separate thread. All the data analysis routines must be called from this class (i.e. ML algorithms).
 
-## 4.2 HPC module
+## 4.2 Operational algorithms
 
 ### 4.2.1 Eco-routing module
 
@@ -377,11 +378,11 @@ We extended the online eco-routing module to implement the energy-optimal online
 
 ![The framework of the eco-routing module](res/eco_routing_module.png)
 
-### 4.2.2 Ridesharing module
+## 4.2.2 Ridesharing module
 
 The hub-based ridesharing module takes the input as the origin-destination matrix of the waiting passenger and the number of available vehicles, then it outputs the schedules for vehicles to serve to a collection of passengers. In the simulation, we introduced a HashMap of Queue to store passenger information to facilitate the encoding/decoding of the input/output data and implemented the myopic ridesharing algorithm to match passengers with the same destination together.
 
-### 4.2.3 Bus scheduling module
+## 4.2.3 Bus scheduling module
 
 The demand-adaptive transit planning module generated the AEV transit routes and the corresponding E-bus schedules using hourly based predicted travel demand from or to the hubs. The demand prediction module was implemented in Python and it stored the demand as a CSV table that can be indexed by hub, date, hour, and taxi zone. The simulator then read this table and got the demand for a given configuration (hub, hour, date). The result of the demand prediction module served as the input of the AEV transit planning and scheduling algorithms, and the outputs are the AEV transit routes and the numbers of assigned AEV buses on different routes.
 
@@ -389,7 +390,7 @@ As shown in the following figure , for every two hours in the simulation, the Bu
 
 ![The framework of the bus scheduling module](res/bus_scheduling.png)
 
-## 5 Visualization module
+# 5 Visualization module
 
 A web-based visualization module is developed to display simulation information. It is written using [React](https://reactjs.org/) with layers powered by [Deck.gl](https://deck.gl/). An online demo is available at [https://engineering.purdue.edu/HSEES/METSRVis/](https://engineering.purdue.edu/HSEES/EvacVis/).
 
@@ -403,7 +404,7 @@ The visualization module consists of five components:
 4. Connection: The connection panel allows the user to input the URL of the data source for the visualization.
 5. Legend: The legend panel shows the example of different elements in the energy map.
 
-## 6 Output & logs
+# 6 Output & logs
 
 log4j is a fast thread safe logger for java. For the simulator, the main logger is initialized in ContextCreator.java. Log messages are written to both stdout and a log file named ADDSEVS.log.
 
@@ -425,11 +426,11 @@ log4j.logger.addsevs.ContextCreator=DEBUG, addsevs, stdout
 
 If you want to log only the ERROR or above levels you can set DEBUG to ERROR
 
-## 7 Development history
+# 7 Development history
 
 We document changes by 6 categories which are: 1. City, including road and lanes; 2. Vehicles; 3. Charging stations; 4. Zones and airport; 5. Data collector; 6. Event Scheduler. Each category is further divided into three parts: Added, Modified, and Discarded.
 
-### 7.1 Move from A-RESCUE to EV simulation
+## 7.1 Move from A-RESCUE to EV simulation
 
 **September 20th, 2019 to October 3rd, 2019** Read the code, create a document of EV simulator 
 
@@ -630,7 +631,7 @@ Charging stations
 
 The implementation of the key components is done.
 
-### 7.2 HPC module (from JAVA to Python)
+## 7.2 HPC module (from JAVA to Python)
 
 The raw HPC modules are implemented in JAVA, and the development team transfers them into the Python version.   
 
@@ -652,9 +653,9 @@ The raw HPC modules are implemented in JAVA, and the development team transfers 
 
 The implementation of the HPC modules in Python is done.
 
-## 8 Publications and References
+# 8 Publications and References
 
-### 8**.1 Publications**
+## 8**.1 Publications**
 
 [1] Lei et al. (2021). ADDS-EVS: An agent-based deployment decision-support system for electric vehicle services. IEEE ITSC 2021
 
@@ -676,7 +677,7 @@ The implementation of the HPC modules in Python is done.
 
 [10] Qian et al. (2019). Understand the impact of transportation network companies on urban traffic using large-scale trajectory data. Accepted for presentation at 2020 TRB annual meeting.
 
-### 8**.2 References**
+## 8**.2 References**
 
 [1] Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle energy consumption model: Model development and validation. Applied Energy, 168, 257–268.
 
