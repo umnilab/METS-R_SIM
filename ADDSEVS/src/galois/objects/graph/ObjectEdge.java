@@ -44,8 +44,8 @@ public class ObjectEdge<N extends GObject, E> extends Pair<GNode<N>, GNode<N>> {
     return data;
   }
 
-  @SuppressWarnings("unchecked")
-  @Override
+  @SuppressWarnings("rawtypes")
+@Override
   public boolean equals(Object obj) {
     if (!(obj instanceof ObjectEdge)) {
       return false;

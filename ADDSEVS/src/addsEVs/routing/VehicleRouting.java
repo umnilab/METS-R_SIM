@@ -5,12 +5,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.jgrapht.*;
-import org.jgrapht.graph.*;
 import org.jgrapht.alg.DijkstraShortestPath;
 import org.jgrapht.alg.KShortestPaths;
 import org.jgrapht.GraphPath;
-
-import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
@@ -18,21 +15,17 @@ import addsEVs.citycontext.CityContext;
 import addsEVs.citycontext.Junction;
 import addsEVs.citycontext.Road;
 import repast.simphony.context.space.graph.ContextJungNetwork;
-import repast.simphony.essentials.RepastEssentials;
-import repast.simphony.space.projection.ProjectionEvent;
-import repast.simphony.space.projection.ProjectionListener;
-import repast.simphony.space.graph.EdgeCreator;
 import repast.simphony.space.graph.JungNetwork;
 import repast.simphony.space.graph.Network;
 import repast.simphony.space.graph.RepastEdge;
-import repast.simphony.space.graph.ShortestPath;
 import edu.uci.ics.jung.graph.Graph;
 
 public class VehicleRouting {
 	private Network<Junction> network;
 	public WeightedGraph<Junction, RepastEdge<Junction>> transformedNetwork = null;
 	public CityContext cityContext;
-	
+	 
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public VehicleRouting(Network<Junction> network){
 		this.cityContext = ContextCreator.getCityContext();
 		this.network = network;
@@ -51,6 +44,7 @@ public class VehicleRouting {
 	/**
 	 * Creates routing info using the Node Based routing algorithm
 	 */
+	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public void calcRoute() {
 		Graph<Junction, RepastEdge<Junction>> graphA = null;
 
@@ -61,15 +55,6 @@ public class VehicleRouting {
 
 		JungToJgraph<Junction> converter = new JungToJgraph<Junction>();
 		this.transformedNetwork = converter.convertToJgraph(graphA);
-//		for (Junction node: this.transformedNetwork.vertexSet()){
-//			int tempdegree=0;
-//			if(node.getRoads().size()>=5)
-//				for (Road road: node.getRoads() )
-//					if(road.getFn() == node.getJunctionID())
-//						tempdegree+=1;
-//				if(tempdegree>=4)	
-//					System.out.println("junctionid"+node.getJunctionID()+"sizeofjunction"+node.getRoads().size()+"rode_list"+node.getRoads());
-//		}
 	}
 	
 	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad,
@@ -82,9 +67,8 @@ public class VehicleRouting {
 		for(int k=0;k<kshortestPath.size();k++){
 			List<RepastEdge<Junction>> shortestPath = kshortestPath.get(k).getEdgeList();
 			// Find the roads which are associated with these edges
-			
-			if(shortestPath != null){ //LZ: found the shortest path
-				List<Road> oneRoadPath_ = new ArrayList<Road>();  //LZ: save this path as a list of road and store it in oneRoadPath_
+			if(shortestPath != null){ // Found the shortest path
+				List<Road> oneRoadPath_ = new ArrayList<Road>();  // Save this path as a list of road and store it in oneRoadPath_
 				oneRoadPath_.add(currentRoad);
 				for (RepastEdge<Junction> edge : shortestPath) {
 					int linkID = cityContext.getLinkIDFromEdge(edge);
@@ -126,7 +110,7 @@ public class VehicleRouting {
 				total = total + Math.exp(-theta * pathLength.get(i));
 			}
 
-			// calculate the probability
+			// Calculate the probability
 			for (int i = 0; i < kshortestPath.size(); i++) {
 				double prob = Math.exp(-theta * pathLength.get(i)) / total;
 				pathProb.add(prob);
@@ -136,7 +120,7 @@ public class VehicleRouting {
 					cumProb.add(i, cumProb.get(i - 1) + prob);
 			}
 
-			// find the path to go
+			// Find the path to go
 			int k = 0;
 			double random = Math.random();
 			for (int i = 0; i < kshortestPath.size(); i++) {
@@ -183,13 +167,10 @@ public class VehicleRouting {
 			for (RepastEdge<Junction> edge : shortestPath) {
 				int linkID = cityContext.getLinkIDFromEdge(edge);
 				Road road = cityContext.findRoadWithLinkID(linkID);
-	//			System.out.println("linkID: " + linkID + " Path-" + road.getID());
 				roadPath_.add(road);
 				shortestPathLength = shortestPathLength + edge.getWeight();
 			}
 		}
-        //shortestPath = null;
-		
 		return roadPath_;
 	}
 	

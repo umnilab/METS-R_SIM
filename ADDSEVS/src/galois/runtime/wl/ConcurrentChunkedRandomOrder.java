@@ -51,7 +51,7 @@ class ConcurrentChunkedRandomOrder<T> implements Worklist<T> {
     this(chunkSize, ChunkedRandomOrder.DEFAULT_INITIAL_CAPACITY, maker, needSize);
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   public ConcurrentChunkedRandomOrder(int chunkSize, int initialCapacity, Maker<T> maker, boolean needSize) {
     this(initialCapacity, initialCapacity, (Worklist<T>[]) null, needSize);
     int numThreads = GaloisRuntime.getRuntime().getMaxThreads();

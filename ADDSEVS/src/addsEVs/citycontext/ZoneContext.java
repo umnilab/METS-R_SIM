@@ -18,12 +18,7 @@ public class ZoneContext extends DefaultContext<Zone> {
 		super("ZoneContext");
 		
 		ContextCreator.logger.info("ZoneContext creation");
-		/*
-		 * GIS projection for spatial information about Roads. This is used to
-		 * then create junctions and finally the road network.
-		 */
 		GeographyParameters<Zone> geoParams = new GeographyParameters<Zone>();
-		// geoParams.setCrs("EPSG:32618");
 		Geography<Zone> zoneGeography = GeographyFactoryFinder
 				.createGeographyFactory(null).createGeography("ZoneGeography",
 						this, geoParams);
@@ -38,16 +33,14 @@ public class ZoneContext extends DefaultContext<Zone> {
 					uri.toURL(), zoneGeography, this);
 			int int_id =  0; 
 			while (zoneLoader.hasNext()) {
-				//zoneLoader.next(); //Using default parameters
 				Zone zone = zoneLoader.nextWithArgs(int_id); //Using customize parameters
 				int_id +=1;
-//				ContextCreator.logger.debug("int_ID" + zone.getIntegerID()+","+zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
+				ContextCreator.logger.debug("int_ID" + zone.getIntegerID()+","+zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
 			ContextCreator.logger.info("Zone generated, total number: " + int_id);
 
 		} catch (java.net.MalformedURLException e) {
-			System.err
-					.println("Malformed URL exception when reading housesshapefile.");
+			ContextCreator.logger.error("Malformed URL exception when reading housesshapefile.");
 			e.printStackTrace();
 		}
 

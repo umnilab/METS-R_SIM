@@ -191,7 +191,7 @@ public abstract class ReplayFeature {
    */
   static enum Type {
     RECORD, PLAYBACK, NO;
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "rawtypes" })
     public ReplayFeature create(int numThreads) {
       switch (this) {
       case RECORD:

@@ -5,11 +5,8 @@ import java.util.Vector;
 
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
-import org.eclipse.jetty.websocket.client.WebSocketClient;
 import org.eclipse.jetty.websocket.server.WebSocketHandler;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
-
-import com.sun.security.ntlm.Client;
 
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
@@ -38,9 +35,10 @@ public class ConnectionManager {
     private Server server;
     
     /** The list of connections currently open in the system. */
-    private Vector<Connection> connections;
+    @SuppressWarnings("unused")
+	private Vector<Connection> connections;
         
-    // TODO: Pick a permanent port number for the socket to use for listening.
+    // Pick a permanent port number for the socket to use for listening.
     // This temporary value (33131) is the zip-code of downtown Miami.  Jetty
     // default (8080) is a common web port which may be in use or blocked.
     
@@ -98,10 +96,10 @@ public class ConnectionManager {
      */
     public void startServer() {
         if (this.server != null) {
-            // the server already exists so check if it is running
+            // The server already exists so check if it is running
             String serverState = this.server.getState();
             if (serverState == null) {
-                // the state is unknown or something weird is happening, so
+                // The state is unknown or something weird is happening, so
                 // we will just destroy the existing server and replace it
                 this.stopServer();
             }
@@ -110,68 +108,68 @@ public class ConnectionManager {
                     case AbstractLifeCycle.STARTING:
                     case AbstractLifeCycle.STARTED:
                     case AbstractLifeCycle.RUNNING:
-                        // the server is already running or will be soon
+                        // The server is already running or will be soon
                         return;
                     case AbstractLifeCycle.STOPPING:
-                        // server is still shutting down, so wait for it
+                        // Server is still shutting down, so wait for it
                         try {
                             this.server.join();
                         }
                         catch (InterruptedException ie) {
-                            // if server stop was interrupted, do we care?
+                            // If server stop was interrupted, do we care?
                             ConnectionManager.printDebug("ERR", 
                                                          ie.getMessage());
                         }
-                        // now that it's stopped, fall through to...
+                        // Now that it's stopped, fall through to...
                     case AbstractLifeCycle.STOPPED:
                     case AbstractLifeCycle.FAILED:
-                        // server exists but is not running, so it throw away
+                        // Server exists but is not running, so it throw away
                         this.server = null;
                         break;
                     default:
-                        // what do we do if state string is unexpected value?
+                        // What do we do if state string is unexpected value?
                         break;
                 }
             }
         }
         
-        // create the new server on our listening port
+        // Create the new server on our listening port
         this.server = new Server(GlobalVariables.NETWORK_LISTEN_PORT);
         System.out.println("Server created!");
         
-        // attach a handler for generating sockets to incoming connections
+        // Attach a handler for generating sockets to incoming connections
         int maxMsgSize = GlobalVariables.NETWORK_MAX_MESSAGE_SIZE;
         WebSocketHandler socketHandler = null;
         try {
             socketHandler = new WebSocketHandler() {
                 @Override
                 public void configure(WebSocketServletFactory factory) {
-                    // the default maximum size for a single message sent over
+                    // The default maximum size for a single message sent over
                     // the socket is way too small (64K) so we bump it higher
                     factory.getPolicy().setMaxTextMessageSize(maxMsgSize);
                     
-                    // tell the factory which class has our socket methods
+                    // Tell the factory which class has our socket methods
                     factory.register(Connection.class);
                 }
             };
         }
         catch (Exception e) {
-            //  what do we do if socket handler couldn't be created?
+            //  What do we do if socket handler couldn't be created?
             ConnectionManager.printDebug("ERR", e.getMessage());
         }
         this.server.setHandler(socketHandler);
         
-        // start the server listening
+        // Start the server listening
         try {
-        	// Chairtha : Wait until the route_UCB in ContextCreator is populated
+        	// Wait until the route_UCB in ContextCreator is populated
         	// otherwise route_UCB map will not be correctly received by the RemoteDataClientManager
         	while(!ContextCreator.isRouteUCBMapPopulated()); 
-//        	while(!ContextCreator.isRouteUCBBusMapPopulated()); 
+        	while(!ContextCreator.isRouteUCBBusMapPopulated()); 
             this.server.start();
             ConnectionManager.printDebug("CTRL", "Started.");
         }
         catch (Exception e) {
-            // deal with exception thrown from server not starting...
+            // Deal with exception thrown from server not starting...
             ConnectionManager.printDebug("ERR", e.getMessage());
         }
     }
@@ -184,15 +182,15 @@ public class ConnectionManager {
      * method will do nothing but dispose of the server object.
      */
     public void stopServer() {
-        // check the server object exists
+        // Check the server object exists
         if (this.server == null) {
             return;
         }
         
-        // branch and handle the server stoppage depending on current state
+        // Branch and handle the server stoppage depending on current state
         String serverState = this.server.getState();
         if (serverState == null) {
-            // the state of the server could not be determined, so
+            // The state of the server could not be determined, so
             // we will just forcibly try to stop and destroy it
             try {
                 this.server.stop();
@@ -200,7 +198,7 @@ public class ConnectionManager {
                 this.server = null;
             }
             catch (Exception e) {
-                // an error happened stopping the server
+                // An error happened stopping the server
             }
         }
         else {
@@ -208,16 +206,16 @@ public class ConnectionManager {
                 case AbstractLifeCycle.STOPPING:
                 case AbstractLifeCycle.STOPPED:
                 case AbstractLifeCycle.FAILED:
-                    // the server is already stopped or stopping
+                    // The server is already stopped or stopping
                     this.server = null;
                     return;
                 case AbstractLifeCycle.STARTING:
-                    // the server is still starting, so wait for it to finish
-                    // TODO: how to wait for "starting" server state?
+                    // The server is still starting, so wait for it to finish
+                    // How to wait for "starting" server state?
                 case AbstractLifeCycle.STARTED:
                 case AbstractLifeCycle.RUNNING:
                 default:
-                    // server is running (or unknown state) so stop it
+                    // Server is running (or unknown state) so stop it
                     try {
                         this.server.stop();
                         this.server.join();
@@ -225,7 +223,7 @@ public class ConnectionManager {
                         ConnectionManager.printDebug("CTRL", "Stopped.");
                     }
                     catch (Exception e) {
-                        // an error happened stopping the server
+                        // An error happened stopping the server
                         ConnectionManager.printDebug("ERR", e.getMessage());
                     }
             }
@@ -263,7 +261,7 @@ public class ConnectionManager {
             }
             debugMessage += ">> " + msg;
             
-            System.out.println(debugMessage);
+            ContextCreator.logger.debug(debugMessage);
         }
     }
     

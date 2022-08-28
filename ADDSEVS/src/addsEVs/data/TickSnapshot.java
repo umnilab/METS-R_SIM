@@ -49,19 +49,19 @@ public class TickSnapshot {
     
     private HashMap<Integer, LinkSnapshot> links;
     
-    // LZ: link energy consumptions for UCB
+    // Link energy consumptions for UCB
     private Map<Integer, ArrayList<Double>> link_UCB; // 
     
-    //July,2020,JiaweiXue
     private Map<Integer, ArrayList<Double>> link_UCB_BUS; // the link energy consumption for bus.
     private Map<Integer, ArrayList<Double>> speed_vehicle; // used for shadow bus construction.
     
     
-    // LZ TO DO: placeholders
+    // Placeholders for future operation algorithms that may use data
+    // from zones and charging stations
     // private HashMap<Integer, ZoneSnapshot> zones;
     // private HashMap<Integer, ChargingStationSnapshot> chargers;
     
-    /** HG: The collection of event data gathered during this time tick. */
+    /** The collection of event data gathered during this time tick. */
     private ArrayList<ArrayList<NetworkEventObject>> events;
     
     /**
@@ -73,28 +73,27 @@ public class TickSnapshot {
      * @throws IllegalArgumentException if the tick number given is invalid.
      */
     public TickSnapshot(double tickNumber) {
-        // verify the given tick number is valid and set it
+        // Verify the given tick number is valid and set it
         if (tickNumber < 0.0) {
             throw new IllegalArgumentException("Invalid tick number");
         }
         this.tickNumber = tickNumber;
         
-        // setup the map for holding the vehicle data
+        // Setup the map for holding the vehicle data
         this.vehicles = new HashMap<Integer, VehicleSnapshot>();
         this.buses = new HashMap<Integer, BusSnapshot>();
         this.evs = new HashMap<Integer, EVSnapshot>();
         this.links = new HashMap<Integer, LinkSnapshot>();
         
-        // HG: setup the map for holding the event data. Two subarraylists (for starting events and ending events) is created in a large arraylist
+        // Setup the map for holding the event data. Two subarraylists (for starting events and ending events) is created in a large arraylist
         this.events = new ArrayList<ArrayList<NetworkEventObject>>(3);
         for (int i=0;i<3;i++){
 	    	this.events.add(new ArrayList<NetworkEventObject>());
 	    }
         
-        // LZ: setup the map for holding the link energy consumption, which is a map of linkid: link of passed vehicles, we store this for each tick
+        // Setup the map for holding the link energy consumption, which is a map of linkid: link of passed vehicles, we store this for each tick
         this.link_UCB = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
         
-        //July,2020,JiaweiXue
         this.link_UCB_BUS = Collections.synchronizedMap (new HashMap<Integer, ArrayList<Double>>());
         this.speed_vehicle = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
     }
@@ -119,7 +118,7 @@ public class TickSnapshot {
             return;
         }
         
-        // pull out values from the vehicle & coord we need to capture
+        // Pull out values from the vehicle & coord we need to capture
         int id = vehicle.getVehicleID();
         double prev_x = vehicle.getpreviousEpochCoord().x;
         double prev_y = vehicle.getpreviousEpochCoord().y;
@@ -134,22 +133,20 @@ public class TickSnapshot {
         int vehicleClass = vehicle.getVehicleClass();
         int roadID = vehicle.getRoad().getLinkid();
         // double batteryLevel = vehicle.getBatteryLevel();
-        //int departure = vehicle.getDepTime();
-        //int arrival = vehicle.getEndTime();
-        //float distance = vehicle.accummulatedDistance_;
-        //double z = coordinate.z;
+        // int departure = vehicle.getDepTime();
+        // int arrival = vehicle.getEndTime();
+        // float distance = vehicle.accummulatedDistance_;
+        // double z = coordinate.z;
         
-        // TODO: perform any checks on the extracted values
-        
-        //HGehlot: Check if there is already a vehicleSnapshot in this tick due to visualization interpolation recording.
-        //If so, then use the previous coordinates from the recorded snapshot because we had set the previous coordinates to the current coordinates 
-        //when we ended the function recVehSnaphotForVisInterp() in vehicle class.
+        // Check if there is already a vehicleSnapshot in this tick due to visualization interpolation recording.
+        // If so, then use the previous coordinates from the recorded snapshot because we had set the previous coordinates to the current coordinates 
+        // when we ended the function recVehSnaphotForVisInterp() in vehicle class.
         if(this.getVehicleSnapshot(id)!=null){
         	prev_x = this.getVehicleSnapshot(id).prev_x;
         	prev_y = this.getVehicleSnapshot(id).prev_y;
         }
         
-        // create a snapshot for the vehicle and store it in the map
+        // Create a snapshot for the vehicle and store it in the map
         VehicleSnapshot snapshot = new VehicleSnapshot(id, prev_x, prev_y,
         											   x, y, speed,
         											   originalX, originalY,
@@ -157,14 +154,11 @@ public class TickSnapshot {
                                                        nearlyArrived,
                                                        vehicleClass,
                                                        roadID
-                                                       //departure,
-                                                       //arrival,
-                                                       //distance,    
                                                        );
         this.vehicles.put(id, snapshot);
     }
     
-	// LZ: Store the current state of the given EV to the tick snapshot.
+	// Store the current state of the given EV to the tick snapshot.
 	public void logEV(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
 		if (vehicle == null) {
 			return;
@@ -173,9 +167,8 @@ public class TickSnapshot {
 			return;
 		}
 
-		// pull out values from the vehicle & coord we need to capture
+		// Pull out values from the vehicle & coord we need to capture
 		int id = vehicle.getVehicleID();
-		// System.out.println(vehicle.getVehicleClass()+" class: "+ id);
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
@@ -183,48 +176,29 @@ public class TickSnapshot {
 		float speed = vehicle.currentSpeed();
 		int originID = vehicle.getOriginID();
 		int destID = vehicle.getDestinationID();
-//		double originalX = vehicle.getOriginalCoord().x;
-//		double originalY = vehicle.getOriginalCoord().y;
-//		double destX = vehicle.getDestCoord().x;
-//		double destY = vehicle.getDestCoord().y;
 		int nearlyArrived = vehicle.nearlyArrived();
 		int vehicleClass = vehicle.getVehicleClass();
 		int roadID = vehicle.getRoad().getLinkid();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass= vehicle.served_pass;
-		// int departure = vehicle.getDepTime();
-		// int arrival = vehicle.getEndTime();
-		// float distance = vehicle.accummulatedDistance_;
-		// double z = coordinate.z;
-
-		// TODO: perform any checks on the extracted values
-
-		// HGehlot: Check if there is already a vehicleSnapshot in this tick due
-		// to visualization interpolation recording.
-		// If so, then use the previous coordinates from the recorded snapshot
-		// because we had set the previous coordinates to the current
-		// coordinates
-		// when we ended the function recVehSnaphotForVisInterp() in vehicle
-		// class.
 
 		if (this.getEVSnapshot(id) != null) {
 			prev_x = this.getEVSnapshot(id).prev_x;
 			prev_y = this.getEVSnapshot(id).prev_y;
 		}
 
-		// create a snapshot for the vehicle and store it in the map
+		// Create a snapshot for the vehicle and store it in the map
 		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, speed, originID, destID, nearlyArrived, vehicleClass, batteryLevel, energyConsumption, roadID, servedPass
 		// departure,
 		// arrival,
 		// distance,
 		);
-		//System.out.println(vehicle.getVehicleClass()+" class: "+ snapshot.toString());
 		this.evs.put(id, snapshot);
 		
 	}
 	
-	// LZ: Store the link state
+	// Store the link state
 	public void logLink(Road road) throws Throwable{
 		if(road == null){
 			return;
@@ -239,7 +213,7 @@ public class TickSnapshot {
 		this.links.put(id, snapshot);
 	}
 
-	// LZ: Store the current state of the given Bus to the tick snapshot.
+	// Store the current state of the given Bus to the tick snapshot.
 	public void logBus(Bus vehicle, Coordinate coordinate) throws Throwable {
 		if (vehicle == null) {
 			return;
@@ -248,9 +222,8 @@ public class TickSnapshot {
 			return;
 		}
 
-		// pull out values from the vehicle & coord we need to capture
+		// Pull out values from the vehicle & coord we need to capture
 		int id = vehicle.getVehicleID();
-		// System.out.println(vehicle.getVehicleClass()+" class: "+ id);
 		int routeID = vehicle.getRouteID();
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
@@ -261,39 +234,26 @@ public class TickSnapshot {
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass = vehicle.served_pass;
-//		double originalX = vehicle.getOriginalCoord().x;
-//		double originalY = vehicle.getOriginalCoord().y;
-//		double destX = vehicle.getDestCoord().x;
-//		double destY = vehicle.getDestCoord().y;
-//		int nearlyArrived = vehicle.nearlyArrived();
-//		int vehicleClass = vehicle.getVehicleClass();
 		int roadID = vehicle.getRoad().getLinkid();
-		// int departure = vehicle.getDepTime();
-		// int arrival = vehicle.getEndTime();
-		// float distance = vehicle.accummulatedDistance_;
-		// double z = coordinate.z;
 
-		// TODO: perform any checks on the extracted values
-
-		// HGehlot: Check if there is already a vehicleSnapshot in this tick due
+		// Check if there is already a vehicleSnapshot in this tick due
 		// to visualization interpolation recording.
 		// If so, then use the previous coordinates from the recorded snapshot
 		// because we had set the previous coordinates to the current
 		// coordinates
-		// when we ended the function recVehSnaphotForVisInterp() in vehicle
+		// When we ended the function recVehSnaphotForVisInterp() in vehicle
 		// class.
 		if (this.getBusSnapshot(id) != null) {
 			prev_x = this.getBusSnapshot(id).prev_x;
 			prev_y = this.getBusSnapshot(id).prev_y;
 		}
 
-		// create a snapshot for the vehicle and store it in the map
+		// Create a snapshot for the vehicle and store it in the map
 		BusSnapshot snapshot = new BusSnapshot(id, routeID, prev_x, prev_y, x, y, speed, acc, batteryLevel, energyConsumption, roadID, servedPass);
-		//System.out.println(vehicle.getVehicleClass()+" class: "+ snapshot.toString());
 		this.buses.put(id, snapshot);
 	}
     /**
-     * HG: Stores the current state of the given event to the tick snapshot.
+     * Stores the current state of the given event to the tick snapshot.
      * 
      * @param event the event for which a snapshot is being recorded.
      * @param type whether it is starting or end of the event. 1: starting, 2: ending
@@ -302,13 +262,13 @@ public class TickSnapshot {
     public void logEvent(NetworkEventObject event,
             int type) throws Throwable {
     	
-    	// make sure the given event object is valid
+    	// Make sure the given event object is valid
         if (event == null) {
             throw new IllegalArgumentException("No event given.");
         }
         
-        //Add event to the arraylist
-        if(type == 1){//if it is event starting
+        // Add event to the arraylist
+        if(type == 1){ //if it is event starting
             this.events.get(0).add(event); 
         }else if (type == 2){//if it is event ending
         	this.events.get(1).add(event);
@@ -384,8 +344,7 @@ public class TickSnapshot {
         return this.events;
     }
     
-    // function to get the linkIDs for UCB
-    // charitha : bug fix, avoid returning null here
+    // Function to get the linkIDs for UCB
     public Collection<Integer> getLinkIDList() {
     	synchronized (link_UCB) {
         	return this.link_UCB.keySet();
@@ -406,28 +365,28 @@ public class TickSnapshot {
      * @return the vehicle snapshot for the given id or null if not found.
      */
     public VehicleSnapshot getVehicleSnapshot(int id) {
-        // check the map exists and is not empty
+        // Check the map exists and is not empty
         if (this.vehicles == null || this.vehicles.isEmpty()) {
             return null;
         }
         
-        // attempt to pull out the vehicle from the map with the given id
+        // Attempt to pull out the vehicle from the map with the given id
         VehicleSnapshot snapshot = this.vehicles.get(id);
         
-        // return the found vehicle snapshot or null if nothing found
+        // Return the found vehicle snapshot or null if nothing found
         return snapshot;
     }
     
     public EVSnapshot getEVSnapshot(int id) {
-        // check the map exists and is not empty
+        // Check the map exists and is not empty
         if (this.evs == null || this.evs.isEmpty()) {
             return null;
         }
         
-        // attempt to pull out the vehicle from the map with the given id
+        // Attempt to pull out the vehicle from the map with the given id
         EVSnapshot snapshot = this.evs.get(id);
         
-        // return the found vehicle snapshot or null if nothing found
+        // Return the found vehicle snapshot or null if nothing found
         return snapshot;
     }
     
@@ -445,15 +404,15 @@ public class TickSnapshot {
     }
     
     public LinkSnapshot getLinkSnapshot(int id) {
-        // check the map exists and is not empty
+        // Check the map exists and is not empty
         if (this.links == null || this.links.isEmpty()) {
             return null;
         }
         
-        // attempt to pull out the vehicle from the map with the given id
+        // Attempt to pull out the vehicle from the map with the given id
         LinkSnapshot snapshot = this.links.get(id);
         
-        // return the found vehicle snapshot or null if nothing found
+        // Return the found vehicle snapshot or null if nothing found
         return snapshot;
     }
     
@@ -469,7 +428,6 @@ public class TickSnapshot {
     	return linkEnergy;
     }
     
-    //July,2020,JiaweiXue
     public ArrayList<Double> getLinkEnergyListBus(int id) {
     	ArrayList<Double> linkEnergy = null;
     	synchronized (link_UCB_BUS) {
@@ -482,7 +440,7 @@ public class TickSnapshot {
     
     	return linkEnergy;
     }
-    //July,2020,JiaweiXue
+    
     public ArrayList<Double> getSpeedVehicle(int id) {
     	ArrayList<Double> linkSpeed  = null;
     	synchronized (speed_vehicle) {
@@ -525,7 +483,6 @@ public class TickSnapshot {
 		}
 	}
 	
-	//July,2020,JiaweiXue
 	public void logLinkUCBBus(int id, double linkConsume) {
 		synchronized(link_UCB_BUS){
 			if (!this.link_UCB_BUS.containsKey(id)) {
@@ -535,14 +492,12 @@ public class TickSnapshot {
 		}
 	}
 	
-	//July,2020,JiaweiXue
 	public void logSpeedVehicle(int id, double linkSpeed) {
 		synchronized(speed_vehicle){
 			if (!this.speed_vehicle.containsKey(id)) {
 				this.speed_vehicle.put(id, new ArrayList<Double>());
 			}
 			this.speed_vehicle.get(id).add(linkSpeed);
-			//System.out.println(this.link_UCB);
 		}
 	}
 	

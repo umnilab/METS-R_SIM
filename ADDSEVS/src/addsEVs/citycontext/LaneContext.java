@@ -29,10 +29,8 @@ public class LaneContext extends DefaultContext<Lane> {
 		/*
 		 * GIS projection for spatial information about Lanes. 
 		 */
-		ContextCreator.logger.info("LaneContext: building lane context and projections");
-		
+		ContextCreator.logger.info("LaneContext: building lane context and projections");	
 		GeographyParameters<Lane> geoParams = new GeographyParameters<Lane>();
-		//geoParams.setCrs("EPSG:32618");
 		Geography<Lane> laneGeography = GeographyFactoryFinder
 				.createGeographyFactory(null).createGeography("LaneGeography",
 						this, geoParams);

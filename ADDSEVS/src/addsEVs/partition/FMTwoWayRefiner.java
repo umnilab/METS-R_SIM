@@ -136,9 +136,9 @@ public class FMTwoWayRefiner {
 				moveNode(metisGraph, higain, to, moved, swaps, nswaps);
 			}
 
-			/* roll back computations */
+			/* Roll back computations */
 			for (int i = 0; i < nswaps; i++) {
-				moved[swaps[i].getData().getNodeId()] = -1; /* reset moved array */
+				moved[swaps[i].getData().getNodeId()] = -1; /* Reset moved array */
 			}
 			nswaps--;
 			for (; nswaps > mincutorder; nswaps--) {       

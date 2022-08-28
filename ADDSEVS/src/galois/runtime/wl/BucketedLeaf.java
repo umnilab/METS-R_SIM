@@ -37,7 +37,8 @@ class BucketedLeaf<T> extends Bucketed<T> {
   @SuppressWarnings("unchecked")
   public BucketedLeaf(int numBuckets, boolean ascending, Lambda<T, Integer> indexer, Maker<T> maker, boolean needSize) {
     super(numBuckets, ascending, indexer, new Maker<T>() {
-      @Override
+      @SuppressWarnings("rawtypes")
+	@Override
       public Worklist<T> make() {
         return new LIFO(null, false);
       }

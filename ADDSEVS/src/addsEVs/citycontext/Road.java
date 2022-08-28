@@ -12,6 +12,7 @@ import com.vividsolutions.jts.geom.Geometry;
 import addsEVs.*;
 import addsEVs.data.DataCollector;
 import addsEVs.vehiclecontext.ElectricVehicle;
+import addsEVs.vehiclecontext.Bus;
 import addsEVs.vehiclecontext.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
@@ -31,11 +32,11 @@ public class Road {
 	private int nLanes;
 	private int fromNode;
 	private int toNode;
-	private int curhour; // BL: to find the current hour of the simulation
-	private String identifier; // can be used to match with shape file roads
+	private int curhour; // To find the current hour of the simulation
+	private String identifier; // Can be used to match with shape file roads
 	private String description = "";
 	
-	public int nVehicles_; // SH: number of vehicles currently in the road
+	public int nVehicles_; // Number of vehicles currently in the road
 	
 	private int nShadowVehicles; // Potential vehicles might be loaded on the road
 	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
@@ -50,11 +51,9 @@ public class Road {
 	
 	private ArrayList<Lane> lanes; // Use lanes as objects inside the road
 	private ArrayList<Junction> junctions;
-	private ArrayList<Double> dynamicTravelTime; // SH: Dynamic travel time of
+	private ArrayList<Double> dynamicTravelTime; // Dynamic travel time of
 	
-	private TreeMap<Double, ArrayList<Vehicle>> newqueue; //LZ: Use this class to control the vehicle that entering the road
-	
-	//private ArrayList<Double> speedProfile;
+	private TreeMap<Double, ArrayList<Vehicle>> newqueue; // Use this class to control the vehicle that entering the road
 	
 	private Vehicle lastVehicle_;
 	private Vehicle firstVehicle_;
@@ -79,7 +78,6 @@ public class Road {
 		this.downStreamMovements = new ArrayList<Road>();
 		this.oppositeRoad = null;
 		this.newqueue = new TreeMap<Double, ArrayList<Vehicle>>(); 
-//		this.speedProfile = new ArrayList<Double>();
 		this.identifier = " ";
 		this.curhour = -1;
 		this.travelTime = (float) this.length / this.freeSpeed_;
@@ -90,10 +88,7 @@ public class Road {
 		this.eventFlag = false;
 		
 		// Set default value
-		this.defaultFreeSpeed_ = this.freeSpeed_;
-		
-		// System.out.println("free speed of link "+this.id+" is "+this.freeSpeed_);
-		
+		this.defaultFreeSpeed_ = this.freeSpeed_;	
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
 	}
@@ -126,25 +121,16 @@ public class Road {
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {		
-		// if (RepastEssentials.GetTickCount() % 10 == 0)
-		// this.setTravelTime();
-		// double time = System.currentTimeMillis();
 		Vehicle v;
 		int tickcount = (int) RepastEssentials.GetTickCount();
-//		double maxHours = 0.5;
-//		double maxTicks = 3600 * maxHours // time that a path is kept in the
 		if(tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0){
-//			System.out.println("Here!");
-			this.recRoadSnaphot(); // LZ: record vehicle location here!
+			this.recRoadSnaphot(); // Record vehicle location here!
 		}
-											// list
-//				/ GlobalVariables.SIMULATION_STEP_SIZE;
 		try {
 			// Vehicle departure, generate vehicle from new queue
 			while (this.newqueue.size() > 0) {
-				v = this.newqueueHead(); // BL: change to use the TreeMap
+				v = this.newqueueHead(); // Change to use the TreeMap
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
-					//System.out.print("Bus departure time:"+ v.getDepTime());
 					if (v.enterNetwork(this)) {
 						v.advanceInMacroList(); //Vehicle entering the network
 					}
@@ -153,8 +139,7 @@ public class Road {
 					}
 				} 
 				else {
-					// BL: iterate all element in the TreeMap
-					// Vehicle is not at the ActivityLocation
+					// Iterate all element in the TreeMap
 					@SuppressWarnings("rawtypes")
 					Set keys = (Set) this.newqueue.keySet();
 					for (@SuppressWarnings("rawtypes") 
@@ -174,95 +159,31 @@ public class Road {
 				}
 			}
             
-			// ------------------ Data Collection start---------------------//
-//			Vehicle v_ = this.firstVehicle();
-			//HGehlot: This loop iterates over all the vehicles on the current road to record their vehicle snapshot 
-			//if the tick corresponds to periodic time set for recording vehicle snapshot for visualization interpolation.
-//			if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
-//				int tmp_count = 0;
-//				while (v_ != null) {
-//					tmp_count += 1;
-//					v_.recVehSnaphotForVisInterp();
-//					v_ = v_.macroTrailing();//get the next vehicle behind the current vehicle
-//				}
-//			}
-			// ------------------ Data Collection end---------------------//
 			
-			// ------------------ Vehicle movement start--------------------//
-//			boolean flag = Math.random()>this.SA; // Pr(move) = 1-SA, LZ: disable for now
+			/* Vehicle movement */
 			Vehicle pv = this.firstVehicle();
-			if (pv != null && pv.leading() != null) { // LZ: Oct 23, doesn't
-														// work, want to resolve
-														// the gridlock issue
-														// caused by A is in
-														// front of B and B is
-														// in front of A.
-				// System.out.println("Oh, my..." + "," +
-				// pv.getLane().getLaneid()+","+pv.getLane().getLength()+","+pv.leading().getLane().getLaneid()+","+pv.distance()+","+
-				// pv.leading().distance());
+			if (pv != null && pv.leading() != null) { 
 				pv.leading(null);
 			}
 
 			while (pv != null) {
 				if (tickcount <= pv.getLastMoveTick()) {
-					break; // reached the last vehicle
+					break; // Reached the last vehicle
 				}
 				pv.updateLastMoveTick(tickcount);
 				if (!pv.calcState()) {
-					// this vehicle list is corrupted, do not proceed for this road
-					System.out.println("Link "+this.linkid+" vehicle list is corrupted");
+					ContextCreator.logger.error("Link "+this.linkid+" vehicle list is corrupted");
 					break;
 				}
 				if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
-					pv.recVehSnaphotForVisInterp(); // LZ: Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
+					pv.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
 				}
 				pv.travel();
-				pv.updateBatteryLevel(); // charitha : update the energy for each move
+				pv.updateBatteryLevel(); // Update the energy for each move
 				pv = pv.macroTrailing();
 			}
-			// ------------------ Vehicle movement end--------------------//
-			
-//			// ------------------ Vehicle change road start--------------------//
-//			for (Lane l : this.getLanes()) {
-//				while (true) {
-//					v = l.firstVehicle();
-//					if (v == null) {
-//						break;
-//					} else {
-//						if (v.currentSpeed()==0) { // need some help to change the road
-//							double maxMove = this.freeSpeed_
-//									* GlobalVariables.SIMULATION_STEP_SIZE;
-//							// double maxMove =
-//							// v.currentSpeed()*GlobalVariables.SIMULATION_STEP_SIZE;
-//							if (v.distance() < maxMove) {
-//								// this move exceed the available distance of the link.
-//								// LZ: record energy consumption here!
-//								if(v.getVehicleClass() == 1){ //EV
-//									((ElectricVehicle) v).recLinkSnaphotForUCB();
-//									//July,2020
-//									((ElectricVehicle) v).recSpeedVehicle();
-//								}else if(v.getVehicleClass() == 2){
-//									((Bus) v).recLinkSnaphotForUCBBus();
-//									//July,2020
-//								}
-//								
-//								// start lane changing
-//								if (!v.isOnLane()) {
-//									if (v.changeRoad() == 0)
-//										break;
-//								} else if (v.isOnLane()) {
-//									if (v.appendToJunction(v.getNextLane()) == 0)
-//										break;
-//								}
-//							}
-//						}
-//						break;
-//					}
-//				}
-//			}
-//			// ------------------ Vehicle change road end--------------------//
 		} catch (Exception e) {
-			System.err.println("Road " + this.linkid
+			ContextCreator.logger.error("Road " + this.linkid
 					+ " had an error while moving vehicles");
 			e.printStackTrace();
 			RunEnvironment.getInstance().pauseRun();
@@ -328,27 +249,19 @@ public class Road {
 	 */
 	public String getIdentifier() {
 		if (identifier == "" || identifier == null) {
-			System.err
-					.println("Road: error, the identifier field for this road has not been initialised."
+			ContextCreator.logger.error("Road: error, the identifier field for this road has not been initialised."
 							+ "\n\tIf reading in a shapefile please make sure there is a string column called 'identifier' which is"
 							+ " unique to each feature");
 		}
 		return identifier;
 	}
 
-	// set left
+	// Set left
 	public void setLeft(int left) {
 		this.left = left;
 	}
 
 	public int getLeft() {
-		/*
-		 * if (left == "" || left == null) { System.err.println(
-		 * "Road: error, the name field for this road has not been initialised."
-		 * +
-		 * "\n\tIf reading in a shapefile please make sure there is a string column called 'left' which is"
-		 * + " unique to each feature"); }
-		 */
 		return left;
 	}
 
@@ -357,13 +270,6 @@ public class Road {
 	}
 
 	public int getThrough() {
-		/*
-		 * if (through == "" || through == null) { System.err.println(
-		 * "Road: error, the name field for this road has not been initialised."
-		 * +
-		 * "\n\tIf reading in a shapefile please make sure there is a string column called 'through' which is"
-		 * + " unique to each feature"); }
-		 */
 		return through;
 	}
 
@@ -372,13 +278,6 @@ public class Road {
 	}
 
 	public int getRight() {
-		/*
-		 * if (right == "" || right == null) { System.err.println(
-		 * "Road: error, the name field for this road has not been initialised."
-		 * +
-		 * "\n\tIf reading in a shapefile please make sure there is a string column called 'right' which is"
-		 * + " unique to each feature"); }
-		 */
 		return right;
 	}
 
@@ -413,21 +312,18 @@ public class Road {
 	/**
 	 * Used to tell this Road who it's Junctions (end-points) are.
 	 * 
-	 * @param j
-	 *            the Junction at either end of this Road.
+	 * @param j the Junction at either end of this Road.
 	 */
 	public void addJunction(Junction j) {
 		if (this.junctions.size() == 2) {
-			System.err
-					.println("Road: Error: this Road object already has two Junctions.");
+			ContextCreator.logger.error("Road: Error: this Road object already has two Junctions.");
 		}
 		this.junctions.add(j);
 	}
 
 	public ArrayList<Junction> getJunctions() {
 		if (this.junctions.size() != 2) {
-			System.err
-					.println("Road: Error: This Road does not have two Junctions");
+			ContextCreator.logger.error("Road: Error: This Road does not have two Junctions");
 		}
 		return this.junctions;
 	}
@@ -454,13 +350,6 @@ public class Road {
 		}
 	}
 	
-	/*
-	 * BL comment out this function to get rid of using Vehicles arrayList to
-	 * increase the efficiency of the simulation
-	 */
-	/*
-	 * public ArrayList<Vehicle> getVehicles() { return this.vehicles; }
-	 */
 	public void firstVehicle(Vehicle v) {
 		if (v != null)
 			this.firstVehicle_ = v;
@@ -488,10 +377,6 @@ public class Road {
 		return this.nVehicles_;
 	}
 	
-//	public boolean hasUpdatableVehicle() {
-//		return (this.nVehicles_ > 0 && this.newqueue.size() > 0);  
-//	}
-//	
 	/* For adaptive network partitioning */
 	public int getShadowVehicleNum() {
 		return this.nShadowVehicles;
@@ -530,7 +415,7 @@ public class Road {
 	}
 	
 
-	// BL: this add queue using TreeMap structure
+	//This add queue using TreeMap structure
 	public void addVehicleToNewQueue(Vehicle v) {
 		double departuretime_ = v.getDepTime();
 		if (!this.newqueue.containsKey(departuretime_)) {
@@ -548,7 +433,7 @@ public class Road {
 
 
 	/*
-	 * removeVehicleFromNewQueue BL: will remove vehicle v from the TreeMap by
+	 * RemoveVehicleFromNewQueue, will remove vehicle v from the TreeMap by
 	 * looking at the departuretime_ of the vehicle if there are more than one
 	 * vehicle with the same departuretime_, it will remove the vehicle match
 	 * with id of v.
@@ -564,8 +449,7 @@ public class Road {
 			this.newqueue.remove(departuretime_);
 		}
 	}
-//
-//
+
 	public Vehicle newqueueHead() {
 		if (this.newqueue.size() > 0) {
 			double firstDeparture_;
@@ -623,7 +507,7 @@ public class Road {
 			Vehicle pv = this.firstVehicle();
 			while (pv != null) {
 				if (pv.currentSpeed() < 0) {
-					System.err.println("Vehicle " + pv.getId()
+					ContextCreator.logger.error("Vehicle " + pv.getId()
 							+ " has error speed of " + pv.currentSpeed());
 				} else
 					averageSpeed = +pv.currentSpeed();
@@ -633,7 +517,7 @@ public class Road {
 				averageSpeed = 0.001f;
 			} else {
 				if (this.nVehicles_ < 0) {
-					System.err.println("Road " + this.getLinkid() + " has "
+					ContextCreator.logger.error("Road " + this.getLinkid() + " has "
 							+ this.nVehicles_ + " vehicles");
 					averageSpeed = (float) this.freeSpeed_;
 				} else
@@ -641,10 +525,6 @@ public class Road {
 			}
 		}
 		// outAverageSpeed: For output travel times
-//		DecimalFormat myFormatter = new DecimalFormat("##.##");
-
-//		String outAverageSpeed = myFormatter.format(averageSpeed / 0.44704);
-
 		this.travelTime = (float) this.length / averageSpeed;
 	}
 	
@@ -680,9 +560,6 @@ public class Road {
 		return this.travelTime;
 	}
 
-	/*
-	 * public int getnLanes() { return nLanes_; }
-	 */
 	public Lane getLane(int i) {
 		return this.lanes.get(i);
 	}
@@ -730,10 +607,10 @@ public class Road {
 	}
 
 	public void printRoadInfo() {
-		System.out.println("Road: " + this.getIdentifier()
+		ContextCreator.logger.info("Road: " + this.getIdentifier()
 				+ " has lanes from left to right as follow: ");
 		for (int i = 0; i < this.lanes.size(); i++) {
-			System.out.println(this.lanes.get(i).getLaneid()
+			ContextCreator.logger.info(this.lanes.get(i).getLaneid()
 					+ " with Repast ID: " + this.lanes.get(i).getID());
 		}
 	}
@@ -742,9 +619,9 @@ public class Road {
 		Coordinate start, end;
 		start = this.getJunctions().get(0).getCoordinate();
 		end = this.getJunctions().get(1).getCoordinate();
-		System.out.println("Coordinate of road: " + this.getLinkid());
-		System.out.println("Starting point: " + start);
-		System.out.println("Ending point: " + end);
+		ContextCreator.logger.info("Coordinate of road: " + this.getLinkid());
+		ContextCreator.logger.info("Starting point: " + start);
+		ContextCreator.logger.info("Ending point: " + end);
 	}
 	
 	/* Wenbo: update background traffic through speed file. if road event flag is true, just pass to default free speed, else, update link free flow speed */
@@ -794,10 +671,10 @@ public class Road {
 			this.totalEnergy += ev.getLinkConsume();
 			ev.resetLinkConsume();
 		}
-//		else if(v.getVehicleClass() == 2){
-//			Bus bv = (Bus) v;
-//			this.totalEnergy += bv.getLinkConsume();
-//		}
+		else if(v.getVehicleClass() == 2){
+			Bus bv = (Bus) v;
+			this.totalEnergy += bv.getLinkConsume();
+		}
 	}
 	
 	public double getTotalEnergy(){

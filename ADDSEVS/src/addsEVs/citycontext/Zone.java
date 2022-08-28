@@ -28,49 +28,30 @@ import repast.simphony.essentials.RepastEssentials;
 public class Zone {
 	// Basic attributes
 	protected int id;
-//	protected Coordinate coord; //unused variable
 
 	protected int integerID;
 	protected int zoneClass; // 0 for normal zone, 1 for airport
 	protected String charID;
 	
-	protected Passenger firstPassInQueueForTaxi; //nonsharable passenger queue for taxis
-	protected Map<Integer, Queue<Passenger>> sharablePassForTaxi; //shareable passenger for taxis
-	protected Passenger firstPassInQueueForBus; //passenger queue for bus
+	protected Passenger firstPassInQueueForTaxi; // Nonsharable passenger queue for taxis
+	protected Map<Integer, Queue<Passenger>> sharablePassForTaxi; // Shareable passenger for taxis
+	protected Passenger firstPassInQueueForBus; //Passenger queue for bus
 	
-	protected int nPassForTaxi; //number of passenger for Taxi
-	protected int nPassForBus; //number of passenger for Bus
-	// protected LinkedBlockingQueue<Passenger> passQueueForTaxi; //passenger queue for taxis
-	// protected ArrayList<Passenger> passQueueForBus; //passenger queue for bus
+	protected int nPassForTaxi; // Number of passenger for Taxi
+	protected int nPassForBus; // Number of passenger for Bus
+
+	protected ArrayList<Float> destDistribution; // Destination distribution of generated passengers
 	
-	// demand generation model start
-	protected ArrayList<Float> destDistribution; //Destination distribution of generated passengers
-	// demand generation model end
-	
-	// mode choice model start
-	private static float busTicketPrice = 15; //Placeholder for bus ticket prices to every other zones
-	private static float alpha = -0.078725f; //$
-	private static float beta = -0.020532f; //minutes
-	private static float basePriceTaxi  = 2.0f; //Placeholder, taxi fees per miles
-	private static float initialPriceTaxi = 2.5f;
-	private static float taxiBase = -0.672839f;
-	private static float busBase = -1.479586f;
+	// Parameters for mode choice model starts
 	private boolean hasBus;
 	public int busGap;
-	// change into public int due to the change in Busschedule.java 03/15/2022 zhengyu
-	// utility function
-	//	float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
-	//			beta*(taxiTravelTime.get(destID)/60+5)+taxiBase;
-	//	float busUtil = (float) (alpha*busTicketPrice+
-	//			beta*(busTravelTime.get(destID)/60+this.busGap/2)+busBase);
-	
 	public Map<Integer, Float> taxiTravelTime;
 	public Map<Integer, Float> taxiTravelDistance;
 	public Map<Integer, Float> busTravelTime;
 	public Map<Integer, Float> busTravelDistance;
-	// mode choice model end
+	// Mode choice model end
 	
-	// metrics start, pass for passengers
+	// Metrics start, pass for passengers
 	public int numberOfGeneratedTaxiPass;
 	public int numberOfGeneratedBusPass;
 	public int taxiServedPass;
@@ -81,10 +62,11 @@ public class Zone {
 	public int taxiPassWaitingTime; //Waiting time of served Passengers
 	public int busPassWaitingTime;
 	public int taxiWaitingTime;
-	// metrics end
+	// Metrics end
+	
 	protected int vehicleStock=0; // Number of available vehicles at this zone
 	
-	// for repositioning
+	// For vehicle repositioning
 	protected int lastUpdateHour = -1;
 	protected double futureDemand;
 	protected double futureSupply;
@@ -132,17 +114,12 @@ public class Zone {
 		this.passengerWaitBus(); // Passenger wait
 		this.relocateTaxi();
 		this.taxiWaitPassenger();
-		// if(GlobalVariables.HUB_INDEXES.contains(this.integerID)){
-			// ContextCreator.logger.debug(this.integerID + "Vehicle: "+ this.vehicleStock + "Pass: "+ this.nPassForTaxi);
-		// }
 	}
 	
 	public void generatePassenger(){
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		//double sim_time = tickcount*GlobalVariables.SIMULATION_STEP_SIZE;
 		int hour = (int) Math.floor(tickcount
 				* GlobalVariables.SIMULATION_STEP_SIZE / 3600);
-//		System.out.println("Zone " + this.integerID + "Hour " + hour);
 		if(this.lastUpdateHour!=hour){
 			this.futureDemand = 0;
 			this.futureSupply = 0;
@@ -205,8 +182,8 @@ public class Zone {
 				}
 				j+=1;
 			}
-			//ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusPass); 
-			//ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiPass);
+			ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusPass); 
+			ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiPass);
 		}
 		else if (this.zoneClass == 1) { //From hub to other place
 			int j = GlobalVariables.HUB_INDEXES.indexOf(this.integerID);
@@ -256,12 +233,11 @@ public class Zone {
 				}
 			}
 		}
-		//ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusPass); 
-		//ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiPass);
+		ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusPass); 
+		ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiPass);
 		if(this.lastUpdateHour!=hour){
 			this.lastUpdateHour = hour;
 		}
-	    //ContextCreator.logger.info("Passenger generated");
 	}
 	
 	// Serve passenger
@@ -280,7 +256,7 @@ public class Zone {
 						for(int j=0; j< Math.min(4,pass_num); j++) {
 							Passenger p = passQueue.poll();
 							tmp_pass.add(p);
-						    // record served passengers
+						    // Record served passengers
 							this.nPassForTaxi-=1;
 							this.taxiServedPass += 1;
 							GlobalVariables.SERVE_PASS += 1;
@@ -300,10 +276,9 @@ public class Zone {
 			ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(this.integerID).poll();
 			Passenger p = this.firstPassInQueueForTaxi;
 			this.firstPassInQueueForTaxi = p.nextPassengerInQueue();
-			//System.out.println("Taxi serving passengers: Origin: " + p.getOrigin() + " Remaining queue" + this.passQueueForTaxi);
 			v.servePassenger(Arrays.asList(p));
 			this.removeVehicleStock(1);
-			// record served passenger
+			// Record served passenger
 			this.nPassForTaxi-=1;
 			this.taxiServedPass += 1;
 			GlobalVariables.SERVE_PASS += 1;
@@ -330,7 +305,6 @@ public class Zone {
 					ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
 					v.relocation(source.getIntegerID(), this.integerID);
 					this.numberOfRelocatedVehicles += 1;
-					// GlobalVariables.NUM_RELOCATED_VEHICLES+=1;
 					source.removeVehicleStock(1);
 				}
 			} else {
@@ -339,12 +313,13 @@ public class Zone {
 			num_to_relocate -= 1;
 		}
 	}
-
+	
+	// Serve passenger using Bus
     public ArrayList<Passenger> servePassengerByBus(int maxPassNum, ArrayList<Integer> busStop){
     	ArrayList<Passenger> passOnBoard = new ArrayList<Passenger>();
     	Passenger p = this.firstPassInQueueForBus;
     	Passenger prevp = null;
-    	while(p!=null){ // if there are passengers
+    	while(p!=null){ // If there are passengers
     		if(passOnBoard.size()>= maxPassNum){
     			break;
     		}
@@ -361,7 +336,6 @@ public class Zone {
     		}
     		p = p.nextPassengerInQueue();
     	}
-    	//ContextCreator.logger.debug("Bus serving passengers: Passenger Number: " + passOnBoard + " Remaining queue" + this.passQueueForBus);
     	this.busServedPass+=passOnBoard.size();
     	this.nPassForBus -= passOnBoard.size();
     	for(Passenger pass: passOnBoard){
@@ -371,6 +345,7 @@ public class Zone {
 	}
     
     
+    //Passenger waiting
     public void passengerWaitTaxi(){
     	for(Queue<Passenger> passQueue: this.sharablePassForTaxi.values()) {
     		for(Passenger p: passQueue) {
@@ -408,6 +383,7 @@ public class Zone {
     	}
     }
     
+  //Passenger waiting for bus
     public void passengerWaitBus(){
     	Passenger p = this.firstPassInQueueForBus;
     	Passenger prevp = null;
@@ -429,6 +405,7 @@ public class Zone {
     	}
 	}
     
+    //Taxi waiting for passenger
     public void taxiWaitPassenger(){
     	this.taxiWaitingTime += ContextCreator.getVehicleContext().getVehicles(this.integerID).size()*GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL;
     }
@@ -465,7 +442,7 @@ public class Zone {
 	
 	public void removeVehicleStock(int vehicle_num){
 		if(this.vehicleStock-vehicle_num<0){
-			System.err.println(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
+			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
 			return;
 		}
 		this.vehicleStock -= vehicle_num;
@@ -496,16 +473,13 @@ public class Zone {
 		this.busTravelDistance = travelDistance;
 	}
 	
+	// Split taxi and bus passengers via a discrete choice model
 	public float getSplitRatio(int destID){
 		if(busTravelTime.containsKey(destID) && taxiTravelTime.containsKey(destID)){
-			// 131 140 180 index
-//			ContextCreator.logger.debug("Bus Time for Zone "+this.getIntegerID()+": " + busTravelTime.get(destID));
-//			ContextCreator.logger.debug("Bus Gap for Zone "+this.getIntegerID()+": " + this.busGap);
-//			ContextCreator.logger.debug("Taxi Time for Zone "+this.getIntegerID()+": " + taxiTravelTime.get(destID));
-			float taxiUtil = alpha*(initialPriceTaxi+basePriceTaxi*taxiTravelDistance.get(destID))+
-					beta*(taxiTravelTime.get(destID)/60+5)+taxiBase;
-			float busUtil = (float) (alpha*busTicketPrice+
-					beta*(busTravelTime.get(destID)/60+this.busGap/2)+busBase);
+			double taxiUtil = GlobalVariables.MS_ALPHA*(GlobalVariables.INITIAL_PRICE_TAXI+GlobalVariables.BASE_PRICE_TAXI*taxiTravelDistance.get(destID))+
+					GlobalVariables.MS_BETA*(taxiTravelTime.get(destID)/60+5)+GlobalVariables.TAXI_BASE;
+			double busUtil = (float) (GlobalVariables.MS_ALPHA*GlobalVariables.BUS_TICKET_PRICE+
+					GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap/2)+GlobalVariables.BUS_BASE);
 			return (float) (Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 		}
 		else{
@@ -513,6 +487,7 @@ public class Zone {
 		}
 	}
 	
+	// Update travel time estimation for bus
 	public void updateTravelEstimation(){
 			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
 			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();

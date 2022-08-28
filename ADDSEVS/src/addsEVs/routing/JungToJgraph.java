@@ -1,12 +1,6 @@
 package addsEVs.routing;
 
-import java.util.*;
-
-//import org.jgrapht.EdgeFactory;
-import org.jgrapht.*;
 import org.jgrapht.graph.*;
-
-import addsEVs.ContextCreator;
 import edu.uci.ics.jung.graph.Graph;
 import repast.simphony.space.graph.RepastEdge;
 
@@ -15,11 +9,10 @@ import repast.simphony.space.graph.RepastEdge;
  * 
  * @author Samiul Hasan
  */
-@SuppressWarnings("serial")
 public class JungToJgraph<T>
 {
 
-   @SuppressWarnings("unchecked")
+   @SuppressWarnings({ "unchecked", "rawtypes" })
    public org.jgrapht.WeightedGraph<T, RepastEdge<T>> convertToJgraph(
                                                                       Graph<T, RepastEdge<T>> jungGraph)
    {
@@ -46,8 +39,6 @@ public class JungToJgraph<T>
          {
             weight = ((RepastEdge) edge).getWeight();
          }
-         // if (ContextCreator.debugSH) System.out.println("Weight: "+ weight);
-
          T source = jungGraph.getSource(edge);
          T target = jungGraph.getDest(edge);
          jGraph.addEdge(source, target, edge);

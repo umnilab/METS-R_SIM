@@ -56,7 +56,6 @@ public class Ordered<T> implements OrderableWorklist<T> {
     this(comp, maker.make(), needSize);
   }
 
-  @SuppressWarnings("unchecked")
   private Ordered(Comparator<T> comp, Worklist<T> empty, boolean needSize) {
     this.empty = empty;
     this.comp = comp;

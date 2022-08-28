@@ -28,7 +28,7 @@ import util.Pair;
 public class Vehicle {
 	protected int id;
 	protected int vehicleID_;
-	// constants
+	// Constants
 	public final static int GASOLINE = 0;
 	public final static int ETAXI = 1;
 	public final static int EBUS = 2;
@@ -39,12 +39,12 @@ public class Vehicle {
 	public final static int CHARGING_TRIP = 4;
 	public final static int NONE_OF_THE_ABOVE = -1;
 	// Vehicle status and class
-	private int vehicleClass; //LZ: 0 for gasoline vehicle, 1 for electric vehicle, 2 for bus.
-	private int vehicleState; //LZ: 0 for empty, 1 for normal trip, 2 for relocation trip, 3 for bus trip, 4 for charging trip
+	private int vehicleClass; //0 for gasoline vehicle, 1 for electric vehicle, 2 for bus.
+	private int vehicleState; //0 for empty, 1 for normal trip, 2 for relocation trip, 3 for bus trip, 4 for charging trip
 		
 	//Vehicle movement variables that do not need to be visible to descendant classes 
 	private int destRoadID;
-	private Coordinate currentCoord_; //LZ: this variable is created when the vehicle is initialized 
+	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized 
 	private float length;
 	private float distance_;// distance from downstream junction
 	private double nextDistance_; // distance from the start point of next line segment
@@ -74,28 +74,27 @@ public class Vehicle {
 	protected boolean onlane = false;
 	protected boolean atOrigin = true;
 	
-	// a set of zone for the vehicle to visit
+	// A set of zone for the vehicle to visit
 	protected ArrayList<Plan> activityplan;
 	protected Road road; 
 	private Road nextRoad_; 
 	protected Lane lane;
 	private Lane nextLane_;
 	
-	// Zhan: For vehicle based routing 
+	// For vehicle based routing 
 	protected List<Road> roadPath; // The route is always started with the current road, whenever entering the next road, the current road will be popped out
 	private List<Coordinate> coordMap;
 	private Geography<Lane> laneGeography;
 	protected Vehicle leading_; // leading vehicle in the lane
-	private Vehicle trailing_; // trailing vehicle in the lane
-	protected Vehicle macroLeading_; // BL: leading vehicle on the road (with all lanes combined)
-	protected Vehicle macroTrailing_; // BL: trailing vehicle on the road (with all lanes combined)
+	private Vehicle trailing_; // Trailing vehicle in the lane
+	protected Vehicle macroLeading_; // Leading vehicle on the road (with all lanes combined)
+	protected Vehicle macroTrailing_; // Trailing vehicle on the road (with all lanes combined)
 
-	// BL: Variables for lane changing model
-	private Lane targetLane_; // BL: this is the correct lane that vehicle should change to.
-    //	private Lane tempLane_;// BL: this is the adjacent lane toward the target lane direction
-	private boolean correctLane; // BL: to check if the vehicle is in the correct lane
-	protected boolean nosingFlag;// BL: if a vehicle in MLC and it can't find gap acceptance then nosing is true.
-	protected boolean yieldingFlag; // BL: the vehicle need to yield if true
+	// Variables for lane changing model
+	private Lane targetLane_; // This is the correct lane that vehicle should change to.
+	private boolean correctLane; //To check if the vehicle is in the correct lane
+	protected boolean nosingFlag;// If a vehicle in MLC and it can't find gap acceptance then nosing is true.
+	protected boolean yieldingFlag; // The vehicle need to yield if true
 	GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 	MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
 	
@@ -103,15 +102,15 @@ public class Vehicle {
 	private int Nshadow; // Number of current shadow roads in the path
 	private ArrayList<Road> futureRoutingRoad;
 	
-	// LZ: For solving the grid-lock issue
+	// For solving the grid-lock issue
 	private int lastMoveTick = -1;
-	private int stuckTime = 0; // number of times the vehicle get stuck
-	protected boolean movingFlag = false; // whether this vehicle is moving
+	private int stuckTime = 0; // Number of times the vehicle get stuck
+	protected boolean movingFlag = false; // Whether this vehicle is moving
 
 	public Vehicle(int vClass) {
 		this.id = ContextCreator.generateAgentID();
 		this.currentCoord_ = new Coordinate();
-		this.activityplan =  new ArrayList<Plan>(); //empty plan
+		this.activityplan =  new ArrayList<Plan>(); //Empty plan
 
 		this.length = GlobalVariables.DEFAULT_VEHICLE_LENGTH;
 		this.travelPerTurn = GlobalVariables.TRAVEL_PER_TURN;
@@ -136,13 +135,12 @@ public class Vehicle {
 		this.laneGeography = ContextCreator.getLaneGeography();
 		this.coordMap = new ArrayList<Coordinate>();
 		this.setDestRoadID(0);
-		// upload the vehicle into the queue of the corresponding link
+		// Upload the vehicle into the queue of the corresponding link
 		this.lastStepMove_ = 0;
 		this.vehicleID_ = this.id;
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
 		this.lastRouteTime = -1;
-		//this.setNextPlan();
 		
 		// For adaptive network partitioning
 		this.Nshadow = 0;
@@ -180,14 +178,12 @@ public class Vehicle {
 		this.laneGeography = ContextCreator.getLaneGeography();
 		this.coordMap = new ArrayList<Coordinate>();
 		this.setDestRoadID(0);
-		// upload the vehicle into the queue of the corresponding link
+		// Upload the vehicle into the queue of the corresponding link
 		this.lastStepMove_ = 0;
-		// this.vehicleID_ = h.getId();
 		this.vehicleID_ = this.id;
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
 		this.lastRouteTime = -1;
-		//this.setNextPlan();
 		
 		// For adaptive network partitioning
 		this.Nshadow = 0;
@@ -197,18 +193,17 @@ public class Vehicle {
 	
 	// Change the destination of the vehicle
 	public void setNextPlan() {
-//		Plan current = this.activityplan.get(0);
 		Plan next = this.activityplan.get(1);
 		this.destinationZone = next.getDestID();
 		double duration = next.getDuration();
 		int deptime = (int) duration;
 		this.setDepTime(deptime);
 		CityContext cityContext = (CityContext) ContextCreator.getCityContext();
-		this.destCoord = next.getLocation(); //this.destZone.getCoord();
-		this.originalCoord = this.getCurrentCoord(); //cityContext.findHouseWithDestID(current.getLocation()).getCoord();
+		this.destCoord = next.getLocation(); 
+		this.originalCoord = this.getCurrentCoord(); 
 		this.setDestRoadID(cityContext.findRoadAtCoordinates(this.destCoord, true).getLinkid());
-		this.atOrigin = true; // LZ: the vehicle will be rerouted to the new target when enters a new link.
-		this.activityplan.remove(0); // remove current schedule
+		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
+		this.activityplan.remove(0); // Remove current schedule
 	}
 	
     // Vehicle enters the road
@@ -219,7 +214,7 @@ public class Vehicle {
 		if (gap >= 1.2*this.length() && tickcount > firstlane.getLastEnterTick()) {
 			firstlane.updateLastEnterTick(tickcount); 
 			this.updateLastMoveTick(tickcount);
-			float capspd = (float) road.getFreeSpeed();// calculate the initial speed
+			float capspd = (float) road.getFreeSpeed();// Calculate the initial speed
 			currentSpeed_ = capspd;
 			desiredSpeed_ = road.getRandomFreeSpeed();
 			road.removeVehicleFromNewQueue(this);
@@ -234,7 +229,7 @@ public class Vehicle {
 		return false;
 	}
 	
-	// A place holder for implementing energy calculation
+	// A place holder for updating battery status for EVs
 	public void updateBatteryLevel(){
 		//Do nothing
 	}
@@ -391,11 +386,11 @@ public class Vehicle {
 						this.setReachDest();
 						return;
 					}
-//					else if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !this.onChargingRoute()){
-//						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestinationID());
-//						this.roadPath = route_result.getFirst();
-//						evBus.setRouteChoice(route_result.getSecond());
-//					}
+					else if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !this.onChargingRoute()){
+						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestinationID());
+						this.roadPath = route_result.getFirst();
+						evBus.setRouteChoice(route_result.getSecond());
+					}
 				}
 					// Compute new route 
 				if (this.roadPath.isEmpty()) {
@@ -462,7 +457,7 @@ public class Vehicle {
 	}
 
 	
-	// for lane changing, update the coordinates of vehicle to the lane coordinate
+	// For lane changing, update the coordinates of vehicle to the lane coordinate
 	private void updateCoordMap(Lane lane) {
 		Coordinate[] coords = laneGeography.getGeometry(lane).getCoordinates();
 		coordMap.clear();
@@ -507,8 +502,8 @@ public class Vehicle {
 	}
 
 	/*
-	 * -------------------------------------------------------------------- The
-	 * Car-Following model calculates the acceleration rate based on interaction
+	 * -------------------------------------------------------------------- 
+	 * The Car-Following model calculates the acceleration rate based on interaction
 	 * with other vehicles. The function returns a the most restrictive
 	 * acceleration (deceleration if negative) rate among the rates given by
 	 * several constraints. This function updates accRate_ at the end.
@@ -546,8 +541,7 @@ public class Vehicle {
 	}
 
 	public float calcCarFollowingRate(Vehicle front) {
-		// SH-if there is no front vehicle the car will be in free flow regime and have max acceleration
-
+		// If there is no front vehicle the car will be in free flow regime and have max acceleration
 		if (front == null) {
 			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
 			return (this.maxAcceleration_);
@@ -571,7 +565,6 @@ public class Vehicle {
 		hlower = GlobalVariables.H_LOWER;
 
 		// There will be three regimes emergency/free-flow/car-following regime depending on headway
-
 		// Emergency regime
 		if (headway < hlower) {
 			float dv = currentSpeed_ - front.currentSpeed_;
@@ -605,7 +598,7 @@ public class Vehicle {
 				regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
 			}
 		}
-		// SH: We are using Herman model
+		// We are using Herman model
 		else {
 			float dv = front.currentSpeed_ - currentSpeed_;
 			if (dv < 0) {
@@ -693,20 +686,6 @@ public class Vehicle {
 				Lane plane = this.tempLane();
 				if (plane != null)
 					this.mandatoryLC(plane);
-				else {
-					//HG and XQ: commented out this because now we are allowing forced jump in 5 leg or irregular intersections for which 
-					//it is not possible to assign lane information properly (as only left, right and through are allowed.)). Previously 5 leg intersections were
-					//converted to 4 leg intersections in the shape file and then this comment was put to check if anything goes wrong. But we leave all intersections as it they are.
-					//so, this error will get printed but forced jump will bypass blocking of vehicles.
-//					System.out.println("Vehicle " + this.getId()
-//							+ "has no lane to change");
-//					System.out.println("this vehicle is on road "
-//							+ this.road.getID() + " which has "
-//							+ this.road.getnLanes()
-//							+ " lane(s) and I am on lane "
-//							+ this.road.getLaneIndex(this.lane)
-//							+"with Lane ID" + this.lane.getID());
-				}
 			}
 		} else {
 			if (this.distFraction() > 0.75) {
@@ -735,7 +714,7 @@ public class Vehicle {
 	}	
 
 	/*
-	 * HGehlot: Record the vehicle snapshot if this tick corresponds to the required epoch that is needed for visualization interpolation.
+	 * Record the vehicle snapshot if this tick corresponds to the required epoch that is needed for visualization interpolation.
 	 * Note that this is recording is independent of snapshots of vehicles whether they move or not in the current tick. 
 	 * (So when vehicles do not move in a tick but we need to record positions for viz interpolation then recVehSnaphotForVisInterp is useful). 
 	 * Also, we update the coordinates of the previous epoch in the end of the function.
@@ -743,13 +722,11 @@ public class Vehicle {
 	public void recVehSnaphotForVisInterp(){
 		Coordinate currentCoord = this.getCurrentCoord();
 		try {
-			//HG: the following condition can be put to reduce the data when the output of interest is the final case when vehicles reach close to destination
-//			if(this.nextRoad() == null){
-				DataCollector.getInstance().recordSnapshot(this, currentCoord);//HGehlot: I use currentCoord rather than the targeted coordinates (as in move() function) and this is an approximation but anyway if the vehicle moves then it will get overriden.
-//			}
+			//The following condition can be put to reduce the data when the output of interest is the final case when vehicles reach close to destination
+			DataCollector.getInstance().recordSnapshot(this, currentCoord);//HGehlot: I use currentCoord rather than the targeted coordinates (as in move() function) and this is an approximation but anyway if the vehicle moves then it will get overriden.
 		}
 		catch (Throwable t) {
-		    // could not log the vehicle's new position in data buffer!
+		    // Could not log the vehicle's new position in data buffer!
 		    DataCollector.printDebug("ERR" + t.getMessage());
 		}
 		setPreviousEpochCoord(currentCoord);//update the previous coordinate as the current coordinate
@@ -775,18 +752,18 @@ public class Vehicle {
 		this.endTime++;
 		try {
 			if (!this.reachDest && !this.reachActLocation) {
-				this.move(); // move the vehicle towards their destination
-				this.advanceInMacroList(); // BL: if the vehicle travel too fast, it will change the marcroList of the road.
+				this.move(); // Move the vehicle towards their destination
+				this.advanceInMacroList(); // If the vehicle travel too fast, it will change the marcroList of the road.
 				
-				// up to this point this.reachDest == false;
+				// Up to this point this.reachDest == false;
 				if (this.nextRoad() == null) {
 					this.checkAtDestination();
 				}
 			}
 
 		} catch (Exception e) {
-			try { // print the error-causing vehicle during move()
-				System.err.println("Vehicle " + this.getVehicleID()
+			try { // Print the error-causing vehicle during move()
+				ContextCreator.logger.error("Vehicle " + this.getVehicleID()
 						+ " had an error while travelling on road: "
 						+ this.road.getLinkid() + "with next road: "
 						+ this.nextRoad().getLinkid());
@@ -794,7 +771,7 @@ public class Vehicle {
 				RunEnvironment.getInstance().pauseRun();
 			}
 			catch (NullPointerException exc) { // LZ,RV: in case next road is null
-				System.err.println("Vehicle " + this.getVehicleID()
+				ContextCreator.logger.error("Vehicle " + this.getVehicleID()
 				+ " had an error while travelling on road: "
 				+ this.road.getLinkid() + "with next road: ");
 				e.printStackTrace();
@@ -804,21 +781,21 @@ public class Vehicle {
 	}
 
 	public void move() {
-		// validation checks
+		// Validation checks
 		if (distance_ < 0 || Double.isNaN(distance_))
-			System.out.println("Vehicle.move(): distance_=" + distance_ + " " + this);
+			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
 		if (currentSpeed_ < 0 || Float.isNaN(currentSpeed_))
-			System.out.println("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
+			ContextCreator.logger.error("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
 		if (Double.isNaN(accRate_))
-			System.out.println("Vehicle.move(): accRate_="+accRate_+" "+this);
+			ContextCreator.logger.error("Vehicle.move(): accRate_="+accRate_+" "+this);
 				
-		// LZ: The vehicle is close enough to the intersection/destination initialization
+		// The vehicle is close enough to the intersection/destination initialization
 		Coordinate currentCoord = null;
 		Coordinate target = null;
-		double dx = 0; // LZ: travel distance calculated by physics
-		boolean travelledMaxDist = false; // true when traveled with maximum distance (=dx).
-		float distTravelled = 0; // the distance traveled so far.
-		float oldv = currentSpeed_; // speed at the beginning
+		double dx = 0; // Travel distance calculated by physics
+		boolean travelledMaxDist = false; // True when traveled with maximum distance (=dx).
+		float distTravelled = 0; // The distance traveled so far.
+		float oldv = currentSpeed_; // Speed at the beginning
 		float step = GlobalVariables.SIMULATION_STEP_SIZE; // 0.3 s
 		double minSpeed = GlobalVariables.SPEED_EPSILON; // min allowed speed (m/s)
 		double minAcc = GlobalVariables.ACC_EPSILON; // min allowed acceleration(m/s2)
@@ -826,7 +803,7 @@ public class Vehicle {
 		
 		Road current_road = this.road;
 		if (distance_ < GlobalVariables.INTERSECTION_BUFFER_LENGTH) {
-			if (this.nextRoad() != null) { // this has not reached destination
+			if (this.nextRoad() != null) { // This has not reached destination
 				if (this.isOnLane()) { // On lane
 					this.coordMap.add(this.getCurrentCoord()); // Stop and wait
 					int canEnterNextRoad = this.appendToJunction(nextLane_);
@@ -839,9 +816,9 @@ public class Vehicle {
 						this.accummulatedDistance_ += this.lastStepMove_;
 						this.movingFlag = true;
 					}
-					return; // move finished
-				} else { // not on lane, directly changing road
-					if (this.changeRoad() == 0) { // 0 means the vehicle cannot enter the next road
+					return; // Move finished
+				} else { // Not on lane, directly changing road
+					if (this.changeRoad() == 0) { // Zero means the vehicle cannot enter the next road
 						stuckTime+=1;
 						this.lastStepMove_ = 0;
 						this.movingFlag = false;
@@ -854,31 +831,31 @@ public class Vehicle {
 					}
 				}
 			}
-			return;// move finished
+			return;// Move finished
 		}
 
 		float dv = accRate_ * step; // Change of speed
-		if (dv > -currentSpeed_) { // still moving at the end of the cycle
+		if (dv > -currentSpeed_) { // Still moving at the end of the cycle
 			dx = currentSpeed_ * step + 0.5f * dv * step;
 
-		} else { // stops before the cycle end
+		} else { // Stops before the cycle end
 			dx = -0.5f * currentSpeed_ * currentSpeed_ / accRate_;
 			if (currentSpeed_ < minSpeed && accRate_ < minAcc) {
 				dx = 0.0f;
 			}
 		}
 		if (Double.isNaN(dx)) {
-			System.out.println("dx is NaN in move() for " + this);
+			ContextCreator.logger.error("dx is NaN in move() for " + this);
 		}
 
 		// Solve the crash problem 
 		double gap = gapDistance(this.vehicleAhead());
 		dx = Math.max(0, Math.min(dx, gap));
 		
-		// actual acceleration rate applied in last time interval.
+		// Actual acceleration rate applied in last time interval.
 		accRate_ = (float) (2.0f * (dx - oldv * step) / (step * step));
 
-		// update speed
+		// Update speed
 		currentSpeed_ += accRate_ * step;
 		if (currentSpeed_ < minSpeed) {
 			currentSpeed_ = 0.0f;
@@ -897,12 +874,11 @@ public class Vehicle {
 		double[] distAndAngle = new double[2];
 		while (!travelledMaxDist) {
 			target = this.coordMap.get(0);
-
 			// If we can get all the way to the next coords on the route then, just go there
 			if (distTravelled + nextDistance_ <= dx) {
 				distTravelled += nextDistance_;
 				this.setCurrentCoord(target);
-				// LZ: Oct 31, the distance and calculated value is not consistent (Vehicle reached the end of the link does not mean Vehicle.distance_ <= 0), therefore, use a intersection buffer （see the changeRoad block above)
+				// The distance and calculated value is not consistent (Vehicle reached the end of the link does not mean Vehicle.distance_ <= 0), therefore, use a intersection buffer （see the changeRoad block above)
 				this.coordMap.remove(0);
 				if (this.coordMap.isEmpty()) {
 					this.distance_ -= nextDistance_;
@@ -930,7 +906,7 @@ public class Vehicle {
 							accummulatedDistance_ += distTravelled;
 							break;
 						}
-					} else { // no next road, the vehicle arrived at the destination
+					} else { // No next road, the vehicle arrived at the destination
 						this.coordMap.clear();
 						this.coordMap.add(this.currentCoord_);
 						break;
@@ -948,7 +924,7 @@ public class Vehicle {
 			// we're on get the angle between the two points
 			// (current and target)
 			// (http://forum.java.sun.com/thread.jspa?threadID=438608&messageID=1973655)
-			// LZ: replaced the complicated operation with a equivalent but simpler one
+			// Replaced the complicated operation with a equivalent but simpler one
 			else {
 				double distanceToTarget = this.nextDistance_;
 				this.distance_ -= dx - distTravelled;
@@ -961,7 +937,7 @@ public class Vehicle {
 				travelledMaxDist = true;
 			}
 		}
-		// update the position of vehicles, 0<=distance_<=lane.length()
+		// Update the position of vehicles, 0<=distance_<=lane.length()
 		if (distance_ < 0) {
 			distance_=0;
 		}
@@ -1000,7 +976,6 @@ public class Vehicle {
 			for(Coordinate coord: coords){
 				this.coordMap.add(coord);
 			}
-			//this.setCoordMap(lane);
 			target = this.coordMap.get(0);
 		}
 		
@@ -1009,20 +984,10 @@ public class Vehicle {
 		distToTarget = this.distance2(currentCoord, target, distAndAngle);
 		
 		if (distToTarget <= travelPerTurn) { // Include equal, which is important
-			// this.lock.lock();
-			// vehicleGeography.move(this, targetGeom);
 			this.setCurrentCoord(target);
 		}
 		else {
-			// double angle = angle(target, currentCoord) + Math.PI; //
-			// angle()
-			// returns range from -PI->PI, but moveByVector wants range
-			// 0->2PI
 			double distToTravel = travelPerTurn;
-			// Need to convert distance from long/lat degrees to meters
-//			double distToTravelM = ContextCreator.convertToMeters(distToTravel);
-//			System.out.println(distToTravel);
-			// System.out.println("Angle: "+angle);
 			this.accummulatedDistance_ += distToTravel;
 			move2(currentCoord, target, distToTarget, distToTravel);
 		}
@@ -1030,21 +995,20 @@ public class Vehicle {
 	}
 
 	/**
-	 * SH: This function change the vehicle from its current road to the next
+	 * This function change the vehicle from its current road to the next
 	 * road.
 	 * 
 	 * @return 0-fail , 1-success to change the road
 	 */
 
 	public int changeRoad() {
-		// SH- check if the vehicle has reached the destination or not
+		// Check if the vehicle has reached the destination or not
 		if (this.atDestination()) {
-			this.clearShadowImpact(); // ZH: Clear shadow impact if already reaches destination
-			return 0; // only one will reach destination once
+			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
+			return 0; // Only one will reach destination once
 		} else if (this.nextRoad_ != null) {
-			// BL: check if there is enough space in the next road to change to
+			// Check if there is enough space in the next road to change to
 			int tickcount = (int) RepastEssentials.GetTickCount();
-			// LZ: Nov 4, short lane and the vehicle can move freely
 			// Check if the target long road has space
 			if (this.entranceGap(nextLane_) >= 1.2 * this.length() 
 					&& (tickcount > this.nextLane_.getLastEnterTick())) { 
@@ -1058,11 +1022,10 @@ public class Vehicle {
 				this.assignNextLane();
 				// Reset the desired speed according to the new road
 				this.desiredSpeed_ =  this.road.getRandomFreeSpeed();
-				//LZ: Use current speed instead of the free speed, be consistent with the setting in enteringNetwork
+				// Use current speed instead of the free speed, be consistent with the setting in enteringNetwork
 				if(this.currentSpeed_ > this.desiredSpeed_)
 					this.currentSpeed_ = (float) this.desiredSpeed_;
 				return 1;
-//				}
 			}
 			else if (this.stuckTime > GlobalVariables.MAX_STUCK_TIME) {
 				this.lastRouteTime = -1; //old route is not valid 
@@ -1089,7 +1052,6 @@ public class Vehicle {
 //		Geometry geom2 = geomFac.createPoint(nextCoord);
 //		DistanceOp dist1 = new DistanceOp(geom1, geom2);
 		if (distance(currentCoord, nextCoord) < GlobalVariables.TRAVEL_PER_TURN) {
-//			System.out.println("THIS");
 			return 1;
 			
 		} else
@@ -1105,7 +1067,6 @@ public class Vehicle {
 	}
 
 	public boolean checkAtDestination() throws Exception { // Close to the last intersection
-		// double maxMove = this.road.getFreeSpeed() * GlobalVariables.SIMULATION_STEP_SIZE;
 		if (distance_ < GlobalVariables.INTERSECTION_BUFFER_LENGTH) {
 			this.setReachDest();
 			return true;
@@ -1126,7 +1087,7 @@ public class Vehicle {
 	public void appendToMacroList(Road road) {
 		macroTrailing_ = null;
 		//If the macroLeading is modified in advanceInMacroList by other thread
-		//Then this vehicle will be misplaced in the Linked List
+		//then this vehicle will be misplaced in the Linked List
 		if (road.lastVehicle() != null){
 			road.lastVehicle().macroTrailing_ = this; 
 			macroLeading_ = road.lastVehicle();
@@ -1136,13 +1097,7 @@ public class Vehicle {
 			road.firstVehicle(this);
 		}
 		road.lastVehicle(this);
-		// after this appending, update the number of vehicles
-//		Vehicle pv = road.firstVehicle();
-//		int nVehicles_ = 0;
-//		while (pv != null) {
-//			nVehicles_++;
-//			pv = pv.macroTrailing_;
-//		}
+		// After this appending, update the number of vehicles
 		road.changeNumberOfVehicles(1);
 	}
 
@@ -1243,10 +1198,6 @@ public class Vehicle {
 	public void addPlan(int dest_id, Coordinate location, double d) {
 		Plan p = new Plan(dest_id, location, d);
 		this.activityplan.add(p);
-//		if(this.activityplan.size()>2){ //If there are three plans in a vehicle (ridesharing) in the same time
-//			System.out.println("Wow: "+this.activityplan+" "+ this.activityplan.get(0).getDestID()+" "+ this.activityplan.get(1).getDestID()+" "+ this.activityplan.get(2).getDestID());
-//		}
-		//System.out.println("Plan added");
 	}
 
 	public Coordinate getOriginalCoord() {
@@ -1288,7 +1239,6 @@ public class Vehicle {
 		this.leaveNetwork(); // remove from the network 
 		// Vehicle arrive
 		this.endTime = (int) RepastEssentials.GetTickCount();
-//		this.reachDest = true;
 	}
 	
 	
@@ -1315,7 +1265,7 @@ public class Vehicle {
 		this.trailing_ = null;
 		this.nextRoad_ = null;
 		this.setDestRoadID(0);
-		// upload the vehicle into the queue of the corresponding link
+		// Update the vehicle into the queue of the corresponding link
 		this.lastStepMove_ = 0;
 		//this.vehicleID_ = h.getId();
 		this.accummulatedDistance_ = 0;
@@ -1335,59 +1285,13 @@ public class Vehicle {
 		return currentSpeed_;
 	}
 
-//	public void resetVehicle() {
-////		CityContext cityContext = (CityContext) ContextCreator.getCityContext();
-////		Coordinate currentCoord = ContextCreator.getVehicleGeography().getGeometry(this)
-////				.getCoordinate();
-////		Road road = cityContext.findRoadAtCoordinates(currentCoord, false); // todest=false
-//		// TODO: Remove one of the two add queue functions after finish
-//		// debugging
-//		// road.addVehicleToQueue(this);
-//		this.setNextPlan();
-////		this.reachActLocation = true;
-////		
-////		road.addVehicleToNewQueue(this);
-//		this.nextRoad_ = null;
-//		this.nextLane_ = null;
-//		this.nosingFlag = false;
-//		this.yieldingFlag = false;
-//		this.macroLeading_ = null;
-//		this.macroTrailing_ = null;
-//		this.leading_ = null;
-//		this.trailing_ = null;
-//		this.coordMap = new ArrayList<Coordinate>();
-//		this.accummulatedDistance_ = 0;
-//	}
-
-//	public void killVehicle() {
-//		this.road = null;
-//		this.lane = null;
-//		this.laneGeography = null;
-//		this.nextLane_ = null;
-//		this.nosingFlag = false;
-//		this.yieldingFlag = false;
-//		this.macroLeading_ = null;
-//		this.macroTrailing_ = null;
-//		this.leading_ = null;
-//		this.trailing_ = null;
-//		this.coordMap = null;
-//		this.currentSpeed_ = 0.0f;
-//		this.moveVehicle = false;
-//		this.destCoord = null;
-//		this.destZone = null;
-//		this.targetLane_ = null;
-//		this.tempLane_ = null;
-//		this.clearShadowImpact(); // ZH: clear any remaining shadow impact
-//		// TODO: try the remove method in the vehicleContext
-//	}
-
 	/*
 	 * ----------------------------------------------------------------------
-	 * BL: From this we build functions that are used to incorporate lane
+	 * From this we build functions that are used to incorporate lane
 	 * object.
 	 * ----------------------------------------------------------------------
 	 */
-	// BL: In one road find the front leader in the same lane of the road, if
+	// In one road find the front leader in the same lane of the road, if
 	// there is no front, then return null.
 	public Vehicle findFrontBumperLeaderInSameRoad(Lane plane) {
 		Vehicle front = this.macroLeading_;
@@ -1416,12 +1320,12 @@ public class Vehicle {
 		return this.lastMoveTick;
 	}
 
-	// BL: remove a vehicle from the macro vehicle list in the current road
+	// Remove a vehicle from the macro vehicle list in the current road
 	// segment.
 	public void removeFromMacroList() {
 		// Current road of this vehicle
 		Road pr = this.getRoad();
-		// if this is not the first vehicle on the road
+		// If this is not the first vehicle on the road
 		if (this.macroLeading_ != null) {
 			this.macroLeading_.macroTrailing_ = this.macroTrailing_;
 		} else { // this is the first vehicle on the road
@@ -1433,7 +1337,6 @@ public class Vehicle {
 			pr.lastVehicle(macroLeading_);
 		}
 		// pr.removeVehicleFromRoad(this);
-		// TODO: need to change the above line by following line later
 		// pr.removeVehicleFromRoad();
 //		Vehicle pv = pr.firstVehicle();
 //		int nVehicles_ = 0;
@@ -1456,16 +1359,16 @@ public class Vehicle {
 	/**
 	 * @param: distance_ is with respect to the end of road
 	 */
-	// BL: changed from distance_ to realDistance_ (Jul 27/2012)
+	// Changed from distance_ to realDistance_
 	public void advanceInMacroList() {
-		// (0) check if vehicle should be advanced in the list
+		// (0) Check if vehicle should be advanced in the list
 		if (macroLeading_ == null || this.distance_ >= macroLeading_.distance_) {
-			// no macroLeading or the distance to downstream node is greater
+			// No macroLeading or the distance to downstream node is greater
 			// than marcroLeading
-			// no need to advance this vehicle in list
+			// No need to advance this vehicle in list
 			return;
 		}
-		// (1) find vehicle's position in the list
+		// (1) Find vehicle's position in the list
 		// now this vehicle has a macroLeading that has the higher distance to
 		// downstream node.
 		// that should not be the vehicle marcroLeading anymore. Need to find
@@ -1503,7 +1406,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * function: checkCorrectLane() BL: this function will check if the current
+	 * Function: checkCorrectLane() BL: this function will check if the current
 	 * lane connect to a lane in the next road if yes then it gives the
 	 * checkLaneFlag true value if not then the checkLaneFlag has false value
 	 * the function will be called after the vehicle updates its route i.e. the
@@ -1515,7 +1418,7 @@ public class Vehicle {
 		if (nextRoad() == null)
 			return true;
 		Lane nextLane = this.getNextLane();
-		// if using dynamic shortest path then we need to check lane only after
+		// If using dynamic shortest path then we need to check lane only after
 		// the route is updated
 		this.correctLane = false;
 		if (nextLane.getUpLanes().size() > 0)
@@ -1562,15 +1465,10 @@ public class Vehicle {
 			this.nextLane_=null;
 			return;
 		} else {
-//			Junction curUpJunc, curDownJunc, nextUpJunc, nextDownJunc;
-//			curUpJunc = this.road.getJunctions().get(0);
-//			curDownJunc = this.road.getJunctions().get(1);
-//			nextUpJunc = this.nextRoad_.getJunctions().get(0);
-//			nextDownJunc = this.nextRoad_.getJunctions().get(1);
 			for (Lane dl : curLane.getDnLanes()) {
 				if (dl.road_().equals(this.nextRoad())) {
 					this.nextLane_ = dl;
-					// if this lane already connects to downstream road then
+					// If this lane already connects to downstream road then
 					// assign to the connected lane
 					connected = true;
 					break;
@@ -1581,15 +1479,14 @@ public class Vehicle {
 					for (Lane ul : pl.getUpLanes()) {
 						if (ul.road_().getID() == curRoad.getID()) {
 							this.nextLane_ = pl;
-							break; // assign the next lane to the 1st connected
-							// lane
+							break; // Assign the next lane to the 1st connected lane
 						}
 					}
 				}
 				this.nextLane_ = this.nextRoad().getLane(0);//HG and XQ: force movement at a 5 leg or irregular intersection
 			}
 			if (this.nextLane_ == null)
-				System.err.println("No next lane found for vehicle: "
+				ContextCreator.logger.error("No next lane found for vehicle: "
 						+ this.vehicleID_ + " moving on the road: "
 						+ this.getRoad().getLinkid() + " lane: "
 						+ this.getLane().getLaneid() + " heading to location "
@@ -1598,11 +1495,10 @@ public class Vehicle {
 						+ this.nextRoad().getLinkid() + " that has "
 						+ this.nextRoad().getnLanes() + " lanes");
 		}
-		// this.updateCoorMapWithNewLane();
 	}
 
 	/*
-	 * BL: nextLane -> get next lane of a vehicle From the next Road of a
+	 * NextLane -> get next lane of a vehicle From the next Road of a
 	 * vehicle. Check each lane and see which lane connects to vehicle's current
 	 * Road
 	 */
@@ -1611,7 +1507,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: return the target lane (the lane that connect to the downstream Road)
+	 * Return the target lane (the lane that connect to the downstream Road)
 	 */
 	public Lane targetLane() {
 		Road curRoad = this.getRoad();
@@ -1628,7 +1524,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: return the next lane that the vehicle need to change to in order to
+	 * Return the next lane that the vehicle need to change to in order to
 	 * reach the correct lane
 	 */
 	public Lane tempLane() {
@@ -1643,7 +1539,7 @@ public class Vehicle {
 		return tempLane_;
 	}
 
-	// get left lane
+	// Get left lane
 	public Lane leftLane() {
 		Lane leftLane = null;
 		if (this.road.getLaneIndex(this.lane) > 0) {
@@ -1652,7 +1548,7 @@ public class Vehicle {
 		return leftLane;
 	}
 
-	// get right lane
+	// Get right lane
 	public Lane rightLane() {
 		Lane rightLane = null;
 		if (this.road.getLaneIndex(this.lane) < this.road.getnLanes() - 1) {
@@ -1663,7 +1559,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: This function change the lane of a vehicle regardless it is MLC or
+	 * This function change the lane of a vehicle regardless it is MLC or
 	 * DLC state. The vehicle change lane when its lead and lag gaps are
 	 * acceptable. This will not change the speed of the vehicle, the only
 	 * information updated in this function is as follow: remove the vehicle
@@ -1692,7 +1588,7 @@ public class Vehicle {
 
 		this.lane.removeVehicles();
 		/*
-		 * BL: after change the lane the vehicle updates its leading and
+		 * After change the lane the vehicle updates its leading and
 		 * trailing in the target lanes. and also the lead and lag vehicle have
 		 * to update its leading and trailing.
 		 */
@@ -1723,14 +1619,14 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: Following we implement mandatory lane changing. The input parameter
+	 * Following we implement mandatory lane changing. The input parameter
 	 * is the temporary lane.
 	 */
 	public void mandatoryLC(Lane plane) {
 		Vehicle leadVehicle = this.leadVehicle(plane);
 		Vehicle lagVehicle = this.lagVehicle(plane);
 		/*
-		 * BL: Consider the condition to change the lane as follow: If there are
+		 * Consider the condition to change the lane as follow: If there are
 		 * leading and trailing vehicle then the vehicle will check for gap
 		 * acceptance as usual. However, if there is no leading or no trailing,
 		 * the leadGap or the lagGap should be neglected. In the case the
@@ -1743,7 +1639,7 @@ public class Vehicle {
 						.critLeadGapMLC(leadVehicle)
 						&& this.lagGap(lagVehicle) >= this
 								.critLagGapMLC(lagVehicle)) {
-					// BL: debug the error that vehicle changes the lane
+					// Debug the error that vehicle changes the lane
 					// internally but not on the GUI
 					this.changeLane(this.tempLane(), leadVehicle, lagVehicle);
 					this.nosingFlag = false;
@@ -1773,7 +1669,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: if the vehicle with MLC state can't change the lane after some
+	 * If the vehicle with MLC state can't change the lane after some
 	 * distance. The vehicle need to nose and yield the lag Vehicle of the
 	 * target lane in order to have enough gap to change the lane This function
 	 * is called only when nosingFlag is true and must be recalled until
@@ -1789,7 +1685,7 @@ public class Vehicle {
 		Vehicle leadVehicle = this.leadVehicle(tarLane);
 		Vehicle lagVehicle = this.lagVehicle(tarLane);
 		/*
-		 * BL: if there is a lag vehicle in the target lane, the vehicle will
+		 * If there is a lag vehicle in the target lane, the vehicle will
 		 * yield that lag vehicle however, the yielding is only true if the
 		 * distance is less than some threshold
 		 */
@@ -1803,7 +1699,7 @@ public class Vehicle {
 		}
 		Vehicle front = this.leading();
 		/*
-		 * BL: 1. if there is a lead and a lag vehicle in the target lane. the
+		 * 1. If there is a lead and a lag vehicle in the target lane. the
 		 * vehicle will check the lead gap before decide to decelerate. if the
 		 * lead gap is large, then the subject vehicle will be assigned with the
 		 * accelerate rate as in car following. 2. if there is no lead vehicle
@@ -1835,7 +1731,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: While moving, the vehicle will checks if the vehicles in adjection
+	 * While moving, the vehicle will checks if the vehicles in adjection
 	 * lanes are nosing to its lane or not after some distance to the downstream
 	 * node If the nosing is true then it will be tagged in yielding state to
 	 * slow down.
@@ -1858,7 +1754,7 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: when change lane, distance need to be adjusted with the lane width.
+	 * When change lane, distance need to be adjusted with the lane width.
 	 */
 
 	// Calculate critical lead gap of the vehicle with the lead vehicle in the
@@ -1879,7 +1775,7 @@ public class Vehicle {
 		return critLead;
 	}
 
-	// BL: Calculate lead gap of the vehicle with the lead vehicle in the target
+	// Calculate lead gap of the vehicle with the lead vehicle in the target
 	// lane.
 	public double leadGap(Vehicle leadVehicle) {
 		double leadGap = 0;
@@ -1892,7 +1788,7 @@ public class Vehicle {
 		return leadGap;
 	}
 
-	// BL: Calculate critical lag gap of the vehicle with the lag vehicle in the
+	// Calculate critical lag gap of the vehicle with the lag vehicle in the
 	// target lane.
 	public double critLagGapMLC(Vehicle lagVehicle) {
 		double critLag = 0;
@@ -1911,7 +1807,7 @@ public class Vehicle {
 		return critLag;
 	}
 
-	// BL: Calculate lag gap of the vehicle with the lag vehicle in the target
+	// Calculate lag gap of the vehicle with the lag vehicle in the target
 	// lane.
 	public double lagGap(Vehicle lagVehicle) {
 		double lagGap = 0;
@@ -1922,7 +1818,7 @@ public class Vehicle {
 		return lagGap;
 	}
 
-	// BL: find the lead vehicle in target lane
+	// Find the lead vehicle in target lane
 	public Vehicle leadVehicle(Lane plane) {
 		Vehicle leadVehicle = this.macroLeading_;
 		while (leadVehicle != null && leadVehicle.lane != plane) {
@@ -1931,7 +1827,7 @@ public class Vehicle {
 		return leadVehicle;
 	}
 
-	// BL: find lag vehicle in target lane
+	// Find lag vehicle in target lane
 	public Vehicle lagVehicle(Lane plane) {
 		Vehicle lagVehicle = this.macroTrailing_;
 		while (lagVehicle != null && lagVehicle.lane != plane) {
@@ -1941,13 +1837,13 @@ public class Vehicle {
 	}
 
 	/*
-	 * BL: Following we will implement discretionary LC model At current stage,
+	 * Following we will implement discretionary LC model At current stage,
 	 * the DLC is implementing as follow: 1. If the vehicle is not close to
 	 * downstream node 2. and it finds a correct lane with better traffic
 	 * condition -> then it will change lane
 	 */
 	/*
-	 * BL: if the vehicle is in correct lane then we find a better lane that is
+	 * If the vehicle is in correct lane then we find a better lane that is
 	 * also connected to downstream line this function is called at the
 	 * makeLaneChangingDecision
 	 */
@@ -1963,14 +1859,14 @@ public class Vehicle {
 		} else {
 			if (leftLane != null && rightLane != null) {
 				Lane tempLane = leftLane.betterLane(rightLane);
-				targetLane = curLane.betterLane(tempLane); // get the lane that
+				targetLane = curLane.betterLane(tempLane); // Get the lane that
 				// has best traffic condition
 			} else if (leftLane != null)
 				targetLane = curLane.betterLane(leftLane);
 			else if (rightLane != null) {
 				targetLane = curLane.betterLane(rightLane);
 			}
-			// if we have a target lane, then compare the speed of
+			// If we have a target lane, then compare the speed of
 			// front bumper leader in the lane with current leader
 			if (targetLane != null && !targetLane.equals(curLane)) {
 				Vehicle front = this
@@ -2023,7 +1919,7 @@ public class Vehicle {
 					&& rightLane.isConnectToLane(this.nextLane_)) {
 				targetLane = curLane.betterLane(rightLane);
 			}
-			// if we have a target lane, then compare the speed of
+			// If we have a target lane, then compare the speed of
 			// front bumper leader in the lane with current leader
 			if (targetLane != null && !targetLane.equals(curLane)) {
 				Vehicle front = this
@@ -2044,8 +1940,7 @@ public class Vehicle {
 
 	}
 
-	// once the vehicle finds a better lane. It changes to that lane
-	// discretionarily.
+	// Once the vehicle finds a better lane. It changes to that lane discretionarily.
 	public void discretionaryLC(Lane plane) {
 		Vehicle leadVehicle = this.leadVehicle(plane);
 		Vehicle lagVehicle = this.lagVehicle(plane);
@@ -2061,7 +1956,6 @@ public class Vehicle {
 	public double criticalLeadDLC(Vehicle pv) {
 		double critLead = 0;
 		double minLead = GlobalVariables.minLeadDLC;
-		// TODO: change betaLead01 and 02 to DLC value.
 		if (pv != null) {
 			critLead = minLead + GlobalVariables.betaLeadDLC01
 					* this.currentSpeed_ + GlobalVariables.betaLeadDLC02
@@ -2074,7 +1968,6 @@ public class Vehicle {
 	public double criticalLagDLC(Vehicle pv) {
 		double critLag = 0;
 		double minLag = GlobalVariables.minLagDLC;
-		// TODO: change betaLag01 and 02 to DLC value
 		if (pv != null) {
 			critLag = minLag + GlobalVariables.betaLagDLC01
 					* this.currentSpeed_ + GlobalVariables.betaLagDLC02
@@ -2084,104 +1977,28 @@ public class Vehicle {
 		return critLag;
 	}
 
-	/*
-	 * After appending vehicle to next road, a new nextlane being assigned. The
-	 * coordinate map will be updated with the last point is the starting point
-	 * of the next lane
-	 */
-//	public void updateCoorMapWithNewLane() {
-//		Coordinate coor1, coor2;
-//		if (!this.coordMap.isEmpty()) {
-//			int end = this.coordMap.size() - 1;
-//			coor1 = this.coordMap.get(end);
-//			if (this.vehicleID_ == GlobalVariables.Global_Vehicle_ID
-//					&& !GlobalVariables.Debug_On_Road) {
-//				System.out
-//						.println("=====I already had my coordinate map but need to update for moving through junction ");
-//				System.out.println("which connects to the point: " + coor1);
-//			}
-//		} else {
-//			
-//			coor1 = ContextCreator.getVehicleGeography().getGeometry(this).getCoordinate();
-//		}
-//		if (this.nextLane_ != null) {
-//			Lane plane = this.nextLane_;
-//			Coordinate c1, c2;
-//			Coordinate[] coords = laneGeography.getGeometry(plane)
-//					.getCoordinates();
-//			c1 = coords[0];
-//			c2 = coords[coords.length - 1];
-//			coor2 = getNearestCoordinate(coor1, c1, c2);
-//			if (this.vehicleID_ == GlobalVariables.Global_Vehicle_ID
-//					&& !GlobalVariables.Debug_On_Road) {
-//				System.out.println("The adding coordinate is from the lane: "
-//						+ plane.getLaneid());
-//			}
-//		} else
-//			coor2 = this.destCoord;
-//		if (!coor2.equals(coor1)) {
-//			this.coordMap.add(coor2);
-//			if (this.vehicleID_ == GlobalVariables.Global_Vehicle_ID
-//					&& !GlobalVariables.Debug_On_Road) {
-//				System.out
-//						.println("@@@@@@@@@@@@@@ New coordinate added @@@@@@@@@@@@@@@@@@@");
-//			}
-//		} else {
-//			if (this.vehicleID_ == GlobalVariables.Global_Vehicle_ID
-//					&& !GlobalVariables.Debug_On_Road) {
-//				System.out.println("+++++++++++No coordinate added+++++++++ ");
-//			}
-//		}
-//		if (this.id == GlobalVariables.Global_Vehicle_ID
-//				&& !GlobalVariables.Debug_On_Road) {
-//			System.out
-//					.println("My coordinate map after update the next lane: ");
-//			int end = this.coordMap.size() - 1;
-//			System.out.println("Distance to added point: "
-//					+ distance(this.coordMap.get(end - 1),
-//							this.coordMap.get(end)));
-//		}
-//	}
 
 	/*
-	 * BL: when vehicle approach junction, need new coordinate and distance
+	 * When vehicle approach junction, need new coordinate and distance
 	 */
 	public int appendToJunction(Lane nextlane) {
-//		coordMap.clear();
-//		if (this.getVehicleID() == GlobalVariables.Global_Vehicle_ID
-//				&& this.nextRoad().getLinkid() == this.destRoadID) {
-//			System.out.println("Vehicle " + this.getVehicleID()
-//					+ " is appending to a junction of the final Road");
-//		}
 		if (this.atDestination()) {
-//			this.removeFromLane();
-//			this.removeFromMacroList();
 			return 0;
-		} else{ // LZ: want to change to next lane
-//			if (this.getVehicleID() == GlobalVariables.Global_Vehicle_ID
-//					&& this.nextRoad().getLinkid() == this.destRoadID)
-//				System.out.println("Vehicle " + this.getVehicleID()
-//						+ " has final next lane " + nextlane.getLaneid());
-//			Coordinate[] coords = laneGeography.getGeometry(nextlane)
-//					.getCoordinates();
-//			Coordinate start = coords[0];
-//			Coordinate end = coords[coords.length - 1];
-//			Coordinate coor = this.getNearestCoordinate(lastCoordinate, start, end);
+		} else{ // Want to change to next lane
 			coordMap.clear();
 			coordMap.add(this.getCurrentCoord());
 		}
 
-		//this.distance_ = 0; // (float) distance(lastCoordinate, coordMap.get(0)); // LZ: End of the link
-				//- lastStepMove_ / 2;
 		this.onlane = false;
-		//record energy consumption
+		
+		//Record energy consumption
 		if(this.getVehicleClass() == 1){ //EV
 			((ElectricVehicle) this).recLinkSnaphotForUCB();
 			((ElectricVehicle) this).recSpeedVehicle();
 		}
-//		else if(this.getVehicleClass() == 2){ //Bus
-//			((Bus) this).recLinkSnaphotForUCBBus();
-//		}
+		else if(this.getVehicleClass() == 2){ //Bus
+			((Bus) this).recLinkSnaphotForUCBBus();
+		}
 		
 		if (this.changeRoad() == 0){
 			return 0;
@@ -2212,22 +2029,6 @@ public class Vehicle {
 	 * @param c2
 	 * @return
 	 */
-//	private Coordinate getNearestCoordinate(Coordinate c, Coordinate c1,
-//			Coordinate c2) {
-//		/*
-//		 * GeometryFactory geomFac = new GeometryFactory(); Geometry coordGeom =
-//		 * geomFac.createPoint(c); Geometry geom1 = geomFac.createPoint(c1);
-//		 * Geometry geom2 = geomFac.createPoint(c2);
-//		 */
-//		double dist1 = distance(c, c1);
-//		double dist2 = distance(c, c2);
-//
-//		if (dist1 < dist2)
-//			return c1;
-//		else
-//			return c2;
-//
-//	}
 
 	private double distance(Coordinate c1, Coordinate c2) {
 
@@ -2283,16 +2084,6 @@ public class Vehicle {
 	 * @param angleInDegrees
 	 */
 	private void move2(Coordinate origin, Coordinate target, double distanceToTarget, double distanceTravelled){
-//		this.calculator.setStartingGeographicPoint(coord.x, coord.y);
-//		this.calculator.setDirection(angleInDegrees, distance);
-//		Point2D p = this.calculator.getDestinationGeographicPoint();
-//		if (p != null) {
-//			this.setCurrentCoord(new Coordinate(p.getX(), p.getY()));
-//		}
-//		else{
-//			logger.error("Vehicle.move2(): Cannot move " + this + "from "
-//					+ coord + " by dist=" + distance + ", angle=" + angleInDegrees);
-//		}
 		double p = distanceTravelled/distanceToTarget;
 		if(p<1){
 			this.setCurrentCoord(new Coordinate((1-p)*origin.x + p*target.x , (1-p)*origin.y + + p*target.y));
@@ -2307,6 +2098,7 @@ public class Vehicle {
 //	 * Thread safe version of the moveByVector, replace the one in the DefaultGeography class
 //	 * Creating a new Geometry point given the current location of the vehicle as well as the distance and angle.
 //	 * In the end, move the vehicle to the new geometry point.
+//	 * Commented to gain better efficiency.
 //	 * @return the new Geometry point
 //	 */
 //	
@@ -2383,7 +2175,6 @@ public class Vehicle {
 		return vehicleClass;
 	}
 	
-	// Xue, Juan 20191212
 	public float currentAcc() {
 		return accRate_;
 	}

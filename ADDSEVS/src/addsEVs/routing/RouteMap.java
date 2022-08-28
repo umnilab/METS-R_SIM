@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 import addsEVs.ContextCreator;
-import edu.uci.ics.jung.graph.util.Pair;
 
 /**
  * 
@@ -21,15 +20,15 @@ public class RouteMap {
 	
 	private HashMap<String, ArrayList<Integer>> storage = new HashMap<String, ArrayList<Integer>>();
 	
-	// line format for route prediction
+	// Line format for route prediction
 	// jun_drc,junc_dest:linkid1,linkid2,linkid3.....,linkidn
 	public void updateRoute(String line) {
-		// get the src, dest string
+		// Get the src, dest string
 		String[] words = line.split(":");
 		
-		String key = words[0]; // this is the key to route map
+		String key = words[0]; // This is the key to route map
 		
-		// get the list of roads for this route
+		// Get the list of roads for this route
 		String[] roadLinkWords = words[1].split(",");
 		ArrayList<Integer> roadLinks = new ArrayList<Integer>();
 		for(String roadLinkWord : roadLinkWords) {

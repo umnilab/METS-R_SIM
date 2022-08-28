@@ -1,6 +1,5 @@
 package addsEVs.data;
 
-import addsEVs.citycontext.Road;
 import jdk.nashorn.internal.runtime.regexp.joni.exception.ValueException;
 
 class LinkSnapshot {
@@ -27,7 +26,7 @@ class LinkSnapshot {
 		this.energy = (float) energy;
 		this.flow = flow;
 		
-		// validity checks
+		// Validity checks
 		if (id < 0) {
 			throw new ValueException("Road ID negative for " + id);
 		}

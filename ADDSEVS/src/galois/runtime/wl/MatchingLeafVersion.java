@@ -38,6 +38,6 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
 public @interface MatchingLeafVersion {
-  @SuppressWarnings("unchecked")
-  Class<? extends Worklist> value();
+  @SuppressWarnings("rawtypes")
+Class<? extends Worklist> value();
 }

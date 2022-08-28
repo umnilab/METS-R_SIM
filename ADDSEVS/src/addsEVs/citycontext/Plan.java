@@ -11,7 +11,6 @@ import com.vividsolutions.jts.geom.Coordinate;
  **/
 
 public class Plan {
-//	private Integer location;
 	private int dest_id;
 	private Coordinate location; // Add coordination to allow relocating to any place
 	private Double duration;

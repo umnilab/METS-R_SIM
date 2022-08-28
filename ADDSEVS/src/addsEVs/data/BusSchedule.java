@@ -48,7 +48,7 @@ public class BusSchedule{
 			readEventFile();
 		}
 	}
-	// read and parse the JSON files
+	// Read and parse the JSON files
 	@SuppressWarnings("unchecked")
 	public void readEventFile(){
 		JSONParser parser = new JSONParser();
@@ -132,7 +132,6 @@ public class BusSchedule{
 	}
 	
 	public void popSchedule(int startZone, Bus b) {
-		// System.out.println("BUS SCHEDULE UPDATED!");
 		int current_tick = (int) RepastEssentials.GetTickCount();
 		if(this.pendingSchedules!=null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule

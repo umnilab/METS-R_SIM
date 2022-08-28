@@ -5,7 +5,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.vehiclecontext.Vehicle;
 
-
 /**
  * 
  * This class is the simple data object for capturing the state 
@@ -89,7 +88,7 @@ public class VehicleSnapshot {
            	 coordinate.x,
              coordinate.y,
            	 vehicle.currentSpeed(),
-        	 vehicle.getOriginalCoord().x,                   /** @author Jiawei Xue */
+        	 vehicle.getOriginalCoord().x,                   
         	 vehicle.getOriginalCoord().y,
         	 vehicle.getDestCoord().x,
         	 vehicle.getDestCoord().y,
@@ -118,22 +117,18 @@ public class VehicleSnapshot {
                            double x,
                            double y,
                            float speed,
-            			   double originX,                          /** @author Jiawei Xue */
+            			   double originX,                          
                            double originY,
                            double destX, 
                            double destY,
                            int nearlyArrived,
                            int vehicleClass,
                            int roadID
-                           //double z,
-                           //int departure,
-                           //int arrival,
-                           //float distance,
                            ) throws Throwable {
-        // all values are passed in as primitaves instead of objects,
+        // All values are passed in as primitaves instead of objects,
         // so the compiler won't allow any to be null, no need to check
         
-        // do basic validity checks against the values provided
+        // Do basic validity checks against the values provided
         if (roadID < 0) {
             throw new Exception("Road ID cannot be negative.");
         }
@@ -158,34 +153,11 @@ public class VehicleSnapshot {
         if (Double.isNaN(y) || Double.isInfinite(y)) {
             throw new NumberFormatException("Y-axis value is invalid.");
         }
-        // the model doesn't use the Z-axis
-        //if (Double.isNaN(z) || Double.isInfinite(z)) {
-        //    throw new NumberFormatException("Z-axis value is invalid.");
-        //}
         if (Float.isNaN(speed) || Float.isInfinite(speed)) {
             throw new NumberFormatException("Speed value is invalid.");
         }
-        //if (Float.isNaN(distance) || Float.isInfinite(distance)) {
-            //throw new NumberFormatException("Distance value is invalid.");
-        //}
         
-        // TODO: check the position values are within range
-
-        // TODO: check the speed value is reasonable for a ground vehicle
-        
-        // TODO: check the departure and arrival timestamps are valid
-        
-        // TODO: check the distance traveled value is valid
-        
-        //HGehlot: Not putting these conditions for previous coordinates because they will be null at time step 0.
-//        if (Double.isNaN(prev_x) || Double.isInfinite(x)) {
-//            throw new NumberFormatException("Previous X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(prev_y) || Double.isInfinite(y)) {
-//            throw new NumberFormatException("Previous Y-axis value is invalid.");
-//        }
-        
-        // store the values in the object
+        // Store the values in the object
         this.id = id;
         this.prev_x = prev_x;
         this.prev_y = prev_y;
@@ -199,11 +171,6 @@ public class VehicleSnapshot {
         this.nearlyArrived = nearlyArrived;
         this.vehicleClass = vehicleClass;
         this.roadID = roadID;
-        //this.z = 0.0d;
-        //this.departure = departure;
-        //this.arrival = arrival;
-        //this.distance = distance;
-
     }
     
     
@@ -302,29 +269,4 @@ public class VehicleSnapshot {
      * @return the road ID of the vehicle within the simulation.
      */
     public int getRoadID() { return this.roadID; }    
-     
-   
-    /**
-     * Returns the time of departure of the vehicle for the current trip.
-     * 
-     * @return the time of departure of the vehicle for the current trip.
-     */
-    //public int getDeparture() { return this.departure; }
-    
-    
-    /**
-     * Returns the expected arrival time of the vehicle for the current trip.
-     * 
-     * @return the expected arrival time of the vehicle for the current trip.
-     */
-    //public int getArrival() { return this.arrival; }
-    
-    
-    /**
-     * Returns the total distance traveled by the vehicle so far on this trip.
-     * 
-     * @return the total distance traveled by the vehicle so far on this trip.
-     */
-    //public float getDistance() { return this.distance; }
-
 }

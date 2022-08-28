@@ -52,7 +52,6 @@ class ConcurrentOrdered<T> implements OrderableWorklist<T> {
     this(comp, maker.make(), needSize);
   }
 
-  @SuppressWarnings("unchecked")
   private ConcurrentOrdered(Comparator<T> comp, Worklist<T> empty, boolean needSize) {
     this.comp = comp;
     this.empty = empty;

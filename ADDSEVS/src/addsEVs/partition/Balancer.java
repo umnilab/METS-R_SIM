@@ -32,7 +32,7 @@ import util.fn.LambdaVoid;
 public class Balancer {
 
 	/**
-	 * a blancing algorithm for bisection 
+	 * A blancing algorithm for bisection 
 	 * @param metisGraph the graph to balance
 	 * @param tpwgts the lowerbounds of weights for the two partitions
 	 */

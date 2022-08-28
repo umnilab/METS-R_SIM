@@ -79,7 +79,7 @@ public class ChunkedRandomOrder<T> implements Worklist<T> {
    * @param chunkSize        chunk size to use
    * @param initialCapacity  initial capacity
    */
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   public ChunkedRandomOrder(int chunkSize, int initialCapacity, Maker<T> maker, boolean needSize) {
     this(initialCapacity, initialCapacity, new BoundedLIFO(chunkSize, null, false), needSize);
   }

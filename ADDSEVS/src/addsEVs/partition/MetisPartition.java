@@ -21,17 +21,9 @@ File: AbstractMain.java
 
 package addsEVs.partition;
 
-//import evacSim.partition.GrowBisection.SaveNodesToArray;
-//import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
-//import galois.runtime.GaloisRuntime;
-//import repast.simphony.space.gis.Geography;
-
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-//import java.util.Iterator;
-//import java.util.Set;
 import java.util.concurrent.ExecutionException;
 
 import addsEVs.ContextCreator;
@@ -65,15 +57,14 @@ public class MetisPartition {
 	public void first_run() throws NumberFormatException, ExecutionException {
 		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
 		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(true);
-		System.out.println("Metis Running...");
+		ContextCreator.logger.debug("Metis Running...");
 		
 		if (Launcher.getLauncher().isFirstRun()) {
-			System.err.println("Configuration");
-			System.err.println("-------------");
-			System.err.println(" Num of partitions: " + this.npartition);
-			System.err.println("Graph size: " + metisGraph.getGraph().size() + " nodes and " + metisGraph.getNumEdges()
+			ContextCreator.logger.debug("Configuration");
+			ContextCreator.logger.debug("-------------");
+			ContextCreator.logger.debug(" Num of partitions: " + this.npartition);
+			ContextCreator.logger.debug("Graph size: " + metisGraph.getGraph().size() + " nodes and " + metisGraph.getNumEdges()
 					+ " edges");
-			System.err.println();
 		}
 		
 		System.gc(); // For gabage collection
@@ -83,9 +74,6 @@ public class MetisPartition {
 		IntGraph<MetisNode> resultGraph = partition(metisGraph, npartition);
 		Launcher.getLauncher().stopTiming();
 		time = (System.nanoTime() - time) / 1000000;
-//		System.err.println("mincut: " + metisGraph.getMinCut());
-		System.err.println("runtime: " + time + " ms");
-		System.err.println();
 		
 		// Calling GaliosToRepastGraph method for testing
 		graphConverter.GaliosToRepastGraph(resultGraph, npartition);
@@ -96,7 +84,7 @@ public class MetisPartition {
 		this.PartitionWeights = graphConverter.getPartitionWeights();
 		int i;
 		for (i = 0; i < this.npartition; i++){
-			System.err.print("Partition:\t" + i + "\tNumber of element=\t" + PartitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + PartitionWeights.get(i));
+			ContextCreator.logger.debug("Partition:\t" + i + "\tNumber of element=\t" + PartitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + PartitionWeights.get(i));
 			// Compute number of vehicles currently in the partition
 			int totNumVeh = 0;
 			int totShadowVeh = 0;
@@ -148,17 +136,7 @@ public class MetisPartition {
 	
 	public void run() throws NumberFormatException, ExecutionException {
 		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
-		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(false);
-		/*System.out.println("Metis Running...");
-		
-		if (Launcher.getLauncher().isFirstRun()) {
-			System.err.println("Configuration");
-			System.err.println("-------------");
-			System.err.println(" Num of partitions: " + this.npartition);
-			System.err.println("Graph size: " + metisGraph.getGraph().size() + " nodes and " + metisGraph.getNumEdges()
-					+ " edges");
-			System.err.println();
-		}*/
+		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(false);		
 		System.gc(); // For gabage collection
 		
 		long time = System.nanoTime();
@@ -185,7 +163,7 @@ public class MetisPartition {
 		this.PartitionWeights = graphConverter.getPartitionWeights();
 		int i;
 		for (i = 0; i < this.npartition; i++){
-			System.err.print("Partition:\t" + i + "\tNumber of element=\t" + PartitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + PartitionWeights.get(i));
+			ContextCreator.logger.debug("Partition:\t" + i + "\tNumber of element=\t" + PartitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + PartitionWeights.get(i));
 			// Compute number of vehicles currently in the partition
 			int totNumVeh = 0;
 			int totShadowVeh = 0;
@@ -196,7 +174,7 @@ public class MetisPartition {
 				totRoutingVeh += road.getFutureRoutingVehNum();
 				
 			}
-			System.err.println("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
+			ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
 
 		}
 		
@@ -228,7 +206,7 @@ public class MetisPartition {
 		MetisGraph mcg = coarsener.coarsen(metisGraph);
 		time = (System.nanoTime() - time) / 1000000;
 		
-		System.err.println("coarsening time: " + time + " ms");
+		ContextCreator.logger.debug("Coarsening time: " + time + " ms");
  
 		MetisGraph.nparts = 2;
 		float[] totalPartitionWeights = new float[nparts];
@@ -238,11 +216,11 @@ public class MetisPartition {
 		PMetis pmetis = new PMetis(20, maxVertexWeight);
 		pmetis.mlevelRecursiveBisection(mcg, nparts, totalPartitionWeights, 0, 0);
 		time = (System.nanoTime() - time) / 1000000;
-		System.err.println("initial partition time: " + time + " ms");
+		ContextCreator.logger.debug("Initial partition time: " + time + " ms");
 		MetisGraph.nparts = nparts;
 		time = System.nanoTime();
 		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
-		// Zhan: we can just run KWayRefiner for future steps
+		// We can just run KWayRefiner for future steps
 		KWayRefiner refiner = new KWayRefiner();
 		refiner.refineKWay(mcg, metisGraph, totalPartitionWeights, (float) 1.03, nparts);
 		time = (System.nanoTime() - time) / 1000000;
@@ -252,10 +230,9 @@ public class MetisPartition {
 
 	public void verify(MetisGraph metisGraph) {
 		if (!metisGraph.verify()) {
-			System.err.println("KMetis verify not passed!");
+			ContextCreator.logger.error("KMetis verify not passed!");
 //			throw new IllegalStateException("KMetis failed.");
 		}
-		System.err.println("KMetis okay");
-		System.err.println();
+		ContextCreator.logger.debug("KMetis okay");
 	}
 }

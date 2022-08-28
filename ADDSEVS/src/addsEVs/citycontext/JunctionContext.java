@@ -22,6 +22,7 @@ import addsEVs.ContextCreator;
  * 
  * Inherit from ARESCUE simulation
  */
+
 public class JunctionContext extends DefaultContext<Junction>
 {
 
@@ -65,8 +66,8 @@ public class JunctionContext extends DefaultContext<Junction>
       {
          if (junc.getCoordinate().equals(c)) return junc;
       }
-      System.err.print("JunctionContext: getJunctionWithCoordinates: error, junction not found. ");
-      System.err.println("Coordinates: " + c.toString());
+      ContextCreator.logger.error("JunctionContext: getJunctionWithCoordinates: error, junction not found. ");
+      ContextCreator.logger.error("Coordinates: " + c.toString());
       return null;
 	}
    
@@ -76,8 +77,8 @@ public class JunctionContext extends DefaultContext<Junction>
 	      {
 	         if (junc.getJunctionID() == id) return junc;
 	      }
-	      System.err.print("JunctionContext: getJunctionFromID: error, junction not found. ");
-	      System.err.println("Junction ID: %d\n" + id);
+	      ContextCreator.logger.error("JunctionContext: getJunctionFromID: error, junction not found. ");
+	      ContextCreator.logger.error("Junction ID: %d\n" + id);
 	      return null;
    }
 

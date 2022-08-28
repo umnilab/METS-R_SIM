@@ -1,6 +1,5 @@
 package addsEVs.data;
 
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -8,6 +7,7 @@ import java.util.HashMap;
 
 import org.apache.commons.lang3.StringUtils;
 
+import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import au.com.bytecode.opencsv.CSVReader;
 
@@ -15,17 +15,17 @@ public class DemandPredictionResult {
 
 	private static final HashMap<String, String> hubToPredictionFile = new HashMap<String, String>();
 
-	// this is a taxi_zone --> predicted_demand map for a given hour
+	// This is a taxi_zone --> predicted_demand map for a given hour
 	private class HourPrediction {
 		public HashMap<Integer, Double> taxiZoneToPrediction = new HashMap<Integer, Double>();
 		public String date = "";
 		public Integer hour = 0;
 	}
 
-	// this map stores predictions for each hour in a given day
+	// This map stores predictions for each hour in a given day
 	private class DayPrediction {
 		public HashMap<Integer, HourPrediction> dayPrediction = new HashMap<Integer, DemandPredictionResult.HourPrediction>();
-		public String date = "";
+//		public String date = "";
 	}
 
 	// This map stores prediction for each day of a given year
@@ -76,7 +76,7 @@ public class DemandPredictionResult {
 	}
 
 	public void RefreshResult() {
-		// read each prediction file
+		// Read each prediction file
 		for (String hub : hubToPredictionFile.keySet()) {
 			String csvName = hubToPredictionFile.get(hub);
 			YearPrediction yearPred = new YearPrediction();
@@ -84,7 +84,6 @@ public class DemandPredictionResult {
 			try {
 				CSVReader reader = new CSVReader(new FileReader(csvName), ',');
 				String[] record = null;
-				Boolean columnFound = false;
 				HashMap<Integer, Integer> indexToTaxiZone = new HashMap<Integer, Integer>();
 				int dayIndex = 0, hourIndex = 0;
 
@@ -129,21 +128,22 @@ public class DemandPredictionResult {
 					dayPred.dayPrediction.put(hPred.hour, hPred);
 				}
 
-				// add the last dayPred
+				// Add the last dayPred
 				yearPred.yearPrediction.put(currDate, dayPred);
-
+				// Close the file
+				reader.close();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
-				System.out.println("Reading prediction input file " + hub + " failed");
+				ContextCreator.logger.info("Reading prediction input file " + hub + " failed");
 				e.printStackTrace();
 			}
 
 			hubResults.put(hub, yearPred);
 		}
-		// testing
-//		System.out.println(GetResultFor("Penn", "2018-12-31", 23, 1));
-//		System.out.println(GetResultFor("LGA", "2018-12-31", 23, 1));
-//		System.out.println(GetResultFor("JFK", "2018-12-31", 23, 1));
+		
+		// Testing
+		ContextCreator.logger.debug(GetResultFor("Penn", "2018-12-31", 23, 1));
+		ContextCreator.logger.debug(GetResultFor("LGA", "2018-12-31", 23, 1));
+		ContextCreator.logger.debug(GetResultFor("JFK", "2018-12-31", 23, 1));
 	}
 
 }

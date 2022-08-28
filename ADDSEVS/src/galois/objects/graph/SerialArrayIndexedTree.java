@@ -271,7 +271,8 @@ final class SerialArrayIndexedTree<N extends GObject> implements IndexedGraph<N>
     return true;
   }
 
-  private IndexedTreeNode scanForNode(LinkedNode start) {
+  @SuppressWarnings("unchecked")
+private IndexedTreeNode scanForNode(LinkedNode start) {
     while (start != null) {
       if (start.isDummy()) {
         start = start.getNext();
@@ -410,7 +411,8 @@ final class SerialArrayIndexedTree<N extends GObject> implements IndexedGraph<N>
     map(body, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public void map(LambdaVoid<GNode<N>> body, byte flags) {
     LinkedNode curr = head;
     while (curr != null) {
@@ -428,7 +430,8 @@ final class SerialArrayIndexedTree<N extends GObject> implements IndexedGraph<N>
     map(body, arg1, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public <A1> void map(Lambda2Void<GNode<N>, A1> body, A1 arg1, byte flags) {
     LinkedNode curr = head;
     while (curr != null) {
@@ -446,7 +449,8 @@ final class SerialArrayIndexedTree<N extends GObject> implements IndexedGraph<N>
     map(body, arg1, arg2, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public <A1, A2> void map(Lambda3Void<GNode<N>, A1, A2> body, A1 arg1, A2 arg2, byte flags) {
     LinkedNode curr = head;
     while (curr != null) {
@@ -498,7 +502,8 @@ final class SerialArrayIndexedTree<N extends GObject> implements IndexedGraph<N>
     private LinkedNode dummy;
     private LinkedNode next;
 
-    public IndexedTreeNode(N nodedata) {
+    @SuppressWarnings("unchecked")
+	public IndexedTreeNode(N nodedata) {
       data = nodedata;
       child = (IndexedTreeNode[]) Array.newInstance(this.getClass(), maxNeighbors);
       Arrays.fill(child, null);

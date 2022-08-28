@@ -13,16 +13,16 @@ import addsEVs.vehiclecontext.Vehicle;
  **/
 @SuppressWarnings("unused")
 public class Lane {
-	private int id; // SH: An auto-generated id from ContextCreater
-	private int laneid; // from shape file
-	private int link; // from shape file
+	private int id; // An auto-generated id from ContextCreater
+	private int laneid; // From shape file
+	private int link; // From shape file
 	private int left;
 	private int through;
 	private int right;
 	private double length;
 
-	private Road road_; // SH: The Road for which this lane belongs to
-	private int nVehicles_; // SH: number of vehicle in the lane //
+	private Road road_; // The Road for which this lane belongs to
+	private int nVehicles_; // Number of vehicle in the lane
 
 	/*
 	 * To move to the next road of the path, a vehicle may need to make
@@ -35,25 +35,22 @@ public class Lane {
 	 * right
 	 */
 
-	private Vehicle firstVehicle_; // SH: the first vehicle on a lane
-	private Vehicle lastVehicle_; // SH: the last vehicle vehicle on a lane
+	private Vehicle firstVehicle_; // The first vehicle on a lane
+	private Vehicle lastVehicle_; // The last vehicle vehicle on a lane
 	private double accumulatedDensity_;
 	private double accumulatedSpeed_;
 	private float speed_;
 	private float maxSpeed_;
-	private int upConnections_; // number of upstream connections of lane
-	private int downConnections_; // number of downstream connection of lane
-	private ArrayList<Lane> upLanes_;// BL: Upstream lanes that connect to this
-	// lane
-	private ArrayList<Lane> dnLanes_;// BL: Down stream lanes that connect to
-	// this lane
+	private int upConnections_; // Number of upstream connections of lane
+	private int downConnections_; // Number of downstream connection of lane
+	private ArrayList<Lane> upLanes_;// Upstream lanes that connect to this
+	private ArrayList<Lane> dnLanes_;// Down stream lanes that connect to
 	private int index;
-	private int lastEnterTick = -1; //LZ: Store the latest enter time of vehicles
+	private int lastEnterTick = -1; // Store the latest enter time of vehicles
 
 	public Lane() {
 		this.id = ContextCreator.generateAgentID();
 		this.nVehicles_ = 0;
-		//this.firstVehicle_ = null;
 		this.lastVehicle_ = null;
 		this.upLanes_ = new ArrayList<Lane>();
 		this.dnLanes_ = new ArrayList<Lane>();
@@ -88,7 +85,6 @@ public class Lane {
 	}
 	/*
 	 * public int getId() { return Id; }
-	 * 
 	 * public void setId(long Id) { this.Id = Id; }
 	 */
 	public int getLink() {
@@ -123,13 +119,6 @@ public class Lane {
 		return right;
 	}
 
-	public void printShpInput() {
-		System.out.println("Repast Lane ID: " + id + " Lane ID: "+ laneid 
-				+" link " + link + " L: "+ left + " T: " + through 
-				+ " R: " + right + " Repast road ID "
-				+ road_.getID());
-	}
-
 	public void setRoad(Road road) {
 		this.road_ = road;
 		road.addLane(this);
@@ -139,8 +128,7 @@ public class Lane {
 		return this.speed_;
 	}
 
-	// BL: Reset the accumulated speed and accumulated density to recalculate in
-	// the next Sim step
+	// Reset the accumulated speed and accumulated density to recalculate in the next Sim step
 	public void resetStatistics() {
 		accumulatedSpeed_ = 0;
 		accumulatedDensity_ = 0;
@@ -175,7 +163,7 @@ public class Lane {
 		return lastVehicle_;
 	}
 
-	// BL: calculate max speed of the lane
+	// Calculate max speed of the lane
 	public float calcMaxSpeed() {
 		return this.maxSpeed_;
 	}
@@ -195,7 +183,7 @@ public class Lane {
 	}
 
 	/*
-	 * -------------------------------------------------------------------- BL:
+	 * -------------------------------------------------------------------- 
 	 * Returns the last vehicle in the downstream lanes. The vehicle closest to
 	 * the upstream end is returned.
 	 * --------------------------------------------------------------------
@@ -229,9 +217,8 @@ public class Lane {
 		this.downConnections_ = n;
 	}
 
-	/*
-	 * BL: get all the downstream lanes that connect to this lane.
-	 */
+	
+	// Get all the downstream lanes that connect to this lane.
 	public ArrayList<Lane> getDnLanes() {
 		return this.dnLanes_;
 	}
@@ -285,8 +272,7 @@ public class Lane {
 		return nVehicles_;
 	}
 
-	// this add only the number of vehicle to lane, while addVehicle in road and
-	// a vehicle to arrayList.
+	// This add only the number of vehicle to lane, while addVehicle in road and a vehicle to arrayList.
 	public void addVehicles() {
 		nVehicles_++;
 	}
@@ -305,7 +291,7 @@ public class Lane {
 			System.out.println("To Lane: " +this.upLanes_.get(i).laneid+" of road: "+this.upLanes_.get(i).road_.getLinkid());
 		}
 	}
-	//BL: following are functions dedicated for discretionary lane changing
+	// Following are functions dedicated for discretionary lane changing
 	public boolean isConnectToLane(Lane pl) {
 		boolean connectFlag = false;
 		if (pl != null) {

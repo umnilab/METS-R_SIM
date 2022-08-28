@@ -39,15 +39,15 @@ public class DataCollectionContext extends DefaultContext<Object> {
      * it is ready to start receiving data when the simulation starts.
      */
     public DataCollectionContext() {
-        // needed for the repast contexts framework to give it a name
+        // Needed for the repast contexts framework to give it a name
         super("DataCollectionContext");
         
-        // there is no real need to do this, but this gives us a location
+        // There is no real need to do this, but this gives us a location
         // where we know during startup this was guaranteed to be called
         // at least once to ensure that it created an instance of itself
         this.collector = DataCollector.getInstance();
         
-        // create the output file writer.  without specifying a filename,
+        // Create the output file writer.  without specifying a filename,
         // this will generate a unique value including a current timestamp
         // and placing it in the current jre working directory.
         if (GlobalVariables.ENABLE_CSV_WRITE) {
@@ -55,7 +55,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
             this.collector.registerDataConsumer(this.outputWriter);
         }
 
-     // create the JSON output file writer.  without specifying a filename,
+        // Create the JSON output file writer.  without specifying a filename,
         // this will generate a unique value including a current timestamp
         // and placing it in the current jre working directory.
         if (GlobalVariables.ENABLE_JSON_WRITE) {
@@ -76,12 +76,11 @@ public class DataCollectionContext extends DefaultContext<Object> {
     
     
     public void startTick() {
-        // get the current tick number from the system
+        // Get the current tick number from the system
         double tickNumber = 
             RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
         
-        // tell the data framework what tick is starting
-        // TODO: figure out tick int/double issue
+        // Tell the data framework what tick is starting
         this.collector.startTickCollection(tickNumber);
     }
     
@@ -102,8 +101,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	int numLeavedBusPass=0;
     	int numRelocatedTaxi=0;
     	int numChargedVehicle=0;
-//    	int taxiPassWaitingTime = 0;
-//    	int busPassWaitingTime = 0;
     	
     	int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
     	
@@ -118,8 +115,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
     		numRelocatedTaxi+=z.numberOfRelocatedVehicles;
     		numWaitingTaxiPass += z.getTaxiPassengerNum();
     		numWaitingBusPass += z.getBusPassengerNum();
-//    		taxiPassWaitingTime += z.taxiPassWaitingTime;
-//    		busPassWaitingTime += z.busPassWaitingTime;
     		
     		String formatted_msg2 = currentTick+","+z.getIntegerID()+","+z.getTaxiPassengerNum()+","+z.getBusPassengerNum()+","+
     		z.getVehicleStock()+","+z.numberOfGeneratedTaxiPass+","+z.numberOfGeneratedBusPass+","+z.taxiServedPass+","+z.busServedPass+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
@@ -129,7 +124,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
 	    		ContextCreator.zone_logger.newLine();
 	    		ContextCreator.zone_logger.flush();
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
     	}
@@ -142,7 +136,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
         			ContextCreator.link_logger.write(formated_msg);
         			ContextCreator.link_logger.newLine();
         		} catch (IOException e) {
-        			// TODO Auto-generated catch block
         			e.printStackTrace();
         		} 
     		}
@@ -165,7 +158,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.bus_logger.flush();
 			ContextCreator.ev_logger.flush();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		} 
     	if(GlobalVariables.ENABLE_METRICS_DISPLAY){

@@ -7,7 +7,6 @@ import addsEVs.vehiclecontext.ElectricVehicle;
 
 
 /**
- * 
  * This class is the simple data object for capturing the state 
  * of an EvacSim vehicle at a particular point in time.
  * 
@@ -44,30 +43,12 @@ public class EVSnapshot {
     final public int origin_id;
     final public int dest_id;
     
-//    /** The origin X-axis (longitude) position within the simulation. */      /** @author Jiawei Xue */
-//    final public double originX;
-//    
-//    /** The origin Y position of the vehicle within the simulation. */
-//    final public double originY;
-//    
-//    /** The destination X-axis (longitude) position within the simulation. */      
-//    final public double destX;
-//    
-//    /** The destination Y position of the vehicle within the simulation. */
-//    final public double destY;    
-    
     /** The current battery level of the ev. */
     final public float batteryLevel;
     
     /** The total energy consumption of the ev. */
     final public float totalConsumption;
  
-    /** Vehicle is traveling on the last segment of its path, so close to destination. */
-    //final public int nearlyArrived;
-    
-    /** Vehicle routing class. */
-    //final public int vehicleClass;
-    
     /** The road ID of the vehicle within the simulation. */
     final public int roadID;  
     
@@ -102,10 +83,6 @@ public class EVSnapshot {
            	 vehicle.currentSpeed(),
            	 vehicle.getOriginID(),
            	 vehicle.getDestinationID(),
-//        	 vehicle.getTripOrigin().x,                   /** @author Jiawei Xue */
-//        	 vehicle.getTripOrigin().y,
-//        	 vehicle.getDestCoord().x,
-//        	 vehicle.getDestCoord().y,
         	 vehicle.nearlyArrived(),
         	 vehicle.getVehicleClass(),
         	 vehicle.getBatteryLevel(),
@@ -136,40 +113,16 @@ public class EVSnapshot {
                            float speed,
                            int origin_id,
                            int dest_id,
-//            			   double originX,                          /** @author Jiawei Xue */
-//                           double originY,
-//                           double destX, 
-//                           double destY,
                            int nearlyArrived,
                            int vehicleClass,
                            double batteryLevel,
                            double energyConsumption,
                            int roadID,
                            int served_pass
-                           //double z,
-                           //int departure,
-                           //int arrival,
-                           //float distance,
                            ) throws Throwable {
-        // all values are passed in as primitaves instead of objects,
+        // All values are passed in as primitaves instead of objects,
         // so the compiler won't allow any to be null, no need to check
         
-        // do basic validity checks against the values provided
-//        if (roadID < 0) {
-//            throw new Exception("Road ID cannot be negative.");
-//        }
-//        if (Double.isNaN(originX) || Double.isInfinite(originX)) {
-//            throw new NumberFormatException("Original X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(originY) || Double.isInfinite(originY)) {
-//            throw new NumberFormatException("Original Y-axis value is invalid.");
-//        }
-//        if (Double.isNaN(destX) || Double.isInfinite(destX)) {
-//            throw new NumberFormatException("Dest X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(destY) || Double.isInfinite(destY)) {
-//            throw new NumberFormatException("Dest Y-axis value is invalid.");
-//        }
         if (id < 0) {
             throw new Exception("Vehicle ID cannot be negative.");
         }
@@ -179,34 +132,11 @@ public class EVSnapshot {
         if (Double.isNaN(y) || Double.isInfinite(y)) {
             throw new NumberFormatException("Y-axis value is invalid.");
         }
-        // the model doesn't use the Z-axis
-        //if (Double.isNaN(z) || Double.isInfinite(z)) {
-        //    throw new NumberFormatException("Z-axis value is invalid.");
-        //}
         if (Float.isNaN(speed) || Float.isInfinite(speed)) {
             throw new NumberFormatException("Speed value is invalid.");
         }
-        //if (Float.isNaN(distance) || Float.isInfinite(distance)) {
-            //throw new NumberFormatException("Distance value is invalid.");
-        //}
         
-        // TODO: check the position values are within range
-
-        // TODO: check the speed value is reasonable for a ground vehicle
-        
-        // TODO: check the departure and arrival timestamps are valid
-        
-        // TODO: check the distance traveled value is valid
-        
-        //HGehlot: Not putting these conditions for previous coordinates because they will be null at time step 0.
-//        if (Double.isNaN(prev_x) || Double.isInfinite(x)) {
-//            throw new NumberFormatException("Previous X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(prev_y) || Double.isInfinite(y)) {
-//            throw new NumberFormatException("Previous Y-axis value is invalid.");
-//        }
-        
-        // store the values in the object
+        // Store the values in the object
         this.id = id;
         this.prev_x = (float) prev_x;
         this.prev_y = (float) prev_y;
@@ -215,23 +145,11 @@ public class EVSnapshot {
         this.speed = speed;
         this.origin_id = origin_id;
         this.dest_id = dest_id;
-//        this.originX = originX;                     /** @author Jiawei Xue */
-//        this.originY = originY;
-//        this.destX = destX;
-//        this.destY = destY;
         this.batteryLevel = (float) batteryLevel;
         this.totalConsumption = (float) energyConsumption;
-//        this.nearlyArrived = nearlyArrived;
-//        this.vehicleClass = vehicleClass;
         this.roadID = roadID;
         this.served_pass = served_pass;
-        //this.z = 0.0d;
-        //this.departure = departure;
-        //this.arrival = arrival;
-        //this.distance = distance;
-
     }
-    
     
     /**
      * Returns the identity of the vehicle within the simulation.
@@ -285,49 +203,10 @@ public class EVSnapshot {
     public int getOriginID() { return this.origin_id; }
     
     public int getDestID() {return this.dest_id; }
-    
-    
-//    public double getOriginX() { return this.originX; }
-
-    /**
-     * Returns the origin Y-axis position within the simulation.
-     * 
-     * @return the origin Y-axis position within the simulation.
-     */
-//    public double getOriginY() { return this.originY; }
-    
-
-    /**
-     * Returns the destination X-axis (longitude?) position within the simulation.
-     * 
-     * @return the destination X-axis (longitude?) position within the simulation.
-     */
-//    public double getDestX() { return this.destX; }
-     
-    
-    /**
-     * Returns the destination Y-axis  position within the simulation.
-     * 
-     * @return the destination Y-axis  position within the simulation.
-     */
-//    public double getDestY() { return this.destY; }
-    
+       
     public double getTotalEnergyConsumption() { return this.totalConsumption;}
     
     public double getBatteryLevel(){ return this.batteryLevel;}
-    /**
-     * Returns the whether the vehicle is near the destination.
-     *   
-     * @return Whether the vehicle is near the destination.
-     */
-    // public int getNearlyArrived() { return this.nearlyArrived; }
-    
-    /**
-     * Returns the routing class of the vehicle.
-     * 
-     * @return the routing class of the vehicle.
-     */
-    // public int getvehicleClass() { return this.vehicleClass; }    
     
     /**
      * Returns the road ID of the vehicle within the simulation.
@@ -337,27 +216,4 @@ public class EVSnapshot {
      public int getRoadID() { return this.roadID; }    
      
      public int getServedPass() { return this.served_pass;}
-    /**
-     * Returns the time of departure of the vehicle for the current trip.
-     * 
-     * @return the time of departure of the vehicle for the current trip.
-     */
-    //public int getDeparture() { return this.departure; }
-    
-    
-    /**
-     * Returns the expected arrival time of the vehicle for the current trip.
-     * 
-     * @return the expected arrival time of the vehicle for the current trip.
-     */
-    //public int getArrival() { return this.arrival; }
-    
-    
-    /**
-     * Returns the total distance traveled by the vehicle so far on this trip.
-     * 
-     * @return the total distance traveled by the vehicle so far on this trip.
-     */
-    //public float getDistance() { return this.distance; }
-
 }

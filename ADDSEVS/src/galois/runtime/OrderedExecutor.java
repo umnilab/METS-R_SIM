@@ -101,7 +101,8 @@ class OrderedExecutor<T> extends AbstractGaloisExecutor<T> {
 
   @Override
   protected void abortIteration(Iteration theirIt) throws IterationAbortException {
-    OrderedIteration<T> it = (OrderedIteration<T>) theirIt;
+    @SuppressWarnings("unchecked")
+	OrderedIteration<T> it = (OrderedIteration<T>) theirIt;
     it.setStatus(Status.ABORTING);
     log("aborting %s with object %s", it, it.getIterationObject());
 
@@ -110,7 +111,8 @@ class OrderedExecutor<T> extends AbstractGaloisExecutor<T> {
 
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public void arbitrate(Iteration current, Iteration conflicter) {
     log("arbitrate between current %s & conflicter %s", current, conflicter);
     arbitrateInternal((OrderedIteration<T>) current, (OrderedIteration<T>) conflicter);
@@ -303,7 +305,8 @@ class OrderedExecutor<T> extends AbstractGaloisExecutor<T> {
   // 
   // we put a SCHEDULED iteration in READY_TO_COMMIT and call clearROB(), which
   // may commit this iteration if it is at the head of the rob
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public final void commitIteration(final Iteration theirIt, final int iterationId, final T item, boolean releaseLocks) {
     final OrderedIteration<T> it = (OrderedIteration<T>) theirIt;
 
@@ -378,7 +381,8 @@ class OrderedExecutor<T> extends AbstractGaloisExecutor<T> {
     return robComp.compare(current, conflicter);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   protected T poll(ForeachContext<T> ctx) {
     OrderedIteration<T> it = (OrderedIteration<T>) Iteration.getCurrentIteration();
     T obj = null;

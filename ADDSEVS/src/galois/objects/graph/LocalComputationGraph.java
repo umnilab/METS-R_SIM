@@ -79,7 +79,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class ObjectGraphBuilder {
     private boolean serial = false;
-    private ObjectGraph in;
+    @SuppressWarnings("rawtypes")
+	private ObjectGraph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -105,7 +106,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      *
      * @param in initial value for the graph
      */
-    public ObjectGraphBuilder from(ObjectGraph in) {
+    @SuppressWarnings("rawtypes")
+	public ObjectGraphBuilder from(ObjectGraph in) {
       this.in = in;
       return this;
     }
@@ -141,7 +143,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class IntGraphBuilder {
     private boolean serial = false;
-    private ObjectGraph in;
+    @SuppressWarnings("rawtypes")
+	private ObjectGraph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -180,7 +183,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      * @param <N> the type of the object stored in each node
      * @return an integer graph with the requested features
      */
-    public <N extends GObject> IntGraph<N> create() {
+    @SuppressWarnings("rawtypes")
+	public <N extends GObject> IntGraph<N> create() {
       return new ObjectGraphToIntGraphAdapter(new ObjectGraphBuilder().serial(serial).from(in).create());
     }
   }
@@ -191,7 +195,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class LongGraphBuilder {
     private boolean serial = false;
-    private ObjectGraph in;
+    @SuppressWarnings("rawtypes")
+	private ObjectGraph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -230,7 +235,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      * @param <N> the type of the object stored in each node
      * @return a long graph with the requested features
      */
-    public <N extends GObject> LongGraph<N> create() {
+    @SuppressWarnings("rawtypes")
+	public <N extends GObject> LongGraph<N> create() {
       return new ObjectGraphToLongGraphAdapter(new ObjectGraphBuilder().serial(serial).from(in).create());
     }
   }
@@ -241,7 +247,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class FloatGraphBuilder {
     private boolean serial = false;
-    private ObjectGraph in;
+    @SuppressWarnings("rawtypes")
+	private ObjectGraph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -280,7 +287,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      * @param <N> the type of the object stored in each node
      * @return a float graph with the requested features
      */
-    public <N extends GObject> FloatGraph<N> create() {
+    @SuppressWarnings("rawtypes")
+	public <N extends GObject> FloatGraph<N> create() {
       return new ObjectGraphToFloatGraphAdapter(new ObjectGraphBuilder().serial(serial).from(in).create());
     }
   }
@@ -291,7 +299,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class DoubleGraphBuilder {
     private boolean serial = false;
-    private ObjectGraph in;
+    @SuppressWarnings("rawtypes")
+	private ObjectGraph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -330,7 +339,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      * @param <N> the type of the object stored in each node
      * @return a double graph with the requested features
      */
-    public <N extends GObject> DoubleGraph<N> create() {
+    @SuppressWarnings("rawtypes")
+	public <N extends GObject> DoubleGraph<N> create() {
       return new ObjectGraphToDoubleGraphAdapter(new ObjectGraphBuilder().serial(serial).from(in).create());
     }
   }
@@ -341,7 +351,8 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
   @SuppressWarnings("unchecked")
   public static class VoidGraphBuilder {
     private boolean serial = false;
-    private Graph in;
+    @SuppressWarnings("rawtypes")
+	private Graph in;
 
     /**
      * Constructs a new builder instance assuming that the graph about to be created is parallel.
@@ -367,7 +378,7 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      *
      * @param in initial value for the graph
      */
-    public VoidGraphBuilder from(Graph in) {
+    public VoidGraphBuilder from(@SuppressWarnings("rawtypes") Graph in) {
       this.in = in;
       return this;
     }
@@ -380,13 +391,14 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
      * @param <N> the type of the object stored in each node
      * @return a graph with the requested features
      */
-    public <N extends GObject> Graph<N> create() {
+    @SuppressWarnings("rawtypes")
+	public <N extends GObject> Graph<N> create() {
       return new ObjectGraphToVoidGraphAdapter(new ObjectGraphBuilder().serial(serial).from(
           new VoidGraphToObjectGraphAdapter<N, Object>(in)).create());
     }
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   private void createGraph(final ObjectGraph<N, E> g) {
     int numNodes = g.size();
     this.nodes = new LocalComputationGraph.Node[numNodes];
@@ -438,12 +450,12 @@ public final class LocalComputationGraph<N extends GObject, E> implements Object
     this.edgeData = (E[]) edgeData.toArray();
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   private int getId(GNode n) {
     return ((Node) n).id;
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings("rawtypes")
   static void acquire(GNode node, byte flags) {
     Iteration.acquire(node, flags);
   }

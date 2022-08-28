@@ -4,15 +4,12 @@ import java.util.concurrent.*;
 
 import addsEVs.ContextCreator;
 import addsEVs.citycontext.Road;
-import addsEVs.partition.MetisPartition;
-
 import java.util.*;
 
 import repast.simphony.engine.environment.RunEnvironment;
 
 
 public class ThreadedScheduler {
-//	private boolean roadFinishedStepping;
 	private ExecutorService executor;
 	private int N_Partition;
 	private int N_threads;
@@ -36,7 +33,9 @@ public class ThreadedScheduler {
 	public void paraStep() {
 		// Load the road partitions
 		ArrayList<ArrayList<Road>> PartitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
-		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
+		// The Between road is no longer used as they are already added in 
+		// the above variable 
+		// ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
 		
 		// Creates an list of tasks
 		List<PartitionThread> tasks = new ArrayList<PartitionThread>();
@@ -54,26 +53,18 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 			
-//			// Step over the boundary roads
-//			double start_t = System.currentTimeMillis();
-//			stepBwRoads();
-//			seq_time = seq_time + (int)(System.currentTimeMillis() - start_t);
-			
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
 	}
 	
+	// Deprecated
 	public void stepBwRoads() {
 		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner
 				.getPartitionedBwRoads();
-//		try {
-			for (Road r : PartitionedBwRoads) {
-				r.step();
-			}
-		/*} catch (Exception ex) {
-			ex.printStackTrace();
-		}*/
+		for (Road r : PartitionedBwRoads) {
+			r.step();
+		}
 	}
 	
 	public void shutdownScheduler() {

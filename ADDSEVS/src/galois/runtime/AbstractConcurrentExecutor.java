@@ -520,7 +520,8 @@ abstract class AbstractConcurrentExecutor<T> implements Executor {
 
     @Override
     public void merge(Object obj) {
-      IdlenessStatistics other = (IdlenessStatistics) obj;
+      @SuppressWarnings("unchecked")
+	IdlenessStatistics other = (IdlenessStatistics) obj;
       threadTimes.addAll(other.threadTimes);
       idleTimes.addAll(other.idleTimes);
     }

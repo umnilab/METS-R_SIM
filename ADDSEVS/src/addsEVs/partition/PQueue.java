@@ -20,7 +20,6 @@ File: PQueue.java
 */
 
 
-
 package addsEVs.partition;
 
 import galois.objects.graph.GNode;
@@ -42,7 +41,7 @@ public class PQueue {
 	private ListNode[] nodes;
 	private ListNode[] buckets;
 	private int bucketIndex;
-	//heap version
+	// Heap version
 	private KeyValue[] heap;
 	private int[] locator;
 
@@ -76,7 +75,7 @@ public class PQueue {
 	}
 
 	/**
-	 * insert a node with its gain
+	 * Insert a node with its gain
 	 */
 	public void insert(GNode<MetisNode> node, int gain) {
 		if (type == 1) {
@@ -93,7 +92,7 @@ public class PQueue {
 			if (maxgain < gain)
 				maxgain = gain;
 		} else {
-			//heap
+			// Heap
 			int i = nnodes;
 			nnodes++;
 			while (i > 0) {
@@ -114,7 +113,7 @@ public class PQueue {
 	}
 
 	/**
-	 * delete a node from the queue
+	 * Delete a node from the queue
 	 */
 	public void delete(GNode<MetisNode> value, int gain) {
 		if (type == 1) {
@@ -182,7 +181,7 @@ public class PQueue {
 	}
 
 	/**
-	 * after changing the gain of a node, its position in the queue has to be updated  
+	 * After changing the gain of a node, its position in the queue has to be updated  
 	 */
 	public void update(GNode<MetisNode> value, int oldgain, int newgain) {
 		if (type == 1) {
@@ -228,7 +227,7 @@ public class PQueue {
 	}
 
 	/**
-	 * return the node with the max gain in the queue
+	 * Return the node with the max gain in the queue
 	 */
 	public GNode<MetisNode> getMax() {
 
@@ -286,7 +285,7 @@ public class PQueue {
 	}
 
 	/**
-	 * reset the queue
+	 * Reset the queue
 	 */
 	public void reset() {
 		nnodes = 0;

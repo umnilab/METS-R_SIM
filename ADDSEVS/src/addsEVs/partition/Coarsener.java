@@ -19,8 +19,6 @@ File: Coarsener.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.MethodFlag;
@@ -57,7 +55,7 @@ public class Coarsener {
   }
 
   public MetisGraph coarsen(MetisGraph metisGraph) throws ExecutionException {
-    boolean notFirstTime = false; // use when the graph have all weights equal
+    boolean notFirstTime = false; // Use when the graph have all weights equal
     do {
       if(metisGraph.getGraph().size() >= this.coarsenTo){
 	      MetisGraph coarseMetisGraph = new MetisGraph();
@@ -76,7 +74,7 @@ public class Coarsener {
 	        notFirstTime = parallelMatch(notFirstTime, coarser);
 	        parallelCreateCoarserGraph(coarseMetisGraph);
 	      }
-	      // assigning id to coarseGraph
+	      // Assigning id to coarseGraph
 	      coarser.map(new LambdaVoid<GNode<MetisNode>>() {
 	        int id = 0;
 	
@@ -157,7 +155,7 @@ public class Coarsener {
           public void call(GNode<MetisNode> item, ForeachContext<GNode<MetisNode>> ctx) {
             MetisNode nodeData = item.getData(MethodFlag.CHECK_CONFLICT, MethodFlag.NONE);
             GNode<MetisNode> matched = nodeData.getMatch();
-            // dummy closures for making cautious
+            // Dummy closures for making cautious
             if(!GaloisRuntime.getRuntime().useSerial()){
             	matched.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
             		public void call(GNode<MetisNode> dst, GNode<MetisNode> src) {

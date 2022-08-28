@@ -148,7 +148,8 @@ class ParameterOrderedExecutor<T> extends AbstractParameterExecutor<T, MutableRe
     rob.add(it);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public void arbitrate(Iteration current, Iteration conflicter) throws IterationAbortException {
     arbitrateInternal((OrderedIteration<MutableReference<T>>) current,
         (OrderedIteration<MutableReference<T>>) conflicter);
@@ -235,7 +236,8 @@ class ParameterOrderedExecutor<T> extends AbstractParameterExecutor<T, MutableRe
     return worklist;
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   protected void run(MutableReference<T> boxedCur, Iteration iter) throws ExecutionException {
 
     OrderedIteration<MutableReference<T>> it = (OrderedIteration<MutableReference<T>>) iter;

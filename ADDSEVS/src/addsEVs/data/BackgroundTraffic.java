@@ -22,14 +22,13 @@ import java.util.*;
 public class BackgroundTraffic{
 	public TreeMap<Integer,ArrayList<Double>> backgroundTraffic;
 	public TreeMap<Integer,ArrayList<Double>> backgroundStd;
-	//initialize everything
 	public BackgroundTraffic(){
 		backgroundTraffic=new TreeMap<Integer,ArrayList<Double>>();
 		backgroundStd=new TreeMap<Integer,ArrayList<Double>>();
 		readEventFile();
 		readStdFile();
 	}
-	// read and parse CSV files
+	// Read and parse CSV files
 	public void readEventFile() {
 		File bteventFile = new File(GlobalVariables.BT_EVENT_FILE);
 		CSVReader csvreader = null;
@@ -53,7 +52,6 @@ public class BackgroundTraffic{
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
-//					System.out.println("roadID = "+ roadID+"value =" + value);
 					this.backgroundTraffic.put(roadID, value);
 				}
 			}
@@ -86,7 +84,6 @@ public class BackgroundTraffic{
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
-//					System.out.println("roadID = " + roadID + "value =" + value);
 					this.backgroundStd.put(roadID, value);
 				}
 			}
@@ -95,10 +92,5 @@ public class BackgroundTraffic{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-	}
-
-	//public TreeMap<Integer,ArrayList<Double>> gettreemap(){
-		//return backgroundTraffic;
-	//}
-	
+	}	
 }

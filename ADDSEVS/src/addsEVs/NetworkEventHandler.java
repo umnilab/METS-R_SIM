@@ -5,12 +5,9 @@ import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.Map;
-import java.util.Queue;
 import java.util.TreeMap;
 
-import addsEVs.citycontext.CityContext;
 import addsEVs.citycontext.Road;
 import addsEVs.data.DataCollector;
 import addsEVs.network.ConnectionManager;
@@ -25,16 +22,12 @@ import au.com.bytecode.opencsv.CSVReader;
  * 
  **/
 public class NetworkEventHandler {
-	// Queue that store pending events
-	// Queue operations see https://docs.oracle.com/javase/7/docs/api/java/util/Queue.html
-	// A sorted list storing the running events, sorted following the order of the end time
-	// We use a treeMap and use the end time as the key
-	// TreeMap usage see: https://docs.oracle.com/javase/7/docs/api/java/util/TreeMap.html
+	// Queue that store pending events, we use a treeMap and use the end time as the key
 	private TreeMap<Integer, ArrayList<NetworkEventObject>> runningQueue;
 	
 	// Connection manager maintains the socket server for remote programs
+	@SuppressWarnings("unused")
 	private static final ConnectionManager manager = ConnectionManager.getInstance();
-	
 	
 	// Constructor: initialize everything
 	public NetworkEventHandler() {
@@ -42,9 +35,7 @@ public class NetworkEventHandler {
 		readEventFile();
 	}
 	
-	
 	public void readEventFile(){
-		// Hemant: implement the file read and insert to the event queue
 		// Note queue is first in first out, so the eventfile should order event start time in ascending order, earliest comes first
 		File eventFile = new File(GlobalVariables.EVENT_FILE);
 		CSVReader csvreader = null;
@@ -58,8 +49,7 @@ public class NetworkEventHandler {
 		
 		try {
 			csvreader = new CSVReader(new FileReader(eventFile));
-			// This is used to avoid reading the header (Data is assumed to
-			// start from the second row)
+			// This is used to avoid reading the header (Data is assumed to start from the second row)
 			boolean readingheader = true;
 
 			// This while loop is used to read the CSV iterating through the row
@@ -78,8 +68,7 @@ public class NetworkEventHandler {
 					roadID = Integer.parseInt(nextLine[3]);
 					value1 = Double.parseDouble(nextLine[4]);
 					value2 = Double.parseDouble(nextLine[5]);
-					//System.out.println("starttime = "+startTime+ "endtime ="+endTime+"eventID = " + eventID+"roadID = "+ roadID+"value1 =" + value1+ "value2 =" + value2);
-					
+					ContextCreator.logger.debug("starttime = "+startTime+ "endtime ="+endTime+"eventID = " + eventID+"roadID = "+ roadID+"value1 =" + value1+ "value2 =" + value2);
 					NetworkEventObject EventObject = new NetworkEventObject(startTime, endTime, eventID, roadID, value1, value2); 
 					GlobalVariables.newEventQueue.add(EventObject);
 				}
@@ -110,13 +99,12 @@ public class NetworkEventHandler {
 				if (e.startTime <= tickcount) {
 					// Make the event happen
 					NetworkEventObject event = this.setEvent(e, true);
-					
-					//HG: store event information in data buffer 
+					// Store event information in data buffer 
 					try {
 							DataCollector.getInstance().recordEventSnapshot(e, 1);//Here 1 value denotes starting of event
 					}
 					catch (Throwable t) {
-					    // could not log the event strating in data buffer!
+					    // Could not log the event strating in data buffer!
 					    DataCollector.printDebug("ERR" + t.getMessage());
 					}
 					
@@ -152,8 +140,7 @@ public class NetworkEventHandler {
 			// We terminate every events in the set
 			for (NetworkEventObject e : terminateEvents) {
 				this.setEvent(e, false);
-				
-				//HG: store event information in data buffer 
+				//Store event information in data buffer 
 				try {
 						DataCollector.getInstance().recordEventSnapshot(e, 2);//Here 2 value denotes ending of event
 				}
@@ -200,12 +187,12 @@ public class NetworkEventHandler {
 										}
 									}
 								}
-//								System.out.println("Conflict events on road" + event.roadID + "\n" + "Event 1: start: " + conflictEvent.startTime + " end: " + conflictEvent.endTime + 
-//										"\nEvent 2: start: " + event.startTime + " end: " + event.endTime);
+								ContextCreator.logger.error("Conflict events on road" + event.roadID + "\n" + "Event 1: start: " + conflictEvent.startTime + " end: " + conflictEvent.endTime + 
+										"\nEvent 2: start: " + event.startTime + " end: " + event.endTime);
 								
-								// terminate the conflict event
+								// Terminate the conflict event
 								if (conflictEvent != null) {
-									// restore the event
+									// Restore the event
 									NetworkEventObject tempEvent = setEvent(conflictEvent, false);
 									// Clear the running queue
 									runningQueue.get(conflictEvent.endTime).remove(conflictEvent);
@@ -215,7 +202,7 @@ public class NetworkEventHandler {
 								}
 								
 							}
-						// Other cases to be implemented later
+						// Other cases can be implemented here
 						default: break;
 					}
 				} else {
@@ -225,15 +212,13 @@ public class NetworkEventHandler {
 							road.updateFreeFlowSpeed_event(road.getDefaultFreeSpeed()); // To be moved into a buffer variable in the road
 							road.restoreEventFlag();
 							return event;
-						// Other cases to be implemented later
+						// Other cases to be implemented here
 						default: break;
 					}
 				}
 				break;
 			}
 		}
-		
-		
 		return null;
 	}
 	

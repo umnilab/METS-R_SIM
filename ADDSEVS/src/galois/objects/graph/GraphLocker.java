@@ -36,9 +36,12 @@ import util.fn.LambdaVoid;
 class GraphLocker {
 
   // stateless closures
-  static final LockLambda2 lock2 = new LockLambda2();
-  static final InNeighborsLambda2 inNeighbors2 = new InNeighborsLambda2();
-  static final LockLambda lock = new LockLambda();
+  @SuppressWarnings("rawtypes")
+static final LockLambda2 lock2 = new LockLambda2();
+  @SuppressWarnings("rawtypes")
+static final InNeighborsLambda2 inNeighbors2 = new InNeighborsLambda2();
+  @SuppressWarnings("rawtypes")
+static final LockLambda lock = new LockLambda();
 
   // createNode: no prolog
   static <N extends GObject> void createNodeEpilog(GNode<N> src, byte flags) {

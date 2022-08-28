@@ -19,8 +19,6 @@ File: RMMatchingStrategy.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.MethodFlag;

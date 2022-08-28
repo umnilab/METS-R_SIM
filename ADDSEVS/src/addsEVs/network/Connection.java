@@ -11,13 +11,7 @@ import java.util.List;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.*;
 
-import repast.simphony.engine.environment.RunEnvironment;
-import repast.simphony.engine.schedule.ISchedule;
 import repast.simphony.essentials.RepastEssentials;
-//import org.json.JSONException;
-//import org.json.simple.JSONArray;
-//import org.json.simple.parser.*;
-//import org.json.JSONObject;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -60,6 +54,7 @@ public class Connection implements DataConsumer {
 	private int id;
 
 	/** A local convenience reference to manager for this connection. */
+	@SuppressWarnings("unused")
 	private ConnectionManager manager = ConnectionManager.getInstance();
 
 	/** A local convenience reference to the collection buffer for the sim. */
@@ -68,20 +63,6 @@ public class Connection implements DataConsumer {
 	/** The websocket session object for the connection this object serves. */
 	private Session session;
 
-	/** Prefix for event */
-	private static final String EVENT_MSG = "EVENT";
-
-	/** Prefix for event */
-	private static final String START_MSG = "START";
-
-	/** Prefix for route result */
-	private static final String RR_MSG = "RR";
-
-	/** Prefix for bus route result */
-	private static final String BRR_MSG = "BRR";
-
-	/// private static final String = null;
-
 	/** The address of the remote host for this connection. */
 	private InetAddress ip;
 
@@ -89,6 +70,7 @@ public class Connection implements DataConsumer {
 	private Thread sendingThread;
 
 	/** A "heartbeat" thread which pings remote end often to keep it alive. */
+	@SuppressWarnings("unused")
 	private Thread heartbeatThread;
 
 	/** Whether or not the connection is currently consuming buffer data. */
@@ -363,61 +345,15 @@ public class Connection implements DataConsumer {
 	 */
 	@OnWebSocketMessage
 	public void onMessage(String message) {
-	//	public void onMessage(String message) throws JSONException {
-		// public void onMessage(String message) {
-//        ConnectionManager.printDebug(this.id + "-RECV", message);
-//		System.out.printf("%s::%s::%s%n", System.currentTimeMillis(),
-//				this.session.getRemote().getInetSocketAddress().toString(), message.substring(0, 20));
-	//	System.out.printf("%s::%s::%s%n", System.currentTimeMillis(),
-	//			this.session.getRemote().getInetSocketAddress().toString(), message);
-
-//        if(message.startsWith(START_MSG)){
-//        	try{//HG and XQ: If you receive any message from visualization in starting, then change the sleep variable to 1.
-//        		GlobalVariables.SIMULATION_SLEEPS = 1;
-//        	}catch (NumberFormatException nfe) {
-//                // one of the values is malformed during parsing
-//                System.out.println(nfe);
-//            }
-//            catch (Throwable t) {
-//                // something went wrong creating the snapshot object
-//            	System.out.println(t);
-//            }
-//        }
-//        else if (message.startsWith(EVENT_MSG)){
-//        	try{
-//        		NetworkEventObject event = ParseString(message);
-//        		if(event.eventID == 2){//HG: check if the event type is external blocking of road then insert it in global event queue. 1 = Predefined blockage of road, 2 = External blocking of road
-//        			insertExternalEvent(event);
-//        			//HG: store event adding information in data buffer 
-//    				try {
-//    						DataCollector.getInstance().recordEventSnapshot(event, 3);//Here 3 value denotes adding of external event to global queue
-//    				}
-//    				catch (Throwable t) {
-//    				    // could not log the event ending in data buffer!
-//    				    DataCollector.printDebug("ERR" + t.getMessage());
-//    				}
-//        		}
-//        	}catch (NumberFormatException nfe) {
-//                // one of the values is malformed during parsing
-//                System.out.println(nfe);
-//            }
-//            catch (Throwable t) {
-//                // something went wrong creating the snapshot object
-//            	System.out.println(t);
-//            }
-//            
-//        }
 		// Transfer to JSON here
 		JSONObject jsonMsg = new JSONObject();
 		//System.out.println("Created json object");
 		try {
 			JSONParser parser = new JSONParser();
 			jsonMsg = (JSONObject) parser.parse(message);
-			//System.out.println("Received result!");
-			//System.out.println(jsonMsg.get("MSG_TYPE"));
 			if (jsonMsg.get("MSG_TYPE").equals("OD_PAIR")) {
 				System.out.println("Received route result!");
-				// clear the current map
+				// Clear the current map
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
 				JSONArray list_result = (JSONArray) jsonMsg.get("result");
@@ -426,40 +362,32 @@ public class Connection implements DataConsumer {
 					Long result = (Long) list_result.get(index);
 					int result_int = result.intValue();
 					String OD = (String) list_OD.get(index);
-					//System.out.println("string OD parsed");
-					//System.out.println(OD);
 					ContextCreator.routeResult_received.put(OD, result_int);
 					index +=1;
 				}
-//			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
-//
-//				System.out.println("Received bus route result!");
-//				 
-//				// clear the current map
-//				// ContextCreator.routeResult_received.clear();
-//				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
-//				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-//				int index = 0; // skip prefix
-//				while (index < list_OD.size()) {
-//					Long result = (Long) list_result.get(index);
-//					int result_int = result.intValue();
-//					String OD = (String) list_OD.get(index);
-//					//System.out.println("string OD parsed");
-//					//System.out.println(OD);
-//					ContextCreator.routeResult_received_bus.put(OD, result_int);
-//					index +=1;
-//				}
+			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
+
+				System.out.println("Received bus route result!");
+				 
+				// Clear the current map
+				// ContextCreator.routeResult_received.clear();
+				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
+				JSONArray list_result = (JSONArray) jsonMsg.get("result");
+				int index = 0; // skip prefix
+				while (index < list_OD.size()) {
+					Long result = (Long) list_result.get(index);
+					int result_int = result.intValue();
+					String OD = (String) list_OD.get(index);
+					ContextCreator.routeResult_received_bus.put(OD, result_int);
+					index +=1;
+				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BUS_SCHEDULE")){
-				System.out.println("Received bus schedule result!");
 				JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
 				JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
 				JSONArray list_gap = (JSONArray) jsonMsg.get("Bus_gap");
 				JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
 				Long hour = (Long) jsonMsg.get("Bus_currenthour");
 				int newhour=hour.intValue();
-				System.out.println("current hour value is");
-				System.out.println(newhour);
-				// Placeholder for test
 				// Json array to array list
 				int array_size=list_num.size();
 				ArrayList<Integer> newRouteName = new ArrayList<Integer>(array_size);
@@ -467,16 +395,9 @@ public class Connection implements DataConsumer {
 				ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
 				ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
 				int index = 0; // skip prefix                               
-				System.out.println("list_num size");
-				System.out.println(list_num.size());
                 while (index < list_num.size()) {                                      
-                	System.out.println("the element");
-    				System.out.println(list_num.get(index));
                 	Double number = (Double) list_num.get(index);
                     int number_int = number.intValue();
-                    //int number_int = ((Long) list_num.get(index)).intValue();
-					System.out.println("number_int");
-					System.out.println(number_int);
 					if (number_int>0) {
 						newBusNum.add(number_int);
 					    Double gap = (Double) list_gap.get(index);
@@ -486,32 +407,21 @@ public class Connection implements DataConsumer {
 					    Long routename = (Long) list_routename.get(index);
 					    int list_routename_int = routename.intValue();
 					    newRouteName.add(list_routename_int);
-					    ArrayList<Long> route = (ArrayList<Long>) list_route.get(index);
+					    @SuppressWarnings("unchecked")
+						ArrayList<Long> route = (ArrayList<Long>)list_route.get(index);
 					    int route_size=route.size();
 					    System.out.println(route);
 					    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
 				        int index_route=0;
 				        while (index_route < route_size) {
 				         int route_int_i = route.get(index_route).intValue();
-				         // hard code for taxi zone id 131, 140 and 180
-//				         if (route_int_i==114) {
-//				          route_int_i=131;
-//				         }
 				         route_int.add(route_int_i-1);
 				         index_route+=1;
 				        }
-					    //System.out.println(route_int);
 					    newRoutes.add(route_int);
-					    System.out.println("newRoutes");
-					    System.out.println(newRoutes);					  
 					}
 					index +=1;
 				}
-                System.out.println(newhour);
-                System.out.println(newRouteName);
-                System.out.println(newRoutes);
-                System.out.println(newBusNum);
-                System.out.println(newBusGap);
 				ContextCreator.busSchedule.updateEvent(newhour,newRouteName, newRoutes, newBusNum, newBusGap);
 			}
 		} catch (ParseException e) {
@@ -531,23 +441,21 @@ public class Connection implements DataConsumer {
 			return;
 		}
 
-		// get the message representation of this tick
+		// Get the message representation of this tick
 		String message = Connection.createTickMessage(tick);
 
 		if (message.trim().length() < 1) {
-			// there was no data in the tick to send
+			// There was no data in the tick to send
 			return;
 		}
 
-		// check the connection is open and ready for sending
+		// Check the connection is open and ready for sending
 		if (session == null || !session.isOpen()) {
 			throw new IOException("Socket session is not open.");
 		}
 
-		// send the message over the socket
+		// Send the message over the socket
 		session.getRemote().sendString(message);
-		//System.out.println("sent ticket message is");
-		//System.out.println(message);
 	}
 
 	/**
@@ -561,17 +469,8 @@ public class Connection implements DataConsumer {
 		jsonObj.put("MSG_TYPE", "TICK_MSG");
 		ArrayList<HashMap<String, Object>> entries = new ArrayList<HashMap<String, Object>>();
 		int hour = (int) (RepastEssentials.GetTickCount() / 12000);
-		// check if the tick snapshot even exists
-//		if (tick == null) {
-//			return null;
-//		}
-//		double tickNum = tick.getTickNumber();
 
-		// open the socket tick message by saying which tick this is
-//		ArrayList<String> lines = new ArrayList<String>();
-//		lines.add("TICK," + tickNum);
-
-		// loop through all the link_UCB arraylist
+		// Loop through all the link_UCB arraylist
 		Collection<Integer> linkIDs = tick.getLinkIDList();
 
 		for (Integer id : linkIDs) {
@@ -589,8 +488,6 @@ public class Connection implements DataConsumer {
 				entryObj.put("hour", hour);
 				entryObj.put("ID", id);
 				entries.add(entryObj);
-//				line = "E," + id + ";" + hour + "," + line;
-//				lines.add(line);
 			}
 
 			ArrayList<Double> linkSpeed = tick.getSpeedVehicle(id);
@@ -602,54 +499,21 @@ public class Connection implements DataConsumer {
 				entryObj.put("hour", hour);
 				entryObj.put("ID", id);
 				entries.add(entryObj);
-//				line = "V," + id + ";" + hour + "," + line;
-//				lines.add(line);
 			}
 		}
 
-//		Collection<Integer> linkIDBus = tick.getLinkIDListBus();
-//
-//		for (Integer id : linkIDBus) {
-//			// July,2020,JiaweiXue
-//			// Oct 15, 2020, ZL: create a new for loop to handle this
-//			ArrayList<Double> energyListBus = tick.getLinkEnergyListBus(id);
-//
-//			if (energyListBus != null) {
-//				HashMap<String, Object> entryObj = new HashMap<String, Object> ();
-//				entryObj.put("values", Connection.createEnergyMesssage(energyListBus));
-//				entryObj.put("TYPE", "BE");
-//				entryObj.put("hour", hour);
-//				entryObj.put("ID", id);
-//				entries.add(entryObj);
-////				line = "BE," + id + ";" + hour + "," + line;
-////				lines.add(line);
-//			}
-//
-//		}
 		jsonObj.put("entries", entries);
-		//System.out.println("sent ticket message is");
-		//System.out.println(jsonObj);
-		//System.out.println(jsonObj.toString());
-		// join the array of lines to one socket message to return
-		//return jsonObj.toString();//String.join("\n", lines);
 		String line = JSONObject.toJSONString(jsonObj);
 		return line;
 	}
 
-	//public static String createEnergyMesssage(ArrayList<Double> energyList) {
 	public static List<Float> createEnergyMesssage(ArrayList<Double> energyList) {
-		// List<List<float>> energyList = ContextCreator.route_UCB_bus.get(OD);
-		 
-		
-		//String ret = new String("");
 		List<Float> value_list = new ArrayList<>();
 
 		for (Double val : energyList) {
-			//ret += val + ",";
 		    value_list.add(val.floatValue());
 		}
 
-		//return ret;
 		return value_list;
 	}
 
@@ -660,12 +524,12 @@ public class Connection implements DataConsumer {
 	 * @return the socket message representation of the given vehicle.
 	 */
 	public static String createVehicleMessage(VehicleSnapshot vehicle) {
-		// check if the vehicle snapshot even exists
+		// Check if the vehicle snapshot even exists
 		if (vehicle == null) {
 			return null;
 		}
 
-		// extract all the values from the vehicle snapshot
+		// Extract all the values from the vehicle snapshot
 		int id = vehicle.getId();
 		double prev_x = vehicle.getPrevX();
 		double prev_y = vehicle.getPrevY();
@@ -679,16 +543,10 @@ public class Connection implements DataConsumer {
 		int nearlyArrived = vehicle.getNearlyArrived();
 		int vehicleClass = vehicle.getvehicleClass();
 		int roadID = vehicle.getRoadID();
-		// int departure = vehicle.getDeparture();
-		// int arrival = vehicle.getArrival();
-		// float distance = vehicle.getDistance();
 
-		// put them together into a string for the socket and return it
+		// Put them together into a string for the socket and return it
 		return id + "," + prev_x + "," + prev_y + "," + x + "," + y + "," + speed + "," + originalX + "," + originalY
 				+ "," + destX + "," + destY + "," + nearlyArrived + "," + vehicleClass + "," + roadID;
-		// departure + "," +
-		// arrival + "," +
-		// distance + "," +
 	}
 
 	/**
@@ -698,18 +556,18 @@ public class Connection implements DataConsumer {
 	 * @return the socket message representation of the given vehicle.
 	 */
 	public static String createEventMessage(NetworkEventObject event) {
-		// check if the event even exists
+		// Check if the event even exists
 		if (event == null) {
 			return null;
 		}
 
-		// extract all the values from the event
+		// Extract all the values from the event
 		int startTime = event.startTime;
 		int endTime = event.endTime;
 		int eventID = event.eventID;
 		int roadID = event.roadID;
 
-		// put them together into a string for the socket and return it
+		// Put them together into a string for the socket and return it
 		return startTime + "," + endTime + "," + eventID + "," + roadID;
 	}
 
@@ -726,7 +584,7 @@ public class Connection implements DataConsumer {
 
 		@Override
 		public void run() {
-			// wait for session to exist if it hasn't been created yet
+			// Wait for session to exist if it hasn't been created yet
 			while (session == null) {
 				try {
 					Thread.sleep(GlobalVariables.NETWORK_BUFFER_RERESH);
@@ -736,21 +594,21 @@ public class Connection implements DataConsumer {
 				}
 			}
 
-			// loop and process buffered data until we are told to stop
+			// Loop and process buffered data until we are told to stop
 			int totalCount = 0;
 			int sendCount = 0;
 			boolean running = true;
 			while (running) {
-				// check if we are supposed to be done
+				// Check if we are supposed to be done
 				if (!Connection.this.consuming) {
 					ConnectionManager.printDebug(id + "-SEND", "Not consuming.");
 					break;
 				}
 
-				// check if we are supposed to be paused
+				// Check if we are supposed to be paused
 				if (Connection.this.paused) {
 					ConnectionManager.printDebug(id + "-SEND", "Paused.");
-					// we are currently paused, so we will wait our delay
+					// We are currently paused, so we will wait our delay
 					// before performing another poll on our running state
 					try {
 						Thread.sleep(GlobalVariables.NETWORK_BUFFER_RERESH);
@@ -759,70 +617,65 @@ public class Connection implements DataConsumer {
 					}
 				}
 				 
-				// get the next item from the buffer. HGehlot: I have changed from 1 to
+				// Get the next item from the buffer. HGehlot: I have changed from 1 to
 				// GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ to only send the data at the
 				// new frequency for viz interpolation
 				double nextTick = Connection.this.currentTick + GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
 				TickSnapshot snapshot = collector.getNextTick(nextTick);
 				if (snapshot == null) {
-					// the buffer has no more items for us at this time
+					// The buffer has no more items for us at this time
 					if (sendCount > 0) {
 						String report = "Sent " + sendCount + " ticks to remote host (" + totalCount + " total)";
 						ConnectionManager.printDebug(id + "-SEND", report);
 						sendCount = 0;
 					}
 
-					// is the data collection process finished?
+					// Is the data collection process finished?
 					if (!collector.isCollecting() && !collector.isPaused()) {
 						// the collector is stopped so no more are coming
 						break;
 					}
 
-					// we will wait a little while before looping around
+					// We will wait a little while before looping around
 					// to check if anything new has arrived in the buffer
 					try {
 						Thread.sleep(GlobalVariables.NETWORK_BUFFER_RERESH);
 					} catch (InterruptedException ie) {
-						// while waiting, the thread was told to stop
+						// While waiting, the thread was told to stop
 						ConnectionManager.printDebug(id + "-SEND", "Stopped.");
 						break;
 					}
 
-					// loop around to try again
+					// Loop around to try again
 					continue;
 				}
-				//System.out.println("Send count is ");
-				//System.out.println(sendCount);
-				// update the currently processing tick index to this item
+				// Update the currently processing tick index to this item
 				Connection.this.currentTick = snapshot.getTickNumber();
 
-				// process the current item into a socket message and send it
+				// Process the current item into a socket message and send it
 				try {
 					Connection.this.sendTickSnapshot(snapshot);
 					totalCount++;
 					sendCount++;
 				} catch (Throwable t) {
-					// TODO: Handle being unable to send tick message?
 					ConnectionManager.printDebug(id + "-SEND", t.toString());
 				}
 
-				// wait a short delay (a few ms) to give java's thread
+				// Wait a short delay (a few ms) to give java's thread
 				// scheduler a chance to switch contexts if necessary
 				// before we loop around and grab the next buffer item
 				try {
 					Thread.sleep(5);
 				} catch (InterruptedException ie) {
-					// thread has been told to stop writing network data
+					// Thread has been told to stop writing network data
 					ConnectionManager.printDebug(id + "-SEND", "Stopping.");
 					break;
 				}
 			}
 
-			// TODO: handle any post-consuming cleanup tasks for the thread
-
-			// set the data consumption flags as finished
+			// Set the data consumption flags as finished
 			Connection.this.paused = false;
 			Connection.this.consuming = false;
 		}
-	} // class SendingRunnable
+	}
 }

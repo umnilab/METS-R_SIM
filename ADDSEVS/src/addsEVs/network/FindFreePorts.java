@@ -6,10 +6,11 @@ import java.util.ArrayList;
 
 import java.util.Collections;
 
+import addsEVs.ContextCreator;
+
 public class FindFreePorts {
 
 	public static void main(String[] args) {
-		// TODO Auto-generated method stub
 		int numOfPorts = 2;
 		ArrayList<Integer> freePorts = new ArrayList<Integer>();
 		ArrayList<ServerSocket> servers = new ArrayList<ServerSocket>();
@@ -17,11 +18,10 @@ public class FindFreePorts {
 			ServerSocket s;
 			try {
 				s = new ServerSocket(0);
-				System.out.println("listening on port: " + s.getLocalPort());
+				ContextCreator.logger.info("listening on port: " + s.getLocalPort());
 				freePorts.add(s.getLocalPort());
 				servers.add(s);
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
@@ -30,16 +30,15 @@ public class FindFreePorts {
 		for(ServerSocket s : servers) {
 			try {
 				s.close();
-				System.out.println("Closed socket server : " + s.getLocalPort());
+				ContextCreator.logger.info("Closed socket server : " + s.getLocalPort());
 			} catch (IOException e) {
-				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
 		}
-		// sort
+		// Sort
 		Collections.sort(freePorts);
-		System.out.println("Free ports available on this machine : ");
-		System.out.println(freePorts.toString().replaceAll("\\s+",""));
+		ContextCreator.logger.info("Free ports available on this machine : ");
+		ContextCreator.logger.info(freePorts.toString().replaceAll("\\s+",""));
 
 	}
 

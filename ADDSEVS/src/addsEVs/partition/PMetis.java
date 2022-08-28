@@ -19,8 +19,6 @@ File: PMetis.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.graph.GNode;
@@ -66,7 +64,7 @@ public class PMetis {
   }
 
   /**
-   * totalPartWeights: This is an array containing "nparts" floating point numbers. For partition i , totalPartitionWeights[i] stores the fraction
+   * TotalPartWeights: This is an array containing "nparts" floating point numbers. For partition i , totalPartitionWeights[i] stores the fraction
    * of the total weight that should be assigned to it. See tpwgts in manual of metis.
    * @throws ExecutionException 
    */
@@ -101,7 +99,7 @@ public class PMetis {
       for (int i = 0; i < nparts / 2; i++) {
         totalPartWeights[i + tpindex] *= (1 / vertexWeightRatio);
       }
-      //nparts/2 may not be equal to nparts-nparts/2
+      // nparts/2 may not be equal to nparts-nparts/2
       for (int i = 0; i < nparts - nparts / 2; i++) {
         totalPartWeights[i + tpindex + nparts / 2] *= (1 / vertexWeightRatio);
       }

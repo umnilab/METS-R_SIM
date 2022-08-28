@@ -28,8 +28,7 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class RoadContext extends DefaultContext<Road> {
 
-	// NM: Cache every coordinate which forms a road so that Route.onRoad() is
-	// quicker.
+	// Cache every coordinate which forms a road so that Route.onRoad() becomes faster.
 	private static Map<Coordinate, ?> coordCache;
 
 	public RoadContext() {
@@ -44,7 +43,6 @@ public class RoadContext extends DefaultContext<Road> {
 		 * then create junctions and finally the road network.
 		 */
 		GeographyParameters<Road> geoParams = new GeographyParameters<Road>();
-		//geoParams.setCrs("EPSG:32618");
 		Geography<Road> roadGeography = GeographyFactoryFinder
 				.createGeographyFactory(null).createGeography("RoadGeography",
 						this, geoParams);
@@ -55,8 +53,7 @@ public class RoadContext extends DefaultContext<Road> {
 		
 		/* CSV file for data attribute */
         String fileName = GlobalVariables.ROADS_CSV;
-        // -File class needed to turn stringName to actual file
-
+        // File class needed to turn stringName to actual file
 		try {
 			roadFile = new File(GlobalVariables.ROADS_SHAPEFILE);
 			URI uri=roadFile.toURI();
@@ -71,10 +68,10 @@ public class RoadContext extends DefaultContext<Road> {
 				String line=br.readLine();
 				String[] result=line.split(",");
 				
-				//Update road information
+				// Update road information
 				road=setAttribute(road,result);						
 
-				// SH: Create lanes for this road
+				// Create lanes for this road
 				Geometry roadGeom = roadGeography.getGeometry(road);
 				for (Coordinate c : roadGeom.getCoordinates()) {
 					coordCache.put(c, null);
@@ -85,13 +82,11 @@ public class RoadContext extends DefaultContext<Road> {
 			
 
 		} catch (java.net.MalformedURLException e) {
-			System.out
-					.println("ContextCreator: malformed URL exception when reading roadshapefile. Check the 'roadLoc' parameter is correct");
+			ContextCreator.logger.info("ContextCreator: malformed URL exception when reading roadshapefile. Check the 'roadLoc' parameter is correct");
 			e.printStackTrace();
 			
 		} catch (FileNotFoundException e){
-			System.out
-			.println("ContextCreator: No road csv file found");
+			ContextCreator.logger.info("ContextCreator: No road csv file found");
             e.printStackTrace();
         } catch (IOException e) {
             e.printStackTrace();}

@@ -35,7 +35,7 @@ import util.fn.Lambda2Void;
 import util.fn.LambdaVoid;
 
 /**
- * a wrapper for the graph to contain the data of the graph 
+ * A wrapper for the graph to contain the data of the graph 
  */
 public class MetisGraph {
 
@@ -55,7 +55,7 @@ public class MetisGraph {
   }
 
   /**
-   * add weight to the weight of a partition
+   * Add weight to the weight of a partition
    * @param index the index of the partition
    * @param weight the weight to increase
    */
@@ -65,7 +65,7 @@ public class MetisGraph {
   }
 
   /**
-   * initialize the partition weights variable
+   * Initialize the partition weights variable
    */
   public void initPartWeight() {
     if (partWeights == null) {
@@ -88,7 +88,7 @@ public class MetisGraph {
   }
 
   /**
-   * get the weight of a partition
+   * Get the weight of a partition
    * @param part the index of the partition
    * @return the weight of a partition
    */
@@ -97,7 +97,7 @@ public class MetisGraph {
   }
 
   /**
-   * get the weight of a partition, no flag version, used for serial
+   * Get the weight of a partition, no flag version, used for serial
    * @param part the index of the partition
    * @return the weight of a partition
    */
@@ -106,14 +106,14 @@ public class MetisGraph {
   }
 
   /**
-   * increase the num of edges by 1 in the graph
+   * Increase the num of edges by 1 in the graph
    */
   public void incNumEdges() {
     numEdges.add(1, MethodFlag.NONE);
   }
 
   /**
-   * return the num of edges in the graph
+   * Return the num of edges in the graph
    */
   public int getNumEdges() {
       return numEdges.get();
@@ -124,7 +124,7 @@ public class MetisGraph {
   }
 
   /**
-   * compute the parameters for two-way refining
+   * Compute the parameters for two-way refining
    */
   public void computeTwoWayPartitionParams() {
     partWeights = new GMutableInteger[2];
@@ -164,7 +164,7 @@ public class MetisGraph {
   }
 
   /**
-   * get the maximal adjsum(the sum of the outgoing edge weights of a node) among all the nodes
+   * Get the maximal adjsum(the sum of the outgoing edge weights of a node) among all the nodes
    */
   public int getMaxAdjSum() {
     MaxAdjSumClosure closure = new MaxAdjSumClosure();
@@ -193,7 +193,7 @@ public class MetisGraph {
   }
 
   /**
-   * compute the parameters for kway refining
+   * Compute the parameters for kway refining
    */
   public void computeKWayPartitionParams(int nparts) {
     unsetAllBoundaryNodes();
@@ -254,7 +254,7 @@ public class MetisGraph {
   }
 
   /**
-   * update the external and internal degree for every node in the graph
+   * Update the external and internal degree for every node in the graph
    */
   public void updateNodeEdAndId(GNode<MetisNode> n) {
     ComputeEdAndIdClosure closure = new ComputeEdAndIdClosure();
@@ -287,35 +287,35 @@ public class MetisGraph {
   }
 
   /**
-   * return the intgraph in the wrapper
+   * Return the intgraph in the wrapper
    */
   public IntGraph<MetisNode> getGraph() {
     return graph;
   }
 
   /**
-   * set the graph for the wrapper
+   * Set the graph for the wrapper
    */
   public void setGraph(IntGraph<MetisNode> graph) {
     this.graph = graph;
   }
 
   /**
-   * return the finer metisGraph
+   * Return the finer metisGraph
    */
   public MetisGraph getFinerGraph() {
     return finerGraph;
   }
 
   /**
-   * set the finer metisGraph
+   * Set the finer metisGraph
    */
   public void setFinerGraph(MetisGraph finer) {
     finerGraph = finer;
   }
 
   /**
-   * return the graphcut
+   * Return the graphcut
    */
   public int getMinCut() {
     int retval = 0;
@@ -325,30 +325,30 @@ public class MetisGraph {
   }
 
   /**
-   * set the graphcut
+   * Set the graphcut
    */
   public void setMinCut(int cut) {
     mincut.set(cut);
   }
 
   /**
-   * increase the graphcut
+   * Increase the graphcut
    */
   public void incMinCut(int cut) {
     mincut.add(cut, MethodFlag.NONE);
   }
 
-  //methods for dealing with boundary nodes
+  // Methods for dealing with boundary nodes
 
   /**
-   * return the number of boundary nodes in the graph
+   * Return the number of boundary nodes in the graph
    */
   public int getNumOfBoundaryNodes() {
     return boundaryNodes.size();
   }
 
   /**
-   * mark a node as a boundary node
+   * Mark a node as a boundary node
    */
   public void setBoundaryNode(GNode<MetisNode> node) {
     node.getData(MethodFlag.NONE).setBoundary(true);
@@ -356,7 +356,7 @@ public class MetisGraph {
   }
 
   /**
-   * unmark a boundary nodes
+   * Unmark a boundary nodes
    */
   public void unsetBoundaryNode(GNode<MetisNode> node) {
     node.getData(MethodFlag.NONE).setBoundary(false);
@@ -364,7 +364,7 @@ public class MetisGraph {
   }
 
   /**
-   * unmark all the boundary nodes
+   * Unmark all the boundary nodes
    */
   public void unsetAllBoundaryNodes() {
     for (GNode<MetisNode> node : boundaryNodes) {
@@ -374,7 +374,7 @@ public class MetisGraph {
   }
 
   /**
-   * return the set of boundary nodes
+   * Return the set of boundary nodes
    */
   public Set<GNode<MetisNode>> getBoundaryNodes() {
     return boundaryNodes;
@@ -421,7 +421,7 @@ public class MetisGraph {
   }
 
   /**
-   * compute the number of edges in the graph
+   * Compute the number of edges in the graph
    */
   public int computeEdges() {
     ComputeEdgesClosure closure = new ComputeEdgesClosure();
@@ -466,7 +466,7 @@ public class MetisGraph {
   }
 
   /**
-   * verify if the partitioning is correctly performed by checking 
+   * Verify if the partitioning is correctly performed by checking 
    * the internal maintained graph cut is same as the real graph cut
    */
   public boolean verify() {
@@ -479,7 +479,7 @@ public class MetisGraph {
   }
 
   /**
-   * check if the partitioning is balanced
+   * Check if the partitioning is balanced
    */
   public boolean isBalanced(float[] tpwgts, float ubfactor) {
     int sum = 0;

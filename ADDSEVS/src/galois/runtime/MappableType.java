@@ -54,7 +54,7 @@ enum MappableType {
     }
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   public <T> void call(Mappable<T> mappable, Object body, MapInternalContext ctx, Object[] args) {
     switch (this) {
     case TYPE_0:

@@ -48,7 +48,8 @@ final class ObjectGraphLocker extends GraphLocker {
   }
 
   //no epilog
-  static <N extends GObject, E> void removeNodeProlog(final ObjectGraph<N, E> graph, final GNode<N> src, byte flags) {
+  @SuppressWarnings("unchecked")
+static <N extends GObject, E> void removeNodeProlog(final ObjectGraph<N, E> graph, final GNode<N> src, byte flags) {
     //we already have a lock on src
     if (GaloisRuntime.needMethodFlag(flags, MethodFlag.CHECK_CONFLICT)) {
       graph.mapInNeighbors(src, lock, MethodFlag.NONE);

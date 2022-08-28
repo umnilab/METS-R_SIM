@@ -19,8 +19,6 @@ File: Refiner.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.graph.GNode;
@@ -47,7 +45,7 @@ public class Refiner {
 	}
 
 	/**
-	 * project the partitioning information back the finer graph
+	 * Project the partitioning information back the finer graph
 	 */
 	private static void projectTwoWayPartition(final MetisGraph metisGraph) {
 

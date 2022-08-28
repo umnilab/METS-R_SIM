@@ -110,13 +110,13 @@ public interface DataConsumer {
     @SuppressWarnings("rawtypes")
     public static Collection<Class> getAllConsumerTypes() {
         
-        // create the list for holding all the class references for consumers
+        // Create the list for holding all the class references for consumers
         ArrayList<Class> consumerList = new ArrayList<Class>();
         
-        // add each consumer class in the program to the list
+        // Add each consumer class in the program to the list
         consumerList.add(addsEVs.data.CsvOutputWriter.class);
         
-        // return the list of classes which are consumers
+        // Return the list of classes which are consumers
         return consumerList;
     }
     

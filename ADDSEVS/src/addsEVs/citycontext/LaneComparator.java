@@ -4,7 +4,7 @@ import java.util.Comparator;
 
 class LaneComparator implements Comparator<Lane>
 {
-   // parameter are of type Object, so we have to downcast it to vehicle objects
+   // Parameter are of type Object, so we have to downcast it to vehicle objects
    public int compare(Lane l1, Lane l2)
    {
       int LaneID1, LaneID2;
@@ -20,11 +20,4 @@ class LaneComparator implements Comparator<Lane>
          return 0;
    }
 
-
-   /*@Override
-   public int compare(Object arg0, Object arg1)
-   {
-      // TODO Auto-generated method stub
-      return 0;
-   }*/
 }

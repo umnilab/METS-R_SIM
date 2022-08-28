@@ -19,34 +19,17 @@ File: Utility.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
 import galois.objects.graph.MorphGraph;
-
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Scanner;
 import java.util.zip.GZIPInputStream;
-
-import org.jgrapht.WeightedGraph;
-
-import addsEVs.ContextCreator;
-import addsEVs.citycontext.Junction;
-import repast.simphony.context.space.graph.ContextJungNetwork;
-import repast.simphony.space.projection.ProjectionEvent;
-import repast.simphony.space.projection.ProjectionListener;
-import repast.simphony.space.graph.EdgeCreator;
-import repast.simphony.space.graph.JungNetwork;
-import repast.simphony.space.graph.Network;
-import repast.simphony.space.graph.RepastEdge;
-import edu.uci.ics.jung.graph.Graph;
 
 public class Utility {
 
@@ -63,7 +46,7 @@ public class Utility {
   }
   
   /**
-   * read in the graph from a file and create a graph 
+   * Read in the graph from a file and create a graph 
    * @param file the input graph file
    * @param useSerial create serial graph or parallel graph
    */
@@ -78,7 +61,7 @@ public class Utility {
       assert graph != null;
       ArrayList<GNode<MetisNode>> nodes = new ArrayList<GNode<MetisNode>>();
       for (int i = 0; i < nodeNum; i++) {
-    	// TODO:Zhan: Change this part to set the integer weight on the nodes
+    	// Change this part to set the integer weight on the nodes
         GNode<MetisNode> n = graph.createNode(new MetisNode(i, 1)); 
         nodes.add(n);
         graph.add(n);
@@ -91,7 +74,7 @@ public class Utility {
         for (int j = 0; j < segs.length; j++) {
           GNode<MetisNode> n2 = nodes.get(Integer.valueOf(segs[j]) - 1);
           graph.addEdge(n1, n2, 1);
-          // TODO:Zhan: Change this part to set the integer weight on the edges
+          // Change this part to set the integer weight on the edges
           n1.getData().addEdgeWeight(1);
           n1.getData().incNumEdges(); // This one is necessary, the number of edge will not automatically updated
           numEdges++;
@@ -111,13 +94,4 @@ public class Utility {
     }
     return null;
   }
-
-/*    public static void check(int i, int j, String name){
-    	if(i!=j){
-    		System.out.println(name+" not equal "+i+" "+j);
-    		System.exit(-1);
-    	} else {
-    		System.out.println(name+" check ok "+i);
-    	}
-    }*/
 }

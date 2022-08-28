@@ -34,7 +34,7 @@ class ConcurrentBucketedLeaf<T> extends ConcurrentBucketed<T> {
     this(numBuckets, true, indexer, maker, needSize);
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({"unchecked","rawtypes"})
   public ConcurrentBucketedLeaf(int numBuckets, boolean ascending, Lambda<T, Integer> indexer, Maker<T> maker,
       boolean needSize) {
     super(numBuckets, ascending, indexer, new Maker<T>() {

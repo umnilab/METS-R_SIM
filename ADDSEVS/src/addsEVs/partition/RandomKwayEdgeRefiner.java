@@ -19,8 +19,6 @@ File: RandomKwayEdgeRefiner.java
 
 */
 
-
-
 package addsEVs.partition;
 
 import galois.objects.MethodFlag;
@@ -40,7 +38,7 @@ import util.fn.Lambda2Void;
 import util.fn.LambdaVoid;
 
 /**
- * an random refine algortihm for k-way partitions
+ * An random refine algortihm for k-way partitions
  */
 public class RandomKwayEdgeRefiner {
 
@@ -141,9 +139,8 @@ public class RandomKwayEdgeRefiner {
         return;
 
       /*
-       * if we got here, we can now move the vertex from 'from' to 'to'
+       * If we got here, we can now move the vertex from 'from' to 'to'
        */
-      //dummy for cautious
       if(!GaloisRuntime.getRuntime().useSerial()){
       	n.map(new LambdaVoid<GNode<MetisNode>>() {
       		@Override
@@ -173,7 +170,7 @@ public class RandomKwayEdgeRefiner {
         metisGraph.unsetBoundaryNode(n);
 
       /*
-       * update the degrees of adjacent vertices
+       * Update the degrees of adjacent vertices
        */
       final int fromConst = from;
       final int toConst = to;
@@ -226,7 +223,7 @@ public class RandomKwayEdgeRefiner {
             }
           }
           /*
-           * add contribution to the .ed of 'to'
+           * Add contribution to the .ed of 'to'
            */
           if (neighborData.getPartition() != toConst) {
             int i;

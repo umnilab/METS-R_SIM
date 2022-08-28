@@ -3,16 +3,16 @@ package addsEVs.routing;
 import org.jgrapht.*;
 import org.jgrapht.graph.*;
 
-import addsEVs.ContextCreator;
 import repast.simphony.space.graph.RepastEdge;
 
+@SuppressWarnings("serial")
 public class evacSimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E>
 {
 
-   public evacSimWeightedGraph(EdgeFactory ef)
+   @SuppressWarnings({ "rawtypes", "unchecked" })
+public evacSimWeightedGraph(EdgeFactory ef)
    {
       super(ef);
-      // TODO Auto-generated constructor stub
    }
 
    public evacSimWeightedGraph(Class<? extends E> edgeClass)
@@ -20,14 +20,16 @@ public class evacSimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E
       this(new ClassBasedEdgeFactory<V, E>(edgeClass));
    }
 
-   @Override
+   @SuppressWarnings("rawtypes")
+@Override
    public void setEdgeWeight(E e, double weight)
    {
       // super.setEdgeWeight(e, weight);
       ((RepastEdge) e).setWeight(weight);
    }
 
-   @Override
+   @SuppressWarnings("rawtypes")
+@Override
    public double getEdgeWeight(E e)
    {
       // super.setEdgeWeight(e, weight);

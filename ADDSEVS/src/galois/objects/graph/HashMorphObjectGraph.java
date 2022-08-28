@@ -55,7 +55,7 @@ final class HashMorphObjectGraph<N extends GObject, E> implements ObjectGraph<N,
   }
 
   @SuppressWarnings("unchecked")
-  private EdgeGraphNode downcast(GNode n) {
+  private EdgeGraphNode downcast(@SuppressWarnings("rawtypes") GNode n) {
     return (EdgeGraphNode) n;
   }
 
@@ -323,7 +323,8 @@ final class HashMorphObjectGraph<N extends GObject, E> implements ObjectGraph<N,
     return curr.iterateVersion.compareAndSet(old, mapVersionNumber);
   }
 
-  private EdgeGraphNode scanForNode(LinkedNode start) {
+  @SuppressWarnings("unchecked")
+private EdgeGraphNode scanForNode(LinkedNode start) {
     while (start != null) {
       if (start.isDummy()) {
         start = start.getNext();
@@ -514,7 +515,8 @@ final class HashMorphObjectGraph<N extends GObject, E> implements ObjectGraph<N,
     LinkedNode curr = head.get();
     while (curr != null) {
       if (!curr.isDummy()) {
-        EdgeGraphNode gsrc = (EdgeGraphNode) curr;
+        @SuppressWarnings("unchecked")
+		EdgeGraphNode gsrc = (EdgeGraphNode) curr;
         assert gsrc.in;
         body.call(gsrc);
       }
@@ -533,7 +535,8 @@ final class HashMorphObjectGraph<N extends GObject, E> implements ObjectGraph<N,
     LinkedNode curr = head.get();
     while (curr != null) {
       if (!curr.isDummy()) {
-        EdgeGraphNode gsrc = (EdgeGraphNode) curr;
+        @SuppressWarnings("unchecked")
+		EdgeGraphNode gsrc = (EdgeGraphNode) curr;
         assert gsrc.in;
         body.call(gsrc, arg1);
       }
@@ -552,7 +555,8 @@ final class HashMorphObjectGraph<N extends GObject, E> implements ObjectGraph<N,
     LinkedNode curr = head.get();
     while (curr != null) {
       if (!curr.isDummy()) {
-        EdgeGraphNode gsrc = (EdgeGraphNode) curr;
+        @SuppressWarnings("unchecked")
+		EdgeGraphNode gsrc = (EdgeGraphNode) curr;
         assert gsrc.in;
         body.call(gsrc, arg1, arg2);
       }

@@ -19,14 +19,15 @@ import java.util.*;
 
 public class BackgroundDemand{
 	public TreeMap<Integer,ArrayList<Double>> travelDemand;
-	//initialize everything
+
 	public BackgroundDemand(){
 		ContextCreator.logger.info("Read demand.");
 		travelDemand=new TreeMap<Integer,ArrayList<Double>>();
 		readEventFile();
-//		validPassNum(); // for debugging the demand generation process
+//		validPassNum(); // For debugging the demand generation process
 	}
-	// read and parse CSV files
+	
+	// Read and parse the CSV data
 	public void readEventFile() {
 		File dmeventFile = new File(GlobalVariables.DM_EVENT_FILE);;
 		CSVReader csvreader = null;
@@ -48,7 +49,6 @@ public class BackgroundDemand{
 						value.set(i, Double.parseDouble(nextLine[i]));
 						total += Double.parseDouble(nextLine[i]);
 					}
-					//ContextCreator.logger.debug("roadID = "+ roadID+"value =" + value);
 					
 					this.travelDemand.put(ind,value);
 		            }
@@ -64,7 +64,7 @@ public class BackgroundDemand{
 	}
 	}
 	
-	// valid the number of pass via random generator
+	// To valid the number of pass via random generator
 	public void validPassNum(){
 		int pass_num = 0;
 		double pass_num2 = 0;
@@ -104,7 +104,7 @@ public class BackgroundDemand{
 				}
 			}
 		}
-		System.out.println("Total pass likely to generate: " + pass_num);
-		System.out.println("Total pass with fraction: " + pass_num2);
+		ContextCreator.logger.info("Total pass likely to generate: " + pass_num);
+		ContextCreator.logger.info("Total pass with fraction: " + pass_num2);
 	}
 }

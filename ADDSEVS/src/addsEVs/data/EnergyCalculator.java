@@ -1,13 +1,9 @@
 package addsEVs.data;
-import java.lang.Math;
 import java.util.concurrent.LinkedBlockingQueue;
 
-import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
-import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
 import addsEVs.ContextCreator;
 import addsEVs.vehiclecontext.ElectricVehicle;
-import addsEVs.vehiclecontext.Vehicle;
 
 /**
  * An energy calculator class for debugging
@@ -16,16 +12,16 @@ import addsEVs.vehiclecontext.Vehicle;
  *
  */
 public class EnergyCalculator{
-	private double cumulativeConsumption;     //totalEnergyConsumption
-	private double tickConsumption;           //energyConsumptionPerTick
+	private double cumulativeConsumption;     // TotalEnergyConsumption
+	private double tickConsumption;           // EnergyConsumptionPerTick
 	
-	// function 1: construction function
+	// Function 1: construction function
 	public EnergyCalculator() {
 		this.cumulativeConsumption = 0.0f;
 		this.tickConsumption = 0.0f;
 	}
 	
-	// function 2: calculate whole energy
+	// Function 2: calculate whole energy
 	public void calculateEnergy(){
 		this.tickConsumption = 0.0f;
 		this.cumulativeConsumption = 0.0f;
@@ -37,7 +33,7 @@ public class EnergyCalculator{
 			}	
 		}
 		
-		System.out.println("Current tick consumption is "+ this.tickConsumption);
-		System.out.println("Total consumption is " + this.cumulativeConsumption);
+		ContextCreator.logger.debug("Current tick consumption is "+ this.tickConsumption);
+		ContextCreator.logger.debug("Total consumption is " + this.cumulativeConsumption);
 	}
 }

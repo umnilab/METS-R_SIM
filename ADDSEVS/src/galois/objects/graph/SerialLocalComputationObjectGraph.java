@@ -49,7 +49,7 @@ final class SerialLocalComputationObjectGraph<N extends GObject, E> implements O
     createGraph(in);
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   private void createGraph(final ObjectGraph<N, E> g) {
     int numNodes = g.size();
     this.nodes = (Node[]) new SerialLocalComputationObjectGraph.Node[numNodes];
@@ -101,7 +101,7 @@ final class SerialLocalComputationObjectGraph<N extends GObject, E> implements O
     this.edgeData = (E[]) edgeData.toArray();
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   private int getId(GNode n) {
     return ((Node) n).id;
   }

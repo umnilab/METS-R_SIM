@@ -51,7 +51,7 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     size = 0;
   }
 
-  @SuppressWarnings("unchecked")
+  @SuppressWarnings({ "unchecked", "rawtypes" })
   private EdgeGraphNode downcast(GNode n) {
     return (EdgeGraphNode) n;
   }
@@ -140,7 +140,8 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     return removeNeighbor(src, dst, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unused")
+@Override
   public boolean removeNeighbor(GNode<N> src, GNode<N> dst, byte flags) {
     EdgeGraphNode gsrc = downcast(src);
     EdgeGraphNode gdst = downcast(dst);
@@ -288,7 +289,8 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     return true;
   }
 
-  private EdgeGraphNode scanForNode(LinkedNode start) {
+  @SuppressWarnings("unchecked")
+private EdgeGraphNode scanForNode(LinkedNode start) {
     while (start != null) {
       if (start.isDummy()) {
         start = start.getNext();
@@ -428,7 +430,8 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     map(body, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public void map(LambdaVoid<GNode<N>> body, byte flags) {
     boolean prevModNodes = modNodes;
     modNodes = false;
@@ -451,7 +454,8 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     map(body, arg1, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public <A1> void map(Lambda2Void<GNode<N>, A1> body, A1 arg1, byte flags) {
     boolean prevModNodes = modNodes;
     modNodes = false;
@@ -474,7 +478,8 @@ final class SerialVectorMorphObjectGraph<N extends GObject, E> implements Object
     map(body, arg1, arg2, MethodFlag.ALL);
   }
 
-  @Override
+  @SuppressWarnings("unchecked")
+@Override
   public <A1, A2> void map(Lambda3Void<GNode<N>, A1, A2> body, A1 arg1, A2 arg2, byte flags) {
     boolean prevModNodes = modNodes;
     modNodes = false;

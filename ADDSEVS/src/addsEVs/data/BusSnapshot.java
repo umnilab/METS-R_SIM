@@ -133,30 +133,9 @@ public class BusSnapshot {
                            double energyConsumption,
                            int roadID,
                            int served_pass
-                           //double z,
-                           //int departure,
-                           //int arrival,
-                           //float distance,
                            ) throws Throwable {
         // all values are passed in as primitaves instead of objects,
         // so the compiler won't allow any to be null, no need to check
-        
-        // do basic validity checks against the values provided
-//        if (roadID < 0) {
-//            throw new Exception("Road ID cannot be negative.");
-//        }
-//        if (Double.isNaN(originX) || Double.isInfinite(originX)) {
-//            throw new NumberFormatException("Original X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(originY) || Double.isInfinite(originY)) {
-//            throw new NumberFormatException("Original Y-axis value is invalid.");
-//        }
-//        if (Double.isNaN(destX) || Double.isInfinite(destX)) {
-//            throw new NumberFormatException("Dest X-axis value is invalid.");
-//        }
-//        if (Double.isNaN(destY) || Double.isInfinite(destY)) {
-//            throw new NumberFormatException("Dest Y-axis value is invalid.");
-//        }
         if (id < 0) {
             throw new Exception("Vehicle ID cannot be negative.");
         }
@@ -166,10 +145,6 @@ public class BusSnapshot {
         if (Double.isNaN(y) || Double.isInfinite(y)) {
             throw new NumberFormatException("Y-axis value is invalid.");
         }
-        // the model doesn't use the Z-axis
-        //if (Double.isNaN(z) || Double.isInfinite(z)) {
-        //    throw new NumberFormatException("Z-axis value is invalid.");
-        //}
         if (Float.isNaN(speed) || Float.isInfinite(speed)) {
             throw new NumberFormatException("Speed value is invalid.");
         }
@@ -177,9 +152,6 @@ public class BusSnapshot {
         if (Float.isNaN(acc) || Float.isInfinite(acc)) {
             throw new NumberFormatException("Acc value is invalid.");
         }
-        //if (Float.isNaN(distance) || Float.isInfinite(distance)) {
-            //throw new NumberFormatException("Distance value is invalid.");
-        //}
 
         // store the values in the object
         this.id = id;
@@ -193,18 +165,7 @@ public class BusSnapshot {
         this.batteryLevel = batteryLevel;
         this.totalConsumption = energyConsumption;
         this.served_pass = served_pass;
-//        this.originX = originX;                     /** @author Jiawei Xue */
-//        this.originY = originY;
-//        this.destX = destX;
-//        this.destY = destY;
-//        this.nearlyArrived = nearlyArrived;
-//        this.vehicleClass = vehicleClass;
         this.roadID = roadID;
-        //this.z = 0.0d;
-        //this.departure = departure;
-        //this.arrival = arrival;
-        //this.distance = distance;
-
     }
     
     
@@ -254,7 +215,6 @@ public class BusSnapshot {
     public float getAcc() { return this.acc; }
 
 	public String getRouteID() {
-		// TODO Auto-generated method stub
 		return Integer.toString(this.routeID);
 	}   
 	
@@ -270,74 +230,10 @@ public class BusSnapshot {
      */    
     
     
-    // public double getOriginX() { return this.originX; }
-
-    /**
-     * Returns the origin Y-axis position within the simulation.
-     * 
-     * @return the origin Y-axis position within the simulation.
-     */
-    // public double getOriginY() { return this.originY; }
-    
-
-    /**
-     * Returns the destination X-axis (longitude?) position within the simulation.
-     * 
-     * @return the destination X-axis (longitude?) position within the simulation.
-     */
-    // public double getDestX() { return this.destX; }
-     
-    
-    /**
-     * Returns the destination Y-axis  position within the simulation.
-     * 
-     * @return the destination Y-axis  position within the simulation.
-     */
-    // public double getDestY() { return this.destY; }
-    
-    /**
-     * Returns the whether the vehicle is near the destination.
-     *   
-     * @return Whether the vehicle is near the destination.
-     */
-    // public int getNearlyArrived() { return this.nearlyArrived; }
-    
-    /**
-     * Returns the routing class of the vehicle.
-     * 
-     * @return the routing class of the vehicle.
-     */
-    // public int getvehicleClass() { return this.vehicleClass; }    
-    
     /**
      * Returns the road ID of the vehicle within the simulation.
      * 
      * @return the road ID of the vehicle within the simulation.
      */
      public int getRoadID() { return this.roadID; }    
-     
-   
-    /**
-     * Returns the time of departure of the vehicle for the current trip.
-     * 
-     * @return the time of departure of the vehicle for the current trip.
-     */
-    //public int getDeparture() { return this.departure; }
-    
-    
-    /**
-     * Returns the expected arrival time of the vehicle for the current trip.
-     * 
-     * @return the expected arrival time of the vehicle for the current trip.
-     */
-    //public int getArrival() { return this.arrival; }
-    
-    
-    /**
-     * Returns the total distance traveled by the vehicle so far on this trip.
-     * 
-     * @return the total distance traveled by the vehicle so far on this trip.
-     */
-    //public float getDistance() { return this.distance; }
-
 }

@@ -20,7 +20,6 @@ File: GrowBisection.java
 */
 
 
-
 package addsEVs.partition;
 
 import galois.objects.graph.GNode;

@@ -63,10 +63,6 @@ public class DataCollector {
     /** A count of how many times the buffer cleanup method has been called. */
     private int cleanupCount;
     
-    /** A calculator for storing the energy consumption metrics. */
-//    private EnergyCalculator energeCalculator;
-  
-    
     /**
      * Constructs the data collection system and performs any steps
      * necessary to start it like initializing the data buffer.
@@ -78,13 +74,13 @@ public class DataCollector {
      */
     private DataCollector() {
         
-        // create the data buffer
+        // Create the data buffer
         this.buffer = new ConcurrentLinkedDeque<TickSnapshot>();
         
-        // create the list of registered data consumers
+        // Create the list of registered data consumers
         this.registeredConsumers = new Vector<DataConsumer>();
         
-        // initialize other class variables
+        // Initialize other class variables
         this.collecting = false;
         this.paused = false;
         this.currentSnapshot = null;
@@ -132,26 +128,22 @@ public class DataCollector {
         DataCollector.printDebug("CTRL", "START COLLECTION");
         
         
-        // resuming a previously paused collection?
+        // Resuming a previously paused collection?
         if (!this.collecting && this.paused) {
             this.resumeDataCollection();
             return;
         }
         
-        // set the energy calcuator
-//        this.energeCalculator = new EnergyCalculator();
-        
         // set the running flags to running
         this.collecting = true;
         this.paused = false;
         
-        // we are not paused, so this is a new run.
-        // we need to prep the buffer to start fresh. 
+        // We are not paused, so this is a new run.
         this.buffer = new ConcurrentLinkedDeque<>();
         this.lastTick = -1.0;
         this.currentSnapshot = null;
         
-        // start the cleanup thread
+        // Start the cleanup thread
         if (this.cleanupTask != null) {
             this.cleanupTask.cancel();
         }
@@ -169,7 +161,7 @@ public class DataCollector {
                                    cleanupTimeout*2,  // delay until first run
                                    cleanupTimeout);   // delay between runs
         
-        // tell each of the consumers to start
+        // Tell each of the consumers to start
         for (DataConsumer dc : this.registeredConsumers) {
             if (dc != null) {
                 try {
@@ -177,7 +169,6 @@ public class DataCollector {
                 }
                 catch (Throwable t) {
                     // the data consumer could not start!
-                    // TODO: handle data consumer start error
                 }
             }
         }
@@ -199,9 +190,17 @@ public class DataCollector {
         this.paused = false;
         this.collecting = false;
 
-        // TODO: stop the cleanup thread ?
+        // Stop the cleanup thread ?
+        this.cleanupTimer.cancel();
         
-        // TODO: tell each of the consumers to stop ?
+        // Tell each of the consumers to stop ?
+        for (DataConsumer dc : this.registeredConsumers) {
+        	try {
+				dc.stopConsumer();
+			} catch (Throwable e) {
+				e.printStackTrace();
+			}
+        }
     }
     
     
@@ -250,18 +249,18 @@ public class DataCollector {
         
     	
         if ((int)tickNumber % 100 == 0) {
-            // print a periodic heart-beat debug statement from data buffer
+            // Print a periodic heart-beat debug statement from data buffer
             String message = "TICK " + tickNumber + 
                              " [" + this.buffer.size() + " ticks in buffer]";
             DataCollector.printDebug("CTRL", message);
         }
         
-        // verify the given tick number is valid
+        // Verify the given tick number is valid
         if (tickNumber < 0 || tickNumber <= this.lastTick) {
             throw new IllegalArgumentException("Tick number invalid.");
         }
         
-        // create the tick snapshot object
+        // Create the tick snapshot object
         this.currentSnapshot = new TickSnapshot(tickNumber);
         
         GlobalVariables.datacollection_total+= System.currentTimeMillis() - GlobalVariables.datacollection_start;
@@ -275,15 +274,15 @@ public class DataCollector {
      * signaled to know that a new piece of data is available.
      */
     public void stopTickCollection() {       
-        // place the current tick into the buffer if anything was recorded
+        // Place the current tick into the buffer if anything was recorded
         if (!this.currentSnapshot.isEmpty()) {
             this.buffer.add(this.currentSnapshot);
         }
         
-        // update the counter of the latest tick buffered
+        // Update the counter of the latest tick buffered
         this.lastTick = this.currentSnapshot.getTickNumber();
         
-        // remove the reference to the current tick snapshot object
+        // Remove the reference to the current tick snapshot object
         this.currentSnapshot = null;
     }
     
@@ -297,7 +296,7 @@ public class DataCollector {
      */
     public void recordSnapshot(Vehicle vehicle,
                                Coordinate coordinate) throws Throwable {
-        // make sure the given vehicle object is valid
+        // Make sure the given vehicle object is valid
         if (vehicle == null) {
             throw new IllegalArgumentException("No vehicle given.");
         }
@@ -305,20 +304,20 @@ public class DataCollector {
             throw new IllegalArgumentException("no coordinate given.");
         }
         
-        // make sure a tick is currently being processed
+        // Make sure a tick is currently being processed
         if (this.currentSnapshot == null) {
             throw new Exception("No tick snapshot being processed.");
         }
         
         
         if (vehicle.getVehicleClass() == 1){ //EV
-        	// add the vehicle to the current snapshot
+        	// Add the vehicle to the current snapshot
         	this.currentSnapshot.logVehicle(vehicle, coordinate);
             this.currentSnapshot.logEV((ElectricVehicle)vehicle, coordinate);
         }
         
         if (vehicle.getVehicleClass() == 2){ //Bus
-        	// add the vehicle to the current snapshot
+        	// Add the vehicle to the current snapshot
             this.currentSnapshot.logBus((Bus)vehicle, coordinate);
         }
         
@@ -334,17 +333,17 @@ public class DataCollector {
      */
     public void recordEventSnapshot(NetworkEventObject event,
                                int type) throws Throwable {
-        // make sure the given event object is valid
+        // Make sure the given event object is valid
         if (event == null) {
             throw new IllegalArgumentException("No event given.");
         }
         
-        // make sure a tick is currently being processed
+        // Make sure a tick is currently being processed
         if (this.currentSnapshot == null) {
             throw new Exception("No tick snapshot being processed.");
         }
       
-        // add the event to the current snapshot
+        // Add the event to the current snapshot
         this.currentSnapshot.logEvent(event, type);
     }
     
@@ -359,31 +358,31 @@ public class DataCollector {
      * @param consumer the data consumer to add to the list.
      */
     public void registerDataConsumer(DataConsumer consumer) {
-        // check the data consumer exists
+        // Check the data consumer exists
         if (consumer == null) {
             return;
         }
         
-        // check the list of consumers exists
+        // Check the list of consumers exists
         if (this.registeredConsumers == null) {
             this.registeredConsumers = new Vector<DataConsumer>();
         }
         
-        // check the consumer is not already registered in the list
+        // Check the consumer is not already registered in the list
         if (this.registeredConsumers.contains(consumer)) {
             return;
         }
         
-        // add the consumer to the list
+        // Add the consumer to the list
         this.registeredConsumers.add(consumer);
         
-        // if we are already collecting data, start the consumer, too
+        // If we are already collecting data, start the consumer, too
         if (this.isCollecting()) {
             try {
                 consumer.startConsumer();
             }
             catch (Throwable t) {
-                // TODO: Handle the consumer not able to start consuming
+                // The consumer not able to start consuming
             }
         }
     }
@@ -399,26 +398,26 @@ public class DataCollector {
      * @param consumer the data consumer to remove from the list.
      */
     public boolean deregisterDataConsumer(DataConsumer consumer) {
-        // check the data consumer exists
+        // Check the data consumer exists
         if (consumer == null) {
             return true;
         }
         
-        // check the consumer list exists
+        // Check the consumer list exists
         if (this.registeredConsumers == null) {
             return false;
         }
         
-        // check if the consumer is in the list
+        // Check if the consumer is in the list
         if (!this.registeredConsumers.contains(consumer)) {
             // the consumer wasn't even in the list 
             return true;
         }
         
-        // remove the consumer from the list
+        // Remove the consumer from the list
         boolean removed = this.registeredConsumers.remove(consumer);
         
-        // return whether or not the consumer was removed from the list
+        // Return whether or not the consumer was removed from the list
         return removed;
     }
     
@@ -431,16 +430,16 @@ public class DataCollector {
      * @return the tick number of the oldest item in the buffer.
      */
     public double firstTickAvailable() {
-        // check the buffer even exists
+        // Check the buffer even exists
         if (this.buffer == null) {
             return -1;
         }
         
-        // is the buffer empty?
+        // Is the buffer empty?
         if (this.buffer.isEmpty()) {
-            // the buffer may be empty, but has it ever collected anything?
+            // The buffer may be empty, but has it ever collected anything?
             
-            // if the data is still collecting data but just exhausted of
+            // If the data is still collecting data but just exhausted of
             // contents because all the consumers are working faster than
             // the simulation can produce values, return the latest tick #
             // as the next item added will be just after this and all the
@@ -456,13 +455,13 @@ public class DataCollector {
             return -1;
         }
         
-        // none of our special conditions exist, so now we can just do the
+        // None of our special conditions exist, so now we can just do the
         // simple task of returning tick # of first item in buffer.  whether
         // or not the buffer is currently collecting or done collecting, the
         // buffer has contents that still need to be consumed somewhere.
         TickSnapshot firstTick = this.buffer.peekFirst();
         if (firstTick == null) {
-            // this should never happen, but just in case...
+            // This should never happen, but just in case...
             return -1;
         }
         return firstTick.getTickNumber();
@@ -486,22 +485,22 @@ public class DataCollector {
      * @return the tick snapshot from the buffer matching the given number.
      */
     public TickSnapshot getTick(double tickNumber) {      
-        // grab the closest tick we can find to the one requested (which
+        // Grab the closest tick we can find to the one requested (which
         // also performs basic sanity & range checks on this request).
         TickSnapshot foundTick = this.getNextTick(tickNumber);
         if (foundTick == null) {
-            // the buffer has no tick at all from the requested index
+            // The buffer has no tick at all from the requested index
             // through the end of the buffer's current contents
             return null;
         }
         
-        // did we find the exact tick requested
+        // Did we find the exact tick requested
         if (foundTick.getTickNumber() == tickNumber) {
-            // we found an exact match!
+            // We found an exact match!
             return foundTick;
         }
         else {
-            // the buffer does not contain the exact tick requested
+            // The buffer does not contain the exact tick requested
             return null;
         }
     }
@@ -516,16 +515,16 @@ public class DataCollector {
      * @return the next tick in the list with at least the given number.
      */
     public TickSnapshot getNextTick(double tickNumber) { 
-        // make sure the requested tick is even in the current buffer range
+        // Make sure the requested tick is even in the current buffer range
         if (tickNumber > this.lastTickAvailable()) {
         	return null;
         }
-        // make sure the buffer exists and is not empty
+        // Make sure the buffer exists and is not empty
         if (this.buffer == null || this.buffer.isEmpty()) {
         	return null;
         }
 
-        // walk through the list and look for the first matching 
+        // Walk through the list and look for the first matching 
         // tick in the buffer which has a tick index equal to or
         // greater than the requested tick index
         for (TickSnapshot tick : this.buffer) {
@@ -535,7 +534,7 @@ public class DataCollector {
             }
         }
 
-        // we exhausted the buffer of items without finding a tick that
+        // We exhausted the buffer of items without finding a tick that
         // has a time-step equal to or greater than the requested index
         TickSnapshot empty_tk = new TickSnapshot(tickNumber);
         return empty_tk;
@@ -551,9 +550,9 @@ public class DataCollector {
      * the buffer with an index that is less than this value is removd. 
      */
     private void cleanupBuffer() {
-        // check if the buffer exists and has any items before proceeding
+        // Check if the buffer exists and has any items before proceeding
         if (this.buffer == null || this.buffer.isEmpty()) {
-            // if the buffer is already empty and has no possibility of
+            // If the buffer is already empty and has no possibility of
             // gaining new data items, we can go ahead and cancel the
             // timer.  if the buffer restarts, the timer will be recreated.
             if (!this.isCollecting() && !this.isPaused()) {
@@ -565,7 +564,7 @@ public class DataCollector {
             return;
         }
         
-        // figure out the minimum tick number to keep in the buffer.  we need
+        // Figure out the minimum tick number to keep in the buffer.  we need
         // to check the current position of each data consumer and keep track
         // of the slowest one so we know just enough buffer data to retain.
         Double minimumTick = null;
@@ -575,7 +574,7 @@ public class DataCollector {
             }
            
             if ((minimumTick == null) || (minimumTick > dc.getTick())) {
-                // this is the first consumer we have checked OR it is
+                // This is the first consumer we have checked OR it is
                 // a consumer with a tick smaller than any tick we have
                 // seen yet in a previously checked consumer, so replace
                 // the overall minimum tick number with this new one
@@ -584,7 +583,7 @@ public class DataCollector {
         }
        
         if (minimumTick == null) {
-            // if this is still null, there were no registered data users.
+            // If this is still null, there were no registered data users.
             // we can safely discard anything in the buffer as we have the
             // policy that data consumers newly registered during the model
             // run will pick-up from the current simulation position, not
@@ -594,7 +593,7 @@ public class DataCollector {
                                         .getTickCount() - 1;
         }
         else if (minimumTick < 0.0) {
-            // at least one of the registered data consumers in the system
+            // At least one of the registered data consumers in the system
             // has not started yet, so we must keep all the data in the
             // buffer for when it finally finishes setup and can start
             String cleanupMsg = "Cleaning #" + ++(this.cleanupCount) +
@@ -605,29 +604,29 @@ public class DataCollector {
             return;
         }
         
-        // remove items from the buffer until we get to the first tick
+        // Remove items from the buffer until we get to the first tick
         // with a time-step that is equal to or greater than our minimum
         int removed = 0;
         while (!this.buffer.isEmpty()) {
             TickSnapshot nextTick = this.buffer.peek();
             if (nextTick == null) {
-                // this should never happen, but just to be safe we check
+                // This should never happen, but just to be safe we check
                 return;
             }
             
-            // if the tick is older than we need to retain, we delete it
+            // If the tick is older than we need to retain, we delete it
             if (nextTick.getTickNumber() < minimumTick) {
                 this.buffer.remove();
                 removed++;
             }
             else {
-                // we've reached a tick number in the buffer that at least
+                // We've reached a tick number in the buffer that at least
                 // one data consumer has not yet processed so we are done
                 break;
             }
         }
         
-        // if we made it this far, we've processed through the whole 
+        // If we made it this far, we've processed through the whole 
         // buffer and can go ahead and cancel these cleanup threads if 
         // we already know that no more data will be collected
         if (!this.isCollecting() && !this.isPaused()) {
@@ -680,12 +679,10 @@ public class DataCollector {
 		this.currentSnapshot.logLinkUCB(id, linkConsume);
 	}
 	
-	//July,2020,JiaweiXue
 	public void recordLinkSnapshotBus(int id, double linkConsume) {
 		this.currentSnapshot.logLinkUCBBus(id, linkConsume);
 	}
 	
-	//July,2020,JiaweiXue
 	public void recordSpeedVehilce(int id, double linkSpeed) {
 		this.currentSnapshot.logSpeedVehicle(id, linkSpeed);
 	}
@@ -695,11 +692,11 @@ public class DataCollector {
     	if (road == null) {
     		throw new IllegalArgumentException("No road given");
     	}
-    	// make sure a tick is currently being processed
+    	// Make sure a tick is currently being processed
         if (this.currentSnapshot == null) {
             throw new RuntimeException("No tick snapshot being processed.");
         }
-        // create the snapshot
+        // Create the snapshot
         this.currentSnapshot.logLink(road);
     }
 	
