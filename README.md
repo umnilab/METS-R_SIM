@@ -12,13 +12,13 @@ The overallframwork of the METS-R simulator is shown in the following figure. In
 # 2 Installation
 
 ## 2.1 Prerequisite
-1. Download and install *Eclipse IDE with *Repast Simphony* 2.6 from [here](https://github.com/Repast/repast.simphony/releases).
+1. Download and install Eclipse IDE with *Repast Simphony* 2.6 from [here](https://github.com/Repast/repast.simphony/releases).
 2. Clone the METS-R repository using `git` to a target folder.
     
     ```
     git clone https://github.com/umnilab/METS-R_SIM.git
     ```
-3. If started from HPC module, *Python* (version >= 3.7) and the folowing packages are needed:
+3. If started from HPC module, *Python* (version >= 3.7) and the following packages are needed:
 + [lapsolver] (https://github.com/cheind/py-lapsolver)
 + [geopandas] (https://geopandas.org/en/stable/getting_started/install.html)
 + [seaborn] (https://seaborn.pydata.org/installing.html)
