@@ -90,7 +90,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			// Decide the next departure time
 			int next_departure_time = 0;
 			// Generate vehicle_num buses for the corresponding route
-			Zone z = ContextCreator.getCityContext().findHouseWithDestID(route.get(0));
+			Zone z = ContextCreator.getCityContext().findZoneWithDestID(route.get(0));
 			for(int j = 0; j< num_per_hub; j++){
 				Bus b;
 				b = new Bus(-1, route, next_departure_time);

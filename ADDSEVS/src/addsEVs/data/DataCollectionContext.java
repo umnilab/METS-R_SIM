@@ -93,10 +93,12 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	int vehicleOnRoad = 0;
     	int numGeneratedTaxiPass=0;
     	int numGeneratedBusPass=0;
+    	int numGeneratedCombinedPass=0;
     	int numWaitingTaxiPass=0;
     	int numWaitingBusPass=0;
     	int taxiServedPass=0;
     	int busServedPass=0;
+    	int combinedServedPass=0;
     	int numLeavedTaxiPass=0;
     	int numLeavedBusPass=0;
     	int numRelocatedTaxi=0;
@@ -108,8 +110,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	for(Zone z: ContextCreator.getZoneGeography().getAllObjects()){
     		numGeneratedTaxiPass+=z.numberOfGeneratedTaxiPass;
     		numGeneratedBusPass+=z.numberOfGeneratedBusPass;
+    		numGeneratedCombinedPass+=z.numberOfGeneratedCombinedPass;
     		taxiServedPass+=z.taxiServedPass;
     		busServedPass+=z.busServedPass;
+    		combinedServedPass+=z.combinedServedPass;
     		numLeavedTaxiPass+=z.numberOfLeavedTaxiPass;
     		numLeavedBusPass+=z.numberOfLeavedBusPass;
     		numRelocatedTaxi+=z.numberOfRelocatedVehicles;
@@ -118,7 +122,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
     		
     		String formatted_msg2 = currentTick+","+z.getIntegerID()+","+z.getTaxiPassengerNum()+","+z.getBusPassengerNum()+","+
     		z.getVehicleStock()+","+z.numberOfGeneratedTaxiPass+","+z.numberOfGeneratedBusPass+","+z.taxiServedPass+","+z.busServedPass+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
-    		z.numberOfLeavedTaxiPass+","+z.numberOfLeavedBusPass +","+z.taxiWaitingTime;
+    		z.numberOfLeavedTaxiPass+","+z.numberOfLeavedBusPass +","+z.taxiWaitingTime+","+z.numberOfGeneratedCombinedPass+","+z.combinedServedPass;
     		try {
 				ContextCreator.zone_logger.write(formatted_msg2);
 	    		ContextCreator.zone_logger.newLine();
@@ -148,7 +152,8 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	String formated_msg = currentTick + "," + 
     			vehicleOnRoad+","+numRelocatedTaxi+","+numChargedVehicle+","+numGeneratedTaxiPass+
     			","+taxiServedPass+","+numLeavedTaxiPass+","+numWaitingTaxiPass+
-    			","+numGeneratedBusPass+","+busServedPass+","+numLeavedBusPass+","+numWaitingBusPass;
+    			","+numGeneratedBusPass+","+busServedPass+","+numLeavedBusPass+","+numWaitingBusPass+
+    			","+numGeneratedCombinedPass+","+combinedServedPass;
     	try {
 			ContextCreator.network_logger.write(formated_msg);
 			ContextCreator.network_logger.newLine();
@@ -162,9 +167,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		} 
     	if(GlobalVariables.ENABLE_METRICS_DISPLAY){
     		System.out.println("tick=" + currentTick
-    				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass)
+    				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass+numGeneratedCombinedPass)
     				+ ", taxiServerdPass=" + taxiServedPass
     				+ ", busServerdPass=" + busServedPass
+    				+ ", combinedServedPass=" + combinedServedPass
     				+ ", nLeavedPass=" + (numLeavedTaxiPass+numLeavedBusPass)
     				+ ", nRelocatedVeh=" + numRelocatedTaxi
     				+ ", nChargedVeh=" + numChargedVehicle

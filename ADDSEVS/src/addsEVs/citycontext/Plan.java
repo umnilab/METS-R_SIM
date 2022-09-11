@@ -11,15 +11,16 @@ import com.vividsolutions.jts.geom.Coordinate;
  **/
 
 public class Plan {
-	private int dest_id;
+	private Integer dest_id;
 	private Coordinate location; // Add coordination to allow relocating to any place
 	private Double duration;
-
+	
 	public Plan(int dest_id, Coordinate loc, double d) {
 		this.dest_id = dest_id;
 		this.location = loc;
 		this.duration = d;
 	}
+	
 	public Coordinate getLocation(){
 		return location;
 	}
@@ -30,4 +31,5 @@ public class Plan {
 	public int getDestID(){
 		return dest_id;
 	}
+	
 }

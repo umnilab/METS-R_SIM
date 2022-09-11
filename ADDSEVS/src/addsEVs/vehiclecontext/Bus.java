@@ -5,6 +5,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Hashtable;
+import java.util.LinkedList;
+import java.util.Queue;
+
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 import com.vividsolutions.jts.geom.Coordinate;
@@ -35,10 +38,10 @@ public class Bus extends Vehicle{
 	
 	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
-	
-	private ArrayList<Integer> destinationDemandOnBus;  
 	// The destination distribution of passengers on the bus now.  
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having the destination of zone i.
+	private ArrayList<Integer> destinationDemandOnBus;  
+	public ArrayList<Queue<Passenger>> passengerWithAdditionalActivityOnBus;
 	
 	private boolean onChargingRoute_ = false;
 	private double batteryLevel_; // current battery level
@@ -91,6 +94,10 @@ public class Bus extends Vehicle{
 		}
 		this.nextDepartureTime = nextDepartureTime;
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
+		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Passenger>>();
+		for(int i=0;i<route.size();i++) {
+			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Passenger>());
+		}
 		this.setInitialParams();
 	}
 	
@@ -191,7 +198,15 @@ public class Bus extends Vehicle{
 			ContextCreator.logger.debug("Bus arriving at origin stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
-			
+			// For collaborative EV service
+			if(this.passengerWithAdditionalActivityOnBus.get(nextStop).size()>0) {
+				for(Passenger p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll(); 
+						!this.passengerWithAdditionalActivityOnBus.get(nextStop).isEmpty(); 
+						p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll()) {
+					p.moveToNextActivity();
+					ContextCreator.getCityContext().findZoneWithDestID(destinationID).addTaxiPass(p);
+				}
+			}
 			// Add the plan to the charging station.
 			ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
 			this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount()); // instantly go to charging station
@@ -224,6 +239,15 @@ public class Bus extends Vehicle{
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
 			this.destinationDemandOnBus.set(nextStop,0);
 			
+			if(this.passengerWithAdditionalActivityOnBus.get(nextStop).size()>0) {
+				for(Passenger p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll(); 
+						!this.passengerWithAdditionalActivityOnBus.get(nextStop).isEmpty(); 
+						p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll()) {
+					p.moveToNextActivity();
+					ContextCreator.getCityContext().findZoneWithDestID(destinationID).addTaxiPass(p);
+				}
+			}
+			
 			// Serve passengers
 			this.servePassenger();
 			
@@ -237,7 +261,7 @@ public class Bus extends Vehicle{
 			}
 			
 			this.addPlan(busStop.get(nextStop), 
-					ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop)).getCoord(), 
+					ContextCreator.getCityContext().findZoneWithDestID(busStop.get(nextStop)).getCoord(), 
 					Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime));
 			this.setNextPlan();
 			ContextCreator.logger.debug("Bus "+this.id+" has arrive the next station: " +nextStop);
@@ -249,10 +273,13 @@ public class Bus extends Vehicle{
 
 	private void servePassenger() {
 		// ServePassengerByBus
-		Zone arrivedZone = ContextCreator.getCityContext().findHouseWithDestID(busStop.get(nextStop));
+		Zone arrivedZone = ContextCreator.getCityContext().findZoneWithDestID(busStop.get(nextStop));
 		ArrayList<Passenger> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
 		for(Passenger p: passOnBoard){
 			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestination()),destinationDemandOnBus.get(this.stopBus.get(p.getDestination()))+1);
+			if(p.lenOfActivity()>=2) {
+				this.passengerWithAdditionalActivityOnBus.get(this.stopBus.get(p.getDestination())).add(p);
+			}
 		}
 		this.served_pass+=passOnBoard.size();
 		this.setPassNum(this.getPassNum()+passOnBoard.size());
@@ -375,7 +402,6 @@ public class Bus extends Vehicle{
 	}
 	
 	public void recLinkSnaphotForUCBBus() {
-		//System.out.println("Record data for UCB!");
 		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getLinkid(),this.getLinkConsume());
 		this.resetLinkConsume(); // Reset link consumption to 0
 	}
@@ -394,6 +420,11 @@ public class Bus extends Vehicle{
 				this.stopBus.put(this.busStop.get(i), i);
 			}
 			this.nextDepartureTime = departureTime;
+		}
+		
+		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Passenger>>();
+		for(int i=0;i<this.busStop.size();i++) {
+			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Passenger>());
 		}
 		this.originID = busStop.get(0);
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));

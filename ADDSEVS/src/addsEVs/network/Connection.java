@@ -410,7 +410,6 @@ public class Connection implements DataConsumer {
 					    @SuppressWarnings("unchecked")
 						ArrayList<Long> route = (ArrayList<Long>)list_route.get(index);
 					    int route_size=route.size();
-					    System.out.println(route);
 					    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
 				        int index_route=0;
 				        while (index_route < route_size) {

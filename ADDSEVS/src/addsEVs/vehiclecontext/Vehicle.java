@@ -408,7 +408,7 @@ public class Vehicle {
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
-			System.out.println("No next road found for Vehicle " + this.getId() + "( roadPath : " + this.roadPath + ")"
+			ContextCreator.logger.error("No next road found for Vehicle " + this.getId() + "( roadPath : " + this.roadPath + ")"
 					+ " on Road " + this.road.getLinkid());
 			this.nextRoad_ = null;
 		}
@@ -449,10 +449,10 @@ public class Vehicle {
 			this.nextDistance_ = distAndAngle[0];
 			this.setBearing(distAndAngle[1]);
 		} else {
-			System.out.println("There is no target lane to set!");
+			ContextCreator.logger.error("There is no target lane to set!");
 		}
 		if (Double.isNaN(distance_)) {
-			System.out.println("distance_ is NaN in setCoordMap for " + this);
+			ContextCreator.logger.error("distance_ is NaN in setCoordMap for " + this);
 		}
 	}
 
@@ -673,7 +673,7 @@ public class Vehicle {
 			headwayDistance = Float.MAX_VALUE;
 		}
 		if (Double.isNaN(headwayDistance)) {
-			System.out.println("headway is NaN");
+			ContextCreator.logger.error("headway is NaN");
 		}
 		return (headwayDistance);
 	}
@@ -952,7 +952,7 @@ public class Vehicle {
 
 	public void printGlobalVehicle(float dx) {
 		if (this.vehicleID_ == GlobalVariables.Global_Vehicle_ID) {
-			System.out.println("Next Road ID for vhielc: " + this.vehicleID_
+			ContextCreator.logger.debug("Next Road ID for vhielc: " + this.vehicleID_
 					+ " is: " + this.nextRoad().getLinkid() + " step size is: "
 					+ dx + " distance to downstream: " + this.distance_ + 
 					" next lane: " + this.nextLane_
@@ -1198,6 +1198,10 @@ public class Vehicle {
 	public void addPlan(int dest_id, Coordinate location, double d) {
 		Plan p = new Plan(dest_id, location, d);
 		this.activityplan.add(p);
+	}
+	
+	public void addPlan(List<Plan> activityPlan) {
+		this.activityplan.addAll(activityPlan);
 	}
 
 	public Coordinate getOriginalCoord() {
@@ -1458,7 +1462,7 @@ public class Vehicle {
 
 		if (this.nextRoad() == null) {
 			if (this.getVehicleID() == GlobalVariables.Global_Vehicle_ID)
-				System.out.println("Assign next lane: current link ID= "
+				ContextCreator.logger.debug("Assign next lane: current link ID= "
 						+ curRoad.getLinkid() + " current lane ID: "
 						+ curLane.getLaneid() + " next link ID="
 						+ this.nextRoad());
@@ -2089,7 +2093,7 @@ public class Vehicle {
 			this.setCurrentCoord(new Coordinate((1-p)*origin.x + p*target.x , (1-p)*origin.y + + p*target.y));
 		}
 		else{
-			System.out.println("Vehicle.move2(): Cannot move " + this + "from "
+			ContextCreator.logger.error("Vehicle.move2(): Cannot move " + this + "from "
 			+ origin + " by dist=" +  distanceTravelled);
 		}
 	}

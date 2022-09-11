@@ -1,7 +1,10 @@
 package addsEVs.vehiclecontext;
 
 import java.io.IOException;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
+
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
@@ -24,6 +27,7 @@ import repast.simphony.essentials.RepastEssentials;
 public class ElectricVehicle extends Vehicle{
 	// Local variables
 	private int numPeople_; // no of people inside the vehicle
+	public Queue<Passenger> passengerWithAdditionalActivityOnTaxi;
 	private double avgPersonMass_; // average mass of a person in lbs
 	private double batteryLevel_; // current battery level
 	private double batteryRechargeLevel_ = 10;
@@ -127,7 +131,7 @@ public class ElectricVehicle extends Vehicle{
 		this.originID = orginID;
 		this.destinationID = destinationID;
 		this.addPlan(destinationID,
-				ContextCreator.getCityContext().findHouseWithDestID(destinationID).getCoord() , (int) RepastEssentials.GetTickCount());
+				ContextCreator.getCityContext().findZoneWithDestID(destinationID).getCoord() , (int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
 		// Add vehicle to newqueue of corresponding road
 		Coordinate currentCoord = this.getOriginalCoord();
@@ -145,8 +149,9 @@ public class ElectricVehicle extends Vehicle{
 			this.originID = plist.get(0).getOrigin();
 			this.destinationID = plist.get(0).getDestination();
 			for(Passenger p: plist) {
-				this.addPlan(p.getDestination(),
-						ContextCreator.getCityContext().findHouseWithDestID(p.getDestination()).getCoord(), (int) RepastEssentials.GetTickCount());
+				this.addPlan(
+						p.getDestination(),
+						ContextCreator.getCityContext().findZoneWithDestID(p.getDestination()).getCoord(), (int) RepastEssentials.GetTickCount());
 				this.served_pass += 1;
 				this.setNumPeople(this.getNumPeople()+1);
 			}
@@ -199,6 +204,13 @@ public class ElectricVehicle extends Vehicle{
 			this.originID = this.destinationID; // next trip starts from the previous destination
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
+				// if pass need to take the bus to complete his or her trip
+				if(this.passengerWithAdditionalActivityOnTaxi.size()>0) {
+					// generate a pass and add it to the corresponding zone
+					Passenger p = this.passengerWithAdditionalActivityOnTaxi.poll();
+					p.moveToNextActivity();
+					ContextCreator.getCityContext().findZoneWithDestID(this.getDestinationID()).addBusPass(p);
+				}
 			}
 			if(!onChargingRoute_ && batteryLevel_ <= batteryRechargeLevel_ && this.getNumPeople() == 0) {
 				this.setState(Vehicle.CHARGING_TRIP);
@@ -212,7 +224,7 @@ public class ElectricVehicle extends Vehicle{
 			}
 			else{
 				ContextCreator.getVehicleContext().getVehicles(this.getDestinationID()).add(this);//append this vehicle to the available vehicle of given zones
-				ContextCreator.getCityContext().findHouseWithDestID(this.getDestinationID()).addVehicleStock(1);
+				ContextCreator.getCityContext().findZoneWithDestID(this.getDestinationID()).addVehicleStock(1);
 				super.setReachDest(); // Call setReachDest in vehicle class.
 			}
 		}
@@ -225,7 +237,7 @@ public class ElectricVehicle extends Vehicle{
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;
-		this.batteryLevel_ =  0.1 * GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
+		this.batteryLevel_ =  GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
 		this.mass = 1521; // 4000
 		this.avgPersonMass_ = 60; //180
 		this.tripOrigin = null;
@@ -240,6 +252,7 @@ public class ElectricVehicle extends Vehicle{
 //		this.splinef = f; 
 		//Parameters for UCB calculation
 		this.linkConsume = 0;
+		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Passenger>();
 	}
 	
 	

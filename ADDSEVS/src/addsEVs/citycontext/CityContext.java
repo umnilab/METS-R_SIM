@@ -164,7 +164,7 @@ public class CityContext extends DefaultContext<Object> {
 
 		} // For road
 		roadIt = roadGeography.getAllObjects();
-		System.out.println("Junction initialized!");
+		ContextCreator.logger.info("Junction initialized!");
 		// Assign the lanes to each road
 		for (Lane lane : laneIt) {
 			this.lane_KeyLaneID.put(lane.getLaneid(), lane);
@@ -419,7 +419,7 @@ public class CityContext extends DefaultContext<Object> {
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
-		Geography<?> csGeography = ContextCreator.getChargingStationGeography();
+		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
 		Point point = geomFac.createPoint(coord);
 		Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER);
@@ -450,7 +450,7 @@ public class CityContext extends DefaultContext<Object> {
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
-		Geography<?> csGeography = ContextCreator.getChargingStationGeography();
+		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
 		Point point = geomFac.createPoint(coord);
 		Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER);
@@ -563,13 +563,13 @@ public class CityContext extends DefaultContext<Object> {
 		return null;
 	}
 
-	public Zone findHouseWithDestID(int destid) {
+	public Zone findZoneWithDestID(int destid) {
 		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
 		for (Zone zone : zoneGeography.getAllObjects()) {
 			if (zone.getIntegerID() == destid)
 				return zone;
 		}
-		ContextCreator.logger.error("CityContext: findHouseWithDestID: Error, couldn't find a house with id: "
+		ContextCreator.logger.error("CityContext: findZoneWithDestID: Error, couldn't find a house with id: "
 						+ destid);
 		return null;
 	}
@@ -655,5 +655,38 @@ public class CityContext extends DefaultContext<Object> {
 	
 	public static double squaredEuclideanDistance(Coordinate p0, Coordinate p1){
 		return (p0.x - p1.x)*(p0.x - p1.x) + (p0.y - p1.y)*(p0.y - p1.y);
+	}
+	
+	/*
+	 * Returns the closest zone from the currentLocation that has a transit
+	 */
+	public Zone findNearestZoneWithBus(Coordinate coord, Integer destID) throws NullPointerException{
+		if (coord == null) {
+			throw new NullPointerException(
+					"CityContext: findNearestZoneWithBus: ERROR: the input coordinate is null");
+		}
+		GeometryFactory geomFac = new GeometryFactory();
+		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
+		// Use a buffer for efficiency
+		Point point = geomFac.createPoint(coord);
+		double minDist = Double.MAX_VALUE;
+		Zone nearestZone = null;
+		for (Zone z : zoneGeography.getAllObjects()) {
+			if(z.busReachableZone.contains(destID)) {
+				DistanceOp distOp = new DistanceOp(point, zoneGeography.getGeometry(z));
+				double thisDist = distOp.distance();
+				if (thisDist < minDist) {
+					minDist = thisDist;
+					nearestZone = z;
+				} 
+			}
+		}
+//		if (nearestZone == null) {
+//			ContextCreator.logger.error("CityContext: findNearestZoneWithBus (Coordinate coord): ERROR: "
+//					+ "couldn't find any zone with bus to zone: " + destID + " at these coordinates:\n\t"
+//							+ coord.toString());
+//		}
+
+		return nearestZone;
 	}
 }

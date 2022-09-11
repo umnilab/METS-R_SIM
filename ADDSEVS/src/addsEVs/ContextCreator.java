@@ -144,8 +144,22 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (ArrayList<Integer> route : busSchedule.busRoute) {
 			int i = 0;
 			for (int zoneID : route) {
-				Zone zone = ContextCreator.getCityContext().findHouseWithDestID(zoneID);
-				zone.setBusInfo(busSchedule.busGap.get(i));
+				Zone zone = ContextCreator.getCityContext().findZoneWithDestID(zoneID);
+				if(zone.getZoneClass() == 0) { // normal zone, the destination should be hub
+					for (int destinationID: route) {
+					    if(GlobalVariables.HUB_INDEXES.contains(destinationID)){
+					    	zone.setBusInfo(destinationID, busSchedule.busGap.get(i));
+					    }
+					}
+				}
+				else if(zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be another hub)
+					for (int destinationID: route) {
+					    if(zone.getIntegerID() != destinationID){
+					    	zone.setBusInfo(destinationID, busSchedule.busGap.get(i));
+					    }
+						
+					}
+				}
 				i += 1;
 			}
 		}
@@ -204,7 +218,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
 			network_logger = new BufferedWriter(fw);
 			network_logger.write(
-					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,taxiServedPass,taxiLeavedPass,numWaitingTaxiPass,generatedBusPass,busServedPass,busLeavedPass,numWaitingBusPass");
+					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,taxiServedPass,taxiLeavedPass,numWaitingTaxiPass,generatedBusPass,busServedPass,busLeavedPass,numWaitingBusPass,generatedCombinedPass,combinedServedPass");
 			network_logger.newLine();
 			network_logger.flush();
 			logger.info("Network logger created!");
@@ -217,7 +231,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
 			zone_logger = new BufferedWriter(fw);
 			zone_logger.write(
-					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,taxiLeavedPass,busLeavedPass,taxiWaitingTime");
+					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,taxiLeavedPass,busLeavedPass,taxiWaitingTime,generatedCombinedPass,combinedServedPass");
 			zone_logger.newLine();
 			zone_logger.flush();
 			logger.info("Zone logger created!");
@@ -419,10 +433,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (Road r : getRoadContext().getObjects(Road.class)) {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
+		
+		schedule.schedule(speedProfileParams, this, "refreshTravelTime"); // update the travel time estimation for taking Bus
+		
 		for (Zone z : getZoneGeography().getAllObjects()) {
-			schedule.schedule(speedProfileParams, z, "updateTravelEstimation");
+			schedule.schedule(speedProfileParams, z, "updateTravelEstimation"); // update the travel time estimation in each Zone
 		}
-		schedule.schedule(speedProfileParams, this, "refreshTravelTime"); // update the travel time estimation in each zone
+		
 	}
 
 	
@@ -722,6 +739,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public void refreshTravelTime() {
 		logger.info("Update the estimation of travel time...");
+		// Reset the travel time and travel distance estimation
 		for (Zone z1 : getZoneGeography().getAllObjects()) {
 			z1.busTravelTime = new HashMap<Integer, Float>();
 			z1.busTravelDistance = new HashMap<Integer, Float>();
@@ -731,54 +749,64 @@ public class ContextCreator implements ContextBuilder<Object> {
 			// Retrieve stations in order, from hub to other places
 			double travel_distance = 0;
 			double travel_time = 0;
-			Zone hub = this.cityContext.findHouseWithDestID(route.get(0));
-			Zone z1 = hub;
-			Zone z2;
-			for (int i = 1; i < route.size(); i++) {
-				z2 = this.cityContext.findHouseWithDestID(route.get(i));
-				List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
-				if (path != null) {
-					for (Road r : path) {
-						travel_distance += r.getLength();
-						travel_time += r.getTravelTime();
+			
+			for (int shift = 0; shift < route.size(); shift++) {
+				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
+					Zone hub = this.cityContext.findZoneWithDestID(route.get(shift));
+					Zone z1 = hub;
+					Zone z2;
+
+					for (int i = 1; i < route.size(); i++) {
+						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
+						z2 = this.cityContext.findZoneWithDestID(route.get(j));
+						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						if (path != null) {
+							for (Road r : path) {
+								travel_distance += r.getLength();
+								travel_time += r.getTravelTime();
+							}
+						}
+						if (hub.busTravelDistance.containsKey(z2.getIntegerID())) {
+							hub.busTravelDistance.put(z2.getIntegerID(),
+									Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_distance));
+							hub.busTravelTime.put(z2.getIntegerID(),
+									Math.min(hub.busTravelTime.get(z2.getIntegerID()), (float) travel_time));
+						} else {
+							hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
+							hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
+						}
+						z1 = z2;
+					}
+					logger.debug(hub.busTravelDistance);
+					logger.debug(hub.busTravelTime);
+					// Retrieve stations in back order, from other places to hub
+					travel_distance = 0;
+					travel_time = 0;
+					z2 = hub;
+					for (int i = route.size() - 1; i > 0; i--) {
+						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
+						z1 = this.cityContext.findZoneWithDestID(route.get(j));
+						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						if (path != null) {
+							for (Road r : path) {
+								travel_distance += r.getLength();
+								travel_time += r.getTravelTime();
+							}
+						}
+						if (z1.busTravelDistance.containsKey(hub.getIntegerID())) {
+							z1.busTravelDistance.put(hub.getIntegerID(),
+									Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_distance));
+							z1.busTravelTime.put(hub.getIntegerID(),
+									Math.min(z1.busTravelTime.get(hub.getIntegerID()), (float) travel_time));
+						} else {
+							z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
+							z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
+						}
+						z2 = z1;
+						logger.debug(z1.busTravelDistance);
+						logger.debug(z1.busTravelTime);
 					}
 				}
-				if(hub.busTravelDistance.containsKey(z2.getIntegerID())) {
-					hub.busTravelDistance.put(z2.getIntegerID(), Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_distance));
-					hub.busTravelTime.put(z2.getIntegerID(), Math.min(hub.busTravelTime.get(z2.getIntegerID()), (float) travel_time));
-				}
-				else {
-					hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
-					hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
-				}
-				z1 = z2;
-			}
-			logger.debug(hub.busTravelDistance);
-			logger.debug(hub.busTravelTime);
-			// Retrieve stations in back order, from other places to hub
-			travel_distance = 0;
-			travel_time = 0;
-			z2 = hub;
-			for (int i = route.size() - 1; i > 0; i--) {
-				z1 = this.cityContext.findHouseWithDestID(route.get(i));
-				List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
-				if (path != null) {
-					for (Road r : path) {
-						travel_distance += r.getLength();
-						travel_time += r.getTravelTime();
-					}
-				}
-				if(z1.busTravelDistance.containsKey(hub.getIntegerID())) {
-					z1.busTravelDistance.put(hub.getIntegerID(), Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_distance));
-					z1.busTravelTime.put(hub.getIntegerID(), Math.min(z1.busTravelTime.get(hub.getIntegerID()), (float) travel_time));
-				}
-				else {
-					z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
-					z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
-				}
-				z2 = z1;
-				logger.debug(z1.busTravelDistance);
-				logger.debug(z1.busTravelTime);
 			}
 		}
 	}

@@ -137,8 +137,7 @@ private static Properties config;
 	// Number of future road segments to be considered in counting shadow vehicles
 	public static final int N_SHADOW = Integer.valueOf(loadConfig("N_SHADOW"));
 	
-	
-	/* For traditional vehicle routing */
+	/* For vehicle routing */
 	public static final boolean SINGLE_SHORTEST_PATH = Boolean
 			.valueOf(loadConfig("SINGLE_SHORTEST_PATH")); 
 	public static final boolean K_SHORTEST_PATH = Boolean
@@ -146,6 +145,8 @@ private static Properties config;
 	public static final int K_VALUE = Integer.valueOf(loadConfig("K_VALUE"));
 	public static final double THETA_LOGIT = Double
 			.valueOf(loadConfig("THETA_LOGIT"));
+	public static final boolean COLLABORATIVE_EV = Boolean
+			.valueOf(loadConfig("COLLABORATIVE_EV")); 
 	// Parameters for handling multiclass routing. Note that the proportion of original routing vehicles being generated is equal to 1 - (PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES). 
 		public static final boolean ENABLE_MULTICLASS_ROUTING =
 	        Boolean.valueOf(loadConfig("ENABLE_MULTICLASS_ROUTING"));
@@ -155,7 +156,6 @@ private static Properties config;
 	        Double.valueOf(loadConfig("PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES"));
 	public static final double PROBABILITY_OF_UPDATING_ROUTING =
 	        Double.valueOf(loadConfig("PROBABILITY_OF_UPDATING_ROUTING"));
-	
 
 	/* For car following and lane changing */
 	public static final float ALPHA_DEC = Float

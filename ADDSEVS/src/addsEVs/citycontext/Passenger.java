@@ -1,5 +1,8 @@
 package addsEVs.citycontext;
 
+import java.util.LinkedList;
+import java.util.Queue;
+
 import addsEVs.GlobalVariables;
 
 /**
@@ -14,10 +17,12 @@ public class Passenger {
 	private Integer destination;
 	private Integer maxWaitingTime;
 	private Integer currentWaitingTime;
-	private Passenger nextPassengerInQueue_ = null;
+//	private Passenger nextPassengerInQueue_ = null; // deprecated since a linked-list is not thread safe!
 	private Boolean willingToShare;
+	private Queue<Plan> activityPlan;
 	
 	public Passenger(Integer origin, Integer destination, Integer maxWaitingTime){
+		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
 		this.maxWaitingTime = maxWaitingTime;
@@ -28,7 +33,15 @@ public class Passenger {
 		else {
 			this.willingToShare = false;
 		}
-		
+	}
+	
+	public Passenger(Integer origin, Queue<Plan> activityPlan, Integer maxWaitingTime){
+		this.activityPlan = activityPlan;
+		this.maxWaitingTime = maxWaitingTime;
+		this.currentWaitingTime = 0;	
+		this.willingToShare = false;
+		this.origin = origin;
+		this.destination = activityPlan.peek().getDestID();
 	}
 	
 	public void waitNextTime(Integer waitingTime){
@@ -56,15 +69,33 @@ public class Passenger {
 		return this.destination;
 	}
 	
+	public Queue<Plan> getActivityPlan(){
+		return this.activityPlan;
+	}
+	
+	public void moveToNextActivity() {
+		this.origin = this.activityPlan.poll().getDestID();
+		this.destination = this.activityPlan.peek().getDestID();
+	}
+	
+	public int lenOfActivity(){
+		if(this.activityPlan!=null){
+			return this.activityPlan.size();
+		}
+		else {
+			return 0;
+		}
+	}
+	
 	public boolean isShareable(){
 		return this.willingToShare;
 	}
 	
-	public Passenger nextPassengerInQueue(){
-		return this.nextPassengerInQueue_;
-	}
-	
-	public void setNextPassengerInQueue(Passenger nextPass){
-		this.nextPassengerInQueue_ = nextPass;
-	}
+//	public Passenger nextPassengerInQueue(){
+//		return this.nextPassengerInQueue_;
+//	}
+//	
+//	public void setNextPassengerInQueue(Passenger nextPass){
+//		this.nextPassengerInQueue_ = nextPass;
+//	}
 }
