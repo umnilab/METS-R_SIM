@@ -3,6 +3,7 @@ package addsEVs.citycontext;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.List;
 import java.util.Map;
 
 import org.geotools.referencing.GeodeticCalculator;
@@ -688,5 +689,80 @@ public class CityContext extends DefaultContext<Object> {
 //		}
 
 		return nearestZone;
+	}
+	
+	public void refreshTravelTime() {
+		ContextCreator.logger.info("Update the estimation of travel time...");
+		// Reset the travel time and travel distance estimation
+		for (Zone z1 : ContextCreator.getZoneGeography().getAllObjects()) {
+			z1.busTravelTime.clear();
+			z1.busTravelDistance.clear();
+			z1.nearestZoneWithBus.clear();
+		}
+		for (List<Integer> route : ContextCreator.busSchedule.busRoute) {
+			ContextCreator.logger.info(route);
+			// Retrieve stations in order, from hub to other places
+			double travel_distance = 0;
+			double travel_time = 0;
+			
+			for (int shift = 0; shift < route.size(); shift++) {
+				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
+					Zone hub = this.findZoneWithDestID(route.get(shift));
+					Zone z1 = hub;
+					Zone z2;
+
+					for (int i = 1; i < route.size(); i++) {
+						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
+						z2 = this.findZoneWithDestID(route.get(j));
+						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						if (path != null) {
+							for (Road r : path) {
+								travel_distance += r.getLength();
+								travel_time += r.getTravelTime();
+							}
+						}
+						if (hub.busTravelDistance.containsKey(z2.getIntegerID())) {
+							hub.busTravelDistance.put(z2.getIntegerID(),
+									Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_distance));
+							hub.busTravelTime.put(z2.getIntegerID(),
+									Math.min(hub.busTravelTime.get(z2.getIntegerID()), (float) travel_time));
+						} else {
+							hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
+							hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
+						}
+						z1 = z2;
+					}
+					ContextCreator.logger.debug(hub.busTravelDistance);
+					ContextCreator.logger.debug(hub.busTravelTime);
+					// Retrieve stations in back order, from other places to hub
+					travel_distance = 0;
+					travel_time = 0;
+					z2 = hub;
+					for (int i = route.size() - 1; i > 0; i--) {
+						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
+						z1 = this.findZoneWithDestID(route.get(j));
+						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						if (path != null) {
+							for (Road r : path) {
+								travel_distance += r.getLength();
+								travel_time += r.getTravelTime();
+							}
+						}
+						if (z1.busTravelDistance.containsKey(hub.getIntegerID())) {
+							z1.busTravelDistance.put(hub.getIntegerID(),
+									Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_distance));
+							z1.busTravelTime.put(hub.getIntegerID(),
+									Math.min(z1.busTravelTime.get(hub.getIntegerID()), (float) travel_time));
+						} else {
+							z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
+							z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
+						}
+						z2 = z1;
+						ContextCreator.logger.debug(z1.busTravelDistance);
+						ContextCreator.logger.debug(z1.busTravelTime);
+					}
+				}
+			}
+		}
 	}
 }

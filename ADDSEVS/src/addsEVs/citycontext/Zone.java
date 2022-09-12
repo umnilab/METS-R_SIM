@@ -556,7 +556,6 @@ public class Zone {
 						GlobalVariables.BASE_PRICE_TAXI*busTravelDistance.get(destID))/1609+
 						GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap.get(destID)/2)+GlobalVariables.BUS_BASE);
 				
-				System.out.println(Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 				return (float) (Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 			}
 			else{
@@ -569,7 +568,6 @@ public class Zone {
 						GlobalVariables.MS_BETA*(taxiTravelTime.get(destID)/60+5)+GlobalVariables.TAXI_BASE;
 				double busUtil = (float) (GlobalVariables.MS_ALPHA*GlobalVariables.BUS_TICKET_PRICE+
 						GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap.get(destID)/2)+GlobalVariables.BUS_BASE);
-				System.out.println(Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 				return (float) (Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 			}
 			else{
@@ -582,7 +580,6 @@ public class Zone {
 	public void updateTravelEstimation(){
 			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
 			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
-			this.nearestZoneWithBus.clear();
 			// is hub
 			if(this.zoneClass==1){
 				// shortest path travel time from hubs to all other zones
@@ -599,29 +596,6 @@ public class Zone {
 						}
 						travelDistanceMap.put(z2.getIntegerID(), (float)travel_distance);
 						travelTimeMap.put(z2.getIntegerID(), (float)travel_time);
-						if(GlobalVariables.COLLABORATIVE_EV) {
-							if(!busReachableZone.contains(z2.getIntegerID())) { // Find the closest zone with bus that can connect to this hub
-								Zone z = ContextCreator.getCityContext().findNearestZoneWithBus(z2.getCoord(), this.getIntegerID());
-								if(z != null) {
-									this.nearestZoneWithBus.put(z2.getIntegerID(), z);
-								}
-							}
-							if(this.nearestZoneWithBus.containsKey(z2.getIntegerID())) {
-								double travel_time2 = 0;
-								double travel_distance2 = 0;
-								List<Road> path2 = RouteV.shortestPathRoute(this.nearestZoneWithBus.get(z2.getIntegerID()).getCoord(), z2.getCoord());
-								if(path2!=null){
-									for(Road r: path2){
-										travel_distance2 += r.getLength();
-										travel_time2 += r.getTravelTime();
-									}
-									busGap.put(z2.getIntegerID(), this.nearestZoneWithBus.get(z2.getIntegerID()).busGap.get(this.getIntegerID()));
-									busTravelDistance.put(z2.getIntegerID(), (float) travel_distance2); // only the distance to the closest zone with bus
-								    busTravelTime.put(z2.getIntegerID(), (float) travel_time2 + 
-								    		this.busTravelTime.get(this.nearestZoneWithBus.get(z2.getIntegerID()).getIntegerID())); // time for bus and taxi combined
-								}
-							}
-						}
 					}
 				}
 				this.setTaxiTravelDistanceMap(travelDistanceMap);
@@ -643,35 +617,84 @@ public class Zone {
 						}
 						travelDistanceMap.put(z2.getIntegerID(), (float)travel_distance);
 						travelTimeMap.put(z2.getIntegerID(), (float)travel_time);
-						
-						if(GlobalVariables.COLLABORATIVE_EV) {
-							if(!busReachableZone.contains(z2_id)) { // Find the closest zone with bus that can connect to this hub
-								Zone z = ContextCreator.getCityContext().findNearestZoneWithBus(this.getCoord(), z2_id);
-								if(z != null) {
-									this.nearestZoneWithBus.put(z2_id, z);
-								}
-							}
-							if(this.nearestZoneWithBus.containsKey(z2_id)) {
-								double travel_time2 = 0;
-								double travel_distance2 = 0;
-								List<Road> path2 = RouteV.shortestPathRoute(this.getCoord(), this.nearestZoneWithBus.get(z2_id).getCoord());
-								if(path2!=null){
-									for(Road r: path2){
-										travel_distance2 += r.getLength();
-										travel_time2 += r.getTravelTime();
-									}
-									busGap.put(z2_id, this.nearestZoneWithBus.get(z2_id).busGap.get(z2_id));
-									busTravelDistance.put(z2_id, (float) travel_time2); // only the distance to the closest zone with bus
-								    busTravelTime.put(z2_id, (float) travel_distance2 + 
-								    		this.nearestZoneWithBus.get(z2_id).busTravelTime.get(z2_id)); // time for bus and taxi combined
-								}
-							}
-						}
 					}
 				}
 				this.setTaxiTravelDistanceMap(travelDistanceMap);
 				this.setTaxiTravelTimeMap(travelTimeMap);
 			}
+	}
+	
+	public void updateCombinedTravelEstimation(){
+		Map<Integer, Float> busGap = new HashMap<Integer, Float>();
+		Map<Integer, Float> busTravelDistance = new HashMap<Integer, Float>();
+		Map<Integer, Float> busTravelTime = new HashMap<Integer, Float>();
+		if(this.zoneClass==1){
+			for(Zone z2: ContextCreator.getZoneGeography().getAllObjects()){
+				if(!busReachableZone.contains(z2.getIntegerID())) { // Find the closest zone with bus that can connect to this hub
+					Zone z = ContextCreator.getCityContext().findNearestZoneWithBus(z2.getCoord(), this.getIntegerID());
+					if(z != null) {
+						this.nearestZoneWithBus.put(z2.getIntegerID(), z);
+					}
+				}
+				if(this.nearestZoneWithBus.containsKey(z2.getIntegerID())) {
+					double travel_time2 = 0;
+					double travel_distance2 = 0;
+					List<Road> path2 = RouteV.shortestPathRoute(this.nearestZoneWithBus.get(z2.getIntegerID()).getCoord(), z2.getCoord());
+					if(path2!=null){
+						for(Road r: path2){
+							travel_distance2 += r.getLength();
+							travel_time2 += r.getTravelTime();
+						}
+						busGap.put(z2.getIntegerID(), this.nearestZoneWithBus.get(z2.getIntegerID()).busGap.get(this.getIntegerID()));
+						busTravelDistance.put(z2.getIntegerID(), (float) travel_distance2); // only the distance to the closest zone with bus
+					    busTravelTime.put(z2.getIntegerID(), (float) travel_time2 + 
+					    		this.busTravelTime.get(this.nearestZoneWithBus.get(z2.getIntegerID()).getIntegerID())); // time for bus and taxi combined
+					}
+				}
+			}
+		}
+		else{
+			// Shortest path to hubs
+			for(int z2_id: GlobalVariables.HUB_INDEXES){
+				if(!busReachableZone.contains(z2_id)) { // Find the closest zone with bus that can connect to this hub
+					Zone z = ContextCreator.getCityContext().findNearestZoneWithBus(this.getCoord(), z2_id);
+					if(z != null) {
+						this.nearestZoneWithBus.put(z2_id, z);
+					}
+				}
+				if(this.nearestZoneWithBus.containsKey(z2_id)) {
+					double travel_time2 = 0;
+					double travel_distance2 = 0;
+					List<Road> path2 = RouteV.shortestPathRoute(this.getCoord(), this.nearestZoneWithBus.get(z2_id).getCoord());
+					if(path2!=null){
+						for(Road r: path2){
+							travel_distance2 += r.getLength();
+							travel_time2 += r.getTravelTime();
+						}
+						busGap.put(z2_id, this.nearestZoneWithBus.get(z2_id).busGap.get(z2_id));
+						busTravelDistance.put(z2_id, (float) travel_distance2); // only the distance to the closest zone with bus
+					    busTravelTime.put(z2_id, (float) travel_time2 + 
+					    		this.nearestZoneWithBus.get(z2_id).busTravelTime.get(z2_id)); // time for bus and taxi combined
+					}
+				}
+			}
+		}
+//		synchronized(this.busGap) {
+//			for(Map.Entry<Integer, Float> entry : busGap.entrySet()) {
+//				this.busGap.put(entry.getKey(), entry.getValue());
+//			}
+//		}
+//		synchronized(this.busTravelDistance) {
+//			for(Map.Entry<Integer, Float> entry : busTravelDistance.entrySet()) {
+//				this.busTravelDistance.put(entry.getKey(), entry.getValue());
+//			}
+//		}
+//		synchronized(this.busTravelTime) {
+//			for(Map.Entry<Integer, Float> entry : busTravelTime.entrySet()) {
+//				this.busTravelTime.put(entry.getKey(), entry.getValue());
+//			}
+//		}
+		
 	}
 	
 	// Use the "synchronized" tag to make it thread safe

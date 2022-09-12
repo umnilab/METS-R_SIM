@@ -409,7 +409,7 @@ public class Connection implements DataConsumer {
 					    newRouteName.add(list_routename_int);
 					    @SuppressWarnings("unchecked")
 						ArrayList<Long> route = (ArrayList<Long>)list_route.get(index);
-					    int route_size=route.size();
+					    int route_size=route.size() - 1; // The last stop is the same as the start
 					    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
 				        int index_route=0;
 				        while (index_route < route_size) {

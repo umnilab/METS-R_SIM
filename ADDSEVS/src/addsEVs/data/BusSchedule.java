@@ -102,7 +102,7 @@ public class BusSchedule{
 		busGap = newBusGap;
 		
 		for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
-			z.busReachableZone = new ArrayList<Integer>(); //clear the bus info
+			z.busReachableZone.clear(); //clear the bus info
 		}
 		
 		for(ArrayList<Integer> route: this.busRoute) {
@@ -130,6 +130,14 @@ public class BusSchedule{
 			i += 1;
 		}
 		
+		ContextCreator.logger.info("Received bus schedules");
+		ContextCreator.getCityContext().refreshTravelTime(); // Update bus travel time
+		if (GlobalVariables.COLLABORATIVE_EV) {
+			for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
+				z.updateCombinedTravelEstimation();
+			}
+		}
+		ContextCreator.logger.info("Travel time refreshed");
 		this.processSchedule();
 	}
 	
