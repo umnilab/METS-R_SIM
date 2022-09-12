@@ -1,13 +1,16 @@
 # Welcome to the METS-R simulator!
 
-The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulator is a high fidelity, parallel, agent-based simulator for simulating large-scale electric vehicle services. It consists of a traffic simulator module that is able to model EV taxis and EV transits and a control center with high-performance computing (HPC) architecture.
+The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulator is a high-fidelity, parallel, agent-based simulator for simulating large-scale electric vehicle services. It consists of a traffic simulator module that is able to model EV taxis and EV transits and a control center with high-performance computing (HPC) architecture.
 
 # 1 Overall framework
 
-The overallframwork of the METS-R simulator is shown in the following figure. In this framework, multiple instances are connected under a single remote data client manager. The benefits are two-fold:
-1. For testing some operational algorithms (e.g., reinforcement learning algorithms) which require large amount of simulation trajectories, such framework has better data collection efficiency; 2. For some opeartional algorithms that need to solve an optimization (e.g., ILP), this framework allows to cache the solutions so one can reuse them in multiple simulation instances.
+The overall framework of the METS-R simulator is shown in the following figure. In this framework, multiple instances are connected under a single remote data client manager. The benefits are two-fold:
 
-![Simulation framework](res/simulation_framework1.png)
+1. For testing some operational algorithms (e.g., reinforcement learning algorithms) that require large amount of simulation trajectories, this framework has better data collection efficiency; 
+
+2. For some operational algorithms that need to solve an optimization (e.g., ILP), this framework allows caching the solutions so one can reuse them in multiple simulation instances.
+
+![Simulation framework](res/framework.jpg)
 
 # 2 Installation
 
@@ -16,7 +19,7 @@ The overallframwork of the METS-R simulator is shown in the following figure. In
 2. Clone the METS-R repository using `git` to a target folder.
     
     ```
-    git clone https://github.com/umnilab/METS-R_SIM.git
+    git clone https://github.com/umnilab/METS-R_ADDSAEVS.git
     ```
 3. If started from HPC module, *Python* (version >= 3.7) and the following packages are needed:
 + [lapsolver] (https://github.com/cheind/py-lapsolver)
