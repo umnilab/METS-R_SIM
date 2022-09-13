@@ -148,7 +148,7 @@ private static Properties config;
 	public static final boolean COLLABORATIVE_EV = Boolean
 			.valueOf(loadConfig("COLLABORATIVE_EV")); 
 	// Parameters for handling multiclass routing. Note that the proportion of original routing vehicles being generated is equal to 1 - (PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES). 
-		public static final boolean ENABLE_MULTICLASS_ROUTING =
+    public static final boolean ENABLE_MULTICLASS_ROUTING =
 	        Boolean.valueOf(loadConfig("ENABLE_MULTICLASS_ROUTING"));
 	public static final double PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES =
 	        Double.valueOf(loadConfig("PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES"));
@@ -156,6 +156,8 @@ private static Properties config;
 	        Double.valueOf(loadConfig("PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES"));
 	public static final double PROBABILITY_OF_UPDATING_ROUTING =
 	        Double.valueOf(loadConfig("PROBABILITY_OF_UPDATING_ROUTING"));
+	public static final boolean PROACTIVE_RELOCATION =
+	        Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
 
 	/* For car following and lane changing */
 	public static final float ALPHA_DEC = Float

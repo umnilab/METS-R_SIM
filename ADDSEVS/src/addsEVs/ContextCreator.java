@@ -434,11 +434,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
 		
-		schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"); // update the travel time estimation for taking Bus
+		if(!GlobalVariables.BUS_PLANNING) {
+			// if bus planning is enabled, update this when receiving new bus schedules to avoid confliction
+		     schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"); // update the travel time estimation for taking Bus
+		}
 		
 		for (Zone z : getZoneGeography().getAllObjects()) {
 			schedule.schedule(speedProfileParams, z, "updateTravelEstimation"); // update the travel time estimation in each Zone
-		    if(GlobalVariables.COLLABORATIVE_EV && !GlobalVariables.BUS_PLANNING) {
+		    if(!GlobalVariables.BUS_PLANNING) {
 		    	// if bus planning is enabled, update this when receiving new bus schedules to avoid confliction
 		    	schedule.schedule(speedProfileParams, z, "updateCombinedTravelEstimation"); 
 		    }

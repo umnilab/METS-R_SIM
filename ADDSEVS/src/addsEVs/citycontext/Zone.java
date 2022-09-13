@@ -365,31 +365,59 @@ public class Zone {
 		}
 	}
 	
-	//Rebalance when the vehicleStock is negative
+	// Relocate when the vehicleStock is negative
+	// There are two implementations: 1. Using myopic info; 2. Using future estimation.
 	public void relocateTaxi() {
-		int num_to_relocate = (int) Math
-				.round((nPassForTaxi - this.vehicleStock + this.futureDemand  - futureSupply ) / 5);
+		if(GlobalVariables.PROACTIVE_RELOCATION) {
+			int num_to_relocate = (int) Math
+					.round((nPassForTaxi - this.vehicleStock + this.futureDemand  - futureSupply ) / 5);
 
-		double max_stock = 0;
-		Zone source = null;
-		for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
-			if (max_stock < (z.getVehicleStock() - z.nPassForTaxi - z.futureDemand  + futureSupply)) {
-				max_stock = z.getVehicleStock() - z.nPassForTaxi - z.futureDemand  + futureSupply ;
-				source = z;
+			double max_stock = 0;
+			Zone source = null;
+			for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+				if (max_stock < (z.getVehicleStock() - z.nPassForTaxi - z.futureDemand  + futureSupply)) {
+					max_stock = z.getVehicleStock() - z.nPassForTaxi - z.futureDemand  + futureSupply ;
+					source = z;
+				}
+			}
+			while (num_to_relocate > 0) {
+				if (source != null) {
+					if (ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).peek() != null) {
+						ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
+						v.relocation(source.getIntegerID(), this.integerID);
+						this.numberOfRelocatedVehicles += 1;
+						source.removeVehicleStock(1);
+					}
+				} else {
+					break; // The system is short of vehicles!
+				}
+				num_to_relocate -= 1;
 			}
 		}
-		while (num_to_relocate > 0) {
-			if (source != null) {
-				if (ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).peek() != null) {
-					ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
-					v.relocation(source.getIntegerID(), this.integerID);
-					this.numberOfRelocatedVehicles += 1;
-					source.removeVehicleStock(1);
+		else {
+			int num_to_relocate = nPassForTaxi - this.vehicleStock;
+
+			double max_stock = 0;
+			Zone source = null;
+			for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+				if (max_stock < (z.getVehicleStock() - z.nPassForTaxi)) {
+					max_stock = z.getVehicleStock() - z.nPassForTaxi;
+					source = z;
 				}
-			} else {
-				break; // The system is short of vehicles!
 			}
-			num_to_relocate -= 1;
+			while (num_to_relocate > 0) {
+				if (source != null) {
+					if (ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).peek() != null) {
+						ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
+						v.relocation(source.getIntegerID(), this.integerID);
+						this.numberOfRelocatedVehicles += 1;
+						source.removeVehicleStock(1);
+					}
+				} else {
+					break; // The system is short of vehicles!
+				}
+				num_to_relocate -= 1;
+			}
 		}
 	}
 	
@@ -549,12 +577,13 @@ public class Zone {
 		if(flag) {
 			// For collaborative EV services
 			if(busTravelTime.containsKey(destID) && taxiTravelTime.containsKey(destID)){
-				double taxiUtil = GlobalVariables.MS_ALPHA*(GlobalVariables.INITIAL_PRICE_TAXI+GlobalVariables.BASE_PRICE_TAXI*taxiTravelDistance.get(destID))/1609+
+				ContextCreator.logger.info("HERE2");
+				double taxiUtil = GlobalVariables.MS_ALPHA*(GlobalVariables.INITIAL_PRICE_TAXI+GlobalVariables.BASE_PRICE_TAXI*taxiTravelDistance.get(destID)/1609)+
 						GlobalVariables.MS_BETA*(taxiTravelTime.get(destID)/60+5)+GlobalVariables.TAXI_BASE;
 				// Here the busTravelDistance is actually the taxi travel distance for travelling to the closest zone with bus
 				double busUtil = (float) (GlobalVariables.MS_ALPHA*(GlobalVariables.BUS_TICKET_PRICE + GlobalVariables.INITIAL_PRICE_TAXI+
-						GlobalVariables.BASE_PRICE_TAXI*busTravelDistance.get(destID))/1609+
-						GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap.get(destID)/2)+GlobalVariables.BUS_BASE);
+						GlobalVariables.BASE_PRICE_TAXI*busTravelDistance.get(destID)/1609)+
+						GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap.get(destID)/2+5)+GlobalVariables.BUS_BASE);
 				
 				return (float) (Math.exp(1)/(Math.exp(taxiUtil-busUtil)+Math.exp(1)));
 			}
@@ -564,7 +593,7 @@ public class Zone {
 		}
 		else {
 			if(busTravelTime.containsKey(destID) && taxiTravelTime.containsKey(destID)){
-				double taxiUtil = GlobalVariables.MS_ALPHA*(GlobalVariables.INITIAL_PRICE_TAXI+GlobalVariables.BASE_PRICE_TAXI*taxiTravelDistance.get(destID))/1609+
+				double taxiUtil = GlobalVariables.MS_ALPHA*(GlobalVariables.INITIAL_PRICE_TAXI+GlobalVariables.BASE_PRICE_TAXI*taxiTravelDistance.get(destID)/1609)+
 						GlobalVariables.MS_BETA*(taxiTravelTime.get(destID)/60+5)+GlobalVariables.TAXI_BASE;
 				double busUtil = (float) (GlobalVariables.MS_ALPHA*GlobalVariables.BUS_TICKET_PRICE+
 						GlobalVariables.MS_BETA*(busTravelTime.get(destID)/60+this.busGap.get(destID)/2)+GlobalVariables.BUS_BASE);
@@ -625,9 +654,9 @@ public class Zone {
 	}
 	
 	public void updateCombinedTravelEstimation(){
-		Map<Integer, Float> busGap = new HashMap<Integer, Float>();
-		Map<Integer, Float> busTravelDistance = new HashMap<Integer, Float>();
-		Map<Integer, Float> busTravelTime = new HashMap<Integer, Float>();
+//		Map<Integer, Float> busGap = new HashMap<Integer, Float>();
+//		Map<Integer, Float> busTravelDistance = new HashMap<Integer, Float>();
+//		Map<Integer, Float> busTravelTime = new HashMap<Integer, Float>();
 		if(this.zoneClass==1){
 			for(Zone z2: ContextCreator.getZoneGeography().getAllObjects()){
 				if(!busReachableZone.contains(z2.getIntegerID())) { // Find the closest zone with bus that can connect to this hub
@@ -697,7 +726,6 @@ public class Zone {
 		
 	}
 	
-	// Use the "synchronized" tag to make it thread safe
 	public void addTaxiPass(Passenger new_pass) {
 		this.nPassForTaxi += 1;
 		this.passInQueueForTaxi.add(new_pass);
