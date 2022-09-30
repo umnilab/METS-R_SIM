@@ -130,6 +130,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		this.cityContext.createSubContexts();
 		this.cityContext.buildRoadNetwork();
 		this.cityContext.createNearestRoadCoordCache();
+		this.cityContext.setRelocationGraph();
 		
 		/* Create vehicle context */
 		this.vehicleContext = new VehicleContext();
@@ -144,7 +145,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (ArrayList<Integer> route : busSchedule.busRoute) {
 			int i = 0;
 			for (int zoneID : route) {
-				Zone zone = ContextCreator.getCityContext().findZoneWithDestID(zoneID);
+				Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(zoneID);
 				if(zone.getZoneClass() == 0) { // normal zone, the destination should be hub
 					for (int destinationID: route) {
 					    if(GlobalVariables.HUB_INDEXES.contains(destinationID)){
@@ -218,7 +219,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
 			network_logger = new BufferedWriter(fw);
 			network_logger.write(
-					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,taxiServedPass,taxiLeavedPass,numWaitingTaxiPass,generatedBusPass,busServedPass,busLeavedPass,numWaitingBusPass,generatedCombinedPass,combinedServedPass");
+					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,generatedCombinedPass,"
+					+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					+ "taxiServedPass,busServedPass,"
+					+ "taxiLeavedPass,busLeavedPass,"
+					+ "numWaitingTaxiPass,numWaitingBusPass,"
+					+ "batteryMean,batteryStd");
 			network_logger.newLine();
 			network_logger.flush();
 			logger.info("Network logger created!");
@@ -231,7 +237,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
 			zone_logger = new BufferedWriter(fw);
 			zone_logger.write(
-					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,taxiLeavedPass,busLeavedPass,taxiWaitingTime,generatedCombinedPass,combinedServedPass");
+					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
+					+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					+ "taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,"
+					+ "taxiLeavedPass,busLeavedPass,taxiWaitingTime,futureDemand,futureSupply");
 			zone_logger.newLine();
 			zone_logger.flush();
 			logger.info("Zone logger created!");
@@ -461,13 +470,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for generating and serving passengers
 	public void schedulePassengerArrivalAndServe() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		// schedule the passenger serving events
+		// Schedule the passenger serving events
 		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL, 1);
 		for (Zone a : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, a, "step");
 		}
-		// schedule the passenger arrival events
+		// Schedule the passenger arrival events
 		ScheduleParameters demandGenerationParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_PASSENGER_ARRIVAL_INTERVAL, 1);
 		for (Zone a : getZoneContext().getObjects(Zone.class)) {

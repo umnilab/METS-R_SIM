@@ -352,7 +352,7 @@ public class Connection implements DataConsumer {
 			JSONParser parser = new JSONParser();
 			jsonMsg = (JSONObject) parser.parse(message);
 			if (jsonMsg.get("MSG_TYPE").equals("OD_PAIR")) {
-				System.out.println("Received route result!");
+				ContextCreator.logger.info("Received route result!");
 				// Clear the current map
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
@@ -367,7 +367,7 @@ public class Connection implements DataConsumer {
 				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
 
-				System.out.println("Received bus route result!");
+				ContextCreator.logger.info("Received bus route result!");
 				 
 				// Clear the current map
 				// ContextCreator.routeResult_received.clear();
@@ -386,7 +386,7 @@ public class Connection implements DataConsumer {
 				JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
 				JSONArray list_gap = (JSONArray) jsonMsg.get("Bus_gap");
 				JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
-				Long hour = (Long) jsonMsg.get("Bus_currenthour");
+				Long hour = Long.valueOf((String) jsonMsg.get("Bus_currenthour"));
 				int newhour=hour.intValue();
 				// Json array to array list
 				int array_size=list_num.size();
@@ -395,29 +395,34 @@ public class Connection implements DataConsumer {
 				ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
 				ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
 				int index = 0; // skip prefix                               
-                while (index < list_num.size()) {                                      
-                	Double number = (Double) list_num.get(index);
-                    int number_int = number.intValue();
+                while (index < list_num.size()) {  
+                	int number_int = 0;
+                	if (list_num.get(index) instanceof Number) {
+                		number_int = ((Number)list_num.get(index)).intValue();
+                	}
 					if (number_int>0) {
-						newBusNum.add(number_int);
-					    Double gap = (Double) list_gap.get(index);
-					    int gap_int = gap.intValue();
-					    // multiply by 60 for seconds
-					    newBusGap.add(gap_int);
-					    Long routename = (Long) list_routename.get(index);
-					    int list_routename_int = routename.intValue();
-					    newRouteName.add(list_routename_int);
-					    @SuppressWarnings("unchecked")
+						// Verify the data, the last stop is the same as the start
+						@SuppressWarnings("unchecked")
 						ArrayList<Long> route = (ArrayList<Long>)list_route.get(index);
-					    int route_size=route.size() - 1; // The last stop is the same as the start
-					    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
-				        int index_route=0;
-				        while (index_route < route_size) {
-				         int route_int_i = route.get(index_route).intValue();
-				         route_int.add(route_int_i-1);
-				         index_route+=1;
-				        }
-					    newRoutes.add(route_int);
+						if(route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
+							newBusNum.add(number_int);
+						    Double gap = (Double) list_gap.get(index);
+						    int gap_int = gap.intValue();
+						    // multiply by 60 for seconds
+						    newBusGap.add(gap_int);
+						    Long routename = (Long) list_routename.get(index);
+						    int list_routename_int = routename.intValue();
+						    newRouteName.add(list_routename_int);
+						    int route_size=route.size() - 1;
+						    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
+					        int index_route=0;
+					        while (index_route < route_size) {
+					         int route_int_i = route.get(index_route).intValue();
+					         route_int.add(route_int_i-1);
+					         index_route+=1;
+					        }
+						    newRoutes.add(route_int);
+						}
 					}
 					index +=1;
 				}

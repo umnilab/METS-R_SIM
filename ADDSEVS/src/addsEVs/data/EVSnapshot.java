@@ -82,7 +82,7 @@ public class EVSnapshot {
              coordinate.y,
            	 vehicle.currentSpeed(),
            	 vehicle.getOriginID(),
-           	 vehicle.getDestinationID(),
+           	 vehicle.getDestID(),
         	 vehicle.nearlyArrived(),
         	 vehicle.getVehicleClass(),
         	 vehicle.getBatteryLevel(),

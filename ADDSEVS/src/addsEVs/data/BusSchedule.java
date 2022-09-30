@@ -32,7 +32,7 @@ public class BusSchedule{
 	public ArrayList<Integer> routeName;
 	public ArrayList<ArrayList<Integer>> busRoute;
 	public ArrayList<Integer> busNum;
-	public ArrayList<Integer> busGap;
+	public ArrayList<Integer> busGap; // in minute
 	
 	// For updating the schedule
 	public HashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
@@ -109,7 +109,7 @@ public class BusSchedule{
 			int i = 0;
 			if(busNum.get(i)>0) {
 				for(int zoneID: route){
-					Zone zone = ContextCreator.getCityContext().findZoneWithDestID(zoneID);
+					Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(zoneID);
 					if(zone.getZoneClass() == 0) { // normal zone, the destination should be hub
 						for (int destinationID: route) {
 						    if(GlobalVariables.HUB_INDEXES.contains(destinationID)){
@@ -137,10 +137,21 @@ public class BusSchedule{
 				z.updateCombinedTravelEstimation();
 			}
 		}
+		for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
+			// Deal with the remaining passengers for buses in each zone
+			z.reSplitPassengerDueToBusRescheduled();
+		}
 		ContextCreator.logger.info("Travel time refreshed");
+		// Reset all parking buses' schedules
+//		for (Bus b: ContextCreator.getVehicleContext().getBuses()) {
+//			if(b.getNextStop()==0 && b.getPassNum()==0) {
+//				b.resetScehdule();
+//			}
+//		}
 		this.processSchedule();
 	}
 	
+	// Translate bus route into bus schedules
 	public void processSchedule() {
 		pendingSchedules = new HashMap<Integer, PriorityQueue<OneBusSchedule>>();
 		int n = this.busRoute.size();
@@ -150,8 +161,8 @@ public class BusSchedule{
 				pendingSchedules.put(startZone, new PriorityQueue<OneBusSchedule>(new The_Comparator()));
 			}
 			for(int j=0; j<this.busNum.get(i); j++) {
-				Integer depTime = (int) (currentHour*3600/GlobalVariables.SIMULATION_STEP_SIZE+j*this.busGap.get(i)/GlobalVariables.SIMULATION_STEP_SIZE);
-				OneBusSchedule obs = new OneBusSchedule(this.routeName.get(i), this.busRoute.get(i),depTime);
+				Integer depTime = (int) (currentHour*3600/GlobalVariables.SIMULATION_STEP_SIZE+j*this.busGap.get(i)*60/GlobalVariables.SIMULATION_STEP_SIZE);
+				OneBusSchedule obs = new OneBusSchedule(this.routeName.get(i), this.busRoute.get(i), depTime);
 				pendingSchedules.get(startZone).add(obs);
 			}
 		}
@@ -171,7 +182,7 @@ public class BusSchedule{
 				}
 			}
 		}
-		// Set a null schedule
+		// Otherwise set a null schedule
 		b.updateSchedule(-1, 
 				new ArrayList<Integer> (),
 				0);

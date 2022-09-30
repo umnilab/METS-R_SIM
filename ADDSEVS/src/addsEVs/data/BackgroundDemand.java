@@ -12,7 +12,7 @@ import java.util.*;
 
 /**
  * @author: Zengxiang Lei
- * Read hourly demand into treemap with roadid as key and hourly from hub and to hub travel demand as arraylists
+ * Read hourly demand into treemap with OD index as key and hourly from hub and to hub travel demand as arraylists
  * 
  **/
 

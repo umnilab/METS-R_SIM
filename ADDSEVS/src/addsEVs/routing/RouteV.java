@@ -123,7 +123,6 @@ public class RouteV {
 	 * The routing uses K-shortest path */
 	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination)
 		throws Exception {
-		int time = (int) RepastEssentials.GetTickCount();
 		/* The first part resolves the origin and destination road and junctions */
 		/*
 		 * See if the current position and the destination are on road segments.
@@ -157,9 +156,6 @@ public class RouteV {
 			}
 			return null;
 		}
-		
-		// Set the time that the routing is computed
-		vehicle.setLastRouteTime(time);
 		
 		List<Road> path = vbr.computeRoute(currentRoad, destRoad, curDownstreamJunc, destDownstreamJunc);
 		if( path == null || path.size()==0){

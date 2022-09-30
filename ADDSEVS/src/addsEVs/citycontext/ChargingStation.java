@@ -123,7 +123,7 @@ public class ChargingStation{
 			}
 		}
 		// The vehicles in the queue enter the charging areas.
-		if (chargingVehicleL2.size() < num2){           //num2: number of L2 charger.       
+		if (chargingVehicleL2.size() < num2){   //num2: number of L2 charger.       
 			int addNumber = Math.min(num2-chargingVehicleL2.size(), queueChargingL2.size());
 			for (int i=0; i<addNumber; i++){
 				ElectricVehicle vehicleEnter = queueChargingL2.poll();
@@ -187,11 +187,6 @@ public class ChargingStation{
 					evBus.chargeItself(maxChargingDemand);  // Battery increases by maxChargingDemand
 					chargingBus.remove(i);	     // The vehicle leaves the charger
 					evBus.setState(Vehicle.BUS_TRIP);
-					evBus.setNextPlan();
-					// Add vehicle to newqueue of corresponding road
-					Coordinate currentCoord = evBus.getOriginalCoord();
-					Road road = ContextCreator.getCityContext().findRoadAtCoordinates(currentCoord, false);
-					road.addVehicleToNewQueue(evBus);
 					evBus.finishCharging(this.getIntegerID(), "Bus");
 				}
 			}

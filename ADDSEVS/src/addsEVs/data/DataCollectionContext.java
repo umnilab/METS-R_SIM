@@ -7,6 +7,7 @@ import addsEVs.GlobalVariables;
 import addsEVs.citycontext.ChargingStation;
 import addsEVs.citycontext.Road;
 import addsEVs.citycontext.Zone;
+import addsEVs.vehiclecontext.ElectricVehicle;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.engine.environment.RunEnvironment;
 
@@ -90,39 +91,50 @@ public class DataCollectionContext extends DefaultContext<Object> {
     }
     
     public void displayMetrics(){
-    	int vehicleOnRoad = 0;
-    	int numGeneratedTaxiPass=0;
-    	int numGeneratedBusPass=0;
-    	int numGeneratedCombinedPass=0;
-    	int numWaitingTaxiPass=0;
-    	int numWaitingBusPass=0;
-    	int taxiServedPass=0;
-    	int busServedPass=0;
-    	int combinedServedPass=0;
-    	int numLeavedTaxiPass=0;
-    	int numLeavedBusPass=0;
-    	int numRelocatedTaxi=0;
-    	int numChargedVehicle=0;
+		int vehicleOnRoad = 0;
+		int numGeneratedTaxiPass = 0;
+		int numGeneratedBusPass = 0;
+		int numGeneratedCombinedPass = 0;
+		int numWaitingTaxiPass = 0;
+		int numWaitingBusPass = 0;
+		int taxiPickupPass = 0;
+		int busPickupPass = 0;
+		int combinePickupPart1 = 0;
+		int combinePickupPart2 = 0;
+		int taxiServedPass = 0;
+		int busServedPass = 0;
+		int numLeavedTaxiPass = 0;
+		int numLeavedBusPass = 0;
+		int numRelocatedTaxi = 0;
+		int numChargedVehicle = 0;
+		double battery_mean = 0;
+		double battery_std = 0;
     	
     	int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
     	
-    	
     	for(Zone z: ContextCreator.getZoneGeography().getAllObjects()){
-    		numGeneratedTaxiPass+=z.numberOfGeneratedTaxiPass;
-    		numGeneratedBusPass+=z.numberOfGeneratedBusPass;
-    		numGeneratedCombinedPass+=z.numberOfGeneratedCombinedPass;
-    		taxiServedPass+=z.taxiServedPass;
-    		busServedPass+=z.busServedPass;
-    		combinedServedPass+=z.combinedServedPass;
-    		numLeavedTaxiPass+=z.numberOfLeavedTaxiPass;
-    		numLeavedBusPass+=z.numberOfLeavedBusPass;
-    		numRelocatedTaxi+=z.numberOfRelocatedVehicles;
-    		numWaitingTaxiPass += z.getTaxiPassengerNum();
-    		numWaitingBusPass += z.getBusPassengerNum();
+			numGeneratedTaxiPass += z.numberOfGeneratedTaxiPass;
+			numGeneratedBusPass += z.numberOfGeneratedBusPass;
+			numGeneratedCombinedPass += z.numberOfGeneratedCombinedPass;
+			taxiPickupPass += z.taxiPickupPass;
+			busPickupPass += z.busPickupPass;
+			combinePickupPart1 += z.combinePickupPart1;
+			combinePickupPart2 += z.combinePickupPart2;
+			taxiServedPass += z.taxiServedPass;
+			busServedPass += z.busServedPass;
+			numLeavedTaxiPass += z.numberOfLeavedTaxiPass;
+			numLeavedBusPass += z.numberOfLeavedBusPass;
+			numRelocatedTaxi += z.numberOfRelocatedVehicles;
+			numWaitingTaxiPass += z.getTaxiPassengerNum();
+			numWaitingBusPass += z.getBusPassengerNum();
     		
     		String formatted_msg2 = currentTick+","+z.getIntegerID()+","+z.getTaxiPassengerNum()+","+z.getBusPassengerNum()+","+
-    		z.getVehicleStock()+","+z.numberOfGeneratedTaxiPass+","+z.numberOfGeneratedBusPass+","+z.taxiServedPass+","+z.busServedPass+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
-    		z.numberOfLeavedTaxiPass+","+z.numberOfLeavedBusPass +","+z.taxiWaitingTime+","+z.numberOfGeneratedCombinedPass+","+z.combinedServedPass;
+    		        z.getVehicleStock()+","+
+    				z.numberOfGeneratedTaxiPass+","+z.numberOfGeneratedBusPass+","+z.numberOfGeneratedCombinedPass+","+
+    				z.taxiPickupPass+","+z.busPickupPass+","+z.combinePickupPart1+","+z.combinePickupPart2+","+
+    				z.taxiServedPass+","+z.busServedPass+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
+    		        z.numberOfLeavedTaxiPass+","+z.numberOfLeavedBusPass +","+z.taxiWaitingTime+","+
+    				z.getFutureDemand() + "," + z.getFutureSupply();
     		try {
 				ContextCreator.zone_logger.write(formatted_msg2);
 	    		ContextCreator.zone_logger.newLine();
@@ -149,11 +161,22 @@ public class DataCollectionContext extends DefaultContext<Object> {
     		numChargedVehicle+=cs.numChargedVehicle;
     	}
     	
+    	for(ElectricVehicle v: ContextCreator.getVehicleContext().getVehicles()) {
+    		battery_mean += v.getBatteryLevel();
+    		battery_std += v.getBatteryLevel() * v.getBatteryLevel();
+    	}
+    	
+    	battery_mean /= GlobalVariables.NUM_OF_EV;
+    	battery_std = Math.sqrt(battery_std/GlobalVariables.NUM_OF_EV - battery_mean*battery_mean);
+    	
     	String formated_msg = currentTick + "," + 
-    			vehicleOnRoad+","+numRelocatedTaxi+","+numChargedVehicle+","+numGeneratedTaxiPass+
-    			","+taxiServedPass+","+numLeavedTaxiPass+","+numWaitingTaxiPass+
-    			","+numGeneratedBusPass+","+busServedPass+","+numLeavedBusPass+","+numWaitingBusPass+
-    			","+numGeneratedCombinedPass+","+combinedServedPass;
+    			vehicleOnRoad+","+numRelocatedTaxi+","+numChargedVehicle+
+    			","+numGeneratedTaxiPass+","+numGeneratedBusPass+ ","+numGeneratedCombinedPass+
+    			","+taxiPickupPass+","+busPickupPass+","+combinePickupPart1+","+combinePickupPart2+
+    			","+taxiServedPass+","+busServedPass+
+    			","+numLeavedTaxiPass+","+numLeavedBusPass+
+    			","+numWaitingTaxiPass+","+numWaitingBusPass+
+    			","+battery_mean+","+battery_std;
     	try {
 			ContextCreator.network_logger.write(formated_msg);
 			ContextCreator.network_logger.newLine();
@@ -168,9 +191,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	if(GlobalVariables.ENABLE_METRICS_DISPLAY){
     		System.out.println("tick=" + currentTick
     				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass+numGeneratedCombinedPass)
-    				+ ", taxiServerdPass=" + taxiServedPass
-    				+ ", busServerdPass=" + busServedPass
-    				+ ", combinedServedPass=" + combinedServedPass
+    				+ ", taxiPickupPass=" + taxiPickupPass
+    				+ ", busPickupPass=" + busPickupPass
+    				+ ", combinePikcupPass=" + combinePickupPart1
     				+ ", nLeavedPass=" + (numLeavedTaxiPass+numLeavedBusPass)
     				+ ", nRelocatedVeh=" + numRelocatedTaxi
     				+ ", nChargedVeh=" + numChargedVehicle

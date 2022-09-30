@@ -31,5 +31,4 @@ public class Plan {
 	public int getDestID(){
 		return dest_id;
 	}
-	
 }

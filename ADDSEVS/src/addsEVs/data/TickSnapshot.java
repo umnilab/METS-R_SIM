@@ -125,8 +125,8 @@ public class TickSnapshot {
         double x = coordinate.x;
         double y = coordinate.y;
         float speed = vehicle.currentSpeed();
-        double originalX =  vehicle.getOriginalCoord().x;
-        double originalY = vehicle.getOriginalCoord().y;
+        double originalX =  vehicle.getOriginCoord().x;
+        double originalY = vehicle.getOriginCoord().y;
         double destX = vehicle.getDestCoord().x;
         double destY = vehicle.getDestCoord().y;
         int nearlyArrived = vehicle.nearlyArrived();
@@ -175,7 +175,7 @@ public class TickSnapshot {
 		double y = coordinate.y;
 		float speed = vehicle.currentSpeed();
 		int originID = vehicle.getOriginID();
-		int destID = vehicle.getDestinationID();
+		int destID = vehicle.getDestID();
 		int nearlyArrived = vehicle.nearlyArrived();
 		int vehicleClass = vehicle.getVehicleClass();
 		int roadID = vehicle.getRoad().getLinkid();

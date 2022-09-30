@@ -26,7 +26,7 @@ public class EnergyCalculator{
 		this.tickConsumption = 0.0f;
 		this.cumulativeConsumption = 0.0f;
 		for (int i=0; i<9; i++){
-			LinkedBlockingQueue<ElectricVehicle> evList = ContextCreator.getVehicleContext().getVehicles(i);
+			LinkedBlockingQueue<ElectricVehicle> evList = ContextCreator.getVehicleContext().getVehiclesByZone(i);
 			for (ElectricVehicle ev : evList) {
 				this.tickConsumption += ev.getTickConsume();
 				this.cumulativeConsumption += ev.getTotalConsume();

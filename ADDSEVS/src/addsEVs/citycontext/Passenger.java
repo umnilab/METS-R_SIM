@@ -61,6 +61,14 @@ public class Passenger {
 		return this.currentWaitingTime;
 	}
 	
+	public void setOrigin(Integer origin){
+		this.origin = origin;
+	}
+	
+	public void setDestination(Integer destination){
+		this.destination = destination;
+	}
+	
 	public int getOrigin(){
 		return this.origin;
 	}
@@ -74,6 +82,7 @@ public class Passenger {
 	}
 	
 	public void moveToNextActivity() {
+		this.currentWaitingTime = 0; // reset the waiting time
 		this.origin = this.activityPlan.poll().getDestID();
 		this.destination = this.activityPlan.peek().getDestID();
 	}
@@ -91,11 +100,7 @@ public class Passenger {
 		return this.willingToShare;
 	}
 	
-//	public Passenger nextPassengerInQueue(){
-//		return this.nextPassengerInQueue_;
-//	}
-//	
-//	public void setNextPassengerInQueue(Passenger nextPass){
-//		this.nextPassengerInQueue_ = nextPass;
-//	}
+	public void clearActivityPlan() {
+		this.activityPlan.clear();
+	}
 }

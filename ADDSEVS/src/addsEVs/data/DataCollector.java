@@ -7,6 +7,7 @@ import java.util.Vector;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import com.vividsolutions.jts.geom.Coordinate;
 
+import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.NetworkEventObject;
 import addsEVs.citycontext.Road;
@@ -670,7 +671,7 @@ public class DataCollector {
             }
             debugMessage += ">> " + msg;
             
-            System.out.println(debugMessage);
+            ContextCreator.logger.debug(debugMessage);
         }
     }
 

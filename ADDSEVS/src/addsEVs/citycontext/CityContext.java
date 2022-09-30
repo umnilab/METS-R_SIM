@@ -72,6 +72,12 @@ public class CityContext extends DefaultContext<Object> {
 		}
 	}
 	
+	/**
+	 * 
+	 * @param coordinate1: c1
+	 * @param coordinate2: c2
+	 * @return distance between c1 and c2, unit: meter
+	 */
 	private double getDistance(Coordinate c1, Coordinate c2) {
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator
 				.getLaneGeography().getCRS());
@@ -444,6 +450,7 @@ public class CityContext extends DefaultContext<Object> {
 	
 	/*
 	 * Returns the closest charging station for bus from the currentLocation 
+	 * For now, assume there are always enough bus chargers
 	 */
 	public ChargingStation findNearestBusChargingStation(Coordinate coord) throws NullPointerException{
 		if (coord == null) {
@@ -559,20 +566,13 @@ public class CityContext extends DefaultContext<Object> {
 			if (zone.getId() == id)
 				return zone;
 		}
-		ContextCreator.logger.error("CityContext: findHouseWithID: Error, couldn't find a house with id: "
+		ContextCreator.logger.error("CityContext: findZoneWithID: Error, couldn't find a house with id: "
 						+ id);
 		return null;
 	}
 
-	public Zone findZoneWithDestID(int destid) {
-		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
-		for (Zone zone : zoneGeography.getAllObjects()) {
-			if (zone.getIntegerID() == destid)
-				return zone;
-		}
-		ContextCreator.logger.error("CityContext: findZoneWithDestID: Error, couldn't find a house with id: "
-						+ destid);
-		return null;
+	public Zone findZoneWithIntegerID(int integerID) {
+		return ContextCreator.getZoneContext().findZoneWithIntegerID(integerID);
 	}
 	
 	public ChargingStation findChargingStationWithID(int destid) {
@@ -583,22 +583,6 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		ContextCreator.logger.error("CityContext: findChargingStationWithDestID: Error, couldn't find a charging station with id: " + destid);
 		return null;
-	}
-
-	public Road findRoadWithHouseID(int id) {
-		Coordinate coord;
-		Road road;
-		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
-		for (Zone house : zoneGeography.getAllObjects()) {
-			if (house.getId() == id) {
-				coord = house.getCoord();
-				road = findRoadWithID(findRoadIDAtCoordinates(coord));
-				return road;
-			}
-		}
-		ContextCreator.logger.error("CityContext: findRoadWithHouseID: Error, couldn't find a house with id: "
-						+ id);
-		return new Road();
 	}
 
 	public void createNearestRoadCoordCache() {
@@ -659,7 +643,7 @@ public class CityContext extends DefaultContext<Object> {
 	}
 	
 	/*
-	 * Returns the closest zone from the currentLocation that has a transit
+	 * Returns the closest zone from the currentLocation that has a bus available
 	 */
 	public Zone findNearestZoneWithBus(Coordinate coord, Integer destID) throws NullPointerException{
 		if (coord == null) {
@@ -691,6 +675,29 @@ public class CityContext extends DefaultContext<Object> {
 		return nearestZone;
 	}
 	
+	/*
+	 * Set the possible relocation targets of all zones
+	 */
+	public void setRelocationGraph() {
+		for (Zone z1 : ContextCreator.getZoneGeography().getAllObjects()) {
+			int threshold = 1000; // initial threshold as 1 km
+			boolean flag = true;
+			while(flag){
+				for (Zone z2: ContextCreator.getZoneGeography().getAllObjects()) {
+					if (this.getDistance(z1.getCoord(), z2.getCoord())<threshold && z1 != z2 && !z1.neighboringZones.contains(z2)) {
+						z1.neighboringZones.add(z2);
+					}
+				}
+				if(z1.neighboringZones.size() < ContextCreator.getZoneGeography().size() - 1) {
+					threshold = threshold + 1000;
+				}
+				else {
+					flag = false;
+				}
+			}
+		}
+	}
+	
 	public void refreshTravelTime() {
 		ContextCreator.logger.info("Update the estimation of travel time...");
 		// Reset the travel time and travel distance estimation
@@ -707,13 +714,13 @@ public class CityContext extends DefaultContext<Object> {
 			
 			for (int shift = 0; shift < route.size(); shift++) {
 				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
-					Zone hub = this.findZoneWithDestID(route.get(shift));
+					Zone hub = this.findZoneWithIntegerID(route.get(shift));
 					Zone z1 = hub;
 					Zone z2;
 
 					for (int i = 1; i < route.size(); i++) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z2 = this.findZoneWithDestID(route.get(j));
+						z2 = this.findZoneWithIntegerID(route.get(j));
 						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
 						if (path != null) {
 							for (Road r : path) {
@@ -740,7 +747,7 @@ public class CityContext extends DefaultContext<Object> {
 					z2 = hub;
 					for (int i = route.size() - 1; i > 0; i--) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z1 = this.findZoneWithDestID(route.get(j));
+						z1 = this.findZoneWithIntegerID(route.get(j));
 						List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
 						if (path != null) {
 							for (Road r : path) {

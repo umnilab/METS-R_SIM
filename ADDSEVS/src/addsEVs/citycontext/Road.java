@@ -127,16 +127,24 @@ public class Road {
 			this.recRoadSnaphot(); // Record vehicle location here!
 		}
 		try {
-			// Vehicle departure, generate vehicle from new queue
+			/* Vehicle departure */
 			while (this.newqueue.size() > 0) {
 				v = this.newqueueHead(); // Change to use the TreeMap
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
-					if (v.enterNetwork(this)) {
-						v.advanceInMacroList(); //Vehicle entering the network
+					// check whether the origin is the destination
+					if (v.getOriginID() == v.getDestID()) {
+						this.removeVehicleFromNewQueue(v); //Remove vehicle from the waiting vehicle queue
+						v.setReachDest();
 					}
-					else{
-						break; // Road is full, jump out the loop
+					else {
+						if (v.enterNetwork(this)) {
+							v.advanceInMacroList(); //Vehicle entering the network
+						}
+						else{
+							break; // Road is full, jump out the loop
+						}
 					}
+					
 				} 
 				else {
 					// Iterate all element in the TreeMap
@@ -428,7 +436,6 @@ public class Road {
 			temporalList.add(v);
 			this.newqueue.put(departuretime_, temporalList);
 		}
-		v.setRoad(this);
 	}
 
 
@@ -441,8 +448,7 @@ public class Road {
 	public void removeVehicleFromNewQueue(Vehicle v) { 
 		double departuretime_ = v.getDepTime();
 		//System.out.println("Trying to remove vehicle:"+v.getDepTime());
-		ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
-		temporalList = this.newqueue.get(departuretime_);
+		ArrayList<Vehicle> temporalList = this.newqueue.get(departuretime_);
 		if (temporalList.size() > 1) {
 			this.newqueue.get(departuretime_).remove(v);
 		} else {
