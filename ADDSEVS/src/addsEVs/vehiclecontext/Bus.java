@@ -194,14 +194,14 @@ public class Bus extends Vehicle{
 			this.accummulatedDistance_=0;
 			                          
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
-			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop));
-			ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).busServedPass += this.destinationDemandOnBus.get(nextStop);
-			this.destinationDemandOnBus.set(nextStop,0);
+			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop % busStop.size()));
+			ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).busServedPass += this.destinationDemandOnBus.get(nextStop % busStop.size());
+			this.destinationDemandOnBus.set(nextStop % busStop.size(),0);
 			
-			if(this.passengerWithAdditionalActivityOnBus.get(nextStop).size()>0) {
-				for(Passenger p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll(); 
-						!this.passengerWithAdditionalActivityOnBus.get(nextStop).isEmpty(); 
-						p = this.passengerWithAdditionalActivityOnBus.get(nextStop).poll()) {
+			if(this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).size()>0) {
+				for(Passenger p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll(); 
+						!this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).isEmpty(); 
+						p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll()) {
 					p.moveToNextActivity();
 					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addTaxiPass(p);
 				}
