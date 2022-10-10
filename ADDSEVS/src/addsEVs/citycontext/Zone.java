@@ -158,11 +158,7 @@ public class Zone {
                         Passenger new_pass = new Passenger(this.integerID, destination, 24000); // Wait for at most 2 hours
 						if (Math.random() > threshold) {
 							if(new_pass.isShareable()) {
-								nPassForTaxi += 1;
-								if(!this.sharablePassForTaxi.containsKey(destination)) {
-									this.sharablePassForTaxi.put(destination, new LinkedList<Passenger>());
-								}
-								this.sharablePassForTaxi.get(destination).add(new_pass);
+								this.addSharableTaxiPass(new_pass, destination);
 							}
 							else {
 								this.addTaxiPass(new_pass);
@@ -434,7 +430,7 @@ public class Zone {
 				Zone source = null;
 				for (Zone z: this.neighboringZones) {
 					// Relocate from zones with sufficient supply
-					if ((z.getVehicleStock() - z.nPassForTaxi - 6 * z.futureDemand > 0) && 
+					if (z.hasEnoughTaxi() && 
 							(ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).peek() != null)) {
 						source = z;
 						break;
@@ -691,6 +687,7 @@ public class Zone {
 	}
 	
 	// Update travel time estimation for taxi
+	// TODO: Cache the results to save more time
 	public void updateTravelEstimation(){
 			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
 			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
@@ -838,6 +835,14 @@ public class Zone {
 		this.passInQueueForTaxi.add(new_pass);
 	}
 	
+	public void addSharableTaxiPass(Passenger new_pass, int destination) {
+		this.nPassForTaxi += 1;
+		if(!this.sharablePassForTaxi.containsKey(destination)) {
+			this.sharablePassForTaxi.put(destination, new LinkedList<Passenger>());
+		}
+		this.sharablePassForTaxi.get(destination).add(new_pass);
+	}
+	
     public void addBusPass(Passenger new_pass) {
     	this.nPassForBus += 1;
 		this.passInQueueForBus.add(new_pass);
@@ -857,6 +862,10 @@ public class Zone {
     
     public double getFutureSupply() {
     	return this.futureSupply;
+    }
+    
+    public boolean hasEnoughTaxi(){
+    	return this.getVehicleStock() - this.nPassForTaxi - 6 * this.futureDemand > 0;
     }
 }
 

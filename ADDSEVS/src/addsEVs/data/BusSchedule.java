@@ -187,4 +187,11 @@ public class BusSchedule{
 				new ArrayList<Integer> (),
 				0);
 	}
+	
+	public boolean hasSchedule(Integer stop) {
+		if(ContextCreator.busSchedule.pendingSchedules.containsKey(stop)) {
+			return ContextCreator.busSchedule.pendingSchedules.get(stop).size()>0;
+		}
+		return false;
+	}
 }

@@ -158,6 +158,12 @@ private static Properties config;
 	        Double.valueOf(loadConfig("PROBABILITY_OF_UPDATING_ROUTING"));
 	public static final boolean PROACTIVE_RELOCATION =
 	        Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
+	public static final boolean PROACTIVE_CHARGING =
+	        Boolean.valueOf(loadConfig("PROACTIVE_CHARGING"));
+	public static final double RECHARGE_LEVEL_LOW =
+	        Double.valueOf(loadConfig("RECHARGE_LEVEL_LOW"));
+	public static final double RECHARGE_LEVEL_HIGH =
+	        Double.valueOf(loadConfig("RECHARGE_LEVEL_HIGH"));
 
 	/* For car following and lane changing */
 	public static final float ALPHA_DEC = Float

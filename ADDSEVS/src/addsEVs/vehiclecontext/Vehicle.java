@@ -1046,10 +1046,6 @@ public class Vehicle {
 		return this.reachDest;
 	}
 
-	public boolean onRoad() {
-		return this.onRoad;
-	}
-
 	public boolean checkAtDestination() throws Exception { // Close to the last intersection
 		if (distance_ < GlobalVariables.INTERSECTION_BUFFER_LENGTH) {
 			this.setReachDest();
@@ -1228,14 +1224,13 @@ public class Vehicle {
 	
 	protected void leaveNetwork() {
 		Coordinate target = null;
-//		GeometryFactory geomFac = new GeometryFactory();
 		target = this.destCoord;
 		this.setCurrentCoord(target);
-//		Geometry targetGeom = geomFac.createPoint(target);
-//		ContextCreator.getVehicleGeography().move(this, targetGeom);
 		this.clearShadowImpact();
 		this.removeFromLane();
+		this.onlane = false;
 		this.removeFromMacroList();
+		this.onRoad = false;
 		this.setPreviousEpochCoord(target);
 		this.endTime = 0;
 		this.atOrigin = true;
@@ -1251,10 +1246,8 @@ public class Vehicle {
 		this.setDestRoadID(0);
 		// Update the vehicle into the queue of the corresponding link
 		this.lastStepMove_ = 0;
-		//this.vehicleID_ = h.getId();
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
-		//this.setNextPlan();
 		// For adaptive network partitioning
 		this.Nshadow = 0;
 		this.futureRoutingRoad = new ArrayList<Road>();
@@ -1264,12 +1257,6 @@ public class Vehicle {
 		return currentSpeed_;
 	}
 
-	/*
-	 * ----------------------------------------------------------------------
-	 * From this we build functions that are used to incorporate lane
-	 * object.
-	 * ----------------------------------------------------------------------
-	 */
 	// In one road find the front leader in the same lane of the road, if
 	// there is no front, then return null.
 	public Vehicle findFrontBumperLeaderInSameRoad(Lane plane) {
@@ -1336,7 +1323,6 @@ public class Vehicle {
 	/**
 	 * @param: distance_ is with respect to the end of road
 	 */
-	// Changed from distance_ to realDistance_
 	public void advanceInMacroList() {
 		// (0) Check if vehicle should be advanced in the list
 		if (macroLeading_ == null || this.distance_ >= macroLeading_.distance_) {

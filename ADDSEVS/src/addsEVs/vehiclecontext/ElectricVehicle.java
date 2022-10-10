@@ -30,7 +30,8 @@ public class ElectricVehicle extends Vehicle{
 	public Queue<Passenger> passengerWithAdditionalActivityOnTaxi;
 	private double avgPersonMass_; // average mass of a person in lbs
 	private double batteryLevel_; // current battery level
-	private double batteryRechargeLevel_;
+	private double lowerBatteryRechargeLevel_;
+	private double higherBatteryRechargeLevel_;
 	private double mass; // mass of the vehicle in kg
 	private boolean onChargingRoute_ = false;
 	
@@ -106,7 +107,7 @@ public class ElectricVehicle extends Vehicle{
 	
     @Override
 	public void updateBatteryLevel() {
-    	double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick, LZ: for display, I enlarge this by 5 times 
+    	double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
     	tickConsume = tickEnergy;
     	linkConsume += tickEnergy; // Update energy consumption on current link
     	totalConsume += tickEnergy;
@@ -182,6 +183,8 @@ public class ElectricVehicle extends Vehicle{
 			this.tripConsume = 0; 
 			this.accummulatedDistance_=0;
 			
+			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
+			
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
 				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).taxiServedPass += 1;
@@ -190,7 +193,7 @@ public class ElectricVehicle extends Vehicle{
 					// generate a pass and add it to the corresponding zone
 					Passenger p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
-					Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID());
+					
 				    if(z.busTravelTime.containsKey(p.getDestination())) {// if bus can reach the destination
 				    	z.addBusPass(p);
 				    }
@@ -200,13 +203,16 @@ public class ElectricVehicle extends Vehicle{
 				    }
 				}
 			}
-			if(!onChargingRoute_ && batteryLevel_ <= batteryRechargeLevel_ && this.getNumPeople() == 0) {
-				this.goCharging();
-			}
-			else if(this.getNumPeople()>0){
+			if(this.getNumPeople()>0){
 				super.setReachDest();
 				this.setNextPlan();
 				this.departure();
+			}
+			else if(!onChargingRoute_ && 
+					(batteryLevel_ <= lowerBatteryRechargeLevel_ || 
+					(batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi()))
+					&& this.getNumPeople() == 0) {
+				this.goCharging();
 			}
 			else{
 				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).add(this);//append this vehicle to the available vehicle of given zones
@@ -223,8 +229,10 @@ public class ElectricVehicle extends Vehicle{
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;
-		this.batteryLevel_ =  0.2*GlobalVariables.EV_BATTERY + Math.random()*0.8*GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
-		this.batteryRechargeLevel_ = 0.2*GlobalVariables.EV_BATTERY;
+		this.batteryLevel_ =  GlobalVariables.RECHARGE_LEVEL_LOW*GlobalVariables.EV_BATTERY + 
+				Math.random()*(1-GlobalVariables.RECHARGE_LEVEL_LOW)*GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW*GlobalVariables.EV_BATTERY;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH*GlobalVariables.EV_BATTERY;
 		this.mass = 1521; //kg
 		this.avgPersonMass_ = 60; //kg
 		
