@@ -21,8 +21,8 @@ import repast.simphony.essentials.RepastEssentials;
 class The_Comparator implements Comparator<OneBusSchedule> {
     public int compare(OneBusSchedule s1, OneBusSchedule s2)
     {
-        Integer d1 = s1.departureTime;
-        Integer d2 = s2.departureTime;
+        Integer d1 = s1.departureTime.get(0);
+        Integer d2 = s2.departureTime.get(0);
         return d1.compareTo(d2);
     }
 }
@@ -132,22 +132,11 @@ public class BusSchedule{
 		
 		ContextCreator.logger.info("Received bus schedules");
 		ContextCreator.getCityContext().refreshTravelTime(); // Update bus travel time
-		if (GlobalVariables.COLLABORATIVE_EV) {
-			for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
-				z.updateCombinedTravelEstimation();
-			}
-		}
 		for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
 			// Deal with the remaining passengers for buses in each zone
 			z.reSplitPassengerDueToBusRescheduled();
 		}
-		ContextCreator.logger.info("Travel time refreshed");
 		// Reset all parking buses' schedules
-//		for (Bus b: ContextCreator.getVehicleContext().getBuses()) {
-//			if(b.getNextStop()==0 && b.getPassNum()==0) {
-//				b.resetScehdule();
-//			}
-//		}
 		this.processSchedule();
 	}
 	
@@ -173,7 +162,7 @@ public class BusSchedule{
 		if(this.pendingSchedules!=null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule
 			if(this.pendingSchedules.get(startZone).size()>0) {
-				if(this.pendingSchedules.get(startZone).peek().departureTime<(current_tick+3600/GlobalVariables.SIMULATION_STEP_SIZE)) {
+				if(this.pendingSchedules.get(startZone).peek().departureTime.get(0)<(current_tick+3600/GlobalVariables.SIMULATION_STEP_SIZE)) {
 					OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
 					b.updateSchedule(obs.routeID, 
 							obs.busRoute,
@@ -185,7 +174,7 @@ public class BusSchedule{
 		// Otherwise set a null schedule
 		b.updateSchedule(-1, 
 				new ArrayList<Integer> (),
-				0);
+				new ArrayList<Integer> ());
 	}
 	
 	public boolean hasSchedule(Integer stop) {

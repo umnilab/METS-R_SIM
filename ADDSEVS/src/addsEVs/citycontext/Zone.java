@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -28,22 +29,21 @@ import repast.simphony.essentials.RepastEssentials;
 
 public class Zone {
 	// Basic attributes
-	protected int id;
+	private int id;
 
-	protected int integerID;
-	protected int zoneClass; // 0 for normal zone, 1 for airport
-	protected String charID;
+	private int integerID;
+	private int zoneClass; // 0 for normal zone, 1 for hub
+	private String charID;
 	
 	protected LinkedBlockingDeque<Passenger> passInQueueForTaxi; // Nonsharable passenger queue for taxis
 	protected Map<Integer, Queue<Passenger>> sharablePassForTaxi; // Shareable passenger for taxis
 	protected LinkedBlockingDeque<Passenger> passInQueueForBus; //Passenger queue for bus
 	
-	protected int nPassForTaxi; // Number of passenger for Taxi
-	protected int nPassForBus; // Number of passenger for Bus
-
-	protected ArrayList<Float> destDistribution; // Destination distribution of generated passengers
+	private int nPassForTaxi; // Number of passenger for Taxi
+	private int nPassForBus; // Number of passenger for Bus
 	
 	// Parameters for mode choice model starts
+	private int curhour = -1; // the last time for updating the travel time estimation
 	public List<Integer> busReachableZone;
 	public Map<Integer, Float> busGap; 
 	public Map<Integer, Float> taxiTravelTime;
@@ -70,19 +70,18 @@ public class Zone {
 	public int taxiWaitingTime;
 	// Metrics end
 	
-	protected int vehicleStock=0; // Number of available vehicles at this zone
+	private AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
 	
 	// For vehicle repositioning
-	protected int lastUpdateHour = -1;
-	protected double futureDemand = 0; // demand in the next 5 minutes
-	protected double futureSupply = 0; // supply in the next 5 minutes
+	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
+	private AtomicInteger futureDemand = new AtomicInteger(0); // demand in the near future
+	private AtomicInteger futureSupply = new AtomicInteger(0); // supply in the near future
 	
 	// For collaborative taxi and transit
 	public Map<Integer, Zone> nearestZoneWithBus;
 	
-	// For a better vehicle reposition algorithm
+	// Sorted neighboring Zone from the closest to the farthest
 	public List<Zone> neighboringZones;
-	
 
 	public Zone(int integerID) {
 		this.id = ContextCreator.generateAgentID();
@@ -95,7 +94,6 @@ public class Zone {
 		this.nPassForTaxi = 0;
 		this.busReachableZone = new ArrayList<Integer>();
 		this.busGap = new HashMap<Integer, Float>();
-		this.destDistribution = new ArrayList<Float>();
 		if(GlobalVariables.HUB_INDEXES.contains(this.integerID)) {
 			this.zoneClass = 1;
 		}
@@ -127,27 +125,32 @@ public class Zone {
 	}
 	
 	public void step(){
-		// Zone serve passenger, passenger wait
+		// Happens at time step t
 		this.servePassengerByTaxi();
-		this.passengerWaitTaxi();
-		this.passengerWaitBus(); // Passenger wait
 		this.relocateTaxi();
+		this.updateTravelEstimation();
+		
+		// Happens between t and t + 1
+		this.passengerWaitTaxi();
+		this.passengerWaitBus();
 		this.taxiWaitPassenger();
+		this.generatePassenger();
 	}
 	
 	public void generatePassenger(){
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		int hour = (int) Math.floor(tickcount
-				* GlobalVariables.SIMULATION_STEP_SIZE / 3600);
+		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL);
+		hour = hour % GlobalVariables.HOUR_OF_DEMAND;
 		if(this.lastUpdateHour != hour){ 
-			this.futureDemand = 0;
+			this.futureDemand.set(0);
 		}
 		
 		if(this.zoneClass == 0){ // From other place to hub
             int j = 0;
             for(int destination : GlobalVariables.HUB_INDEXES){
             	double passRate = ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-        				GlobalVariables.NUM_OF_ZONE).get(hour) / 12.0;
+        				GlobalVariables.NUM_OF_ZONE).get(hour) * (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL/
+        						(3600/GlobalVariables.SIMULATION_STEP_SIZE));
             	passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
             	double numToGenerate = Math.floor(passRate) + (Math.random()<(passRate-Math.floor(passRate))?1:0);
             	
@@ -170,7 +173,7 @@ public class Zone {
 						}
 					}
 					if(this.lastUpdateHour != hour){ 
-	            		this.futureDemand += passRate * threshold;
+	            		this.futureDemand.addAndGet((int) ( passRate * threshold));
 	            	}
 				}
 				else if (GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)){
@@ -206,7 +209,7 @@ public class Zone {
 						}
 					}
 					if(this.lastUpdateHour != hour){ 
-	            		this.futureDemand += passRate * threshold;
+						this.futureDemand.addAndGet((int) ( passRate * threshold));
 	            	}
 				}
 				else {
@@ -226,7 +229,7 @@ public class Zone {
 						this.numberOfGeneratedTaxiPass += 1;
 					}
 					if(this.lastUpdateHour != hour){ 
-	            		this.futureDemand += passRate;
+						this.futureDemand.addAndGet((int) ( passRate));
 	            	}
 				}
 				j+=1;
@@ -238,7 +241,8 @@ public class Zone {
 			int j = GlobalVariables.HUB_INDEXES.indexOf(this.integerID);
 			for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
 				int destination = i;
-				double passRate =ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) / 12.0;
+				double passRate = ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) * 
+						(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL/(3600/GlobalVariables.SIMULATION_STEP_SIZE));;
 				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate) + (Math.random()<(passRate-Math.floor(passRate))?1:0);
 	            if (destination != this.integerID) {
@@ -265,7 +269,7 @@ public class Zone {
 							}
 	            		}
 	            		if(this.lastUpdateHour != hour){ 
-		            		this.futureDemand += passRate * threshold;
+	            			this.futureDemand.addAndGet((int) ( passRate * threshold));
 		            	}
 	            	}
 	            	else if(GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)){
@@ -300,7 +304,7 @@ public class Zone {
 							}
 	            		}
 	            		if(this.lastUpdateHour != hour){ 
-	            			this.nearestZoneWithBus.get(destination).futureDemand += passRate * threshold;
+	            			this.nearestZoneWithBus.get(destination).futureDemand.addAndGet((int) ( passRate * threshold));
 		            	}
 	            	}
 	            	else {
@@ -320,7 +324,7 @@ public class Zone {
 							this.numberOfGeneratedTaxiPass += 1;
 	            		}
 	            		if(this.lastUpdateHour != hour){ 
-		            		this.futureDemand += passRate;
+	            			this.futureDemand.addAndGet((int) ( passRate));;
 		            	}
 	            	}
 				}
@@ -357,7 +361,7 @@ public class Zone {
 						}
 						v.servePassenger(tmp_pass);
 						// Update future supply of the target zone
-						ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).futureSupply += 1;
+						ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
 						this.removeVehicleStock(1);
 						pass_num = pass_num - tmp_pass.size();
 						
@@ -383,7 +387,7 @@ public class Zone {
 			}
 			v.servePassenger(Arrays.asList(current_taxi_pass));
 			// Update future supply of the target zone
-			ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).futureSupply += 1;
+			ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
 			this.removeVehicleStock(1);
 			// Record served passenger
 			this.nPassForTaxi-=1;
@@ -399,14 +403,14 @@ public class Zone {
 			// Decide the number of relocated vehicle with the precaution on potential future vehicle shortage/overflow 
 			// Divided by (generated passenger interval/served passenger interval)=5
 			// (GlobalVariables.SIMULATION_PASSENGER_ARRIVAL_INTERVAL/GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL);
-			if(this.futureSupply<0) {
+			if(this.getFutureSupply()<0) {
 				ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
 			}
 			// we prefer storing more vehicles at hubs 6 means the time step of looking ahead
 			// 0.5 means probability of vehicle needs to go charging
 			// 2 for the reposition rate
 			double relocateRate = 0;
-			relocateRate = nPassForTaxi - this.vehicleStock + this.futureDemand - this.futureSupply;
+			relocateRate = nPassForTaxi - this.vehicleStock.get() + this.futureDemand.get() - this.futureSupply.get();
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
 			while (numToRelocate > 0) {
 //				double max_stock = 0;
@@ -441,7 +445,7 @@ public class Zone {
 					v.relocation(source.getIntegerID(), this.integerID);
 					this.numberOfRelocatedVehicles += 1;
 					source.removeVehicleStock(1);
-					this.futureSupply += 1;
+					this.futureSupply.addAndGet(1);
 				}
 				else {
 					break; // The system is short of vehicles!
@@ -451,7 +455,7 @@ public class Zone {
 		}
 		else {
 			// Reactive reposition
-			double relocateRate = (nPassForTaxi - this.vehicleStock);
+			double relocateRate = (nPassForTaxi - this.vehicleStock.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
 			while (numToRelocate > 0) {
 //				double max_stock = 0;
@@ -487,7 +491,7 @@ public class Zone {
 					v.relocation(source.getIntegerID(), this.integerID);
 					this.numberOfRelocatedVehicles += 1;
 					source.removeVehicleStock(1);
-					this.futureSupply += 1;
+					this.futureSupply.addAndGet(1);
 				}
 				else {
 					break; // The system is short of vehicles!
@@ -532,7 +536,7 @@ public class Zone {
     public void passengerWaitTaxi(){
     	for(Queue<Passenger> passQueue: this.sharablePassForTaxi.values()) {
     		for(Passenger p: passQueue) {
-    			p.waitNextTime(GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL);
+    			p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
     		}
     		while(passQueue.peek() != null) {
     			if(passQueue.peek().check()) {
@@ -548,7 +552,7 @@ public class Zone {
     	
     	List<Passenger> leftPass = new ArrayList<Passenger>();
     	for(Passenger p: this.passInQueueForTaxi){
-    		p.waitNextTime(GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL);
+    		p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
     		if(p.check()){
     			leftPass.add(p);
     			this.numberOfLeavedTaxiPass += 1;
@@ -564,7 +568,7 @@ public class Zone {
     public void passengerWaitBus(){
     	List<Passenger> leftPass = new ArrayList<Passenger>();
     	for(Passenger p: this.passInQueueForBus){
-    		p.waitNextTime(GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL);
+    		p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
     		if(p.check()){
     			leftPass.add(p);
     			this.numberOfLeavedBusPass += 1;
@@ -576,9 +580,9 @@ public class Zone {
     	}
 	}
     
-    //Taxi waiting for passenger
+    // Taxi waiting for passenger, update this if the relocation is based on the taxiWaiting time
     public void taxiWaitPassenger(){
-    	this.taxiWaitingTime += ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()*GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL;
+    	this.taxiWaitingTime += ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()*GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
     }
     
     public int getTaxiPassengerNum(){
@@ -607,24 +611,24 @@ public class Zone {
 	}
 	
 	public void addVehicleStock(int vehicle_num){
-		this.vehicleStock += vehicle_num;
+		this.vehicleStock.addAndGet(vehicle_num);
 	}
 	
 	public void addOneVehicle(){
-		this.vehicleStock += 1;
-		this.futureSupply -= 1;
+		this.vehicleStock.addAndGet(1);
+		this.removeFutureSupply();
 	}
 	
 	public void removeVehicleStock(int vehicle_num){
-		if(this.vehicleStock-vehicle_num<0){
+		if(this.vehicleStock.get()-vehicle_num<0){
 			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
 			return;
 		}
-		this.vehicleStock -= vehicle_num;
+		this.vehicleStock.addAndGet(vehicle_num);
 	}
 	
 	public int getVehicleStock(){
-		return this.vehicleStock;
+		return this.vehicleStock.get();
 	}
 	
 	public int getZoneClass(){
@@ -687,8 +691,11 @@ public class Zone {
 	}
 	
 	// Update travel time estimation for taxi
-	// TODO: Cache the results to save more time
 	public void updateTravelEstimation(){
+		// Get current tick
+		int tickcount = (int) RepastEssentials.GetTickCount();
+		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
+		if (this.curhour < hour) {
 			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
 			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
 			// is hub
@@ -733,6 +740,13 @@ public class Zone {
 				this.setTaxiTravelDistanceMap(travelDistanceMap);
 				this.setTaxiTravelTimeMap(travelTimeMap);
 			}
+			
+			if(GlobalVariables.COLLABORATIVE_EV) {
+				this.updateCombinedTravelEstimation();
+			}
+			
+			this.curhour = hour;
+		}
 	}
 	
 	// Update travel time estimation for modes combining taxi and bus
@@ -849,23 +863,23 @@ public class Zone {
 	}
     
     public void addFutureSupply() {
-    	this.futureSupply += 1;
+    	this.futureSupply.addAndGet(1);
     }
     
     public void removeFutureSupply() {
-    	this.futureSupply -= 1;
+    	this.futureSupply.addAndGet(-1);
     }
     
-    public double getFutureDemand() {
-    	return this.futureDemand;
+    public int getFutureDemand() {
+    	return this.futureDemand.get();
     }
     
-    public double getFutureSupply() {
-    	return this.futureSupply;
+    public int getFutureSupply() {
+    	return this.futureSupply.get();
     }
     
     public boolean hasEnoughTaxi(){
-    	return this.getVehicleStock() - this.nPassForTaxi - 6 * this.futureDemand > 0;
+    	return this.getVehicleStock() - this.nPassForTaxi - getFutureDemand() > 0;
     }
 }
 

@@ -22,7 +22,6 @@ import repast.simphony.context.DefaultContext;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 import repast.simphony.space.graph.RepastEdge;
-import repast.simphony.essentials.RepastEssentials;
 
 public class CityContext extends DefaultContext<Object> {
 
@@ -87,7 +86,7 @@ public class CityContext extends DefaultContext<Object> {
 		try {
 			distance = calculator.getOrthodromicDistance();
 		} catch (AssertionError ex) {
-			System.err.println("Error with finding distance");
+			ContextCreator.logger.error("Error with finding distance");
 			distance = 0.0;
 		}
 		return distance;
@@ -169,7 +168,8 @@ public class CityContext extends DefaultContext<Object> {
 						+ "already exists in the RoadNetwork!");
 			}
 
-		} // For road
+		} 
+		// For road
 		roadIt = roadGeography.getAllObjects();
 		ContextCreator.logger.info("Junction initialized!");
 		// Assign the lanes to each road
@@ -267,10 +267,7 @@ public class CityContext extends DefaultContext<Object> {
 
 	/* We update node based routing while modify road network */
 	public void modifyRoadNetwork() {
-		int tickcount;
-		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		Iterable<Road> roadIt = roadGeography.getAllObjects();
-		for (Road road : roadIt) {
+		for (Road road :  ContextCreator.getRoadGeography().getAllObjects()) {
 			road.setTravelTime();
 			Junction junc1 = road.getJunctions().get(0);
 			Junction junc2 = road.getJunctions().get(1);
@@ -279,8 +276,6 @@ public class CityContext extends DefaultContext<Object> {
 		}
 
 		// At beginning, initialize route object
-		tickcount = (int) RepastEssentials.GetTickCount();
-		ContextCreator.logger.info("Tick: " + tickcount);
 		if (!ContextCreator.isRouteUCBMapPopulated()) {
 			try {
 				RouteV.createRoute();
@@ -321,10 +316,7 @@ public class CityContext extends DefaultContext<Object> {
 		try {
 			id = this.edgeIdNum_KeyEdge.get(edge);
 		} catch (Exception e) {
-			System.err
-					.println("CityContext: getIdNumFromEdge: Error, probably no id found for edge "
-							+ edge.toString());
-			System.err.println(e.getStackTrace());
+			e.printStackTrace();
 		}
 		return id;
 	}
@@ -340,10 +332,9 @@ public class CityContext extends DefaultContext<Object> {
 		try {
 			edge = this.edgeIDs_KeyIDNum.get(id);
 		} catch (Exception e) {
-			System.err
-					.println("CityContext: getEdgeDromID: Error, probably no edge found for id "
+			ContextCreator.logger.error("CityContext: getEdgeDromID: Error, probably no edge found for id "
 							+ id);
-			System.err.println(e.getStackTrace());
+			e.printStackTrace();
 		}
 		return edge;
 	}

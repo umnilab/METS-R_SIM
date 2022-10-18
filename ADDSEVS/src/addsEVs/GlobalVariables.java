@@ -83,14 +83,16 @@ private static Properties config;
 	public static final String AGG_DEFAULT_PATH = loadConfig("AGG_DEFAULT_PATH");
 	public static final float SIMULATION_STEP_SIZE = Float
 			.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
-	public static final int SIMULATION_PASSENGER_ARRIVAL_INTERVAL =  Integer
-			.valueOf(loadConfig("SIMULATION_PASSENGER_ARRIVAL_INTERVAL"));
-	public static final int SIMULATION_PASSENGER_SERVE_INTERVAL =  Integer
-			.valueOf(loadConfig("SIMULATION_PASSENGER_SERVE_INTERVAL"));
+	public static final int SIMULATION_ZONE_REFRESH_INTERVAL =  Integer
+			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"));
+	public static final int SIMULATION_DEMAND_REFRESH_INTERVAL =  Integer
+			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"));
+	public static final int SIMULATION_SPEED_REFRESH_INTERVAL =  Integer
+			.valueOf(loadConfig("SIMULATION_SPEED_REFRESH_INTERVAL"));
 	public static final int SIMULATION_NETWORK_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_NETWORK_REFRESH_INTERVAL"));
 	public static final int SIMULATION_CHARGING_STATION_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_CHARGING_STATION_REFRESH_INTERVAL")); //Xue
+			.valueOf(loadConfig("SIMULATION_CHARGING_STATION_REFRESH_INTERVAL"));
 	public static final int SIMULATION_PARTITION_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_PARTITION_REFRESH_INTERVAL"));
 	
@@ -101,8 +103,6 @@ private static Properties config;
 	// Threshold amount of vehicles that requires more frequent network partitioning 
 	public static final int THRESHOLD_VEHICLE_NUMBER = Integer
 			.valueOf(loadConfig("THRESHOLD_VEHICLE_NUMBER"));
-	public static int SIMULATION_SLEEPS = Integer
-			.valueOf(loadConfig("SIMULATION_SLEEPS"));// This variable decides if simulator pauses for sometime to listen visualization. If zero then it waits, else it moves forward. 
 	// For global variables of the adaptive network weighting 
 	public static final int PART_ALPHA = Integer
 			.valueOf(loadConfig("PART_ALPHA"));
@@ -138,8 +138,6 @@ private static Properties config;
 	public static final int N_SHADOW = Integer.valueOf(loadConfig("N_SHADOW"));
 	
 	/* For vehicle routing */
-	public static final boolean SINGLE_SHORTEST_PATH = Boolean
-			.valueOf(loadConfig("SINGLE_SHORTEST_PATH")); 
 	public static final boolean K_SHORTEST_PATH = Boolean
 			.valueOf(loadConfig("K_SHORTEST_PATH")); 
 	public static final int K_VALUE = Integer.valueOf(loadConfig("K_VALUE"));

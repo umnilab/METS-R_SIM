@@ -83,39 +83,18 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 //			this.vehicleMap.put(z.getIntegerID(), tmpQueue);
 //			z.addVehicleStock(vehicle_num_to_generate);
 //		}
-		
-		// New mechanism: Generate according to demand distribution
-		HashMap<Integer, Double> demand_per_zone = new HashMap<Integer, Double>();
-		double demand_total = 0;
-		
-		for(Zone z: zoneGeography.getAllObjects()) {
-			double demand_from_zone = 0;
-			if(z.getZoneClass() == 1) {
-				int j = GlobalVariables.HUB_INDEXES.indexOf(z.getIntegerID());
-				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(i+j*GlobalVariables.NUM_OF_ZONE*2), 
-							GlobalVariables.HOUR_OF_DEMAND-1);
-				}
-			}
-			else {
-				for(int j = 0; j < GlobalVariables.HUB_INDEXES.size(); j++){
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(z.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-	        				GlobalVariables.NUM_OF_ZONE), GlobalVariables.HOUR_OF_DEMAND-1);
-				}
-			}
-			demand_total += demand_from_zone;
-			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
-		}
-		ContextCreator.logger.info("Vehicle Generation: total demand " + demand_total);
+		// New mechanism: Generating vehicle according to demand distribution
+	    double demand_total = 0;
+	    for(double demand_per_zone: ContextCreator.demand_per_zone.values()) {
+	    	demand_total += demand_per_zone;
+	    }
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
 		for (Zone z : zoneGeography.getAllObjects()) {
 			Geometry hgeom = zoneGeography.getGeometry(z);
 			Coordinate coord = hgeom.getCoordinate();
 			LinkedBlockingQueue<ElectricVehicle> tmpQueue = new LinkedBlockingQueue<ElectricVehicle>();
-			int vehicle_num_to_generate = (int) Math.ceil(vehicle_num * demand_per_zone.get(z.getIntegerID()) / demand_total);
+			int vehicle_num_to_generate = (int) Math.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
 			vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 			num_total -= vehicle_num_to_generate;
 			for (int i = 0; i < vehicle_num_to_generate; i++) {
@@ -193,11 +172,4 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.vehicleMap.get(integerID).add(v);
 	}
 	
-	public double sumOfArray(ArrayList<Double> arrayList, int n)
-    {
-        if (n == 0)
-            return arrayList.get(n);
-        else
-            return arrayList.get(n) + sumOfArray(arrayList, n - 1);
-    }
 }

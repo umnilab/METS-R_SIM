@@ -3,7 +3,10 @@ package addsEVs;
 import java.util.concurrent.*;
 
 import addsEVs.ContextCreator;
+import addsEVs.citycontext.ChargingStation;
 import addsEVs.citycontext.Road;
+import addsEVs.citycontext.Zone;
+
 import java.util.*;
 
 import repast.simphony.engine.environment.RunEnvironment;
@@ -30,21 +33,22 @@ public class ThreadedScheduler {
 		this.seq_time = 0;
 	}
 	
-	public void paraStep() {
-		// Load the road partitions
-		ArrayList<ArrayList<Road>> PartitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
+	public void paraRoadStep() {
+		// Load the partitions
+		ArrayList<ArrayList<Road>> partitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
 		// The Between road is no longer used as they are already added in 
 		// the above variable 
 		// ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
 		
 		// Creates an list of tasks
-		List<PartitionThread> tasks = new ArrayList<PartitionThread>();
+		List<PartitionRoadThread> tasks = new ArrayList<PartitionRoadThread>();
 		for (int i = 0; i< this.N_Partition; i++) {
-			tasks.add(new PartitionThread(PartitionedInRoads.get(i), i));
+			tasks.add(new PartitionRoadThread(partitionedInRoads.get(i), i));
 		}
+		
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
-			
+			stepBwRoads(); // Process the roads between different partitions
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
 			for (int i = 0; i < N_Partition; i++)
 				time_stat.add(futures.get(i).get());
@@ -52,13 +56,59 @@ public class ThreadedScheduler {
 			min_para_time = min_para_time + time_result.get(0);
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
-			
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
 	}
 	
-	// Deprecated
+	public void paraZoneStep() {
+		// Load the partitions
+		ArrayList<ArrayList<Zone>> partitionedZones = ContextCreator.partitioner.getpartitionedZones();
+		
+		// Creates an list of tasks
+		List<PartitionZoneThread> tasks = new ArrayList<PartitionZoneThread>();
+		for (int i = 0; i< this.N_Partition; i++) {
+			tasks.add(new PartitionZoneThread(partitionedZones.get(i), i));
+		}
+		try {
+			List<Future<Integer>> futures = executor.invokeAll(tasks);
+			ArrayList<Integer> time_stat = new ArrayList<Integer>();
+			for (int i = 0; i < N_Partition; i++)
+				time_stat.add(futures.get(i).get());
+			ArrayList<Integer> time_result = minMaxAvg(time_stat);
+			min_para_time = min_para_time + time_result.get(0);
+			max_para_time = max_para_time + time_result.get(1);
+			avg_para_time = avg_para_time + time_result.get(2);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+	
+	public void paraChargingStationStep() {
+		// Load the partitions
+		ArrayList<ArrayList<ChargingStation>> patitionChargingStations = ContextCreator.partitioner.getpartitionedChargingStations();
+		
+		// Creates an list of tasks
+		List<PartitionChargingStationThread> tasks = new ArrayList<PartitionChargingStationThread>();
+		for (int i = 0; i< this.N_Partition; i++) {
+			tasks.add(new PartitionChargingStationThread(patitionChargingStations.get(i), i));
+		}
+		
+		try {
+			List<Future<Integer>> futures = executor.invokeAll(tasks);
+			stepBwRoads(); // Process the roads between different partitions
+			ArrayList<Integer> time_stat = new ArrayList<Integer>();
+			for (int i = 0; i < N_Partition; i++)
+				time_stat.add(futures.get(i).get());
+			ArrayList<Integer> time_result = minMaxAvg(time_stat);
+			min_para_time = min_para_time + time_result.get(0);
+			max_para_time = max_para_time + time_result.get(1);
+			avg_para_time = avg_para_time + time_result.get(2);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+	
 	public void stepBwRoads() {
 		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner
 				.getPartitionedBwRoads();
@@ -106,11 +156,11 @@ public class ThreadedScheduler {
 }
 
 /* Single thread to call road's step() method */
-class PartitionThread implements Callable<Integer> {
+class PartitionRoadThread implements Callable<Integer> {
 	private ArrayList<Road> RoadSet;
 	private int threadID;
 	
-	public PartitionThread(ArrayList<Road> roadPartition, int ID) {
+	public PartitionRoadThread(ArrayList<Road> roadPartition, int ID) {
 		this.RoadSet = roadPartition;
 		this.threadID = ID;
 	}
@@ -128,7 +178,60 @@ class PartitionThread implements Callable<Integer> {
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}
-//		return this.threadID;
+		return (int) (System.currentTimeMillis() - start_t);
+	}
+}
+
+/* Single thread to call zones's step() method */
+class PartitionZoneThread implements Callable<Integer> {
+	private ArrayList<Zone> ZoneSet;
+	private int threadID;
+	
+	public PartitionZoneThread(ArrayList<Zone> zonePartition, int ID) {
+		this.ZoneSet = zonePartition;
+		this.threadID = ID;
+	}
+	
+	public int getThreadID(){
+		return this.threadID;
+	}
+	
+	public Integer call() {
+		double start_t = System.currentTimeMillis();
+		try {
+			for (Zone z : this.ZoneSet) {
+				z.step();
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		return (int) (System.currentTimeMillis() - start_t);
+	}
+}
+
+/* Single thread to call charging station's step() method */
+class PartitionChargingStationThread implements Callable<Integer> {
+	private ArrayList<ChargingStation> ChargingStationSet;
+	private int threadID;
+	
+	public PartitionChargingStationThread(ArrayList<ChargingStation> chargingStationPartition, int ID) {
+		this.ChargingStationSet = chargingStationPartition;
+		this.threadID = ID;
+	}
+	
+	public int getThreadID(){
+		return this.threadID;
+	}
+	
+	public Integer call() {
+		double start_t = System.currentTimeMillis();
+		try {
+			for (ChargingStation cs : this.ChargingStationSet) {
+				cs.step();
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
 }

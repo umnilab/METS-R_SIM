@@ -103,13 +103,10 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 			    	 for (Zone zone : zoneGeography.getAllObjects()) {
 			    		 Coordinate coord = zone.getCoord();
 			    		 if (j.getCoordinate().equals(coord))
-//			    			 nodeWeight = zone.getEvacuatingDemand() * 10 + 1;
-//			    			 nodeWeight = zone.getEvacuatingDemand() + 1;
 			    		 	// For adaptive network partitioning
 			    		 	nodeWeight = zone.getTaxiPassengerNum() * this.alpha + 1;
 			    		 	 
 			    	 }
-			    	 // System.err.println("Node " + j.getJunctionID() + " demand = " + nodeWeight);
 		    	 }
 		    	 
 		    	 GNode<MetisNode> n = GaliosGraph.createNode(new MetisNode(i, nodeWeight)); 
@@ -221,7 +218,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 		        
 		        if(n1.getData().getPartition() == n2.getData().getPartition()){ //if road lie within a partition then add the road corresponding to that partition
 		        	PartitionedInRoads.get(n1.getData().getPartition()).add(road);
-		        	
 		        	PartitionWeights.set(n1.getData().getPartition(), PartitionWeights.get(n1.getData().getPartition()) + edgeWeight);
 		        	
 		        }else{ //If road lies between partitions then store the road along with its partition IDs
@@ -230,15 +226,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 		        	tempList.add(n1.getData().getPartition());
 		        	tempList.add(n2.getData().getPartition());
 		        	BwRoadMembership.add(tempList);
-		        	
-		        	// Merging the road to neighboring partition with lower total edge weight
-		        	if (PartitionWeights.get(n1.getData().getPartition()) < PartitionWeights.get(n2.getData().getPartition())) {
-		        		PartitionedInRoads.get(n1.getData().getPartition()).add(road);
-		        		PartitionWeights.set(n1.getData().getPartition(), PartitionWeights.get(n1.getData().getPartition()) + edgeWeight);
-		        	} else {
-		        		PartitionedInRoads.get(n2.getData().getPartition()).add(road);
-		        		PartitionWeights.set(n2.getData().getPartition(), PartitionWeights.get(n2.getData().getPartition()) + edgeWeight);
-		        	}
 		        }
 		    }
 		    

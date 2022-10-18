@@ -52,7 +52,7 @@ public class VehicleRouting {
 			graphA = ((JungNetwork) network).getGraph();
 		else if (network instanceof ContextJungNetwork)
 			graphA = ((ContextJungNetwork) network).getGraph();
-
+		
 		JungToJgraph<Junction> converter = new JungToJgraph<Junction>();
 		this.transformedNetwork = converter.convertToJgraph(graphA);
 	}
@@ -63,7 +63,7 @@ public class VehicleRouting {
 		
 		KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc, K);
 		List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(destJunc);
-		System.out.println(kshortestPath.size());
+		
 		for(int k=0;k<kshortestPath.size();k++){
 			List<RepastEdge<Junction>> shortestPath = kshortestPath.get(k).getEdgeList();
 			// Find the roads which are associated with these edges
@@ -131,31 +131,9 @@ public class VehicleRouting {
 			}
 			shortestPath = kshortestPath.get(k).getEdgeList();
 			
-		} else if (GlobalVariables.SINGLE_SHORTEST_PATH) {
-			/* Old thread unsafe implementation using shortest path algorithm from Repast library
-			ShortestPath<Junction> p = new ShortestPath<Junction>(network);
-			shortestPath = p.getPath(currJunc, destJunc);
-			p.finalize();*/
-			
-			/* New implementation using JGraphT */
+		} else{ // Single shortest path
 			DijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc, destJunc);
 			shortestPath = sp.getPathEdgeList();
-			
-//			/*debugging*/
-//			Junction currJunc_db = null;
-//			Junction destJunc_db = null;
-//			for (Junction node: this.transformedNetwork.vertexSet())
-//			{
-//				if(node.getJunctionID()==11010)
-//					currJunc_db = node;
-//				if(node.getJunctionID()==11073)
-//					destJunc_db = node;
-//			}
-//			DijkstraShortestPath<Junction, RepastEdge<Junction>> sp_debug = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc_db, destJunc_db);
-//			for (RepastEdge<Junction> edge : sp_debug.getPathEdgeList())
-//			{
-//				System.out.println("id="+cityContext.getLinkIDFromEdge(edge));
-//			}
 		}
 
 		

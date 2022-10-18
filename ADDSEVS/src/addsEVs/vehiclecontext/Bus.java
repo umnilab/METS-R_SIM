@@ -371,7 +371,7 @@ public class Bus extends Vehicle{
 		this.resetLinkConsume(); // Reset link consumption to 0
 	}
 	
-	public void updateSchedule(int newID, ArrayList<Integer> newRoute, int departureTime) {
+	public void updateSchedule(int newID, ArrayList<Integer> newRoute, ArrayList<Integer> departureTime) {
 		if(newID==-1) {
 			this.routeID = -1;
 			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
@@ -384,7 +384,7 @@ public class Bus extends Vehicle{
 			for(int i=0;i<this.busStop.size();i++){
 				this.stopBus.put(this.busStop.get(i), i);
 			}
-			this.nextDepartureTime = departureTime;
+			this.nextDepartureTime = departureTime.get(0);
 		}
 		this.nextStop = 0;
 		

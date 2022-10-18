@@ -81,6 +81,9 @@ public class Connection implements DataConsumer {
 
 	/** The current tick number being processed (or just processed). */
 	private double currentTick;
+	
+	/** The current hour of the simulation. */
+	private static int curhour = -1;
 
 	/**
 	 * Performs any preparation needed for this object to be ready to receive a new
@@ -366,7 +369,6 @@ public class Connection implements DataConsumer {
 					index +=1;
 				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
-
 				ContextCreator.logger.info("Received bus route result!");
 				 
 				// Clear the current map
@@ -427,6 +429,7 @@ public class Connection implements DataConsumer {
 					index +=1;
 				}
 				ContextCreator.busSchedule.updateEvent(newhour,newRouteName, newRoutes, newBusNum, newBusGap);
+				ContextCreator.receiveNewBusSchedule = true;
 			}
 		} catch (ParseException e) {
 			e.printStackTrace();
@@ -472,7 +475,17 @@ public class Connection implements DataConsumer {
 		HashMap<String,Object> jsonObj = new HashMap<String,Object>();
 		jsonObj.put("MSG_TYPE", "TICK_MSG");
 		ArrayList<HashMap<String, Object>> entries = new ArrayList<HashMap<String, Object>>();
-		int hour = (int) (RepastEssentials.GetTickCount() / 12000);
+		int hour = (int) (RepastEssentials.GetTickCount() / 3600 / GlobalVariables.SIMULATION_STEP_SIZE);
+		
+		
+		// Send the latest progress of the simulation
+		if (hour > curhour) {
+			HashMap<String, Object> entryObj = new HashMap<String, Object> ();
+			entryObj.put("TYPE", "H");
+			entryObj.put("hour", hour);
+			curhour = hour;
+			entries.add(entryObj);
+		}
 
 		// Loop through all the link_UCB arraylist
 		Collection<Integer> linkIDs = tick.getLinkIDList();

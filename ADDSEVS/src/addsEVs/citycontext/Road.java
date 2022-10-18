@@ -634,9 +634,8 @@ public class Road {
 	public void updateFreeFlowSpeed() {
 		// Get current tick
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		// double sim_time = tickcount*GlobalVariables.SIMULATION_STEP_SIZE;
-		int hour = (int) Math.floor(tickcount * GlobalVariables.SIMULATION_STEP_SIZE / 3600);
-		hour = hour % 169;
+		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
+		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.curhour < hour) {
 			double value = Math.max(1, ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44704); // convert

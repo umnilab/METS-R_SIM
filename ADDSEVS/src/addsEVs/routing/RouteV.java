@@ -152,15 +152,15 @@ public class RouteV {
 
 		if (curDownstreamJunc.getID() == destDownstreamJunc.getID() && !vehicle.onChargingRoute()) {
 			if (vehicle.getVehicleID() == GlobalVariables.Global_Vehicle_ID) {
-				System.out.println("Destination road reached " + destRoad.getLinkid() +" from current road: " + currentRoad.getLinkid());
+				ContextCreator.logger.info("Destination road reached " + destRoad.getLinkid() +" from current road: " + currentRoad.getLinkid());
 			}
 			return null;
 		}
 		
 		List<Road> path = vbr.computeRoute(currentRoad, destRoad, curDownstreamJunc, destDownstreamJunc);
 		if( path == null || path.size()==0){
-			System.out.println("Route fails for vehicle: " +vehicle.getVehicleID()+ " On charging route: " + vehicle.onChargingRoute() + "Plan: "+ vehicle.getPlan());
-			System.out.println("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
+			ContextCreator.logger.error("Route fails for vehicle: " +vehicle.getVehicleID()+ " On charging route: " + vehicle.onChargingRoute() + " Plan: "+ vehicle.getPlan());
+			ContextCreator.logger.error("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
 		}
 		return path;
 	}

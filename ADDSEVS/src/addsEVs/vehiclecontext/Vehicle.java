@@ -352,7 +352,6 @@ public class Vehicle {
 						this.clearShadowImpact();
 						this.roadPath = tempPath;
 						this.setShadowImpact();
-						// this.atOrigin = false;
 						this.nextRoad_ = roadPath.get(1);
 					} else if(this.stuckTime>GlobalVariables.MAX_STUCK_TIME){ // Stuck in one place for 2 minutes, potentially there is a grid lock
 						this.stuckTime = 0; // Refresh the stuck time to prevent the case that this function is called every tick
@@ -361,7 +360,6 @@ public class Vehicle {
 						// Compute new route
 						this.roadPath = tempPath;
 						this.setShadowImpact();
-						// this.atOrigin = false;
 						this.nextRoad_ = roadPath.get(1);
 					}
 					else {
