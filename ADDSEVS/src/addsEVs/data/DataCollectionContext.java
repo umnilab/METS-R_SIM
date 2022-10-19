@@ -176,7 +176,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
     			","+taxiServedPass+","+busServedPass+
     			","+numLeavedTaxiPass+","+numLeavedBusPass+
     			","+numWaitingTaxiPass+","+numWaitingBusPass+
-    			","+battery_mean+","+battery_std;
+    			","+battery_mean+","+battery_std+","+System.currentTimeMillis();
     	try {
 			ContextCreator.network_logger.write(formated_msg);
 			ContextCreator.network_logger.newLine();

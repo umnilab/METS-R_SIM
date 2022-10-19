@@ -127,24 +127,27 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		try{
 		for(int startZone: GlobalVariables.HUB_INDEXES){
 			ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));
-//			int vehicle_gap = Math.round(60/GlobalVariables.SIMULATION_STEP_SIZE); //Ticks between two consecutive bus
+			int vehicle_gap = Math.round(60/GlobalVariables.SIMULATION_STEP_SIZE); //Ticks between two consecutive bus
 			// GeometryFactory fac = new GeometryFactory();
 			// Decide the next departure time
-			// int next_departure_time = 0;
+			int next_departure_time = 0;
 			// Generate vehicle_num buses for the corresponding route
 			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(route.get(0));
 			for(int j = 0; j< num_per_hub; j++){
 				Bus b;
-				b = new Bus(-1, route, (int) RepastEssentials.GetTickCount());
-				b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); //Initialize the first plan
+				b = new Bus(-1, route, next_departure_time);
+				b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); //Initialize the first plan
 				this.add(b);
 				b.setCurrentCoord(z.getCoord());
 //				Point geom = fac.createPoint(z.getCoord());
 //				vehicleGeography.move(b, geom);
-				b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+				b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time);
 				b.setNextPlan();
 				b.departure();
-//			    next_departure_time += vehicle_gap;
+			    next_departure_time += vehicle_gap;
+			    if(next_departure_time > 3600/GlobalVariables.SIMULATION_STEP_SIZE) {
+			    	next_departure_time = 0;
+			    }
 				this.busList.add(b);
 			}
 		}}

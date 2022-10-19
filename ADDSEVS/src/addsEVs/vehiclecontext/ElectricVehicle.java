@@ -210,7 +210,7 @@ public class ElectricVehicle extends Vehicle{
 			}
 			else if(!onChargingRoute_ && 
 					(batteryLevel_ <= lowerBatteryRechargeLevel_ || 
-					(GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi()))
+					(GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
 					&& this.getNumPeople() == 0) {
 				this.goCharging();
 			}

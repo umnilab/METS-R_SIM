@@ -299,18 +299,18 @@ public class Connection implements DataConsumer {
 
 		ConnectionManager.printDebug(this.id + "-CTRL", "Connected to " + this.ip.toString() + ".");
 
-		// save a reference to the session for this socket connection
+		// Save a reference to the session for this socket connection
 		this.session = session;
 
-		// register the connection as a data consumer
+		// Register the connection as a data consumer
 		this.collector.registerDataConsumer(this);
 
-		// create the heartbeat thread to keep the connection open
-//        this.heartbeatThread = new Thread(new HeartbeatRunnable());
-//        this.heartbeatThread.start();
+		// Create the heartbeat thread to keep the connection open
+		// Deprecated as we are looking for a reactive server
+        //this.heartbeatThread = new Thread(new HeartbeatRunnable());
+        //this.heartbeatThread.start();
 
 		try {
-			// Need to change this to json
 			/*
 			 * for (String OD : ContextCreator.getUCBRouteODPairs()) {
 			 * System.out.println("Send EV OD"); String msg =
@@ -323,10 +323,16 @@ public class Connection implements DataConsumer {
 				session.getRemote().sendString(msg);
 			}
 			// July,2020,JiaweiXue
-			for (String OD : ContextCreator.getUCBRouteODPairsBus()) {
-				String msg = ContextCreator.getUCBRouteStringForODBus(OD);
-				session.getRemote().sendString(msg);
-			}
+			// commented due to conflicting with bus planning (the OD would change if the 
+			// bus routes change
+//			for (String OD : ContextCreator.getUCBRouteODPairsBus()) {
+//				String msg = ContextCreator.getUCBRouteStringForODBus(OD);
+//				session.getRemote().sendString(msg);
+//			}
+			
+			// Send the first tick message
+			this.sendTickSnapshot(new TickSnapshot(0));
+			
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -475,8 +481,7 @@ public class Connection implements DataConsumer {
 		HashMap<String,Object> jsonObj = new HashMap<String,Object>();
 		jsonObj.put("MSG_TYPE", "TICK_MSG");
 		ArrayList<HashMap<String, Object>> entries = new ArrayList<HashMap<String, Object>>();
-		int hour = (int) (RepastEssentials.GetTickCount() / 3600 / GlobalVariables.SIMULATION_STEP_SIZE);
-		
+		int hour = (int) ((RepastEssentials.GetTickCount() - 1 + GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL) / 3600 * GlobalVariables.SIMULATION_STEP_SIZE);
 		
 		// Send the latest progress of the simulation
 		if (hour > curhour) {

@@ -89,6 +89,8 @@ private static Properties config;
 			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"));
 	public static final int SIMULATION_SPEED_REFRESH_INTERVAL =  Integer
 			.valueOf(loadConfig("SIMULATION_SPEED_REFRESH_INTERVAL"));
+	public static final int SIMULATION_BUS_REFRESH_INTERVAL =  Integer
+			.valueOf(loadConfig("SIMULATION_BUS_REFRESH_INTERVAL"));
 	public static final int SIMULATION_NETWORK_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_NETWORK_REFRESH_INTERVAL"));
 	public static final int SIMULATION_CHARGING_STATION_REFRESH_INTERVAL = Integer

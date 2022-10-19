@@ -128,6 +128,10 @@ public class Zone {
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();
+		if( (int) RepastEssentials.GetTickCount() == GlobalVariables.SIMULATION_STOP_TIME) {
+			// Skip the last update which is outside of the study period  
+			return;
+		}
 		this.updateTravelEstimation();
 		
 		// Happens between t and t + 1
@@ -406,11 +410,10 @@ public class Zone {
 			if(this.getFutureSupply()<0) {
 				ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
 			}
-			// we prefer storing more vehicles at hubs 6 means the time step of looking ahead
-			// 0.5 means probability of vehicle needs to go charging
-			// 2 for the reposition rate
+			// 5 means the time step of looking ahead
+			// 0.8 is the probability of vehicle with low battery level under the charging threshold
 			double relocateRate = 0;
-			relocateRate = nPassForTaxi - this.vehicleStock.get() + this.futureDemand.get() - this.futureSupply.get();
+			relocateRate = 1.25 * (nPassForTaxi - this.getVehicleStock() + 5 * this.futureDemand.get() - 0.8 * this.futureSupply.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
 			while (numToRelocate > 0) {
 //				double max_stock = 0;
@@ -434,7 +437,7 @@ public class Zone {
 				Zone source = null;
 				for (Zone z: this.neighboringZones) {
 					// Relocate from zones with sufficient supply
-					if (z.hasEnoughTaxi() && 
+					if (z.hasEnoughTaxi(5) && 
 							(ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).peek() != null)) {
 						source = z;
 						break;
@@ -620,11 +623,11 @@ public class Zone {
 	}
 	
 	public void removeVehicleStock(int vehicle_num){
-		if(this.vehicleStock.get()-vehicle_num<0){
+		if(this.getVehicleStock()-vehicle_num<0){
 			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
 			return;
 		}
-		this.vehicleStock.addAndGet(vehicle_num);
+		this.addVehicleStock(-vehicle_num);
 	}
 	
 	public int getVehicleStock(){
@@ -878,8 +881,8 @@ public class Zone {
     	return this.futureSupply.get();
     }
     
-    public boolean hasEnoughTaxi(){
-    	return this.getVehicleStock() - this.nPassForTaxi - getFutureDemand() > 0;
+    public boolean hasEnoughTaxi(int k){ // k: future steps to consider
+    	return this.getVehicleStock() - this.nPassForTaxi - k * getFutureDemand() > 0;
     }
 }
 

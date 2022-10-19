@@ -249,12 +249,12 @@ public class DataCollector {
     	GlobalVariables.datacollection_start = System.currentTimeMillis();
         
     	
-        if ((int)tickNumber % 100 == 0) {
-            // Print a periodic heart-beat debug statement from data buffer
-            String message = "TICK " + tickNumber + 
-                             " [" + this.buffer.size() + " ticks in buffer]";
-            DataCollector.printDebug("CTRL", message);
-        }
+//        if ((int)tickNumber % 100 == 0) {
+//            // Print a periodic heart-beat debug statement from data buffer
+//            String message = "TICK " + tickNumber + 
+//                             " [" + this.buffer.size() + " ticks in buffer]";
+//            DataCollector.printDebug("CTRL", message);
+//        }
         
         // Verify the given tick number is valid
         if (tickNumber < 0 || tickNumber <= this.lastTick) {

@@ -248,7 +248,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 					+ "taxiServedPass,busServedPass,"
 					+ "taxiLeavedPass,busLeavedPass,"
 					+ "numWaitingTaxiPass,numWaitingBusPass,"
-					+ "batteryMean,batteryStd");
+					+ "batteryMean,batteryStd,timeStamp");
 			network_logger.newLine();
 			network_logger.flush();
 			logger.info("Network logger created!");
@@ -468,12 +468,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
 		
-		if(!GlobalVariables.BUS_PLANNING) {
-			 // if bus planning is enabled, update this when receiving new bus schedules to avoid conflicts
-		     schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"); // update the travel time estimation for taking Bus
-		}
-		else {
-			 schedule.schedule(speedProfileParams, this, "waitForNewBusSchedule");
+		schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"); // update the travel time estimation for taking Bus
+		
+		if(GlobalVariables.BUS_PLANNING) {
+			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 4); 
+			 schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
 		}
 	}
 

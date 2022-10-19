@@ -375,7 +375,7 @@ public class Bus extends Vehicle{
 		if(newID==-1) {
 			this.routeID = -1;
 			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
-			this.nextDepartureTime = (int) (RepastEssentials.GetTickCount()+60/GlobalVariables.SIMULATION_STEP_SIZE); // Wait for 1 min
+			this.nextDepartureTime = (int) (RepastEssentials.GetTickCount()+600/GlobalVariables.SIMULATION_STEP_SIZE); // Wait for 1 min
 		}
 		else {
 			this.routeID = newID;
