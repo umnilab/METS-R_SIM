@@ -1,0 +1,45 @@
+3996   2022-10-21 09:46:26,169 INFO  : Read demand.
+4024   2022-10-21 09:46:26,197 INFO  : Total demand: 209128
+4036   2022-10-21 09:46:26,209 INFO  : Loaded bus schedule from offline files.
+5068   2022-10-21 09:46:27,241 INFO  : Reading property files
+5069   2022-10-21 09:46:27,242 INFO  : Building subcontexts
+5079   2022-10-21 09:46:27,252 INFO  : RoadContext creation
+6412   2022-10-21 09:46:28,585 INFO  : JunctionContext creation
+6428   2022-10-21 09:46:28,601 INFO  : LaneContext: building lane context and projections
+6770   2022-10-21 09:46:28,943 INFO  : ZoneContext creation
+6802   2022-10-21 09:46:28,975 INFO  : Zone generated, total number: 258
+6804   2022-10-21 09:46:28,977 INFO  : ChargingStationContext creation
+6832   2022-10-21 09:46:29,005 INFO  : Charging Station generated, total number: 259
+8819   2022-10-21 09:46:30,992 INFO  : Junction initialized!
+37116  2022-10-21 09:46:59,289 INFO  : Vehicle Generation: total demand 10183.6
+37121  2022-10-21 09:46:59,294 INFO  : VehicleContext creation
+71410  2022-10-21 09:47:33,583 INFO  : Total EV vehicles generated 3000
+71411  2022-10-21 09:47:33,584 INFO  : EV generated!
+71411  2022-10-21 09:47:33,584 INFO  : BUS generated!
+78711  2022-10-21 09:47:40,884 INFO  : Serialized data is loaded from data/candidate_routes.ser
+85856  2022-10-21 09:47:48,029 INFO  : Serialized data is loaded from data/candidate_routes_bus.ser
+85864  2022-10-21 09:47:48,037 INFO  : EV logger creating...
+85866  2022-10-21 09:47:48,039 INFO  : EV logger created!
+85866  2022-10-21 09:47:48,039 INFO  : Bus logger creating...
+85867  2022-10-21 09:47:48,040 INFO  : Bus logger created!
+85867  2022-10-21 09:47:48,040 INFO  : Link energy logger creating...
+85868  2022-10-21 09:47:48,041 INFO  : Link energy logger created!
+85868  2022-10-21 09:47:48,041 INFO  : Network logger creating...
+85869  2022-10-21 09:47:48,042 INFO  : Network logger created!
+85869  2022-10-21 09:47:48,042 INFO  : Zone logger creating...
+85870  2022-10-21 09:47:48,043 INFO  : Zone logger created!
+85870  2022-10-21 09:47:48,043 INFO  : Charger logger creating...
+85871  2022-10-21 09:47:48,044 INFO  : Charger logger created!
+88344  2022-10-21 09:47:50,517 INFO  : Scheduling events
+88348  2022-10-21 09:47:50,521 INFO  : stop time =  576000
+88562  2022-10-21 09:47:50,735 INFO  : Events scheduled!
+88646  2022-10-21 09:47:50,819 INFO  : Update the estimation of travel time...
+90829  2022-10-21 09:47:53,002 INFO  : finshied reading Repast graph 5018 10524 # Leftover roads: 0
+94170  2022-10-21 09:47:56,343 INFO  : [39497.0, 410378.0, 284123.0, 411020.0]
+112262 2022-10-21 09:48:14,435 INFO  : Tick:	1.0	Min para time:	2	Max para time	3	Avg para time:	2	Sequential time:	0
+119427 2022-10-21 09:48:21,600 INFO  : Tick:	10001.0	Min para time:	538	Max para time	4232	Avg para time:	1157	Sequential time:	0
+120849 2022-10-21 09:48:23,022 INFO  : Update the estimation of travel time...
+142754 2022-10-21 09:48:44,927 INFO  : Tick:	20001.0	Min para time:	487	Max para time	3660	Avg para time:	990	Sequential time:	0
+145597 2022-10-21 09:48:47,770 INFO  : Update the estimation of travel time...
+167534 2022-10-21 09:49:09,707 INFO  : Tick:	30001.0	Min para time:	522	Max para time	3161	Avg para time:	902	Sequential time:	0
+170291 2022-10-21 09:49:12,464 INFO  : Update the estimation of travel time...
