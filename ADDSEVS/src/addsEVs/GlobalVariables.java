@@ -308,9 +308,6 @@ private static Properties config;
 	public static final boolean ENABLE_ECO_ROUTING_BUS = Boolean
 			.valueOf(loadConfig("ECO_ROUTING_BUS"));
 	public static final boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
-	// Demand prediction related global variables
-	public static final String DEMAND_PREDICTION_RESULTS_PATH = loadConfig("DEMAND_PREDICTION_RESULTS_PATH");
-	public static final String DEMAND_PREDICTION_HUBS =  loadConfig("DEMAND_PREDICTION_HUBS");
 	
 	/* Hyperparameters */
 	//Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
