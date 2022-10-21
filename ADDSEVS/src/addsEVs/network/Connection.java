@@ -359,7 +359,6 @@ public class Connection implements DataConsumer {
 	public void onMessage(String message) {
 		// Transfer to JSON here
 		JSONObject jsonMsg = new JSONObject();
-		//System.out.println("Created json object");
 		try {
 			JSONParser parser = new JSONParser();
 			jsonMsg = (JSONObject) parser.parse(message);
@@ -399,7 +398,7 @@ public class Connection implements DataConsumer {
 				JSONArray list_gap = (JSONArray) jsonMsg.get("Bus_gap");
 				JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
 				Long hour = Long.valueOf((String) jsonMsg.get("Bus_currenthour"));
-				int newhour=hour.intValue();
+				int newhour = hour.intValue();
 				
 				if (prevhour < newhour) { // New schedules
 					prevhour = newhour;

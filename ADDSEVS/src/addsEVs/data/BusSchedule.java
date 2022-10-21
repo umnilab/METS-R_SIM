@@ -95,47 +95,50 @@ public class BusSchedule{
 	}
 	// For changing bus route schedule
 	public void updateEvent(int newhour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes, ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap){
-		currentHour = newhour;
-		routeName = newRouteName;
-		busRoute= newRoutes;
-		busNum = newBusNum;
-		busGap = newBusGap;
-		
-		for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
-			z.busReachableZone = new ArrayList<Integer>(); //clear the bus info
-		}
-		
-		for(ArrayList<Integer> route: this.busRoute) {
-			int i = 0;
-			if(busNum.get(i)>0) {
-				for(int zoneID: route){
-					Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(zoneID);
-					if(zone.getZoneClass() == 0) { // normal zone, the destination should be hub
-						for (int destinationID: route) {
-						    if(GlobalVariables.HUB_INDEXES.contains(destinationID)){
-						    	zone.setBusInfo(destinationID, this.busGap.get(i));
-						    }
+		if(currentHour < newhour) {
+			currentHour = newhour;
+			routeName = newRouteName;
+			busRoute= newRoutes;
+			busNum = newBusNum;
+			busGap = newBusGap;
+			
+			for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
+				z.busReachableZone.clear(); //clear the bus info
+				z.busGap.clear();
+			}
+			
+			for(ArrayList<Integer> route: this.busRoute) {
+				int i = 0;
+				if(busNum.get(i)>0) {
+					for(int zoneID: route){
+						Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(zoneID);
+						if(zone.getZoneClass() == 0) { // normal zone, the destination should be hub
+							for (int destinationID: route) {
+							    if(GlobalVariables.HUB_INDEXES.contains(destinationID)){
+							    	zone.setBusInfo(destinationID, this.busGap.get(i));
+							    }
+							}
 						}
-					}
-					else if(zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be another hub)
-						for (int destinationID: route) {
-							if(zone.getIntegerID() != destinationID){
-						    	zone.setBusInfo(destinationID, this.busGap.get(i));
-						    }
-							
+						else if(zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be another hub)
+							for (int destinationID: route) {
+								if(zone.getIntegerID() != destinationID){
+							    	zone.setBusInfo(destinationID, this.busGap.get(i));
+							    }
+								
+							}
 						}
 					}
 				}
+				i += 1;
 			}
-			i += 1;
+			
+			for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
+				// Deal with the remaining passengers for buses in each zone
+				z.reSplitPassengerDueToBusRescheduled();
+			}
+			
+			this.processSchedule();
 		}
-		
-		for(Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
-			// Deal with the remaining passengers for buses in each zone
-			z.reSplitPassengerDueToBusRescheduled();
-		}
-		// Reset all parking buses' schedules
-		this.processSchedule();
 	}
 	
 	// Translate bus route into bus schedules

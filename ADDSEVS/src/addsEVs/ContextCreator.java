@@ -121,6 +121,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 						int tick = (int) Math.round(RunEnvironment.getInstance().getCurrentSchedule().getTickCount()/GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
 						logger.info("Send request for hour " + tick);
 						tick *= GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
+						if (tick == GlobalVariables.SIMULATION_STOP_TIME) break; // The end of the simulation
 						connection.sendTickSnapshot(new TickSnapshot(tick));
 					    num_tried  = 0;
 					} catch (IOException e) {
