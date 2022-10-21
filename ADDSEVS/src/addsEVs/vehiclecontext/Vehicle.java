@@ -206,12 +206,12 @@ public class Vehicle {
 		double gap = entranceGap(firstlane);
 		int tickcount = (int) RepastEssentials.GetTickCount(); 
 		if (gap >= 1.2*this.length() && tickcount > firstlane.getLastEnterTick()) {
+			road.removeVehicleFromNewQueue(this);
 			firstlane.updateLastEnterTick(tickcount); 
 			this.updateLastMoveTick(tickcount);
 			float capspd = (float) road.getFreeSpeed();// Calculate the initial speed
 			currentSpeed_ = capspd;
 			desiredSpeed_ = road.getRandomFreeSpeed();
-			road.removeVehicleFromNewQueue(this);
 			this.setRoad(road);
 			this.setCoordMap(firstlane);
 			this.append(firstlane);
@@ -238,7 +238,7 @@ public class Vehicle {
 			}
 			this.originCoord = this.coordMap.get(0);
 		}
-		road.addVehicleToNewQueue(this);
+		road.addVehicleToPendingQueue(this);
 	}
 	
 	// A place holder for updating battery status for EVs

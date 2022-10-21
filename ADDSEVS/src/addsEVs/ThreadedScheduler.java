@@ -36,9 +36,6 @@ public class ThreadedScheduler {
 	public void paraRoadStep() {
 		// Load the partitions
 		ArrayList<ArrayList<Road>> partitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
-		// The Between road is no longer used as they are already added in 
-		// the above variable 
-		// ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
 		
 		// Creates an list of tasks
 		List<PartitionRoadThread> tasks = new ArrayList<PartitionRoadThread>();

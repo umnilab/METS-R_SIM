@@ -194,12 +194,12 @@ public class ElectricVehicle extends Vehicle{
 					Passenger p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
 					
-				    if(z.busTravelTime.containsKey(p.getDestination())) {// if bus can reach the destination
-				    	z.addBusPass(p);
+				    if(z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
+				    	z.toAddPassForBus.add(p);
 				    }
 				    else {
 				    	// this happens when we dynamically update bus schedules
-				    	z.addTaxiPass(p);
+				    	z.toAddPassForTaxi.add(p);
 				    }
 				}
 			}

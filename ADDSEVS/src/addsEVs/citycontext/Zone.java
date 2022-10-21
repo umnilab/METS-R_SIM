@@ -16,6 +16,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -69,7 +70,6 @@ public class Zone {
 	public int busPassWaitingTime;
 	public int taxiWaitingTime;
 	// Metrics end
-	
 	private AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
 	
 	// For vehicle repositioning
@@ -79,6 +79,8 @@ public class Zone {
 	
 	// For collaborative taxi and transit
 	public Map<Integer, Zone> nearestZoneWithBus;
+	public ConcurrentLinkedQueue<Passenger> toAddPassForTaxi; // demand from integrated services
+	public ConcurrentLinkedQueue<Passenger> toAddPassForBus; // demand from integrated services
 	
 	// Sorted neighboring Zone from the closest to the farthest
 	public List<Zone> neighboringZones;
@@ -122,6 +124,8 @@ public class Zone {
 		this.busTravelDistance = new HashMap<Integer, Float>();
 		this.nearestZoneWithBus = new HashMap<Integer, Zone>();
 		this.neighboringZones = new ArrayList<Zone>();
+		this.toAddPassForTaxi = new ConcurrentLinkedQueue<Passenger>();
+		this.toAddPassForBus = new ConcurrentLinkedQueue<Passenger>();
 	}
 	
 	public void step(){
@@ -416,24 +420,6 @@ public class Zone {
 			relocateRate = 1.25 * (nPassForTaxi - this.getVehicleStock() + 5 * this.futureDemand.get() - 0.8 * this.futureSupply.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
 			while (numToRelocate > 0) {
-//				double max_stock = 0;
-//				Zone source = null;
-//				for (Zone z : this.neighboringZones) {
-//					if (max_stock < (z.getVehicleStock() - z.nPassForTaxi - (z.futureDemand  - z.futureSupply))) {
-//						max_stock = z.getVehicleStock() - z.nPassForTaxi - (z.futureDemand  - z.futureSupply);
-//						source = z;
-//					}
-//				}
-//				if (source != null && ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).peek() != null) {
-//					ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
-//					v.relocation(source.getIntegerID(), this.integerID);
-//					this.numberOfRelocatedVehicles += 1;
-//					source.removeVehicleStock(1);
-//					this.futureSupply += 1;
-//				} else {
-//					break; // The system is short of vehicles!
-//				}
-//				numToRelocate -= 1;
 				Zone source = null;
 				for (Zone z: this.neighboringZones) {
 					// Relocate from zones with sufficient supply
@@ -461,26 +447,6 @@ public class Zone {
 			double relocateRate = (nPassForTaxi - this.vehicleStock.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
 			while (numToRelocate > 0) {
-//				double max_stock = 0;
-//				Zone source = null;
-//				for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
-//					if (max_stock < (z.getVehicleStock() - z.nPassForTaxi)) {
-//						max_stock = z.getVehicleStock() - z.nPassForTaxi;
-//						source = z;
-//					}
-//				}
-//				if (source != null && max_stock > 0) {
-//					if (ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).peek() != null) {
-//						ElectricVehicle v = ContextCreator.getVehicleContext().getVehicles(source.getIntegerID()).poll();
-//						v.relocation(source.getIntegerID(), this.integerID);
-//						this.numberOfRelocatedVehicles += 1;
-//						source.removeVehicleStock(1);
-//						this.futureSupply += 1;
-//					}
-//				} else {
-//					break; // The system is short of vehicles!
-//				}
-//				numToRelocate -= 1;
 				Zone source = null;
 				for (Zone z: this.neighboringZones) {
 					if ((z.getVehicleStock() - z.nPassForTaxi > 0) && 
@@ -639,8 +605,13 @@ public class Zone {
 	}
 
 	public void setBusInfo(int destID, float vehicleGap) {
-		this.busGap.put(destID, vehicleGap);
-		this.busReachableZone.add(destID);
+		if (busGap.containsKey(destID)) {
+			this.busGap.put(destID, Math.min(vehicleGap, this.busGap.get(destID)));
+		}
+		else {
+			this.busGap.put(destID, vehicleGap);
+			this.busReachableZone.add(destID);
+		}
 	}
 	
 	public void setTaxiTravelTimeMap(Map<Integer, Float> travelTime){
@@ -811,13 +782,13 @@ public class Zone {
 		// Find the passengers whose bus routes are deprecated
 		List<Passenger> rePass = new ArrayList<Passenger>();
     	for(Passenger p: this.passInQueueForBus){
-    		if(!this.busTravelTime.containsKey(p.getDestination())){ // No bus can serve this passenger anymore
+    		if(!this.busReachableZone.contains(p.getDestination())){ // No bus can serve this passenger anymore
     			rePass.add(p);
     			if(p.lenOfActivity()>=2) {
     				this.numberOfGeneratedCombinedPass -= 1;
     			}
     			else if(p.lenOfActivity() == 1) {
-    				// do nothing as it will be counted served corretly when it is served
+    				// do nothing as it will be counted served correctly when it is served
     			}
     			else {
     				this.numberOfGeneratedBusPass -= 1;
@@ -829,8 +800,7 @@ public class Zone {
     		this.passInQueueForBus.remove(p);
     	}
 		// Assign these passengers to taxis
-		// If the passenger planned to used combined trip,
-		// skip the first trip
+		// If the passenger planned to used combined trip, skip the first trip
 		for(Passenger p: rePass) {
 			if(p.lenOfActivity()>=2) {
 				p.moveToNextActivity();
@@ -838,10 +808,10 @@ public class Zone {
 				p.clearActivityPlan();
 			}
 			else if(p.lenOfActivity()==1) { // Is trying to finish the second trip of a combined trips
-				this.numberOfGeneratedTaxiPass -= 1; // cancel with the add 1 below
+				this.numberOfGeneratedTaxiPass -= 1; // do nothing, here -1 cancel the +1 below
 			}
 			
-			this.addTaxiPass(p);
+			this.toAddPassForTaxi.add(p);
 			this.numberOfGeneratedTaxiPass += 1;
 		}
 		
@@ -883,6 +853,15 @@ public class Zone {
     
     public boolean hasEnoughTaxi(int k){ // k: future steps to consider
     	return this.getVehicleStock() - this.nPassForTaxi - k * getFutureDemand() > 0;
+    }
+    
+    public void processToAddPassengers() {
+    	while (!this.toAddPassForTaxi.isEmpty()) {
+    		this.addTaxiPass(this.toAddPassForTaxi.poll());
+    	}
+    	while (!this.toAddPassForBus.isEmpty()) {
+    		this.addTaxiPass(this.toAddPassForBus.poll());
+    	}
     }
 }
 

@@ -248,7 +248,6 @@ public class DataCollector {
     	
     	GlobalVariables.datacollection_start = System.currentTimeMillis();
         
-    	
 //        if ((int)tickNumber % 100 == 0) {
 //            // Print a periodic heart-beat debug statement from data buffer
 //            String message = "TICK " + tickNumber + 
@@ -439,7 +438,6 @@ public class DataCollector {
         // Is the buffer empty?
         if (this.buffer.isEmpty()) {
             // The buffer may be empty, but has it ever collected anything?
-            
             // If the data is still collecting data but just exhausted of
             // contents because all the consumers are working faster than
             // the simulation can produce values, return the latest tick #
@@ -448,7 +446,6 @@ public class DataCollector {
             if (this.isCollecting() || this.isPaused()) {
                 return this.lastTick;
             }
-            
             // the buffer exists, it is empty, and it is not in a paused
             // state from which it can continue collecting.  it is either
             // in an initial pre-collection state or a post-collection date

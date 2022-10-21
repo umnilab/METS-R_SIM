@@ -203,7 +203,7 @@ public class Bus extends Vehicle{
 						!this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).isEmpty(); 
 						p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll()) {
 					p.moveToNextActivity();
-					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addTaxiPass(p);
+					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).toAddPassForTaxi.add(p);
 				}
 			}
 			

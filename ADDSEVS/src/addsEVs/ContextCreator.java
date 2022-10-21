@@ -40,6 +40,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.*;
 import addsEVs.data.*;
+import addsEVs.network.Connection;
 import addsEVs.partition.*;
 import addsEVs.routing.RouteV;
 import addsEVs.vehiclecontext.*;
@@ -81,6 +82,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	CityContext cityContext;
 	VehicleContext vehicleContext;
 	DataCollectionContext dataContext;
+	public static Connection connection = null;
 	
     /* Data communication */
 	// Candidate path sets for eco-routing, id: origin-destination pair, value: n paths, each path is a list of LinkID
@@ -109,10 +111,23 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	public void waitForNewBusSchedule() {
+		int num_tried = 0;
 		while (!receiveNewBusSchedule) {
 			try {
 				Thread.sleep(1000);
 				logger.info("Simulation pausing for waiting bus schedules");
+				if (num_tried > 10 && connection!=null) {
+					try {
+						int tick = (int) Math.round(RunEnvironment.getInstance().getCurrentSchedule().getTickCount()/GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
+						logger.info("Send request for hour " + tick);
+						tick *= GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
+						connection.sendTickSnapshot(new TickSnapshot(tick));
+					    num_tried  = 0;
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+				}
+				num_tried ++;
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
@@ -471,7 +486,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"); // update the travel time estimation for taking Bus
 		
 		if(GlobalVariables.BUS_PLANNING) {
-			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 4); 
+			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5); 
 			 schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
 		}
 	}
@@ -524,6 +539,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		
+		if(GlobalVariables.COLLABORATIVE_EV) {
+			for (Zone z : getZoneContext().getObjects(Zone.class)) {
+    			schedule.schedule(agentParaParams, z, "processToAddPassengers");
+    		}
+		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -534,6 +555,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		for (Zone z : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, z, "step");
+		}
+		
+        if(GlobalVariables.COLLABORATIVE_EV) {
+        	for (Zone z : getZoneContext().getObjects(Zone.class)) {
+    			schedule.schedule(demandServeParams, z, "processToAddPassengers");
+    		}
 		}
 	}
 	

@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.Iterator;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
@@ -53,7 +54,8 @@ public class Road {
 	private ArrayList<Junction> junctions;
 	private ArrayList<Double> dynamicTravelTime; // Dynamic travel time of
 	
-	private TreeMap<Double, ArrayList<Vehicle>> newqueue; // Use this class to control the vehicle that entering the road
+	private TreeMap<Double, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering the road
+	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so using this as the middle layer
 	
 	private Vehicle lastVehicle_;
 	private Vehicle firstVehicle_;
@@ -73,11 +75,12 @@ public class Road {
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = 0;
 		
-		this.freeSpeed_ = GlobalVariables.FREE_SPEED;
-		this.freeSpeedStd_ = 0;
+		this.freeSpeed_ = GlobalVariables.FREE_SPEED; // m/s
+		this.freeSpeedStd_ = 0; // m/s
 		this.downStreamMovements = new ArrayList<Road>();
 		this.oppositeRoad = null;
-		this.newqueue = new TreeMap<Double, ArrayList<Vehicle>>(); 
+		this.departureVehMap = new TreeMap<Double, ArrayList<Vehicle>>(); 
+		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.identifier = " ";
 		this.curhour = -1;
 		this.travelTime = (float) this.length / this.freeSpeed_;
@@ -120,16 +123,17 @@ public class Road {
 	
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
-	public void step() {		
-		Vehicle v;
+	public void step() {
 		int tickcount = (int) RepastEssentials.GetTickCount();
 		if(tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0){
 			this.recRoadSnaphot(); // Record vehicle location here!
 		}
 		try {
+			/* Vehicle loading*/
+			this.addVehicleToDepartureMap();
 			/* Vehicle departure */
-			while (this.newqueue.size() > 0) {
-				v = this.newqueueHead(); // Change to use the TreeMap
+			while (!this.departureVehMap.isEmpty()) {
+				Vehicle v = this.newqueueHead(); // Change to use the TreeMap
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
 					// check whether the origin is the destination
 					if (v.getOriginID() == v.getDestID()) {
@@ -149,11 +153,11 @@ public class Road {
 				else {
 					// Iterate all element in the TreeMap
 					@SuppressWarnings("rawtypes")
-					Set keys = (Set) this.newqueue.keySet();
+					Set keys = (Set) this.departureVehMap.keySet();
 					for (@SuppressWarnings("rawtypes") 
 					Iterator i = (Iterator) keys.iterator(); i.hasNext();) {
 						Double key = (Double) i.next();
-						ArrayList<Vehicle> temList = this.newqueue.get(key);
+						ArrayList<Vehicle> temList = this.departureVehMap.get(key);
 						for (Vehicle pv : temList) {
 							if (tickcount >= pv.getDepTime()) {
 								pv.primitiveMove();
@@ -167,7 +171,6 @@ public class Road {
 				}
 			}
             
-			
 			/* Vehicle movement */
 			Vehicle pv = this.firstVehicle();
 			if (pv != null && pv.leading() != null) { 
@@ -196,7 +199,6 @@ public class Road {
 			e.printStackTrace();
 			RunEnvironment.getInstance().pauseRun();
 		}
-
 	}
 	
 	@Override
@@ -233,7 +235,7 @@ public class Road {
 		return this.oppositeRoad;
 	}
 	
-	public void setFreeflowsp(double freeflowsp) {
+	public void setFreeflowsp(double freeflowsp) { // freeflowsp unit: mph
 		this.freeSpeed_ = freeflowsp * 0.44704;
 	}	
 
@@ -424,18 +426,26 @@ public class Road {
 	
 
 	//This add queue using TreeMap structure
-	public void addVehicleToNewQueue(Vehicle v) {
-		double departuretime_ = v.getDepTime();
-		if (!this.newqueue.containsKey(departuretime_)) {
-			ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
-			temporalList.add(v);
-			this.newqueue.put(departuretime_, temporalList);
-		} else {
-			ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
-			temporalList = this.newqueue.get(departuretime_);
-			temporalList.add(v);
-			this.newqueue.put(departuretime_, temporalList);
+	public void addVehicleToDepartureMap() {
+		while(!this.toAddDepartureVeh.isEmpty()) {
+			Vehicle v = this.toAddDepartureVeh.poll();
+			double departuretime_ = v.getDepTime();
+			if (!this.departureVehMap.containsKey(departuretime_)) {
+				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
+				temporalList.add(v);
+				this.departureVehMap.put(departuretime_, temporalList);
+			} else {
+				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
+				temporalList = this.departureVehMap.get(departuretime_);
+				temporalList.add(v);
+				this.departureVehMap.put(departuretime_, temporalList);
+			}
 		}
+	}
+	
+	// This add vehicle to the thread-safe pending list
+	public void addVehicleToPendingQueue(Vehicle v) {
+		this.toAddDepartureVeh.add(v);
 	}
 
 
@@ -448,19 +458,19 @@ public class Road {
 	public void removeVehicleFromNewQueue(Vehicle v) { 
 		double departuretime_ = v.getDepTime();
 		//System.out.println("Trying to remove vehicle:"+v.getDepTime());
-		ArrayList<Vehicle> temporalList = this.newqueue.get(departuretime_);
+		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departuretime_);
 		if (temporalList.size() > 1) {
-			this.newqueue.get(departuretime_).remove(v);
+			this.departureVehMap.get(departuretime_).remove(v);
 		} else {
-			this.newqueue.remove(departuretime_);
+			this.departureVehMap.remove(departuretime_);
 		}
 	}
 
 	public Vehicle newqueueHead() {
-		if (this.newqueue.size() > 0) {
+		if (!this.departureVehMap.isEmpty()) {
 			double firstDeparture_;
-			firstDeparture_ = this.newqueue.firstKey();
-			return this.newqueue.get(firstDeparture_).get(0);
+			firstDeparture_ = this.departureVehMap.firstKey();
+			return this.departureVehMap.get(firstDeparture_).get(0);
 		}
 		return null;
 	}
@@ -661,7 +671,7 @@ public class Road {
 	
 	/* Modify the free flow speed based on the events */
 	public void updateFreeFlowSpeed_event(double newFFSpd) {
-		this.freeSpeed_ = newFFSpd* 0.44704; //HG: convert from Miles per hour to meter per second
+		this.freeSpeed_ = newFFSpd* 0.44704; //HG: convert from mph to m/s
 	}
 	
 	public void printTick(){
