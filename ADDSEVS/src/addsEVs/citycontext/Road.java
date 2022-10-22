@@ -427,7 +427,8 @@ public class Road {
 
 	//This add queue using TreeMap structure
 	public void addVehicleToDepartureMap() {
-		while(!this.toAddDepartureVeh.isEmpty()) {
+		int curr_size = this.toAddDepartureVeh.size();
+		for(int i=0; i < curr_size; i++) {
 			Vehicle v = this.toAddDepartureVeh.poll();
 			double departuretime_ = v.getDepTime();
 			if (!this.departureVehMap.containsKey(departuretime_)) {
