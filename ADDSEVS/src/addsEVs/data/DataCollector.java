@@ -605,16 +605,10 @@ public class DataCollector {
         // Remove items from the buffer until we get to the first tick
         // with a time-step that is equal to or greater than our minimum
         int removed = 0;
-        while (!this.buffer.isEmpty()) {
-            TickSnapshot nextTick = this.buffer.peek();
-            if (nextTick == null) {
-                // This should never happen, but just to be safe we check
-                return;
-            }
-            
+        for(TickSnapshot nextTick = this.buffer.peek(); nextTick != null; nextTick = this.buffer.peek()) {
             // If the tick is older than we need to retain, we delete it
             if (nextTick.getTickNumber() < minimumTick) {
-                this.buffer.remove();
+            	this.buffer.poll();
                 removed++;
             }
             else {
