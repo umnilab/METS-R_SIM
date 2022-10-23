@@ -165,7 +165,7 @@ public class ElectricVehicle extends Vehicle{
 			// Add to the charging station
 			ContextCreator.logger.debug("Vehicle arriving at charging station:"+this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
-			cs.receiveVehicle(this);
+			cs.receiveEV(this);
 //			this.reachActLocation = true;
 			this.tripConsume = 0; 
 			this.accummulatedDistance_=0;
