@@ -349,7 +349,7 @@ public class Zone {
 		// First serve sharable passengers
 		if(this.sharableRequestForTaxi.size()>0) {
 			for(Queue<Request> passQueue: this.sharableRequestForTaxi.values()) {
-				if(passQueue.size()>0 && ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()>0) {
+				if(passQueue.size()>0) {
 					int pass_num = passQueue.size();
 					int v_num = vehicleStock.get();
 					v_num = (int) Math.min(Math.ceil(pass_num/4.0),v_num);
@@ -370,7 +370,6 @@ public class Zone {
 						ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
 						this.removeVehicleStock(1);
 						pass_num = pass_num - tmp_pass.size();
-						
 					}
 				}
 			}
@@ -865,11 +864,12 @@ public class Zone {
     }
     
     public void processToAddPassengers() {
-    	while(!this.toAddRequestForTaxi.isEmpty()){
+    	int curr_size = toAddRequestForTaxi.size();
+    	for(int i = 0; i < curr_size; i++) {
     		this.addTaxiPass(this.toAddRequestForTaxi.poll());
     	}
-    	
-    	while(!this.toAddRequestForBus.isEmpty()){
+    	curr_size = toAddRequestForBus.size();
+    	for(int i = 0; i < curr_size; i++) {
     		this.addTaxiPass(this.toAddRequestForBus.poll());
     	}
     }
