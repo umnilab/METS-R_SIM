@@ -368,13 +368,11 @@ public class Connection implements DataConsumer {
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
 				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-				int index = 0; // skip prefix
-				while (index < list_OD.size()) {
+				for (int index = 0; index < list_OD.size(); index ++) {
 					Long result = (Long) list_result.get(index);
 					int result_int = result.intValue();
 					String OD = (String) list_OD.get(index);
 					ContextCreator.routeResult_received.put(OD, result_int);
-					index +=1;
 				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
 				ContextCreator.logger.info("Received bus route result!");
@@ -383,13 +381,11 @@ public class Connection implements DataConsumer {
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
 				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-				int index = 0; // skip prefix
-				while (index < list_OD.size()) {
+				for (int index = 0; index < list_OD.size(); index ++) {
 					Long result = (Long) list_result.get(index);
 					int result_int = result.intValue();
 					String OD = (String) list_OD.get(index);
 					ContextCreator.routeResult_received_bus.put(OD, result_int);
-					index +=1;
 				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BUS_SCHEDULE")){
 				ContextCreator.logger.info("Received bus schedules!");
@@ -408,8 +404,7 @@ public class Connection implements DataConsumer {
 					ArrayList<Integer> newBusNum = new ArrayList<Integer>(array_size);
 					ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
 					ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
-					int index = 0; // skip prefix                               
-	                while (index < list_num.size()) {  
+	                for (int index = 0; index < list_num.size(); index ++) {  
 	                	int bus_num_int = 0;
 	                	if (list_num.get(index) instanceof Number) {
 	                		bus_num_int = ((Number)list_num.get(index)).intValue();
@@ -429,16 +424,13 @@ public class Connection implements DataConsumer {
 							    newRouteName.add(list_routename_int);
 							    int route_size=route.size() - 1;
 							    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
-						        int index_route=0;
-						        while (index_route < route_size) {
+						        for (int index_route =0; index_route < route_size; index_route++) {
 						         int route_int_i = route.get(index_route).intValue();
 						         route_int.add(route_int_i-1);
-						         index_route+=1;
 						        }
 							    newRoutes.add(route_int);
 							}
 						}
-						index +=1;
 					}
 					ContextCreator.busSchedule.updateEvent(newhour,newRouteName, newRoutes, newBusNum, newBusGap);
 					ContextCreator.receiveNewBusSchedule = true;

@@ -912,8 +912,6 @@ public class Vehicle {
 			// Otherwise move as far as we can towards the target along the road
 			// we're on get the angle between the two points
 			// (current and target)
-			// (http://forum.java.sun.com/thread.jspa?threadID=438608&messageID=1973655)
-			// Replaced the complicated operation with a equivalent but simpler one
 			else {
 				double distanceToTarget = this.nextDistance_;
 				this.distance_ -= dx - distTravelled;

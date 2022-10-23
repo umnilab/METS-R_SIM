@@ -422,7 +422,7 @@ public class Zone {
 			double relocateRate = 0;
 			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + 5 * this.futureDemand.get() - 0.8 * this.futureSupply.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
-			while (numToRelocate > 0) {
+			for (int i = 0; i< numToRelocate ; i++) {
 				boolean systemHasVeh = false;
 				for (Zone z: this.neighboringZones) {
 					// Relocate from zones with sufficient supply
@@ -438,10 +438,7 @@ public class Zone {
 						}
 					}
 				}
-				if (systemHasVeh) {
-					numToRelocate -= 1;
-				}
-				else {
+				if (!systemHasVeh) {
 					break;
 				}
 				
@@ -451,7 +448,7 @@ public class Zone {
 			// Reactive reposition
 			double relocateRate = (nRequestForTaxi - this.vehicleStock.get());
 			int numToRelocate = (int) Math.floor(relocateRate) + (Math.random()<(relocateRate-Math.floor(relocateRate))?1:0);
-			while (numToRelocate > 0) {
+			for (int i = 0; i< numToRelocate ; i++) {
 				boolean systemHasVeh = false;
 				for (Zone z: this.neighboringZones) {
 					// Relocate from zones with sufficient supply
@@ -465,10 +462,7 @@ public class Zone {
 						break;
 					}
 				}
-				if (systemHasVeh) {
-					numToRelocate -= 1;
-				}
-				else {
+				if (!systemHasVeh) {
 					break;
 				}
 				
