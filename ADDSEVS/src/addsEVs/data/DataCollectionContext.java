@@ -113,27 +113,27 @@ public class DataCollectionContext extends DefaultContext<Object> {
     	int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
     	
     	for(Zone z: ContextCreator.getZoneGeography().getAllObjects()){
-			numGeneratedTaxiPass += z.numberOfGeneratedTaxiPass;
-			numGeneratedBusPass += z.numberOfGeneratedBusPass;
-			numGeneratedCombinedPass += z.numberOfGeneratedCombinedPass;
-			taxiPickupPass += z.taxiPickupPass;
-			busPickupPass += z.busPickupPass;
+			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
+			numGeneratedBusPass += z.numberOfGeneratedBusRequest;
+			numGeneratedCombinedPass += z.numberOfGeneratedCombinedRequest;
+			taxiPickupPass += z.taxiPickupRequest;
+			busPickupPass += z.busPickupRequest;
 			combinePickupPart1 += z.combinePickupPart1;
 			combinePickupPart2 += z.combinePickupPart2;
-			taxiServedPass += z.taxiServedPass;
-			busServedPass += z.busServedPass;
-			numLeavedTaxiPass += z.numberOfLeavedTaxiPass;
-			numLeavedBusPass += z.numberOfLeavedBusPass;
+			taxiServedPass += z.taxiServedRequest;
+			busServedPass += z.busServedRequest;
+			numLeavedTaxiPass += z.numberOfLeavedTaxiRequest;
+			numLeavedBusPass += z.numberOfLeavedBusRequest;
 			numRelocatedTaxi += z.numberOfRelocatedVehicles;
 			numWaitingTaxiPass += z.getTaxiPassengerNum();
 			numWaitingBusPass += z.getBusPassengerNum();
     		
     		String formatted_msg2 = currentTick+","+z.getIntegerID()+","+z.getTaxiPassengerNum()+","+z.getBusPassengerNum()+","+
     		        z.getVehicleStock()+","+
-    				z.numberOfGeneratedTaxiPass+","+z.numberOfGeneratedBusPass+","+z.numberOfGeneratedCombinedPass+","+
-    				z.taxiPickupPass+","+z.busPickupPass+","+z.combinePickupPart1+","+z.combinePickupPart2+","+
-    				z.taxiServedPass+","+z.busServedPass+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
-    		        z.numberOfLeavedTaxiPass+","+z.numberOfLeavedBusPass +","+z.taxiWaitingTime+","+
+    				z.numberOfGeneratedTaxiRequest+","+z.numberOfGeneratedBusRequest+","+z.numberOfGeneratedCombinedRequest+","+
+    				z.taxiPickupRequest+","+z.busPickupRequest+","+z.combinePickupPart1+","+z.combinePickupPart2+","+
+    				z.taxiServedRequest+","+z.busServedRequest+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
+    		        z.numberOfLeavedTaxiRequest+","+z.numberOfLeavedBusRequest +","+z.taxiWaitingTime+","+
     				z.getFutureDemand() + "," + z.getFutureSupply();
     		try {
 				ContextCreator.zone_logger.write(formatted_msg2);

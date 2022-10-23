@@ -150,7 +150,7 @@ public class RouteV {
 		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
 				destRoad);
 
-		if (curDownstreamJunc.getID() == destDownstreamJunc.getID() && !vehicle.onChargingRoute()) {
+		if (curDownstreamJunc.getID() == destDownstreamJunc.getID()) {
 			if (vehicle.getVehicleID() == GlobalVariables.Global_Vehicle_ID) {
 				ContextCreator.logger.info("Destination road reached " + destRoad.getLinkid() +" from current road: " + currentRoad.getLinkid());
 			}
@@ -159,7 +159,7 @@ public class RouteV {
 		
 		List<Road> path = vbr.computeRoute(currentRoad, destRoad, curDownstreamJunc, destDownstreamJunc);
 		if( path == null || path.size()==0){
-			ContextCreator.logger.error("Route fails for vehicle: " +vehicle.getVehicleID()+ " On charging route: " + vehicle.onChargingRoute() + " Plan: "+ vehicle.getPlan());
+			ContextCreator.logger.error("Route fails for vehicle: " +vehicle.getVehicleID() + " Plan: "+ vehicle.getPlan());
 			ContextCreator.logger.error("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
 		}
 		return path;

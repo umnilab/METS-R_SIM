@@ -347,15 +347,9 @@ public class Vehicle {
 				// If Vehicle is on charging route, then we trigger this function for charging, else we perform the normal routing
 				if (!(this.roadPath == null)) {
 					// Compute new route
-					if (this.onChargingRoute()){ // tempPath.size() > 1 && this.checkNextLaneConnected(tempPath.get(1))) {
-						List<Road> tempPath = RouteV.vehicleRoute(this, this.destCoord); // Use K shortest path
-						this.clearShadowImpact();
-						this.roadPath = tempPath;
-						this.setShadowImpact();
-						this.nextRoad_ = roadPath.get(1);
-					} else if(this.stuckTime>GlobalVariables.MAX_STUCK_TIME){ // Stuck in one place for 2 minutes, potentially there is a grid lock
+					if(this.stuckTime>GlobalVariables.MAX_STUCK_TIME){ // Stuck in one place for 2 minutes, potentially there is a grid lock
 						this.stuckTime = 0; // Refresh the stuck time to prevent the case that this function is called every tick
-						List<Road> tempPath = RouteV.vehicleRoute(this, this.destCoord); // Use K shortest path
+						List<Road> tempPath = RouteV.vehicleRoute(this, this.destCoord); // Recalculate the route
 						this.clearShadowImpact();
 						// Compute new route
 						this.roadPath = tempPath;
@@ -373,17 +367,17 @@ public class Vehicle {
 				// Clear legacy impact
 				this.clearShadowImpact();
 				this.roadPath = new ArrayList<Road>();
-				if(this.getVehicleClass() == 1) {
+				if(this.getVehicleClass() == 1) { // EV taxis
 					ElectricVehicle ev = (ElectricVehicle) this;
-					if(!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV && !this.onChargingRoute()){
+					if(!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV && !ev.onChargingRoute()){
 						Pair<List<Road>,Integer> route_result = RouteV.ecoRoute(ev.getOriginID(), ev.getDestID());
 						this.roadPath = route_result.getFirst();
 						ev.setRouteChoice(route_result.getSecond());
 					}
 				}
-				else if(this.getVehicleClass() == 2){
+				else if(this.getVehicleClass() == 2){ // EV buses
 					Bus evBus = (Bus) this;
-					if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !this.onChargingRoute()){
+					if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !evBus.onChargingRoute()){
 						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestID());
 						this.roadPath = route_result.getFirst();
 						evBus.setRouteChoice(route_result.getSecond());
@@ -1293,6 +1287,7 @@ public class Vehicle {
 		if(this.road != null) {
 			// Current road of this vehicle
 			Road pr = this.getRoad();
+			pr.changeNumberOfVehicles(-1);
 			// If this is not the first vehicle on the road
 			if (this.macroLeading_ != null) {
 				this.macroLeading_.macroTrailing_ = this.macroTrailing_;
@@ -1304,7 +1299,6 @@ public class Vehicle {
 			} else {
 				pr.lastVehicle(macroLeading_);
 			}
-			pr.changeNumberOfVehicles(-1);
 			this.road = null;
 		}
 	}
@@ -2142,10 +2136,6 @@ public class Vehicle {
 
 	public void setVehicleClass(int vehicleClass) {
 		this.vehicleClass = vehicleClass;
-	}
-
-	public boolean onChargingRoute() {
-		return false;
 	}
 
 	public int getDestRoadID() {

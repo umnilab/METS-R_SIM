@@ -13,7 +13,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.ChargingStation;
-import addsEVs.citycontext.Passenger;
+import addsEVs.citycontext.Request;
 import addsEVs.citycontext.Zone;
 import addsEVs.data.DataCollector;
 import repast.simphony.essentials.RepastEssentials;
@@ -27,7 +27,7 @@ import repast.simphony.essentials.RepastEssentials;
 public class ElectricVehicle extends Vehicle{
 	// Local variables
 	private int numPeople_; // no of people inside the vehicle
-	public Queue<Passenger> passengerWithAdditionalActivityOnTaxi;
+	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
 	private double avgPersonMass_; // average mass of a person in lbs
 	private double batteryLevel_; // current battery level
 	private double lowerBatteryRechargeLevel_;
@@ -131,9 +131,9 @@ public class ElectricVehicle extends Vehicle{
 	/**
 	 * @param list of passengers
 	 */
-	public void servePassenger(List<Passenger> plist) {
+	public void servePassenger(List<Request> plist) {
 		if(!plist.isEmpty()) {
-			for(Passenger p: plist) {
+			for(Request p: plist) {
 				this.addPlan(
 						p.getDestination(),
 						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(), (int) RepastEssentials.GetTickCount());
@@ -187,19 +187,19 @@ public class ElectricVehicle extends Vehicle{
 			
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
-				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).taxiServedPass += 1;
+				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).taxiServedRequest += 1;
 				// if pass need to take the bus to complete his or her trip
 				if(this.passengerWithAdditionalActivityOnTaxi.size()>0) {
 					// generate a pass and add it to the corresponding zone
-					Passenger p = this.passengerWithAdditionalActivityOnTaxi.poll();
+					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
 					
 				    if(z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
-				    	z.toAddPassForBus.add(p);
+				    	z.toAddRequestForBus.add(p);
 				    }
 				    else {
 				    	// this happens when we dynamically update bus schedules
-				    	z.toAddPassForTaxi.add(p);
+				    	z.toAddRequestForTaxi.add(p);
 				    }
 				}
 			}
@@ -246,7 +246,7 @@ public class ElectricVehicle extends Vehicle{
 //		this.splinef = f; 
 		//Parameters for UCB calculation
 		this.linkConsume = 0;
-		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Passenger>();
+		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
 	}
 	
 	
@@ -266,7 +266,6 @@ public class ElectricVehicle extends Vehicle{
 		return 1.05*mass+numPeople_*avgPersonMass_;
 	}
 	
-	@Override
 	public boolean onChargingRoute(){
 		return this.onChargingRoute_;
 	}

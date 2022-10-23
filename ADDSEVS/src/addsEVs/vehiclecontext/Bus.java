@@ -14,7 +14,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.ChargingStation;
-import addsEVs.citycontext.Passenger;
+import addsEVs.citycontext.Request;
 import addsEVs.citycontext.Zone;
 import addsEVs.data.DataCollector;
 import repast.simphony.essentials.RepastEssentials;
@@ -40,7 +40,7 @@ public class Bus extends Vehicle{
 	// The destination distribution of passengers on the bus now.  
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having the destination of zone i.
 	private ArrayList<Integer> destinationDemandOnBus;  
-	public ArrayList<Queue<Passenger>> passengerWithAdditionalActivityOnBus;
+	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
 	
 	private boolean onChargingRoute_ = false;
 	private double batteryLevel_; // current battery level
@@ -91,9 +91,9 @@ public class Bus extends Vehicle{
 		}
 		this.nextDepartureTime = nextDepartureTime;
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
-		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Passenger>>();
+		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Request>>();
 		for(int i=0;i<route.size();i++) {
-			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Passenger>());
+			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Request>());
 		}
 		this.setInitialParams();
 	}
@@ -195,15 +195,15 @@ public class Bus extends Vehicle{
 			                          
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop % busStop.size()));
-			ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).busServedPass += this.destinationDemandOnBus.get(nextStop % busStop.size());
+			ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).busServedRequest += this.destinationDemandOnBus.get(nextStop % busStop.size());
 			this.destinationDemandOnBus.set(nextStop % busStop.size(),0);
 			
 			if(this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).size()>0) {
-				for(Passenger p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll(); 
+				for(Request p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll(); 
 						!this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).isEmpty(); 
 						p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).poll()) {
 					p.moveToNextActivity();
-					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).toAddPassForTaxi.add(p);
+					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).toAddRequestForTaxi.add(p);
 				}
 			}
 			
@@ -246,8 +246,8 @@ public class Bus extends Vehicle{
 	private void servePassenger() {
 		// ServePassengerByBus
 		Zone arrivedZone = ContextCreator.getCityContext().findZoneWithIntegerID(this.getNextStopZoneID());
-		ArrayList<Passenger> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
-		for(Passenger p: passOnBoard){
+		ArrayList<Request> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat-this.passNum, busStop);
+		for(Request p: passOnBoard){
 			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestination()),destinationDemandOnBus.get(this.stopBus.get(p.getDestination()))+1);
 			if(p.lenOfActivity() > 1) {
 				this.passengerWithAdditionalActivityOnBus.get(this.stopBus.get(p.getDestination())).add(p);
@@ -263,7 +263,6 @@ public class Bus extends Vehicle{
 		batteryLevel_ += batteryValue;
 	}
 	
-	@Override
 	public boolean onChargingRoute(){
 		return this.onChargingRoute_;
 	}
@@ -388,9 +387,9 @@ public class Bus extends Vehicle{
 		}
 		this.nextStop = 0;
 		
-		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Passenger>>();
+		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Request>>();
 		for(int i=0;i<this.busStop.size();i++) {
-			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Passenger>());
+			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Request>());
 		}
 		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
 		this.setPassNum(0);

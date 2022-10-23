@@ -4,8 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
-import java.util.concurrent.LinkedBlockingQueue;
-
+import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
 
@@ -18,7 +17,7 @@ import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 
 public class VehicleContext extends DefaultContext<Vehicle> {
-	private HashMap<Integer, LinkedBlockingQueue<ElectricVehicle>> vehicleMap; //For operation
+	private HashMap<Integer, ConcurrentLinkedQueue<ElectricVehicle>> vehicleMap; //For operation
 	private ArrayList<ElectricVehicle> vehicleList; //For data collection
 	private ArrayList<Bus> busList;
 	
@@ -28,7 +27,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		Geography<Zone> zoneGeography;
 		zoneGeography = ContextCreator.getZoneGeography();
 		
-		this.vehicleMap = new HashMap<Integer, LinkedBlockingQueue<ElectricVehicle>>();
+		this.vehicleMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricVehicle>>();
 		this.vehicleList = new ArrayList<ElectricVehicle>();
 		this.busList = new ArrayList<Bus>();
 		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
@@ -93,7 +92,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		for (Zone z : zoneGeography.getAllObjects()) {
 			Geometry hgeom = zoneGeography.getGeometry(z);
 			Coordinate coord = hgeom.getCoordinate();
-			LinkedBlockingQueue<ElectricVehicle> tmpQueue = new LinkedBlockingQueue<ElectricVehicle>();
+			ConcurrentLinkedQueue<ElectricVehicle> tmpQueue = new ConcurrentLinkedQueue<ElectricVehicle>();
 			int vehicle_num_to_generate = (int) Math.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
 			vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 			num_total -= vehicle_num_to_generate;
@@ -158,7 +157,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	
 	// Return the list of vehicles for certain zone
-	public LinkedBlockingQueue<ElectricVehicle> getVehiclesByZone(int integerID) {
+	public ConcurrentLinkedQueue<ElectricVehicle> getVehiclesByZone(int integerID) {
 		return this.vehicleMap.get(integerID);
 	}
 	

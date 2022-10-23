@@ -8,7 +8,6 @@ import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.Geometry;
 
 import addsEVs.*;
 import addsEVs.data.DataCollector;
@@ -17,7 +16,6 @@ import addsEVs.vehiclecontext.Bus;
 import addsEVs.vehiclecontext.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
-import repast.simphony.space.gis.Geography;
 
 /* 
  * Inherit from ARESCUE simulation
@@ -52,7 +50,6 @@ public class Road {
 	
 	private ArrayList<Lane> lanes; // Use lanes as objects inside the road
 	private ArrayList<Junction> junctions;
-	private ArrayList<Double> dynamicTravelTime; // Dynamic travel time of
 	
 	private TreeMap<Double, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering the road
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so using this as the middle layer
@@ -131,8 +128,10 @@ public class Road {
 		try {
 			/* Vehicle loading*/
 			this.addVehicleToDepartureMap();
+			
 			/* Vehicle departure */
-			while (!this.departureVehMap.isEmpty()) {
+			int curr_size = this.departureVehMap.size();
+			for (int i = 0; i < curr_size; i++) {
 				Vehicle v = this.newqueueHead(); // Change to use the TreeMap
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
 					// check whether the origin is the destination
@@ -155,8 +154,8 @@ public class Road {
 					@SuppressWarnings("rawtypes")
 					Set keys = (Set) this.departureVehMap.keySet();
 					for (@SuppressWarnings("rawtypes") 
-					Iterator i = (Iterator) keys.iterator(); i.hasNext();) {
-						Double key = (Double) i.next();
+					Iterator it = (Iterator) keys.iterator(); it.hasNext();) {
+						Double key = (Double) it.next();
 						ArrayList<Vehicle> temList = this.departureVehMap.get(key);
 						for (Vehicle pv : temList) {
 							if (tickcount >= pv.getDepTime()) {
@@ -176,8 +175,7 @@ public class Road {
 			if (pv != null && pv.leading() != null) { 
 				pv.leading(null);
 			}
-
-			while (pv != null) {
+			while(pv != null) {
 				if (tickcount <= pv.getLastMoveTick()) {
 					break; // Reached the last vehicle
 				}
@@ -345,18 +343,11 @@ public class Road {
 	public ArrayList<Road> getConnectedRoads() {
 		return this.downStreamMovements;
 	}
-
-	public void setNumberOfVehicles(int nVeh){
-		this.nVehicles_ = nVeh;
-		if(this.nVehicles_<0) {
-			this.nVehicles_=0;
-		}
-	}
 	
 	public void changeNumberOfVehicles(int nVeh){
 		this.nVehicles_ += nVeh;
 		if(this.nVehicles_<0) {
-			this.nVehicles_=0;
+			ContextCreator.logger.error("Something went wrong, the vehicle number becomes negative!");
 		}
 	}
 	
@@ -427,8 +418,7 @@ public class Road {
 
 	//This add queue using TreeMap structure
 	public void addVehicleToDepartureMap() {
-		int curr_size = this.toAddDepartureVeh.size();
-		for(int i=0; i < curr_size; i++) {
+		while(!this.toAddDepartureVeh.isEmpty()) {
 			Vehicle v = this.toAddDepartureVeh.poll();
 			double departuretime_ = v.getDepTime();
 			if (!this.departureVehMap.containsKey(departuretime_)) {
@@ -489,25 +479,16 @@ public class Road {
 	}
 
 	public float calcSpeed() {
-		if (nVehicles_ <= 0)
+		int curr_size = this.nVehicles_;
+		if (curr_size <= 0) // No vehicle
 			return (float) freeSpeed_;
 		float sum = 0.0f;
 		Vehicle pv = this.firstVehicle();
-		while (pv != null) {
+		for (int i = 0; i < curr_size; i++) {
 			sum += pv.currentSpeed();
 			pv = pv.macroTrailing();
 		}
-		return sum / nVehicles_;
-	}
-
-	public void calcLength() {
-		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		Geometry roadGeom = roadGeography.getGeometry(this);
-		this.length = (float) ContextCreator.convertToMeters(roadGeom
-				.getLength());
-		this.initDynamicTravelTime();
-		System.out
-				.println("Road " + this.linkid + " has length " + this.length);
+		return sum / curr_size;
 	}
 	
 	/**
@@ -518,14 +499,14 @@ public class Road {
 	 */
 	public void setTravelTime() {
 		float averageSpeed = 0;
-		if (this.nVehicles_ == 0) {
+		int curr_size=  this.nVehicles_;
+		if (curr_size <= 0) {
 			averageSpeed = (float) this.freeSpeed_;
 		} else {
 			Vehicle pv = this.firstVehicle();
-			while (pv != null) {
+			for (int i = 0; i < curr_size; i++) {
 				if (pv.currentSpeed() < 0) {
-					ContextCreator.logger.error("Vehicle " + pv.getId()
-							+ " has error speed of " + pv.currentSpeed());
+					ContextCreator.logger.error("Vehicle " + pv.getId() + " has error speed of " + pv.currentSpeed());
 				} else
 					averageSpeed = +pv.currentSpeed();
 				pv = pv.macroTrailing();
@@ -534,8 +515,7 @@ public class Road {
 				averageSpeed = 0.001f;
 			} else {
 				if (this.nVehicles_ < 0) {
-					ContextCreator.logger.error("Road " + this.getLinkid() + " has "
-							+ this.nVehicles_ + " vehicles");
+					ContextCreator.logger.error("Road " + this.getLinkid() + " has " + this.nVehicles_ + " vehicles");
 					averageSpeed = (float) this.freeSpeed_;
 				} else
 					averageSpeed = averageSpeed / this.nVehicles_;
@@ -545,34 +525,6 @@ public class Road {
 		this.travelTime = (float) this.length / averageSpeed;
 	}
 	
-
-	/**
-	 * This function will initialize the dynamic travel time vector of the road.
-	 * 
-	 * @author Samiul Hasan
-	 */
-	public void initDynamicTravelTime() {
-		int i = 1;
-		int intervalLength = GlobalVariables.SIMULATION_INTERVAL_SIZE;
-		int end = GlobalVariables.SIMULATION_STOP_TIME;
-		while (i < end) {
-			this.dynamicTravelTime.add(this.length / this.freeSpeed_);
-			i = i + intervalLength;
-		}
-	}
-
-	public void setDynamicTravelTime(double tick, double time) {
-		int intervalLength = GlobalVariables.SIMULATION_INTERVAL_SIZE;
-		int interval = (int) tick / intervalLength;
-		this.dynamicTravelTime.add(interval, time);
-	}
-
-	public double getDynamicTravelTime(double tick) {
-		int intervalLength = GlobalVariables.SIMULATION_INTERVAL_SIZE;
-		int interval = (int) tick / intervalLength;
-		return this.dynamicTravelTime.get(interval);
-	}
-
 	public double getTravelTime() {
 		return this.travelTime;
 	}
