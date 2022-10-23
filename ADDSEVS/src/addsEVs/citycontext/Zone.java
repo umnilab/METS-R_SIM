@@ -376,10 +376,12 @@ public class Zone {
 		}
 		
 		// FCFS service for the rest of passengers
-		while(!this.requestInQueueForTaxi.isEmpty()) {
-			if (ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).peek() != null) {
+		int curr_size = this.requestInQueueForTaxi.size();
+		for(int i = 0; i < curr_size; i++) {
+			ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
+			if(v!=null) {
 				Request current_taxi_pass = this.requestInQueueForTaxi.poll();
-				ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
+				this.removeVehicleStock(1);
 				if(current_taxi_pass.lenOfActivity()>1) {
 					v.passengerWithAdditionalActivityOnTaxi.add(current_taxi_pass);
 					this.combinePickupPart1 += 1;
@@ -394,7 +396,6 @@ public class Zone {
 				v.servePassenger(Arrays.asList(current_taxi_pass));
 				// Update future supply of the target zone
 				ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
-				this.removeVehicleStock(1);
 				// Record served passenger
 				this.nRequestForTaxi-=1;
 				GlobalVariables.SERVE_PASS += 1;
@@ -864,13 +865,11 @@ public class Zone {
     }
     
     public void processToAddPassengers() {
-    	int curr_size = toAddRequestForTaxi.size();
-    	for(int i = 0; i < curr_size; i++) {
-    		this.addTaxiPass(this.toAddRequestForTaxi.poll());
+    	for(Request q = this.toAddRequestForTaxi.poll(); q!= null; q = this.toAddRequestForTaxi.poll()) {
+    		this.addTaxiPass(q);
     	}
-    	curr_size = toAddRequestForBus.size();
-    	for(int i = 0; i < curr_size; i++) {
-    		this.addTaxiPass(this.toAddRequestForBus.poll());
+    	for(Request q = this.toAddRequestForBus.poll(); q!= null; q = this.toAddRequestForBus.poll()) {
+    		this.addBusPass(q);
     	}
     }
 }
