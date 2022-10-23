@@ -175,21 +175,24 @@ public class Road {
 			if (pv != null && pv.leading() != null) { 
 				pv.leading(null);
 			}
-			while(pv != null) {
-				if (tickcount <= pv.getLastMoveTick()) {
-					break; // Reached the last vehicle
+			curr_size = this.nVehicles_;
+			for (int i = 0; i < curr_size; i++) {
+				if(pv != null) {
+					if (tickcount <= pv.getLastMoveTick()) {
+						break; // Reached the last vehicle
+					}
+					pv.updateLastMoveTick(tickcount);
+					if (!pv.calcState()) {
+						ContextCreator.logger.error("Link "+this.linkid+" vehicle list is corrupted");
+						break;
+					}
+					if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
+						pv.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
+					}
+					pv.travel();
+					pv.updateBatteryLevel(); // Update the energy for each move
+					pv = pv.macroTrailing();
 				}
-				pv.updateLastMoveTick(tickcount);
-				if (!pv.calcState()) {
-					ContextCreator.logger.error("Link "+this.linkid+" vehicle list is corrupted");
-					break;
-				}
-				if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
-					pv.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
-				}
-				pv.travel();
-				pv.updateBatteryLevel(); // Update the energy for each move
-				pv = pv.macroTrailing();
 			}
 		} catch (Exception e) {
 			ContextCreator.logger.error("Road " + this.linkid
@@ -500,7 +503,7 @@ public class Road {
 	public void setTravelTime() {
 		float averageSpeed = 0;
 		int curr_size=  this.nVehicles_;
-		if (curr_size <= 0) {
+		if (curr_size == 0) {
 			averageSpeed = (float) this.freeSpeed_;
 		} else {
 			Vehicle pv = this.firstVehicle();

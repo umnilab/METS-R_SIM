@@ -61,6 +61,10 @@ public class Request {
 		return this.currentWaitingTime;
 	}
 	
+	public void setWaitingTime(int waiting_time) {
+		this.currentWaitingTime = waiting_time;
+	}
+	
 	public void setOrigin(Integer origin){
 		this.origin = origin;
 	}

@@ -34,9 +34,9 @@ public class Zone {
 	private int zoneClass; // 0 for normal zone, 1 for hub
 	private String charID;
 	
-	protected ConcurrentLinkedQueue<Request> requestInQueueForTaxi; // Nonsharable passenger queue for taxis
+	protected Queue<Request> requestInQueueForTaxi; // Nonsharable passenger queue for taxis
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
-	protected ConcurrentLinkedQueue<Request> requestInQueueForBus; //Passenger queue for bus
+	protected Queue<Request> requestInQueueForBus; //Passenger queue for bus
 	
 	private int nRequestForTaxi; // Number of requests for Taxi
 	private int nRequestForBus; // Number of requests for Bus
@@ -88,8 +88,8 @@ public class Zone {
 		this.integerID = integerID;
 		this.sharableRequestForTaxi = new HashMap<Integer, Queue<Request>>();
 		this.charID = Integer.toString(integerID);
-		this.requestInQueueForBus = new ConcurrentLinkedQueue<Request>();
-		this.requestInQueueForTaxi = new ConcurrentLinkedQueue<Request>();
+		this.requestInQueueForBus = new LinkedList<Request>();
+		this.requestInQueueForTaxi = new LinkedList<Request>();
 		this.nRequestForBus = 0;
 		this.nRequestForTaxi = 0;
 		this.busReachableZone = new ArrayList<Integer>();
@@ -351,7 +351,7 @@ public class Zone {
 			for(Queue<Request> passQueue: this.sharableRequestForTaxi.values()) {
 				if(passQueue.size()>0 && ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()>0) {
 					int pass_num = passQueue.size();
-					int v_num = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size();
+					int v_num = vehicleStock.get();
 					v_num = (int) Math.min(Math.ceil(pass_num/4.0),v_num);
 					for(int i=0; i<v_num; i++) {
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
@@ -514,7 +514,6 @@ public class Zone {
     		for(Request p: passQueue) {
     			p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
     		}
-    		
     		curr_size = passQueue.size();
     		for(int i = 0; i < curr_size; i++) {
     			if(passQueue.peek().check()) {
@@ -546,23 +545,22 @@ public class Zone {
     
     //Passenger waiting for bus
     public void passengerWaitBus(){
-    	List<Request> leftPass = new ArrayList<Request>();
     	for(Request p: this.requestInQueueForBus){
     		p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
-    		if(p.check()){
-    			leftPass.add(p);
+    	}
+    	int curr_size = requestInQueueForBus.size();
+    	for(int i = 0; i < curr_size; i++) {
+    		if(requestInQueueForBus.peek().check()){
+    			requestInQueueForBus.poll();
     			this.numberOfLeavedBusRequest += 1;
     			nRequestForBus -= 1;
     		}
-    	}
-    	for(Request p: leftPass){
-    		this.requestInQueueForBus.remove(p);
     	}
 	}
     
     // Taxi waiting for passenger, update this if the relocation is based on the taxiWaiting time
     public void taxiWaitPassenger(){
-    	this.taxiWaitingTime += ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()*GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
+    	this.taxiWaitingTime += this.vehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
     }
     
     public int getTaxiPassengerNum(){
