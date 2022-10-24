@@ -355,21 +355,23 @@ public class Zone {
 					v_num = (int) Math.min(Math.ceil(pass_num/4.0),v_num);
 					for(int i=0; i<v_num; i++) {
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
-						ArrayList<Request> tmp_pass = new ArrayList<Request>();
-						for(int j=0; j< Math.min(4,pass_num); j++) {
-							Request p = passQueue.poll();
-							tmp_pass.add(p);
-						    // Record served passengers
-							this.nRequestForTaxi -= 1;
-							this.taxiPickupRequest += 1;
-							this.taxiPassWaitingTime += p.getWaitingTime();
-							GlobalVariables.SERVE_PASS += 1; // For Json ouput
+						if(v!=null) {
+							ArrayList<Request> tmp_pass = new ArrayList<Request>();
+							for(int j=0; j< Math.min(4,pass_num); j++) {
+								Request p = passQueue.poll();
+								tmp_pass.add(p);
+							    // Record served passengers
+								this.nRequestForTaxi -= 1;
+								this.taxiPickupRequest += 1;
+								this.taxiPassWaitingTime += p.getWaitingTime();
+								GlobalVariables.SERVE_PASS += 1; // For Json ouput
+							}
+							v.servePassenger(tmp_pass);
+							// Update future supply of the target zone
+							ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
+							this.removeVehicleStock(1);
+							pass_num = pass_num - tmp_pass.size();
 						}
-						v.servePassenger(tmp_pass);
-						// Update future supply of the target zone
-						ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
-						this.removeVehicleStock(1);
-						pass_num = pass_num - tmp_pass.size();
 					}
 				}
 			}

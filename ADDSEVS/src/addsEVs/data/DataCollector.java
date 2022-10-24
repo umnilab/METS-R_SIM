@@ -4,7 +4,7 @@ package addsEVs.data;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
-import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.ContextCreator;
@@ -46,7 +46,7 @@ public class DataCollector {
     
     
     /** The double-ended queue which is the data buffer for the simulation. */
-    private ConcurrentLinkedDeque<TickSnapshot> buffer;
+    private ConcurrentLinkedQueue<TickSnapshot> buffer;
     
     /** The list of registered data consumers reading the data buffer. */
     private Vector<DataConsumer> registeredConsumers;
@@ -76,7 +76,7 @@ public class DataCollector {
     private DataCollector() {
         
         // Create the data buffer
-        this.buffer = new ConcurrentLinkedDeque<TickSnapshot>();
+        this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
         
         // Create the list of registered data consumers
         this.registeredConsumers = new Vector<DataConsumer>();
@@ -140,7 +140,7 @@ public class DataCollector {
         this.paused = false;
         
         // We are not paused, so this is a new run.
-        this.buffer = new ConcurrentLinkedDeque<>();
+        this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
         this.lastTick = -1.0;
         this.currentSnapshot = null;
         
@@ -457,7 +457,7 @@ public class DataCollector {
         // simple task of returning tick # of first item in buffer.  whether
         // or not the buffer is currently collecting or done collecting, the
         // buffer has contents that still need to be consumed somewhere.
-        TickSnapshot firstTick = this.buffer.peekFirst();
+        TickSnapshot firstTick = this.buffer.peek();
         if (firstTick == null) {
             // This should never happen, but just in case...
             return -1;

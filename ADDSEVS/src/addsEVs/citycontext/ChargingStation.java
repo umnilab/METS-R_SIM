@@ -121,8 +121,8 @@ public class ChargingStation{
 	// Function3: charge the vehicle by the L2 chargers.
 	public void chargeL2(){
 		if (chargingVehicleL2.size() > 0){   // the number of vehicles that are at chargers.
-			for (int i=0; i < chargingVehicleL2.size(); i++) {
-				ElectricVehicle ev = chargingVehicleL2.get(i);   
+			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
+			for (ElectricVehicle ev: chargingVehicleL2) {
 				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel();  // the maximal battery level is 50.0kWh
 				
 				//double maxChargingSupply = chargingRateL2/3600.0 * GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
@@ -137,12 +137,16 @@ public class ChargingStation{
 					ev.chargeItself(maxChargingSupply);          // battery increases by maxSupply
 				}else{
 					ev.chargeItself(maxChargingDemand);  // battery increases by maxChargingDemand
-					chargingVehicleL2.remove(i);	     // the vehicle leaves the charger
-					// add vehicle to newqueue of corresponding road
+					toRemoveVeh.add(ev);	     // the vehicle leaves the charger
+					// add vehicle to departureQueue of corresponding road
 					ev.finishCharging(this.getIntegerID(), "L2");
 				}
 			}
+			for (ElectricVehicle ev: toRemoveVeh) {
+				this.chargingVehicleL2.remove(ev);
+			}
 		}
+		
 		// The vehicles in the queue enter the charging areas.
 		if (chargingVehicleL2.size() < num2){   //num2: number of L2 charger.       
 			int addNumber = Math.min(num2-chargingVehicleL2.size(), queueChargingL2.size());
@@ -159,8 +163,8 @@ public class ChargingStation{
 	// Function4: charge the vehicle by the L3 chargers.
 	public void chargeL3(){
 		if (chargingVehicleL3.size() > 0){   // the number of vehicles that are at chargers.
-			for (int i=0; i < chargingVehicleL3.size(); i++) {
-				ElectricVehicle ev = chargingVehicleL3.get(i);   
+			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
+			for (ElectricVehicle ev: chargingVehicleL3) {
 				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel();  //the maximal battery level is 50.0kWh
 				double C_car = GlobalVariables.EV_BATTERY;
 				double SOC_i = ev.getBatteryLevel()/C_car;
@@ -172,9 +176,12 @@ public class ChargingStation{
 					ev.chargeItself(maxChargingSupply);          // battery increases by maxSupply
 				}else{
 					ev.chargeItself(maxChargingDemand);  // battery increases by maxChargingDemand
-					chargingVehicleL3.remove(i);	     // the vehicle leaves the charger
+					toRemoveVeh.add(ev);	     // the vehicle leaves the charger
 					ev.finishCharging(this.getIntegerID(), "L3");
 				}
+			}
+			for (ElectricVehicle ev: toRemoveVeh) {
+				this.chargingVehicleL3.remove(ev);
 			}
 		}
 		// The vehicles in the queue enter the charging areas.
@@ -192,9 +199,9 @@ public class ChargingStation{
 	
 	// Function5: charge the bus
 	public void chargeBus() {
-		if (chargingBus.size() > 0){   // the number of vehicles that are at chargers.
-			for (int i=0; i < chargingBus.size(); i++) {
-				Bus evBus = chargingBus.get(i);   
+		if (chargingBus.size() > 0){ 
+			ArrayList<Bus> toRemoveBus = new ArrayList<Bus>();
+			for (Bus evBus: chargingBus) {
 				double maxChargingDemand = GlobalVariables.BUS_BATTERY - evBus.getBatteryLevel();  //the maximal battery level is 250kWh
 				double C_bus = GlobalVariables.BUS_BATTERY;
 				double SOC_i = evBus.getBatteryLevel()/C_bus;
@@ -206,10 +213,14 @@ public class ChargingStation{
 					evBus.chargeItself(maxChargingSupply);          // Battery increases by maxSupply
 				}else{
 					evBus.chargeItself(maxChargingDemand);  // Battery increases by maxChargingDemand
-					chargingBus.remove(i);	     // The vehicle leaves the charger
+					toRemoveBus.add(evBus);	     // The vehicle leaves the charger
 					evBus.setState(Vehicle.BUS_TRIP);
 					evBus.finishCharging(this.getIntegerID(), "Bus");
 				}
+			}
+			
+			for (Bus evBus: toRemoveBus) {
+				this.chargingBus.remove(evBus);
 			}
 		}
 		// The buses in the queue enter the charging areas.
