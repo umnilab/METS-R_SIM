@@ -540,10 +540,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
-		
-		for (Zone z : getZoneContext().getObjects(Zone.class)) {
-			schedule.schedule(agentParaParams, z, "processToAddPassengers");
-		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -554,10 +550,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		for (Zone z : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, z, "step");
-		}
-		
-    	for (Zone z : getZoneContext().getObjects(Zone.class)) {
-			schedule.schedule(demandServeParams, z, "processToAddPassengers");
 		}
 	}
 	
@@ -571,11 +563,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
-		
-		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
-			schedule.schedule(agentParaParams, cs, "processToAddEV");
-			schedule.schedule(agentParaParams, cs, "processToAddBus");
-		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -585,10 +572,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
 			schedule.schedule(chargingServeParams, cs, "step");
-		}
-		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
-			schedule.schedule(chargingServeParams, cs, "processToAddEV");
-			schedule.schedule(chargingServeParams, cs, "processToAddBus");
 		}
 	}
 	

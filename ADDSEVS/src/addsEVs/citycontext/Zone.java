@@ -127,6 +127,7 @@ public class Zone {
 	}
 	
 	public void step(){
+		this.processToAddPassengers();
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();

@@ -41,8 +41,9 @@ public class ChargingStation{
 	public int numChargedVehicle;
 	
 	// For thread-safe operation
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingEV;  //Car queue waiting for L3 charging
-	private ConcurrentLinkedQueue<Bus> toAddChargingBus;             //Bus queue waiting for bus charging
+	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2;  //Pending Car queue waiting for L2 charging
+	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3;  //Pending Car queue waiting for L3 charging
+	private ConcurrentLinkedQueue<Bus> toAddChargingBus;             //Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3){
 		ContextCreator.generateAgentID();
@@ -56,7 +57,8 @@ public class ChargingStation{
 		this.chargingVehicleL2 = new ArrayList<ElectricVehicle>();
 		this.chargingVehicleL3 = new ArrayList<ElectricVehicle>();
 		this.chargingBus = new ArrayList<Bus>();
-		this.toAddChargingEV = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<Bus>();
 		this.numChargedVehicle = 0;
 	}
@@ -66,6 +68,8 @@ public class ChargingStation{
 	*/
 	// Step function
 	public void step() {
+		processToAddEV();
+		processToAddBus();
 		chargeL2();  //Function 3.
 		chargeL3();  //Function 4.
 		chargeBus(); //Function 5.
@@ -90,31 +94,34 @@ public class ChargingStation{
 	
 	// Function2: vehicleArrive()
 	public void receiveEV(ElectricVehicle ev){
-		this.toAddChargingEV.add(ev);
+		ev.initial_charging_state = ev.getBatteryLevel();
+		this.numChargedVehicle += 1;
+		if ((num2>0)&&(num3>0)){
+			double utilityL2 = -alpha * totalTimeL2(ev)/3600 - chargingCostL2(ev);
+			double utilityL3 = -alpha * totalTimeL3(ev)/3600 - chargingCostL3(ev);
+			double shareOfL2 = Math.exp(utilityL2)/(Math.exp(utilityL2) + Math.exp(utilityL3));
+			double random = Math.random();	
+			if (random < shareOfL2){  
+				toAddChargingL2.add(ev);
+			}else{
+				toAddChargingL3.add(ev); 
+			}			
+		}else if(num2>0){
+			toAddChargingL2.add(ev);
+		}else if(num3>0){
+			toAddChargingL3.add(ev);
+		}else{
+			this.numChargedVehicle -= 1;
+			ContextCreator.logger.error("Something went wrong, no chargers at this station.");
+		}
 	}
 	
 	public void processToAddEV() {
-		for(ElectricVehicle ev = this.toAddChargingEV.poll(); ev != null; ev = this.toAddChargingEV.poll()) {
-			ev.initial_charging_state = ev.getBatteryLevel();
-			this.numChargedVehicle += 1;
-			if ((num2>0)&&(num3>0)){
-				double utilityL2 = -alpha * totalTimeL2(ev)/3600 - chargingCostL2(ev);
-				double utilityL3 = -alpha * totalTimeL3(ev)/3600 - chargingCostL3(ev);
-				double shareOfL2 = Math.exp(utilityL2)/(Math.exp(utilityL2) + Math.exp(utilityL3));
-				double random = Math.random();	
-				if (random < shareOfL2){  
-					queueChargingL2.add(ev);
-				}else{
-					queueChargingL3.add(ev); 
-				}			
-			}else if(num2>0){
-				queueChargingL2.add(ev);
-			}else if(num3>0){
-				queueChargingL3.add(ev);
-			}else{
-				this.numChargedVehicle -= 1;
-				ContextCreator.logger.error("Something went wrong, no chargers at this station.");
-			}
+		for(ElectricVehicle ev = this.toAddChargingL2.poll(); ev != null; ev = this.toAddChargingL2.poll()) {
+			queueChargingL2.add(ev);
+		}
+		for(ElectricVehicle ev = this.toAddChargingL3.poll(); ev != null; ev = this.toAddChargingL3.poll()) {
+			queueChargingL3.add(ev);
 		}
 	}
 	
