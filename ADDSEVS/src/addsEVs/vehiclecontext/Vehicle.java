@@ -344,7 +344,7 @@ public class Vehicle {
 					this.nextRoad_ = null;
 					return;
 				}
-				// If Vehicle is on charging route, then we trigger this function for charging, else we perform the normal routing
+				// If Vehicle has been stuck for a long time, reroute it
 				if (!(this.roadPath == null)) {
 					// Compute new route
 					if(this.stuckTime>GlobalVariables.MAX_STUCK_TIME){ // Stuck in one place for 2 minutes, potentially there is a grid lock
