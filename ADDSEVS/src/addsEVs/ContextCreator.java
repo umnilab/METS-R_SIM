@@ -32,10 +32,7 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 
 import org.apache.log4j.Logger;
-import org.geotools.referencing.GeodeticCalculator;
 import org.json.simple.JSONObject;
-
-import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.*;
@@ -540,6 +537,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		
+		
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -550,6 +549,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		for (Zone z : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, z, "step");
+		}
+		
+    	for (Zone z : getZoneContext().getObjects(Zone.class)) {
+			schedule.schedule(demandServeParams, z, "processToAddPassengers");
 		}
 	}
 	
@@ -563,6 +566,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		
+		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
+			schedule.schedule(agentParaParams, cs, "processToAddEV");
+			schedule.schedule(agentParaParams, cs, "processToAddBus");
+		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -572,6 +580,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
 			schedule.schedule(chargingServeParams, cs, "step");
+		}
+		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
+			schedule.schedule(chargingServeParams, cs, "processToAddEV");
+			schedule.schedule(chargingServeParams, cs, "processToAddBus");
 		}
 	}
 	
@@ -609,16 +621,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ContextCreator.mainContext = context;
 		logger.info("Building subcontexts");
 		buildSubContexts();
-
-		// Check if link length and geometry are consistent, fix the inconsistency if there exists one.
-		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
-			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
-			double distance = 0;
-			for (int i = 0; i < coords.length - 1; i++) {
-				distance += getDistance(coords[i], coords[i + 1]);
-			}
-			lane.setLength(distance);
-		}
 
 		// Schedule all simulation functions
 		logger.info("Scheduling events");
@@ -790,21 +792,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return busSchedule.busGap;
 	}
 	
-	// Get distance between two coordinates
-	private double getDistance(Coordinate c1, Coordinate c2) {
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
-		calculator.setStartingGeographicPoint(c1.x, c1.y);
-		calculator.setDestinationGeographicPoint(c2.x, c2.y);
-		double distance;
-		try {
-			distance = calculator.getOrthodromicDistance();
-		} catch (AssertionError ex) {
-			logger.error("Error with finding distance");
-			distance = 0.0;
-		}
-		return distance;
-	}
-	
 	public double sumOfArray(ArrayList<Double> arrayList, int n)
     {
         if (n == 0)
@@ -812,5 +799,4 @@ public class ContextCreator implements ContextBuilder<Object> {
         else
             return arrayList.get(n) + sumOfArray(arrayList, n - 1);
     }
-
 }

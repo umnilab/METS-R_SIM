@@ -59,7 +59,7 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new ChargingStationContext());
 		for(Lane lane: ContextCreator.getLaneGeography().getAllObjects()){
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
-			double distance = 0;
+			float distance = 0;
 			for (int i = 0; i < coords.length - 1; i++) {
 				distance += getDistance(coords[i], coords[i + 1]);
 			}
@@ -416,6 +416,7 @@ public class CityContext extends DefaultContext<Object> {
 			throw new NullPointerException(
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
 		}
+		
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
@@ -430,6 +431,17 @@ public class CityContext extends DefaultContext<Object> {
 				minDist = thisDist;
 				nearestChargingStation = cs;
 			} 
+		}
+		
+		if (nearestChargingStation == null) { // Cannot find instant available charging station, go the closest one and wait there
+			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
+				DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
+				double thisDist = distOp.distance();
+				if ((thisDist < minDist) && (cs.numL2()>0 || cs.numL3()>0)) { // if thisDist < minDist
+					minDist = thisDist;
+					nearestChargingStation = cs;
+				} 
+			}
 		}
 		if (nearestChargingStation == null) {
 			ContextCreator.logger.error("CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"

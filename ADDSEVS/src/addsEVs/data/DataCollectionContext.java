@@ -193,7 +193,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
     				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass+numGeneratedCombinedPass)
     				+ ", taxiPickupPass=" + taxiPickupPass
     				+ ", busPickupPass=" + busPickupPass
-    				+ ", combinePikcupPass=" + combinePickupPart1
+    				+ ", combinePickupPass=" + combinePickupPart1
     				+ ", nLeavedPass=" + (numLeavedTaxiPass+numLeavedBusPass)
     				+ ", nRelocatedVeh=" + numRelocatedTaxi
     				+ ", nChargedVeh=" + numChargedVehicle

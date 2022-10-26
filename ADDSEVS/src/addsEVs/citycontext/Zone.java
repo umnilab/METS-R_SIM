@@ -357,6 +357,7 @@ public class Zone {
 					for(int i=0; i<v_num; i++) {
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
 						if(v!=null) {
+							this.removeVehicleStock(1);
 							ArrayList<Request> tmp_pass = new ArrayList<Request>();
 							for(int j=0; j< Math.min(4,pass_num); j++) {
 								Request p = passQueue.poll();
@@ -370,7 +371,6 @@ public class Zone {
 							v.servePassenger(tmp_pass);
 							// Update future supply of the target zone
 							ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).addFutureSupply();
-							this.removeVehicleStock(1);
 							pass_num = pass_num - tmp_pass.size();
 						}
 					}
@@ -483,6 +483,7 @@ public class Zone {
         		}
     			else { // passenger get on board
 	    			passOnBoard.add(p);
+	    			this.busPassWaitingTime+=p.getWaitingTime();
 	    			if(p.lenOfActivity() > 1) {
 	    				this.combinePickupPart1 += 1; 
 	    			}
@@ -496,10 +497,7 @@ public class Zone {
     		}
     	}
     	this.nRequestForBus -= passOnBoard.size();
-    	for(Request pass: passOnBoard){
-    		this.requestInQueueForBus.remove(pass);
-    		this.busPassWaitingTime+=pass.getWaitingTime();
-    	}
+    	this.requestInQueueForBus.removeAll(passOnBoard);
     	return passOnBoard;
 	}
     
@@ -802,9 +800,7 @@ public class Zone {
     			nRequestForBus -= 1;
     		}
     	}
-    	for(Request p: rePass){
-    		this.requestInQueueForBus.remove(p);
-    	}
+    	this.requestInQueueForBus.removeAll(rePass);
 		// Assign these passengers to taxis
 		// If the passenger planned to used combined trip, skip the first trip
 		for(Request p: rePass) {

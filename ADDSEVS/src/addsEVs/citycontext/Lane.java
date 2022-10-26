@@ -11,6 +11,7 @@ import addsEVs.vehiclecontext.Vehicle;
  * 
  * Inherit from ARESCUE simulation
  **/
+
 @SuppressWarnings("unused")
 public class Lane {
 	private int id; // An auto-generated id from ContextCreater
@@ -19,7 +20,7 @@ public class Lane {
 	private int left;
 	private int through;
 	private int right;
-	private double length;
+	private float length;
 
 	private Road road_; // The Road for which this lane belongs to
 	private int nVehicles_; // Number of vehicle in the lane
@@ -72,17 +73,14 @@ public class Lane {
 		this.laneid = laneid;
 	}
 
-	public void setLength(double length) {
+	public void setLength(float length) {
 		this.length = length;
 	}
 
-	public double getLength() {
+	public float getLength() {
 		return length;
 	}
 	
-	public double lengthLane() {
-		return this.length;
-	}
 	/*
 	 * public int getId() { return Id; }
 	 * public void setId(long Id) { this.Id = Id; }
@@ -199,7 +197,7 @@ public class Lane {
 			dlane = dnLanes_.get(i);
 			pv = dlane.lastVehicle_;
 			if (pv != null) {
-				dis = dlane.length() - (pv.distance() + pv.length());
+				dis = dlane.getLength() - (pv.getDistance() + pv.length());
 				if (dis < mindis) {
 					mindis = dis;
 					last = pv;
@@ -254,10 +252,6 @@ public class Lane {
 		return connectLane;
 	}
 
-	public double length() {
-		return this.road_.length();
-	}
-
 	public int index() {
 		return this.index;
 	}
@@ -273,11 +267,11 @@ public class Lane {
 	}
 
 	// This add only the number of vehicle to lane, while addVehicle in road and a vehicle to arrayList.
-	public void addVehicles() {
+	public void addOneVehicle() {
 		nVehicles_++;
 	}
 
-	public void removeVehicles() {
+	public void removeOneVehicle() {
 		this.nVehicles_--;
 	}
 
@@ -302,7 +296,8 @@ public class Lane {
 		}
 		return connectFlag;
 	}
-
+	
+	// Find the lane with less vehicles
 	public Lane betterLane(Lane plane) {
 		if (this != null && plane != null) {
 			if (this.nVehicles_ < plane.nVehicles_) {

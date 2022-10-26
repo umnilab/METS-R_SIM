@@ -140,11 +140,8 @@ public class Road {
 						v.setReachDest();
 					}
 					else {
-						if (v.enterNetwork(this)) {
-							v.advanceInMacroList(); //Vehicle entering the network
-						}
-						else{
-							break; // Road is full, jump out the loop
+						if (!v.enterNetwork(this)) {
+							break; //Vehicle entering the network
 						}
 					}
 					
@@ -171,28 +168,28 @@ public class Road {
 			}
             
 			/* Vehicle movement */
-			Vehicle pv = this.firstVehicle();
-			if (pv != null && pv.leading() != null) { 
-				pv.leading(null);
-			}
-			curr_size = this.nVehicles_;
-			for (int i = 0; i < curr_size; i++) {
-				if(pv != null) {
-					if (tickcount <= pv.getLastMoveTick()) {
-						break; // Reached the last vehicle
-					}
-					pv.updateLastMoveTick(tickcount);
-					if (!pv.calcState()) {
-						ContextCreator.logger.error("Link "+this.linkid+" vehicle list is corrupted");
-						break;
-					}
-					if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
-						pv.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
-					}
-					pv.travel();
-					pv.updateBatteryLevel(); // Update the energy for each move
-					pv = pv.macroTrailing();
+			Vehicle currentVehicle = this.firstVehicle();
+			// happened at time t, deciding acceleration and lane changing
+			while(currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				currentVehicle.calcState();
+				if(tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
+					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
 				}
+				currentVehicle = nextVehicle;
+			}
+			
+			// happened during time t to t + 1, conducting vehicle movements
+			currentVehicle = this.firstVehicle();
+			while(currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				if (tickcount <= currentVehicle.getLastMoveTick()) {
+					break; // Reached the end of linked list
+				}
+				currentVehicle.updateLastMoveTick(tickcount);
+				currentVehicle.travel();
+				currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				currentVehicle = nextVehicle;
 			}
 		} catch (Exception e) {
 			ContextCreator.logger.error("Road " + this.linkid
@@ -355,15 +352,19 @@ public class Road {
 	}
 	
 	public void firstVehicle(Vehicle v) {
-		if (v != null)
+		if (v != null) {
 			this.firstVehicle_ = v;
+		    v.macroLeading(null);
+		}
 		else
 			this.firstVehicle_ = null;
 	}
 
 	public void lastVehicle(Vehicle v) {
-		if (v != null)
+		if (v != null) {
 			this.lastVehicle_ = v;
+			v.macroTrailing(null);
+		}
 		else
 			this.lastVehicle_ = null;
 	}
@@ -428,10 +429,7 @@ public class Road {
 				temporalList.add(v);
 				this.departureVehMap.put(departuretime_, temporalList);
 			} else {
-				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
-				temporalList = this.departureVehMap.get(departuretime_);
-				temporalList.add(v);
-				this.departureVehMap.put(departuretime_, temporalList);
+				this.departureVehMap.get(departuretime_).add(v);
 			}
 		}
 	}
@@ -468,16 +466,14 @@ public class Road {
 		return null;
 	}
 
-	public double length() {
-		return this.length;
-	}
-
 	public double getFreeSpeed() {
 		return this.freeSpeed_;
 	}
 	
-	public double getRandomFreeSpeed() {
-		return Math.max(this.freeSpeed_ + GlobalVariables.RandomGenerator.nextGaussian()*this.freeSpeedStd_, 1*0.44704); // at least 1 mph
+	public float getRandomFreeSpeed() {
+		return (float) Math.min(this.defaultFreeSpeed_, Math.max(this.freeSpeed_ + 
+				GlobalVariables.RandomGenerator.nextGaussian()*this.freeSpeedStd_, 
+				5*0.44704)); // at least 5 mph
 	}
 
 	public float calcSpeed() {
@@ -490,7 +486,7 @@ public class Road {
 			sum += pv.currentSpeed();
 			pv = pv.macroTrailing();
 		}
-		return sum / curr_size;
+		return (float) Math.max(sum / curr_size, 1*0.44704); // at least 1 mph
 	}
 	
 	/**
@@ -603,7 +599,7 @@ public class Road {
 		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.curhour < hour) {
-			double value = Math.max(1, ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44704); // convert
+			double value = ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44704; // convert
 																													// from
 																													// mile
 																													// per
@@ -612,7 +608,7 @@ public class Road {
 																													// meter
 																													// per
 																													// second
-			double value2 = Math.max(1, ContextCreator.getBackgroundTrafficStd().get(this.linkid).get(hour) * 0.44704);
+			double value2 = ContextCreator.getBackgroundTrafficStd().get(this.linkid).get(hour) * 0.44704;
 			if (this.checkEventFlag()) {
 				this.setDefaultFreeSpeed();
 			} else {

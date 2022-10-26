@@ -53,7 +53,7 @@ public class ChargingStationContext extends DefaultContext<ChargingStation>{
 					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0);
 				}
 				else{
-					ContextCreator.logger.error("Incorrect format for charging station plan. Is there anything wrong in data/NYC/charger_jiawei?");
+					ContextCreator.logger.error("Incorrect format for charging station plan. Is there anything wrong in data/NYC/charging_station?");
 				}
 				int_id -=1;
 			}

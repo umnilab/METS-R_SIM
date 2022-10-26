@@ -119,6 +119,7 @@ public class RouteV {
 		}
 		return result;
 	}
+	
 	/* Perform vehicle routing: returns a path
 	 * The routing uses K-shortest path */
 	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination)
@@ -127,33 +128,19 @@ public class RouteV {
 		/*
 		 * See if the current position and the destination are on road segments.
 		 */
-		Coordinate currentCoord = vehicle.getCurrentCoord();
-
+		
 		/* Destination coordinate of the vehicle */
-		Coordinate destCoord = vehicle.getDestCoord();
-
-		Coordinate nearestRoadCoord;
-
-		if (!onRoad(currentCoord)) {
-			nearestRoadCoord = getNearestRoadCoord(currentCoord);
-			currentCoord = nearestRoadCoord;
-		}
 		Road currentRoad = vehicle.getRoad();
-		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
+		Road destRoad = cityContext.findRoadAtCoordinates(destination, true);
 		
 		/* Current downstream junction of the road the vehicle is on */
-		Junction curDownstreamJunc = vehicle.getRoad().getJunctions().get(1);
-		/*
-		 * Current downstream junction of the destination junction the vehicle
-		 * is on
-		 */
-		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
+		Junction curDownstreamJunc = currentRoad.getJunctions().get(1);
+		
+		/* Current downstream junction of the destination junction the vehicle is on */
+		Junction destDownstreamJunc = getNearestDownStreamJunction(destination,
 				destRoad);
-
+		
 		if (curDownstreamJunc.getID() == destDownstreamJunc.getID()) {
-			if (vehicle.getVehicleID() == GlobalVariables.Global_Vehicle_ID) {
-				ContextCreator.logger.info("Destination road reached " + destRoad.getLinkid() +" from current road: " + currentRoad.getLinkid());
-			}
 			return null;
 		}
 		
@@ -162,8 +149,10 @@ public class RouteV {
 			ContextCreator.logger.error("Route fails for vehicle: " +vehicle.getVehicleID() + " Plan: "+ vehicle.getPlan());
 			ContextCreator.logger.error("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
 		}
+		
 		return path;
 	}
+	
 	// Use ecoRoute to decide route
 	public static Pair<List<Road>,Integer> ecoRoute(int origin, int destination){
 		String key = Integer.toString(origin) + ',' + destination;
@@ -171,6 +160,9 @@ public class RouteV {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		int choice = ContextCreator.routeResult_received.get(key);
+		if(choice < 0) {
+			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
+		}
 		List<Integer> path = (ContextCreator.route_UCB.get(key)).get(choice);
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
@@ -181,14 +173,18 @@ public class RouteV {
 		return final_result;
 	}
 	
-// Use ecoRoute to decide route, uncommented this if you want to test ecorouting for buses
+    // Use ecoRoute to decide route, uncommented this if you want to test eco-routing for buses
 	public static Pair<List<Road>,Integer> ecoRouteBus(int origin, int destination){
 		String key = Integer.toString(origin) + ',' + destination;
 		if(!ContextCreator.routeResult_received_bus.containsKey(key)){
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		int choice = ContextCreator.routeResult_received_bus.get(key);
+		if(choice < 0) {
+			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
+		}
 		List<Integer> path = (ContextCreator.route_UCB_bus.get(key)).get(choice);
+		
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
@@ -206,7 +202,6 @@ public class RouteV {
 	}
 	
 	
-	@SuppressWarnings("deprecation")
 	public static Coordinate getNearestRoadCoord(Coordinate coord) {
 		// Search all roads in the vicinity, looking for the point which is
 		// nearest the person
@@ -226,9 +221,9 @@ public class RouteV {
 				minDist = thisDist;
 				// nearestRoad = road;
 				// Two coordinates returned by closestPoints(), need to find the
-				// one which isn''t the
+				// one which isn't the
 				// coord parameter
-				for (Coordinate c : distOp.closestPoints()) {
+				for (Coordinate c : distOp.nearestPoints()) {
 					if (!c.equals(coord)) {
 						nearestPoint = c;
 						break;
@@ -286,7 +281,7 @@ public class RouteV {
 		return j1;
 	}
 
-	private static Junction getNearestDownStreamJunction(Coordinate coord,
+	public static Junction getNearestDownStreamJunction(Coordinate coord,
 			Road road) {
 		// Find the associated edge in road network
 		RepastEdge<?> edge;

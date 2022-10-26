@@ -153,11 +153,10 @@ public class ElectricVehicle extends Vehicle{
 		if(this.onChargingRoute_) {
 			String formated_msg = RepastEssentials.GetTickCount() + "," + 
 			this.getVehicleID() + ",4,"+ this.getOriginID()+","+
-					this.getDestID()+"," + this.accummulatedDistance_ +"," +this.getDepTime()+","+this.getTripConsume()+",-1" + "," + this.getNumPeople();
+					this.getDestID()+"," + this.getAccummulatedDistance() +"," +this.getDepTime()+","+this.getTripConsume()+",-1" + "," + this.getNumPeople();
 			try{
 				ContextCreator.ev_logger.write(formated_msg);
 				ContextCreator.ev_logger.newLine();
-				this.accummulatedDistance_=0;
 			} catch(IOException e){
 				e.printStackTrace();
 			}
@@ -168,12 +167,11 @@ public class ElectricVehicle extends Vehicle{
 			cs.receiveEV(this);
 //			this.reachActLocation = true;
 			this.tripConsume = 0; 
-			this.accummulatedDistance_=0;
 		} else {
 			// Log the trip consume here
 			String formated_msg = RepastEssentials.GetTickCount() + "," + 
 			this.getVehicleID() + ","+this.getState()+","+ this.getOriginID()+","+
-					this.getDestID()+"," + this.accummulatedDistance_ + "," + this.getDepTime()+","+this.getTripConsume()+","+this.getRouteChoice()+ "," + this.getNumPeople();
+					this.getDestID()+"," + this.getAccummulatedDistance() + "," + this.getDepTime()+","+this.getTripConsume()+","+this.getRouteChoice()+ "," + this.getNumPeople();
 			try{
 				ContextCreator.ev_logger.write(formated_msg);
 				ContextCreator.ev_logger.newLine();
@@ -181,13 +179,12 @@ public class ElectricVehicle extends Vehicle{
 				e.printStackTrace();
 			}
 			this.tripConsume = 0; 
-			this.accummulatedDistance_=0;
 			
 			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
 			
 			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
-				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).taxiServedRequest += 1;
+				z.taxiServedRequest += 1;
 				// if pass need to take the bus to complete his or her trip
 				if(this.passengerWithAdditionalActivityOnTaxi.size()>0) {
 					// generate a pass and add it to the corresponding zone

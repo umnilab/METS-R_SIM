@@ -79,15 +79,23 @@ public class ChargingStation{
 		return this.num2 + this.num3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
 	}
 	
+	public int numL2() {
+		return this.num2;
+	}
+	
+	public int numL3() {
+		return this.num3;
+	}
+		
 	// Function1: busArrive()
 	public void receiveBus(Bus bus){
+		bus.initial_charging_state = bus.getBatteryLevel();
 		this.toAddChargingBus.add(bus);
 	}
 	
 	
 	public void processToAddBus() {
 		for(Bus bus = this.toAddChargingBus.poll(); bus != null; bus = this.toAddChargingBus.poll()) {
-			bus.initial_charging_state = bus.getBatteryLevel();
 			queueChargingBus.add(bus);
 		}
 	}
@@ -149,9 +157,7 @@ public class ChargingStation{
 					ev.finishCharging(this.getIntegerID(), "L2");
 				}
 			}
-			for (ElectricVehicle ev: toRemoveVeh) {
-				this.chargingVehicleL2.remove(ev);
-			}
+			this.chargingVehicleL2.removeAll(toRemoveVeh);
 		}
 		
 		// The vehicles in the queue enter the charging areas.
@@ -187,9 +193,7 @@ public class ChargingStation{
 					ev.finishCharging(this.getIntegerID(), "L3");
 				}
 			}
-			for (ElectricVehicle ev: toRemoveVeh) {
-				this.chargingVehicleL3.remove(ev);
-			}
+			this.chargingVehicleL3.removeAll(chargingVehicleL3);
 		}
 		// The vehicles in the queue enter the charging areas.
 		if (chargingVehicleL3.size() < num3) {           // num3: number of L3 charger.       
@@ -226,9 +230,7 @@ public class ChargingStation{
 				}
 			}
 			
-			for (Bus evBus: toRemoveBus) {
-				this.chargingBus.remove(evBus);
-			}
+			this.chargingBus.removeAll(toRemoveBus);
 		}
 		// The buses in the queue enter the charging areas.
 		int addNumber = queueChargingBus.size(); 
