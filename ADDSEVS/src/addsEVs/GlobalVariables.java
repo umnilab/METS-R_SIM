@@ -46,7 +46,7 @@ import java.util.Properties;
 
 public class GlobalVariables {
 private static Properties config;
-    //Loading properties from configuration files, initialized used in ARESCUE credit to Xianyuan Zhan and Christopher Thompson.
+//Loading properties from configuration files, initialized used in ARESCUE credit to Xianyuan Zhan and Christopher Thompson.
 	private static String loadConfig(String property) {
 	    if (config == null) {
 	        config = new Properties();
@@ -148,7 +148,7 @@ private static Properties config;
 	public static final boolean COLLABORATIVE_EV = Boolean
 			.valueOf(loadConfig("COLLABORATIVE_EV")); 
 	// Parameters for handling multiclass routing. Note that the proportion of original routing vehicles being generated is equal to 1 - (PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES + PROPORTION_OF_LESS_FREQUENT_ROUTING_VEHICLES). 
-    public static final boolean ENABLE_MULTICLASS_ROUTING =
+  public static final boolean ENABLE_MULTICLASS_ROUTING =
 	        Boolean.valueOf(loadConfig("ENABLE_MULTICLASS_ROUTING"));
 	public static final double PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES =
 	        Double.valueOf(loadConfig("PROPORTION_OF_PREDEFINED_ROUTING_VEHICLES"));
@@ -200,6 +200,10 @@ private static Properties config;
 			.valueOf(loadConfig("ACC_EPSILON")); // meter/sec2
 	public static final float LANE_WIDTH = Float
 			.valueOf(loadConfig("LANE_WIDTH"));
+	public static final float LANE_CHANGING_PROB_PART1 = Float
+			.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
+	public static final float LANE_CHANGING_PROB_PART2 = Float
+			.valueOf(loadConfig("LANE_CHANGING_PROB_PART2"));
 	public static final float H_UPPER = Float.valueOf(loadConfig("H_UPPER"));
 	public static final float H_LOWER = Float.valueOf(loadConfig("H_LOWER"));
 	public static final double FLT_INF = Float.MAX_VALUE;
@@ -311,7 +315,7 @@ private static Properties config;
 	
 	/* Hyperparameters */
 	//Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
-	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>(Arrays.asList(131,140,180));
+	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>();
 	
 	// Number of eco-routing's candidate routes
 	public static int NUM_CANDIDATE_ROUTES = Integer.valueOf(loadConfig("NUM_CANDIDATE_ROUTES"));
@@ -320,8 +324,7 @@ private static Properties config;
 	public static final double PASSENGER_DEMAND_FACTOR = Double.valueOf(loadConfig("PASSENGER_DEMAND_FACTOR"));
 	public static final double PASSENGER_SHARE_PERCENTAGE = Double.valueOf(loadConfig("PASSENGER_SHARE_PERCENTAGE"));
 	
-	public static final int MAX_STUCK_TIME = Integer.valueOf(loadConfig("MAX_STUCK_TIME")); // for addressing the gridlock
-	
+	// Parameters for mode split 
 	public static final double BUS_TICKET_PRICE = Double.valueOf(loadConfig("BUS_TICKET_PRICE"));
 	public static final double MS_ALPHA = Double.valueOf(loadConfig("MS_ALPHA"));
 	public static final double MS_BETA = Double.valueOf(loadConfig("MS_BETA"));
@@ -329,6 +332,9 @@ private static Properties config;
 	public static final double INITIAL_PRICE_TAXI = Double.valueOf(loadConfig("INITIAL_PRICE_TAXI"));
 	public static final double TAXI_BASE = Double.valueOf(loadConfig("TAXI_BASE"));
 	public static final double BUS_BASE = Double.valueOf(loadConfig("BUS_BASE"));
+	
+	// Addressing the gridlock in the parallel mode
+	public static final int MAX_STUCK_TIME = Integer.valueOf(loadConfig("MAX_STUCK_TIME"));
 	
 	/* Displaying useful metrics */
 	public static final boolean ENABLE_METRICS_DISPLAY =
@@ -344,4 +350,20 @@ private static Properties config;
 	public static int HOUR_OF_SPEED = Integer.valueOf(loadConfig("HOUR_OF_SPEED"));
 	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
 	public static int NUM_OF_ZONE = Integer.valueOf(loadConfig("NUM_OF_ZONE"));
+	
+	
+	/* For modeling charging behavior */
+	public static int Random_ID_PASS = 0;
+	public static int Random_ID_EV = 0;
+	public static final double PASSENGER_FEE = Double.valueOf(loadConfig("PASSENGER_FEE"));
+	public static final double ONE_TIME_TRIP_FEE = Double.valueOf(loadConfig("ONE_TIME_TRIP_FEE"));
+	public static final double ELECTRICITY_FEE_L2 = Double.valueOf(loadConfig("ELECTRICITY_FEE_L2"));
+	public static final double ELECTRICITY_FEE_L3 = Double.valueOf(loadConfig("ELECTRICITY_FEE_L3"));
+	public static final double DRIVER_WAGE_FEE = Double.valueOf(loadConfig("DRIVER_WAGE_FEE"));
+	public static final double ONE_TIME_CHARGING_FEE = Double.valueOf(loadConfig("ONE_TIME_CHARGING_FEE"));
+	public static final double TIMEVALUE_DRIVER = Double.valueOf(loadConfig("TIMEVALUE_DRIVER"));  
+	public static final double TIMEVALUE_PASS = Double.valueOf(loadConfig("TIMEVALUE_PASS"));  
+	public static final String VALUATION_FILE_PASS=loadConfig("VALUATION_FILE_PASS");
+	public static final String VALUATION_FILE_EV=loadConfig("VALUATION_FILE_EV");
+	public static final String RANDOM_VALUE=loadConfig("RANDOM_VALUE");
 }

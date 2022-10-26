@@ -11,6 +11,7 @@ import addsEVs.vehiclecontext.Bus;
 import addsEVs.vehiclecontext.ElectricVehicle;
 import addsEVs.vehiclecontext.Vehicle;
 
+
 /**
 * @author: Jiawei Xue, Zengxiang Lei
 * Charging facilities for EV cars and buses
@@ -19,14 +20,14 @@ import addsEVs.vehiclecontext.Vehicle;
 public class ChargingStation{
 	private int integerID;
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery capacity for the taxi is 50.0 kWh.
-	private LinkedList<ElectricVehicle> queueChargingL2;  //Car queue waiting for L2 charging
-	private LinkedList<ElectricVehicle> queueChargingL3;  //Car queue waiting for L3 charging
-	private LinkedList<Bus> queueChargingBus;             //Bus queue waiting for bus charging
-	private int num2;       // Number of L2 chargers
-	private int num3;       // Number of L3 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL2;    // Cars that are charging themselves under the L2 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL3;    // Cars that are charging themselves under the L3 chargers
-	private ArrayList<Bus> chargingBus;                      // Buses that are charging themselves under the bus chargers
+	protected LinkedList<ElectricVehicle> queueChargingL2;  //Car queue waiting for L2 charging
+	protected LinkedList<ElectricVehicle> queueChargingL3;  //Car queue waiting for L3 charging
+	protected LinkedList<Bus> queueChargingBus;             //Bus queue waiting for bus charging
+	protected int num2;       // Number of L2 chargers
+	protected int num3;       // Number of L3 chargers
+	protected ArrayList<ElectricVehicle> chargingVehicleL2;    // Cars that are charging themselves under the L2 chargers
+	protected ArrayList<ElectricVehicle> chargingVehicleL3;    // Cars that are charging themselves under the L3 chargers
+	protected ArrayList<Bus> chargingBus;                      // Buses that are charging themselves under the bus chargers
 	
 	private static double chargingRateL2 = 10.0;  // Charging rate for L2: 10.0kWh/hour
 	private static double chargingRateL3 = 50.0;  // Charging rate for L3: 50.0kWh/hour
@@ -41,8 +42,9 @@ public class ChargingStation{
 	public int numChargedVehicle;
 	
 	// For thread-safe operation
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingEV;  //Car queue waiting for L3 charging
-	private ConcurrentLinkedQueue<Bus> toAddChargingBus;             //Bus queue waiting for bus charging
+	protected ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2;  //Pending Car queue waiting for L2 charging
+	protected ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3;  //Pending Car queue waiting for L3 charging
+	protected ConcurrentLinkedQueue<Bus> toAddChargingBus;             //Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3){
 		ContextCreator.generateAgentID();
@@ -56,7 +58,8 @@ public class ChargingStation{
 		this.chargingVehicleL2 = new ArrayList<ElectricVehicle>();
 		this.chargingVehicleL3 = new ArrayList<ElectricVehicle>();
 		this.chargingBus = new ArrayList<Bus>();
-		this.toAddChargingEV = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<Bus>();
 		this.numChargedVehicle = 0;
 	}
@@ -66,6 +69,8 @@ public class ChargingStation{
 	*/
 	// Step function
 	public void step() {
+		processToAddEV();
+		processToAddBus();
 		chargeL2();  //Function 3.
 		chargeL3();  //Function 4.
 		chargeBus(); //Function 5.
@@ -75,46 +80,57 @@ public class ChargingStation{
 		return this.num2 + this.num3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
 	}
 	
+	public int numL2() {
+		return this.num2;
+	}
+	
+	public int numL3() {
+		return this.num3;
+	}
+		
 	// Function1: busArrive()
 	public void receiveBus(Bus bus){
+		bus.initial_charging_state = bus.getBatteryLevel();
 		this.toAddChargingBus.add(bus);
 	}
 	
 	
 	public void processToAddBus() {
 		for(Bus bus = this.toAddChargingBus.poll(); bus != null; bus = this.toAddChargingBus.poll()) {
-			bus.initial_charging_state = bus.getBatteryLevel();
 			queueChargingBus.add(bus);
 		}
 	}
 	
 	// Function2: vehicleArrive()
 	public void receiveEV(ElectricVehicle ev){
-		this.toAddChargingEV.add(ev);
+		ev.initial_charging_state = ev.getBatteryLevel();
+		this.numChargedVehicle += 1;
+		if ((num2>0)&&(num3>0)){
+			double utilityL2 = -alpha * totalTimeL2(ev)/3600 - chargingCostL2(ev);
+			double utilityL3 = -alpha * totalTimeL3(ev)/3600 - chargingCostL3(ev);
+			double shareOfL2 = Math.exp(utilityL2)/(Math.exp(utilityL2) + Math.exp(utilityL3));
+			double random = Math.random();	
+			if (random < shareOfL2){  
+				toAddChargingL2.add(ev);
+			}else{
+				toAddChargingL3.add(ev); 
+			}			
+		}else if(num2>0){
+			toAddChargingL2.add(ev);
+		}else if(num3>0){
+			toAddChargingL3.add(ev);
+		}else{
+			this.numChargedVehicle -= 1;
+			ContextCreator.logger.error("Something went wrong, no chargers at this station.");
+		}
 	}
 	
 	public void processToAddEV() {
-		for(ElectricVehicle ev = this.toAddChargingEV.poll(); ev != null; ev = this.toAddChargingEV.poll()) {
-			ev.initial_charging_state = ev.getBatteryLevel();
-			this.numChargedVehicle += 1;
-			if ((num2>0)&&(num3>0)){
-				double utilityL2 = -alpha * totalTimeL2(ev)/3600 - chargingCostL2(ev);
-				double utilityL3 = -alpha * totalTimeL3(ev)/3600 - chargingCostL3(ev);
-				double shareOfL2 = Math.exp(utilityL2)/(Math.exp(utilityL2) + Math.exp(utilityL3));
-				double random = Math.random();	
-				if (random < shareOfL2){  
-					queueChargingL2.add(ev);
-				}else{
-					queueChargingL3.add(ev); 
-				}			
-			}else if(num2>0){
-				queueChargingL2.add(ev);
-			}else if(num3>0){
-				queueChargingL3.add(ev);
-			}else{
-				this.numChargedVehicle -= 1;
-				ContextCreator.logger.error("Something went wrong, no chargers at this station.");
-			}
+		for(ElectricVehicle ev = this.toAddChargingL2.poll(); ev != null; ev = this.toAddChargingL2.poll()) {
+			queueChargingL2.add(ev);
+		}
+		for(ElectricVehicle ev = this.toAddChargingL3.poll(); ev != null; ev = this.toAddChargingL3.poll()) {
+			queueChargingL3.add(ev);
 		}
 	}
 	
@@ -142,9 +158,7 @@ public class ChargingStation{
 					ev.finishCharging(this.getIntegerID(), "L2");
 				}
 			}
-			for (ElectricVehicle ev: toRemoveVeh) {
-				this.chargingVehicleL2.remove(ev);
-			}
+			this.chargingVehicleL2.removeAll(toRemoveVeh);
 		}
 		
 		// The vehicles in the queue enter the charging areas.
@@ -180,9 +194,7 @@ public class ChargingStation{
 					ev.finishCharging(this.getIntegerID(), "L3");
 				}
 			}
-			for (ElectricVehicle ev: toRemoveVeh) {
-				this.chargingVehicleL3.remove(ev);
-			}
+			this.chargingVehicleL3.removeAll(chargingVehicleL3);
 		}
 		// The vehicles in the queue enter the charging areas.
 		if (chargingVehicleL3.size() < num3) {           // num3: number of L3 charger.       
@@ -219,9 +231,7 @@ public class ChargingStation{
 				}
 			}
 			
-			for (Bus evBus: toRemoveBus) {
-				this.chargingBus.remove(evBus);
-			}
+			this.chargingBus.removeAll(toRemoveBus);
 		}
 		// The buses in the queue enter the charging areas.
 		int addNumber = queueChargingBus.size(); 

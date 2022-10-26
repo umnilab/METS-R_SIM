@@ -30,7 +30,7 @@ public class Zone {
 	// Basic attributes
 	private int id;
 
-	private int integerID;
+	protected int integerID;
 	private int zoneClass; // 0 for normal zone, 1 for hub
 	private String charID;
 	
@@ -38,11 +38,11 @@ public class Zone {
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; //Passenger queue for bus
 	
-	private int nRequestForTaxi; // Number of requests for Taxi
-	private int nRequestForBus; // Number of requests for Bus
+	protected int nRequestForTaxi; // Number of requests for Taxi
+	protected int nRequestForBus; // Number of requests for Bus
 	
 	// Parameters for mode choice model starts
-	private int curhour = -1; // the last time for updating the travel time estimation
+	protected int curhour = -1; // the last time for updating the travel time estimation
 	public List<Integer> busReachableZone;
 	public Map<Integer, Float> busGap; 
 	public Map<Integer, Float> taxiTravelTime;
@@ -68,12 +68,12 @@ public class Zone {
 	public int busPassWaitingTime;
 	public int taxiWaitingTime;
 	// Metrics end
-	private AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
+	protected AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
 	
 	// For vehicle repositioning
-	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
-	private AtomicInteger futureDemand = new AtomicInteger(0); // demand in the near future
-	private AtomicInteger futureSupply = new AtomicInteger(0); // supply in the near future
+	protected int lastUpdateHour = -1; // the last time for updating the demand generation rate
+	protected AtomicInteger futureDemand = new AtomicInteger(0); // demand in the near future
+	protected AtomicInteger futureSupply = new AtomicInteger(0); // supply in the near future
 	
 	// For collaborative taxi and transit
 	public Map<Integer, Zone> nearestZoneWithBus;
@@ -127,6 +127,7 @@ public class Zone {
 	}
 	
 	public void step(){
+		this.processToAddPassengers();
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();

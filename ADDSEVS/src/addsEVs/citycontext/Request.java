@@ -9,16 +9,15 @@ import addsEVs.GlobalVariables;
  * Request class
  * 
  * @author: Zengxiang Lei
- * 
  **/
 
 public class Request {
-	private Integer origin;
-	private Integer destination;
-	private Integer maxWaitingTime;
-	private Integer currentWaitingTime;
-	private Boolean willingToShare;
-	private Queue<Plan> activityPlan;
+	protected Integer origin;
+	protected Integer destination;
+	protected Integer maxWaitingTime;
+	protected Integer currentWaitingTime;
+	protected Boolean willingToShare;
+	protected Queue<Plan> activityPlan;
 	
 	public Request(Integer origin, Integer destination, Integer maxWaitingTime){
 		this.activityPlan = new LinkedList<Plan>();

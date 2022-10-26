@@ -31,11 +31,11 @@ public class ChargingStationContext extends DefaultContext<ChargingStation>{
 		/* Read in the data and add to the context and geography */
 		File chargingStationFile = null;
 		String chargerCsvName = null;
-		ShapefileLoader<ChargingStation> chargingStationLoader = null;
+		ShapefileLoader<ChargingStationWithAbandon> chargingStationLoader = null;
 		try {
 			chargingStationFile = new File(GlobalVariables.CHARGER_SHAPEFILE);
 			URI uri=chargingStationFile.toURI();
-			chargingStationLoader = new ShapefileLoader<ChargingStation>(ChargingStation.class,
+			chargingStationLoader = new ShapefileLoader<ChargingStationWithAbandon>(ChargingStationWithAbandon.class,
 					uri.toURL(), chargingStationGeography, this);
 			//  Read the charging station's attributes CSV file
 			chargerCsvName = GlobalVariables.CHARGER_CSV;

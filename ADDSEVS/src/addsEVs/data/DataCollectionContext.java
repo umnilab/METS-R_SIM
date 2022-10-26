@@ -5,8 +5,10 @@ import java.io.IOException;
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.ChargingStation;
+import addsEVs.citycontext.ChargingStationWithAbandon;
 import addsEVs.citycontext.Road;
 import addsEVs.citycontext.Zone;
+import addsEVs.citycontext.ZoneWithAbandon;
 import addsEVs.vehiclecontext.ElectricVehicle;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.engine.environment.RunEnvironment;
@@ -109,11 +111,22 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		int numChargedVehicle = 0;
 		double battery_mean = 0;
 		double battery_std = 0;
+		
+		// Added in this branch by Xiaowei
+		int numChargedVehicleL2=0;
+		int numChargedVehicleL3=0;
+		int nLeaveCharger2 = 0;
+		int nLeaveCharger3 = 0;
+		int numAbandonPass = 0; // num of abandon passengers due to the prob <0, which means they leave taxi system due to their valuation
+		int numAbandonEV = 0; // num of abandon EVs due to the prob <0, which means they leave taxi system due to their valuation
+		int taxiPassWaitingTime = 0;
+		
     	
     	int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
     	
-    	for(Zone z: ContextCreator.getZoneGeography().getAllObjects()){
-			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
+    	for(Zone zone: ContextCreator.getZoneGeography().getAllObjects()){
+			ZoneWithAbandon z = (ZoneWithAbandon) zone;
+    		numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
 			numGeneratedBusPass += z.numberOfGeneratedBusRequest;
 			numGeneratedCombinedPass += z.numberOfGeneratedCombinedRequest;
 			taxiPickupPass += z.taxiPickupRequest;
@@ -127,6 +140,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			numRelocatedTaxi += z.numberOfRelocatedVehicles;
 			numWaitingTaxiPass += z.getTaxiPassengerNum();
 			numWaitingBusPass += z.getBusPassengerNum();
+			
+			numAbandonPass+= z.getNumAbandonRequest();
+			numAbandonEV += z.getNumAbandonEV();
+			taxiPassWaitingTime += z.taxiPassWaitingTime;
     		
     		String formatted_msg2 = currentTick+","+z.getIntegerID()+","+z.getTaxiPassengerNum()+","+z.getBusPassengerNum()+","+
     		        z.getVehicleStock()+","+
@@ -134,7 +151,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
     				z.taxiPickupRequest+","+z.busPickupRequest+","+z.combinePickupPart1+","+z.combinePickupPart2+","+
     				z.taxiServedRequest+","+z.busServedRequest+","+z.taxiPassWaitingTime+","+z.busPassWaitingTime+","+
     		        z.numberOfLeavedTaxiRequest+","+z.numberOfLeavedBusRequest +","+z.taxiWaitingTime+","+
-    				z.getFutureDemand() + "," + z.getFutureSupply();
+    				z.getFutureDemand() + "," + z.getFutureSupply() + ","+ z.numberOfRelocatedVehicles + ","+
+    				z.getNumAbandonRequest() +","+ z.getNumAbandonEV()+","+
+ 					z.want_relocate_times+","+z.want_relocate_num+","+z.succ_times+","+z.fail_times;
     		try {
 				ContextCreator.zone_logger.write(formatted_msg2);
 	    		ContextCreator.zone_logger.newLine();
@@ -157,8 +176,13 @@ public class DataCollectionContext extends DefaultContext<Object> {
     		}
     	}
     	
-    	for(ChargingStation cs: ContextCreator.getChargingStationGeography().getAllObjects()){
+    	for(ChargingStation charger: ContextCreator.getChargingStationGeography().getAllObjects()){
+    		ChargingStationWithAbandon cs = (ChargingStationWithAbandon) charger;
     		numChargedVehicle+=cs.numChargedVehicle;
+    		numChargedVehicleL2+=cs.numChargedVehicleL2;
+    		numChargedVehicleL3+=cs.numChargedVehicleL3;
+    		nLeaveCharger2+=cs.numLeaveChargingL2;
+    		nLeaveCharger3+=cs.numLeaveChargingL3;
     	}
     	
     	for(ElectricVehicle v: ContextCreator.getVehicleContext().getVehicles()) {
@@ -176,7 +200,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
     			","+taxiServedPass+","+busServedPass+
     			","+numLeavedTaxiPass+","+numLeavedBusPass+
     			","+numWaitingTaxiPass+","+numWaitingBusPass+
-    			","+battery_mean+","+battery_std+","+System.currentTimeMillis();
+    			","+battery_mean+","+battery_std+","+System.currentTimeMillis()+
+    			","+nLeaveCharger2+"," + nLeaveCharger3 +","+ numChargedVehicleL2+
+    			","+numChargedVehicleL3 +"," + numAbandonPass +","+ numAbandonEV;
     	try {
 			ContextCreator.network_logger.write(formated_msg);
 			ContextCreator.network_logger.newLine();
@@ -185,18 +211,24 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.charger_logger.flush();
 			ContextCreator.bus_logger.flush();
 			ContextCreator.ev_logger.flush();
+//			ContextCreator.passenger_logger.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		} 
     	if(GlobalVariables.ENABLE_METRICS_DISPLAY){
     		System.out.println("tick=" + currentTick
-    				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass+numGeneratedCombinedPass)
-    				+ ", taxiPickupPass=" + taxiPickupPass
-    				+ ", busPickupPass=" + busPickupPass
-    				+ ", combinePikcupPass=" + combinePickupPart1
+    				+", nGeneratedPass=" + (numGeneratedTaxiPass+numGeneratedBusPass)
+    				+ ", taxiServerdPass=" + taxiServedPass
+    				+ ", busServerdPass=" + busServedPass
     				+ ", nLeavedPass=" + (numLeavedTaxiPass+numLeavedBusPass)
     				+ ", nRelocatedVeh=" + numRelocatedTaxi
     				+ ", nChargedVeh=" + numChargedVehicle
+    				+ ", nChargedVehL2=" + numChargedVehicleL2
+    				+ ", nChargedVehL3=" + numChargedVehicleL3
+    				+ ", nLeaveCharger2=" + nLeaveCharger2
+    				+ ", nLeaveCharger3=" + nLeaveCharger3
+    				+ ", numAbandonPass=" + numAbandonPass
+    				+ ", numAbandonEV=" + numAbandonEV
     				);
     	}
     }

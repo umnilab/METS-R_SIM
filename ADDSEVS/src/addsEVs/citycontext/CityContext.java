@@ -1,6 +1,8 @@
 package addsEVs.citycontext;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
@@ -59,7 +61,7 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new ChargingStationContext());
 		for(Lane lane: ContextCreator.getLaneGeography().getAllObjects()){
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
-			double distance = 0;
+			float distance = 0;
 			for (int i = 0; i < coords.length - 1; i++) {
 				distance += getDistance(coords[i], coords[i + 1]);
 			}
@@ -436,6 +438,42 @@ public class CityContext extends DefaultContext<Object> {
 							+ coord.toString());
 		}
 
+		return nearestChargingStation;
+	}
+	
+	public ChargingStationWithAbandon findNearestChargingStation(Coordinate coord, int sortid_charging_station) throws NullPointerException{// added by xiaowei on 09/29
+		if (coord == null) {
+			throw new NullPointerException(
+					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
+		}
+		GeometryFactory geomFac = new GeometryFactory();
+		Geography<?> csGeography = ContextCreator.getChargingStationGeography();
+		// Use a buffer for efficiency
+		Point point = geomFac.createPoint(coord);
+		Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER);
+		double minDist = Double.MAX_VALUE;
+		ChargingStationWithAbandon nearestChargingStation = null;
+		ArrayList<ChargingStationWithAbandon> ChargingStationList = new ArrayList<ChargingStationWithAbandon>(); // A list of charging station based on distance
+		//ArrayList<Double> distancelist = new ArrayList<Double>(); // A list of distance of charging station between ev
+
+		for (ChargingStationWithAbandon cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStationWithAbandon.class)) {
+			DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
+			double thisDist = distOp.distance();
+			if ((thisDist < minDist) && cs.capacity()>0) { // if thisDist < minDist
+				((ChargingStationWithAbandon)cs).setDistanceSort(thisDist);
+				ChargingStationList.add(cs);
+			} 
+		}
+		//System.out.println("ChargingStationList: " + ChargingStationList.size());
+	    Collections.sort(ChargingStationList, Comparator.comparing((ChargingStationWithAbandon item) -> item.getDistanceSort()));
+		
+		if(sortid_charging_station < ChargingStationList.size()) {
+		nearestChargingStation = ChargingStationList.get(sortid_charging_station);}
+
+		if (nearestChargingStation == null) {
+			ContextCreator.logger.error("CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
+							+ coord.toString() + "; null CS, the sortid num: " + sortid_charging_station + "; the size of CS list" + ChargingStationList.size());
+		}
 		return nearestChargingStation;
 	}
 	

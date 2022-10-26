@@ -32,10 +32,7 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 
 import org.apache.log4j.Logger;
-import org.geotools.referencing.GeodeticCalculator;
 import org.json.simple.JSONObject;
-
-import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.*;
@@ -65,6 +62,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static BufferedWriter network_logger; // Road network vehicle logger
 	public static BufferedWriter zone_logger; // Zone logger
 	public static BufferedWriter charger_logger; // Charger logger
+	public static BufferedWriter passenger_logger; // Passenger Trip logger
 	// A general logger for console outputs
 	public static Logger logger = Logger.getLogger(ContextCreator.class);
 	
@@ -79,6 +77,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static BackgroundTraffic backgroundTraffic = new BackgroundTraffic(); // Reading background traffic file into treemap
 	public static BackgroundDemand backgroundDemand = new BackgroundDemand(); // Reading travel demand into treemap
 	public static BusSchedule busSchedule = new BusSchedule(); // Reading the default bus schedule
+	public static CachedRandomValues cachedRandomValue = new CachedRandomValues(); // Reading random values for EV and request valuation
 	CityContext cityContext;
 	VehicleContext vehicleContext;
 	DataCollectionContext dataContext;
@@ -152,20 +151,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		for(Zone z: getZoneGeography().getAllObjects()) {
 			double demand_from_zone = 0;
-			if(z.getZoneClass() == 1) {
-				int j = GlobalVariables.HUB_INDEXES.indexOf(z.getIntegerID());
-				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(i+j*GlobalVariables.NUM_OF_ZONE*2), 
-							GlobalVariables.HOUR_OF_DEMAND-1);
-				}
-			}
-			else {
-				for(int j = 0; j < GlobalVariables.HUB_INDEXES.size(); j++){
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(z.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-	        				GlobalVariables.NUM_OF_ZONE), GlobalVariables.HOUR_OF_DEMAND-1);
-				}
+			int i = z.getIntegerID();
+			for (int j = 0; j < GlobalVariables.NUM_OF_ZONE; j++) {
+				demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
+						get(j+i*GlobalVariables.NUM_OF_ZONE),GlobalVariables.HOUR_OF_DEMAND-1);
 			}
 			demand_total += demand_from_zone;
 			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
@@ -221,7 +210,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
 			ev_logger = new BufferedWriter(fw);
-			ev_logger.write("tick,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
+			ev_logger.write("tick,vehicleFakeID,startZoneID,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
 			ev_logger.newLine();
 			ev_logger.flush();
 			logger.info("EV logger created!");
@@ -241,6 +230,19 @@ public class ContextCreator implements ContextBuilder<Object> {
 		} catch (IOException e) {
 			e.printStackTrace();
 			logger.error("Bus logger failed.");
+		}
+		logger.info("Request logger creating...");
+		try {
+			FileWriter fw = new FileWriter(outpath + File.separatorChar + "passengerLog-" + timestamp + ".csv", false);
+			passenger_logger = new BufferedWriter(fw);
+			passenger_logger.write("tick,vehicleID,originID,destID,batteryLevel,utilityForService,valuationDriver,"
+					+ "valueTimedriver,prob_d_q,WageFee,tripDistance,tripTime,valuationPass,valueTimePass,prob_p,passengerFEE");
+			passenger_logger.newLine();
+			passenger_logger.flush();
+			logger.info("Request logger created!");
+		} catch (IOException e) {
+			e.printStackTrace();
+			logger.error("Request logger failed.");
 		}
 	    logger.info("Link energy logger creating...");
 		try {
@@ -264,7 +266,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 					+ "taxiServedPass,busServedPass,"
 					+ "taxiLeavedPass,busLeavedPass,"
 					+ "numWaitingTaxiPass,numWaitingBusPass,"
-					+ "batteryMean,batteryStd,timeStamp");
+					+ "batteryMean,batteryStd,timeStamp,"
+					+ "numLeaveChargerL2,numLeaveChargerL3,numChargerL2Veh,numChargerL3Veh,numAbandonPass,numAbandonEV");
 			network_logger.newLine();
 			network_logger.flush();
 			logger.info("Network logger created!");
@@ -280,7 +283,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
 					+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
 					+ "taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,"
-					+ "taxiLeavedPass,busLeavedPass,taxiWaitingTime,futureDemand,futureSupply");
+					+ "taxiLeavedPass,busLeavedPass,taxiWaitingTime,futureDemand,futureSupply"
+					+ "numTaxiRelocate,numAbandonP,numAbandonEV,"
+					+ "relocateTimes,wantRelocateTime,relocateSuccTimes,RelocateFailTimes");
 			zone_logger.newLine();
 			zone_logger.flush();
 			logger.info("Zone logger created!");
@@ -293,7 +298,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ChargerLog-" + timestamp + ".csv", false);
 			charger_logger = new BufferedWriter(fw);
 			charger_logger
-					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel");
+					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel,findNumCS");
 			charger_logger.newLine();
 			charger_logger.flush();
 			logger.info("Charger logger created!");
@@ -540,10 +545,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
-		
-		for (Zone z : getZoneContext().getObjects(Zone.class)) {
-			schedule.schedule(agentParaParams, z, "processToAddPassengers");
-		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -554,10 +555,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		for (Zone z : getZoneContext().getObjects(Zone.class)) {
 			schedule.schedule(demandServeParams, z, "step");
-		}
-		
-    	for (Zone z : getZoneContext().getObjects(Zone.class)) {
-			schedule.schedule(demandServeParams, z, "processToAddPassengers");
 		}
 	}
 	
@@ -571,11 +568,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
-		
-		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
-			schedule.schedule(agentParaParams, cs, "processToAddEV");
-			schedule.schedule(agentParaParams, cs, "processToAddBus");
-		}
 	}
 	
 	// Schedule the event for zone updates (single-thread)
@@ -585,10 +577,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
 			schedule.schedule(chargingServeParams, cs, "step");
-		}
-		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
-			schedule.schedule(chargingServeParams, cs, "processToAddEV");
-			schedule.schedule(chargingServeParams, cs, "processToAddBus");
 		}
 	}
 	
@@ -626,17 +614,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ContextCreator.mainContext = context;
 		logger.info("Building subcontexts");
 		buildSubContexts();
-
-		// Check if link length and geometry are consistent, fix the inconsistency if there exists one.
-		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
-			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
-			double distance = 0;
-			for (int i = 0; i < coords.length - 1; i++) {
-				distance += getDistance(coords[i], coords[i + 1]);
-			}
-			lane.setLength(distance);
-		}
-
+		
 		// Schedule all simulation functions
 		logger.info("Scheduling events");
 		scheduleStartAndEnd();
@@ -690,12 +668,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 			network_logger.flush();
 			zone_logger.flush();
 			charger_logger.flush();
+			passenger_logger.flush();
 			ev_logger.close();
 			bus_logger.close();
 			link_logger.close();
 			network_logger.close();
 			zone_logger.close();
 			charger_logger.close();
+			passenger_logger.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -805,21 +785,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public static ArrayList<Integer> getBusGap() {
 		return busSchedule.busGap;
-	}
-	
-	// Get distance between two coordinates
-	private double getDistance(Coordinate c1, Coordinate c2) {
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
-		calculator.setStartingGeographicPoint(c1.x, c1.y);
-		calculator.setDestinationGeographicPoint(c2.x, c2.y);
-		double distance;
-		try {
-			distance = calculator.getOrthodromicDistance();
-		} catch (AssertionError ex) {
-			logger.error("Error with finding distance");
-			distance = 0.0;
-		}
-		return distance;
 	}
 	
 	public double sumOfArray(ArrayList<Double> arrayList, int n)

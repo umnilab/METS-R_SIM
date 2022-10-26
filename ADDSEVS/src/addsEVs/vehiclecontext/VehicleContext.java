@@ -30,11 +30,53 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.vehicleMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricVehicle>>();
 		this.vehicleList = new ArrayList<ElectricVehicle>();
 		this.busList = new ArrayList<Bus>();
-		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
+		createVehicleContextFromZoneWithAbandon(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
-		createBusContextFromZone(zoneGeography, 
-				GlobalVariables.NUM_OF_BUS);
-		ContextCreator.logger.info("BUS generated!");
+		if(GlobalVariables.HUB_INDEXES.size() > 0) {
+			createBusContextFromZone(zoneGeography, 
+					GlobalVariables.NUM_OF_BUS);
+			ContextCreator.logger.info("BUS generated!");
+		}
+	}
+	
+	public void createVehicleContextFromZoneWithAbandon(Geography<Zone> zoneGeography, int vehicle_num) {
+		int total_vehicles = 0;
+		// modified by xiaowei on 09/29: generate vehicle supply from each zone
+		double demand_total = 0;
+		for(double demand_per_zone: ContextCreator.demand_per_zone.values()) {
+	    	demand_total += demand_per_zone;
+	    }
+		
+		ContextCreator.logger.info("Vehicle Generation: total demand " + demand_total);
+		// Generate the vehicles in other zones
+		int num_total = vehicle_num;
+		for (Zone z : zoneGeography.getAllObjects()) {
+			Geometry hgeom = zoneGeography.getGeometry(z);
+			Coordinate coord = hgeom.getCoordinate();
+			ConcurrentLinkedQueue<ElectricVehicle> tmpQueue = new ConcurrentLinkedQueue<ElectricVehicle>();
+			int vehicle_num_to_generate = (int) Math.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
+			vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
+			num_total -= vehicle_num_to_generate;
+			for (int i = 0; i < vehicle_num_to_generate; i++) {
+				// GeometryFactory fac = new GeometryFactory();
+				ElectricVehicleWithAbandon v = new ElectricVehicleWithAbandon();
+				v.setStartZoneID(z.getIntegerID());
+				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the first plan
+				this.add(v);
+				ContextCreator.logger.debug("Vehicle:" + i+ " generated");
+				v.setCurrentCoord(coord);
+//					Point geom = fac.createPoint(coord);
+//					vehicleGeography.move(v, geom);
+				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+				v.setNextPlan();
+				total_vehicles += 1;
+				this.vehicleList.add(v);
+				tmpQueue.add(v);
+			}
+			this.vehicleMap.put(z.getIntegerID(), tmpQueue);
+			z.addVehicleStock(vehicle_num_to_generate);
+		}
+		ContextCreator.logger.info("Total EV vehicles generated " + total_vehicles);
 	}
 	
 	public void createVehicleContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
@@ -98,7 +140,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			num_total -= vehicle_num_to_generate;
 			for (int i = 0; i < vehicle_num_to_generate; i++) {
 				// GeometryFactory fac = new GeometryFactory();
-				ElectricVehicle v = new ElectricVehicle();
+				ElectricVehicleWithAbandon v = new ElectricVehicleWithAbandon();
 				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the first plan
 				this.add(v);
 				ContextCreator.logger.debug("Vehicle:" + i+ " generated");

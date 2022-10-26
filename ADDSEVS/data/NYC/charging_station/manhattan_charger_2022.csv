@@ -1,0 +1,54 @@
+0,13,0.050281323,0.000149359,Battery Park City,13,Manhattan,-74.0160806,40.71204641,Downtown Manhattan,0,24,25
+1,41,0.052793109,0.000143093,Central Harlem,41,Manhattan,-73.95129344,40.80434223,Upper Manhattan,0,6,4
+2,42,0.092709227,0.000263897,Central Harlem North,42,Manhattan,-73.9407731,40.81826614,Upper Manhattan,0,4,4
+3,45,0.045906863,9.14E-05,Chinatown,45,Manhattan,-73.99815295,40.71246757,Downtown Manhattan,0,4,0
+4,48,0.043746744,9.43E-05,Clinton East,48,Manhattan,-73.98984609,40.76226102,Midtown Manhattan,0,20,8
+5,50,0.055747987,0.000173249,Clinton West,50,Manhattan,-73.99513667,40.76624599,Midtown Manhattan,0,14,7
+6,68,0.04933738,0.000111073,East Chelsea,68,Manhattan,-73.99991887,40.74843582,Midtown Manhattan,0,10,7
+7,74,0.110290936,0.000295038,East Harlem North,74,Manhattan,-73.93734704,40.80117776,Upper Manhattan,0,4,4
+8,75,0.0876639,0.000240564,East Harlem South,75,Manhattan,-73.9457517,40.79001903,Upper Manhattan,0,14,7
+9,79,0.042624911,0.000107893,East Village,79,Manhattan,-73.9859389,40.72762846,Downtown Manhattan,0,7,2
+10,87,0.03690155,6.72E-05,Financial District North,87,Manhattan,-74.00749743,40.70681671,Downtown Manhattan,0,12,8
+11,90,0.030759162,5.53E-05,Flatiron,90,Manhattan,-73.99697286,40.74228689,Midtown Manhattan,0,16,12
+12,100,0.024813109,3.75E-05,Garment District,100,Manhattan,-73.98878804,40.75352102,Midtown Manhattan,0,1,1
+13,107,0.038041365,7.46E-05,Gramercy,107,Manhattan,-73.98405358,40.73683232,Midtown Manhattan,0,26,11
+14,113,0.032745351,5.80E-05,Greenwich Village North,113,Manhattan,-73.99430622,40.73258733,Downtown Manhattan,0,23,14
+15,114,0.031727035,4.70E-05,Greenwich Village South,114,Manhattan,-73.99738171,40.72834865,Downtown Manhattan,0,11,2
+16,125,0.049732212,7.64E-05,Hudson Sq,125,Manhattan,-74.00748727,40.72629867,Downtown Manhattan,0,1,0
+17,127,0.060018886,0.000163196,Inwood,127,Manhattan,-73.91930967,40.86608329,Upper Manhattan,0,8,0
+18,137,0.046107624,0.000116455,Kips Bay,137,Manhattan,-73.97649616,40.74044724,Midtown Manhattan,0,10,6
+19,140,0.047584291,0.000114204,Lenox Hill East,140,Manhattan,-73.95474022,40.76549236,Upper East Side,0,17,10
+20,141,0.041514464,7.67E-05,Lenox Hill West,141,Manhattan,-73.95963618,40.76695649,Upper East Side,0,53,26
+21,142,0.038175894,7.57E-05,Lincoln Square East,142,Manhattan,-73.98153365,40.77364156,Upper West Side,0,25,15
+22,143,0.054179854,0.000151094,Lincoln Square West,143,Manhattan,-73.987647,40.7759735,Upper West Side,0,47,18
+23,144,0.027620167,4.75E-05,Little Italy/NoLiTa,144,Manhattan,-73.99691999,40.72089715,Downtown Manhattan,0,3,6
+24,148,0.039130502,6.97E-05,Lower East Side,148,Manhattan,-73.99089771,40.71894662,Downtown Manhattan,0,17,20
+25,151,0.054889941,0.000128849,Manhattan Valley,151,Manhattan,-73.96816977,40.79797027,Upper West Side,0,37,14
+26,158,0.054809991,0.000185568,Meatpacking/West Village West,158,Manhattan,-74.00898556,40.73504366,Downtown Manhattan,0,23,14
+27,161,0.03580391,7.19E-05,Midtown Center,161,Manhattan,-73.97769937,40.75803631,Midtown Manhattan,0,18,7
+28,162,0.035269815,4.79E-05,Midtown East,162,Manhattan,-73.97235738,40.75669592,Midtown Manhattan,0,28,5
+29,163,0.034176867,4.09E-05,Midtown North,163,Manhattan,-73.97757012,40.76442967,Midtown Manhattan,0,22,11
+30,164,0.035771612,5.56E-05,Midtown South,164,Manhattan,-73.98515784,40.74858289,Midtown Manhattan,0,12,8
+31,166,0.068823754,0.000255276,Morningside Heights,166,Manhattan,-73.96176504,40.80946524,Upper Manhattan,0,21,10
+32,170,0.045769009,7.43E-05,Murray Hill,170,Manhattan,-73.97849304,40.74775406,Midtown Manhattan,0,33,18
+33,186,0.02469639,3.71E-05,Penn Station/Madison Sq West,186,Manhattan,-73.99243898,40.74850545,Midtown Manhattan,0,4,2
+34,194,0.081793835,0.000273482,Randalls Island,194,Manhattan,-73.92459773,40.79100906,Upper Manhattan,0,0,3
+35,202,0.069921571,0.000106175,Roosevelt Island,202,Manhattan,-73.94995315,40.76190802,Midtown Manhattan,0,14,0
+36,209,0.030695311,3.89E-05,Seaport,209,Manhattan,-74.00366601,40.709081,Downtown Manhattan,0,8,7
+37,211,0.025234508,3.97E-05,SoHo,211,Manhattan,-74.00153901,40.72389637,Downtown Manhattan,0,8,6
+38,229,0.04252529,9.47E-05,Sutton Place/Turtle Bay North,229,Manhattan,-73.96514724,40.75673721,Midtown Manhattan,0,55,15
+39,230,0.03102831,5.61E-05,Times Sq/Theatre District,230,Manhattan,-73.98419793,40.75982588,Midtown Manhattan,0,27,14
+40,231,0.063420117,0.00016693,TriBeCa/Civic Center,231,Manhattan,-74.00788116,40.71778099,Downtown Manhattan,0,26,16
+41,232,0.061470909,0.00021605,Two Bridges/Seward Park,232,Manhattan,-73.983026,40.71474076,Downtown Manhattan,0,3,2
+42,233,0.048035918,0.000116188,UN/Turtle Bay South,233,Manhattan,-73.97044401,40.74992234,Midtown Manhattan,0,20,19
+43,234,0.0360722,7.31E-05,Union Sq,234,Manhattan,-73.99045927,40.7403457,Midtown Manhattan,0,28,16
+44,236,0.044251922,0.000102864,Upper East Side North,236,Manhattan,-73.95701314,40.78044471,Upper East Side,0,41,20
+45,237,0.0422126,9.60E-05,Upper East Side South,237,Manhattan,-73.96563597,40.76862345,Upper East Side,0,51,29
+46,238,0.060109311,0.000184764,Upper West Side North,238,Manhattan,-73.97305034,40.79171321,Upper West Side,0,33,14
+47,239,0.063626115,0.000204715,Upper West Side South,239,Manhattan,-73.97863339,40.7839697,Upper West Side,0,21,16
+48,243,0.0943315,0.000438377,Washington Heights North,243,Manhattan,-73.93283292,40.85711657,Upper Manhattan,0,9,8
+49,244,0.080568604,0.000359703,Washington Heights South,244,Manhattan,-73.94140054,40.84171706,Upper Manhattan,0,15,8
+50,246,0.069467194,0.000281298,West Chelsea/Hudson Yards,246,Manhattan,-74.00401658,40.75331733,Midtown Manhattan,0,26,19
+51,249,0.036384344,7.22E-05,West Village,249,Manhattan,-74.00287641,40.73458427,Downtown Manhattan,0,7,4
+52,262,0.049063623,0.00012233,Yorkville East,262,Manhattan,-73.94651179,40.77594067,Upper East Side,0,40,16
+53,263,0.037016625,6.58E-05,Yorkville West,263,Manhattan,-73.95101131,40.77877413,Upper East Side,0,39,18

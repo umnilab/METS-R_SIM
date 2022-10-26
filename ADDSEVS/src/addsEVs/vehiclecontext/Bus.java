@@ -125,7 +125,7 @@ public class Bus extends Vehicle{
 			linkConsume += tickEnergy;
 			tripConsume += tickEnergy;
 			 ContextCreator.logger.debug( Double.toString(totalConsume) +','+
-			 Double.toString(this.accummulatedDistance_));
+			 Double.toString(this.getAccummulatedDistance()));
 			 ContextCreator.logger.debug( Double.toString(tickConsume) +','+
 			 Double.toString(this.currentSpeed()));
 			batteryLevel_ -= tickEnergy;
@@ -158,11 +158,10 @@ public class Bus extends Vehicle{
 		if (onChargingRoute_) {
 			String formated_msg = RepastEssentials.GetTickCount() + "," + 
 			this.getVehicleID() + ","+ this.getRouteID()+",4,"+ this.getOriginID()+","+
-							this.getDestID()+"," + this.accummulatedDistance_ +"," +this.getDepTime()+","+this.getTripConsume()+",-1"+ "," + this.getPassNum();
+							this.getDestID()+"," + this.getAccummulatedDistance() +"," +this.getDepTime()+","+this.getTripConsume()+",-1"+ "," + this.getPassNum();
 			try{
 				ContextCreator.bus_logger.write(formated_msg);
 				ContextCreator.bus_logger.newLine();
-				this.accummulatedDistance_=0;
 			} catch(IOException e){
 				e.printStackTrace();
 			}
@@ -171,7 +170,6 @@ public class Bus extends Vehicle{
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
 			cs.receiveBus(this);
 			this.tripConsume=0;
-			this.accummulatedDistance_=0;
 		// Case 2: the bus arrives at the start bus stop
 		}else{
 			// Case 3: (arrive at the other bus stop), or (arrive at the start bus stop and continue to move)
@@ -179,19 +177,17 @@ public class Bus extends Vehicle{
 			if(this.getRouteID() > 0) {
 				String formated_msg = RepastEssentials.GetTickCount() + "," + 
 						this.getVehicleID() + "," + this.getRouteID() + ",3,"
-						+ this.getOriginID() + "," + this.getDestID() + "," + this.accummulatedDistance_ + ","
+						+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 						+ this.getDepTime() + "," + this.getTripConsume() + "," + this.routeChoice+ "," + this.getPassNum();
 				try {
 					ContextCreator.bus_logger.write(formated_msg);
 					ContextCreator.bus_logger.newLine();
-					this.accummulatedDistance_ = 0;
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
 			}
 			
 			this.tripConsume=0;
-			this.accummulatedDistance_=0;
 			                          
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
 			this.setPassNum(this.getPassNum()-this.destinationDemandOnBus.get(nextStop % busStop.size()));
