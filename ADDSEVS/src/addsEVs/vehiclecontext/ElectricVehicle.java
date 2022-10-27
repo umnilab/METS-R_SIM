@@ -219,10 +219,6 @@ public class ElectricVehicle extends Vehicle{
 		}
 	}
 	
-	public Coordinate getTripOrigin(){
-		return this.getOriginCoord();
-	}
-	
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;

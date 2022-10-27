@@ -12,7 +12,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import addsEVs.*;
 import addsEVs.data.DataCollector;
 import addsEVs.vehiclecontext.ElectricVehicle;
-import addsEVs.vehiclecontext.Bus;
+import addsEVs.vehiclecontext.ElectricBus;
 import addsEVs.vehiclecontext.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
@@ -638,7 +638,7 @@ public class Road {
 			ev.resetLinkConsume();
 		}
 		else if(v.getVehicleClass() == 2){
-			Bus bv = (Bus) v;
+			ElectricBus bv = (ElectricBus) v;
 			this.totalEnergy += bv.getLinkConsume();
 		}
 	}

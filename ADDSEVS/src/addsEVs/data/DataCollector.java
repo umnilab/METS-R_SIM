@@ -11,7 +11,7 @@ import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.NetworkEventObject;
 import addsEVs.citycontext.Road;
-import addsEVs.vehiclecontext.Bus;
+import addsEVs.vehiclecontext.ElectricBus;
 import addsEVs.vehiclecontext.ElectricVehicle;
 import addsEVs.vehiclecontext.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
@@ -318,7 +318,7 @@ public class DataCollector {
         
         if (vehicle.getVehicleClass() == 2){ //Bus
         	// Add the vehicle to the current snapshot
-            this.currentSnapshot.logBus((Bus)vehicle, coordinate);
+            this.currentSnapshot.logBus((ElectricBus)vehicle, coordinate);
         }
         
     }

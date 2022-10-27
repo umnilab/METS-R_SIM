@@ -228,14 +228,9 @@ public class Vehicle {
 		this.reachDest = false;
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false);
 		// The first list of coordinates for the vehicle to follow
-		if (this.coordMap.size() > 0) {
-			this.originCoord = this.coordMap.get(0);
-		} else {
-			Coordinate[] coords = laneGeography.getGeometry(road.firstLane()).getCoordinates();
-			for(Coordinate coord: coords){
-				this.coordMap.add(coord);
-			}
-			this.originCoord = this.coordMap.get(0);
+		Coordinate[] coords = laneGeography.getGeometry(road.firstLane()).getCoordinates();
+		for(Coordinate coord: coords){
+			this.coordMap.add(coord);
 		}
 		road.addVehicleToPendingQueue(this);
 	}
@@ -945,7 +940,7 @@ public class Vehicle {
 
 	public void primitiveMove() {
 		Coordinate currentCoord = this.getCurrentCoord();
-		Coordinate target = this.getOriginCoord();
+		Coordinate target = this.coordMap.get(0);
 		if (this.reachDest) {
 			return;
 		}
@@ -1190,10 +1185,14 @@ public class Vehicle {
 		if(coord == null) {
 			ContextCreator.logger.error("New coord is null!");
 		}
-		{
+		else{
 			this.currentCoord_.x = coord.x;
 			this.currentCoord_.y = coord.y;
 			this.currentCoord_.z = coord.z;
+		}
+		
+		if(this.originCoord == null) {
+			this.originCoord = coord;
 		}
 	}
 
@@ -1215,7 +1214,9 @@ public class Vehicle {
 	
 	
 	protected void leaveNetwork() {
-		this.setPreviousEpochCoord(this.currentCoord_);
+		this.setPreviousEpochCoord(new Coordinate());
+		this.setCurrentCoord(this.destCoord);
+		this.originCoord = this.destCoord; // Next origin is the current destination
 		this.clearShadowImpact();
 		this.removeFromLane();
 		this.removeFromMacroList();

@@ -3,7 +3,7 @@ package addsEVs.data;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-import addsEVs.vehiclecontext.Bus;
+import addsEVs.vehiclecontext.ElectricBus;
 
 
 /**
@@ -96,7 +96,7 @@ public class BusSnapshot {
      * @param coordinate the vehicle's current position in the simulation.
      * @throws Throwable if the supplied vehicle object is not valid.
      */
-    public BusSnapshot(Bus vehicle, 
+    public BusSnapshot(ElectricBus vehicle, 
                            Coordinate coordinate) throws Throwable {
         this(vehicle.getVehicleID(),vehicle.getRouteID(),
         	 vehicle.getpreviousEpochCoord().x,

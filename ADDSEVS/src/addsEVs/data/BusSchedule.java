@@ -15,7 +15,7 @@ import org.json.simple.parser.JSONParser;
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
 import addsEVs.citycontext.Zone;
-import addsEVs.vehiclecontext.Bus;
+import addsEVs.vehiclecontext.ElectricBus;
 import repast.simphony.essentials.RepastEssentials;
 
 class The_Comparator implements Comparator<OneBusSchedule> {
@@ -158,7 +158,7 @@ public class BusSchedule{
 		}
 	}
 	
-	public void popSchedule(int startZone, Bus b) {
+	public void popSchedule(int startZone, ElectricBus b) {
 		int current_tick = (int) RepastEssentials.GetTickCount();
 		if(this.pendingSchedules!=null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule

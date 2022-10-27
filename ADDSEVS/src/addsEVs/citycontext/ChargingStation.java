@@ -7,7 +7,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import addsEVs.ContextCreator;
 import addsEVs.GlobalVariables;
-import addsEVs.vehiclecontext.Bus;
+import addsEVs.vehiclecontext.ElectricBus;
 import addsEVs.vehiclecontext.ElectricVehicle;
 import addsEVs.vehiclecontext.Vehicle;
 
@@ -21,12 +21,12 @@ public class ChargingStation{
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery capacity for the taxi is 50.0 kWh.
 	private LinkedList<ElectricVehicle> queueChargingL2;  //Car queue waiting for L2 charging
 	private LinkedList<ElectricVehicle> queueChargingL3;  //Car queue waiting for L3 charging
-	private LinkedList<Bus> queueChargingBus;             //Bus queue waiting for bus charging
+	private LinkedList<ElectricBus> queueChargingBus;             //Bus queue waiting for bus charging
 	private int num2;       // Number of L2 chargers
 	private int num3;       // Number of L3 chargers
 	private ArrayList<ElectricVehicle> chargingVehicleL2;    // Cars that are charging themselves under the L2 chargers
 	private ArrayList<ElectricVehicle> chargingVehicleL3;    // Cars that are charging themselves under the L3 chargers
-	private ArrayList<Bus> chargingBus;                      // Buses that are charging themselves under the bus chargers
+	private ArrayList<ElectricBus> chargingBus;                      // Buses that are charging themselves under the bus chargers
 	
 	private static double chargingRateL2 = 10.0;  // Charging rate for L2: 10.0kWh/hour
 	private static double chargingRateL3 = 50.0;  // Charging rate for L3: 50.0kWh/hour
@@ -43,7 +43,7 @@ public class ChargingStation{
 	// For thread-safe operation
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2;  //Pending Car queue waiting for L2 charging
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3;  //Pending Car queue waiting for L3 charging
-	private ConcurrentLinkedQueue<Bus> toAddChargingBus;             //Pending Bus queue waiting for bus charging
+	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus;             //Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3){
 		ContextCreator.generateAgentID();
@@ -53,13 +53,13 @@ public class ChargingStation{
 		this.num3 = numL3;               // Number of level 3 charger
 		this.queueChargingL2 = new LinkedList<ElectricVehicle>();
 		this.queueChargingL3 = new LinkedList<ElectricVehicle>();
-		this.queueChargingBus = new LinkedList<Bus>();
+		this.queueChargingBus = new LinkedList<ElectricBus>();
 		this.chargingVehicleL2 = new ArrayList<ElectricVehicle>();
 		this.chargingVehicleL3 = new ArrayList<ElectricVehicle>();
-		this.chargingBus = new ArrayList<Bus>();
+		this.chargingBus = new ArrayList<ElectricBus>();
 		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
-		this.toAddChargingBus = new ConcurrentLinkedQueue<Bus>();
+		this.toAddChargingBus = new ConcurrentLinkedQueue<ElectricBus>();
 		this.numChargedVehicle = 0;
 	}
 	
@@ -88,14 +88,14 @@ public class ChargingStation{
 	}
 		
 	// Function1: busArrive()
-	public void receiveBus(Bus bus){
+	public void receiveBus(ElectricBus bus){
 		bus.initial_charging_state = bus.getBatteryLevel();
 		this.toAddChargingBus.add(bus);
 	}
 	
 	
 	public void processToAddBus() {
-		for(Bus bus = this.toAddChargingBus.poll(); bus != null; bus = this.toAddChargingBus.poll()) {
+		for(ElectricBus bus = this.toAddChargingBus.poll(); bus != null; bus = this.toAddChargingBus.poll()) {
 			queueChargingBus.add(bus);
 		}
 	}
@@ -211,8 +211,8 @@ public class ChargingStation{
 	// Function5: charge the bus
 	public void chargeBus() {
 		if (chargingBus.size() > 0){ 
-			ArrayList<Bus> toRemoveBus = new ArrayList<Bus>();
-			for (Bus evBus: chargingBus) {
+			ArrayList<ElectricBus> toRemoveBus = new ArrayList<ElectricBus>();
+			for (ElectricBus evBus: chargingBus) {
 				double maxChargingDemand = GlobalVariables.BUS_BATTERY - evBus.getBatteryLevel();  //the maximal battery level is 250kWh
 				double C_bus = GlobalVariables.BUS_BATTERY;
 				double SOC_i = evBus.getBatteryLevel()/C_bus;
@@ -235,9 +235,9 @@ public class ChargingStation{
 		// The buses in the queue enter the charging areas.
 		int addNumber = queueChargingBus.size(); 
 		for (int i=0; i<addNumber; i++) {
-			Bus evBus = queueChargingBus.poll();
+			ElectricBus evBus = queueChargingBus.poll();
 			chargingBus.add(evBus);     // The vehicle enters the charging areas.
-			for(Bus b: queueChargingBus) {
+			for(ElectricBus b: queueChargingBus) {
 				b.charging_waiting_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 			}
 		}

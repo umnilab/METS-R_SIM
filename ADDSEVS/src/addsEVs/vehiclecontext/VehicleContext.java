@@ -19,7 +19,7 @@ import repast.simphony.space.gis.Geography;
 public class VehicleContext extends DefaultContext<Vehicle> {
 	private HashMap<Integer, ConcurrentLinkedQueue<ElectricVehicle>> vehicleMap; //For operation
 	private ArrayList<ElectricVehicle> vehicleList; //For data collection
-	private ArrayList<Bus> busList;
+	private ArrayList<ElectricBus> busList;
 	
 	public VehicleContext() {
 		super("VehicleContext");
@@ -29,7 +29,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		
 		this.vehicleMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricVehicle>>();
 		this.vehicleList = new ArrayList<ElectricVehicle>();
-		this.busList = new ArrayList<Bus>();
+		this.busList = new ArrayList<ElectricBus>();
 		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
 		createBusContextFromZone(zoneGeography, 
@@ -133,8 +133,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			// Generate vehicle_num buses for the corresponding route
 			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(route.get(0));
 			for(int j = 0; j< num_per_hub; j++){
-				Bus b;
-				b = new Bus(-1, route, next_departure_time);
+				ElectricBus b;
+				b = new ElectricBus(-1, route, next_departure_time);
 				b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); //Initialize the first plan
 				this.add(b);
 				b.setCurrentCoord(z.getCoord());
@@ -165,7 +165,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return this.vehicleList;
 	}
 	
-	public List<Bus> getBuses(){
+	public List<ElectricBus> getBuses(){
 		return this.busList;
 	}
 	
