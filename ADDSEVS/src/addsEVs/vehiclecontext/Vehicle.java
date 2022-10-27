@@ -407,7 +407,7 @@ public class Vehicle {
 		}
 	}
 
-	// BL: Append a vehicle to vehicle list in plane
+	// Append a vehicle to vehicle list in plane
 	public void appendToLane(Lane plane) {
 		if (plane != null) { 
 			this.distance_ = (float) plane.getLength();
@@ -456,6 +456,7 @@ public class Vehicle {
 		for (int i = 0; i < coords.length - 1; i++) {
 			accDist-=distance(coords[i], coords[i+1]);
 			if (this.distance_ >= accDist) { // Find the first pt in CoordMap that has smaller distance_;
+				this.setCurrentCoord(coords[i]); // Set current coord
 				double[] distAndAngle = new double[2];
 				distance2(coords[i], coords[i+1], distAndAngle);
 				move2(coords[i], coords[i+1], distAndAngle[0], distAndAngle[0] - (this.distance_- accDist)); // Update vehicle location
