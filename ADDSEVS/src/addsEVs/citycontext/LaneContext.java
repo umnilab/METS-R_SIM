@@ -71,7 +71,7 @@ public class LaneContext extends DefaultContext<Lane> {
 	}
 	
 	public Lane setAttribute(Lane l, String[] att){
-		l.setLaneid(Integer.parseInt(att[5]));
+		l.setLaneid(Integer.parseInt(att[0]));
 		l.setLink(Integer.parseInt(att[1]));
 		l.setLeft(Integer.parseInt(att[2]));
 		l.setThrough(Integer.parseInt(att[3]));

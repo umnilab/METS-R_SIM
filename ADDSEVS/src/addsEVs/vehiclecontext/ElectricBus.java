@@ -25,7 +25,7 @@ import repast.simphony.essentials.RepastEssentials;
  *
  */
 
-public class Bus extends Vehicle{
+public class ElectricBus extends Vehicle{
 	private int routeID;
 	private int passNum;
 	private int numSeat;                        // Capacity of the bus.
@@ -81,7 +81,7 @@ public class Bus extends Vehicle{
 	private int routeChoice = -1;
 	
 	// Function 1: constructors
-	public Bus(int routeID, ArrayList<Integer> route, int nextDepartureTime){
+	public ElectricBus(int routeID, ArrayList<Integer> route, int nextDepartureTime){
 		super(Vehicle.EBUS); // Class 2 means bus
 		this.routeID = routeID;
 		this.busStop = route;  

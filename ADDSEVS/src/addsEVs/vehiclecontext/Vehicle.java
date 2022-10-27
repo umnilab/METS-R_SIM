@@ -379,7 +379,7 @@ public class Vehicle {
 					}
 				}
 				else if(this.getVehicleClass() == 2){ // EV buses
-					Bus evBus = (Bus) this;
+					ElectricBus evBus = (ElectricBus) this;
 					if(!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS && !evBus.onChargingRoute()){
 						Pair<List<Road>,Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(), evBus.getDestID());
 						this.roadPath = route_result.getFirst();
@@ -913,7 +913,7 @@ public class Vehicle {
 				this.distance_ -= dx - distTravelled;
 				this.nextDistance_ -= dx - distTravelled;
 				currentCoord = this.getCurrentCoord();
-				move2(currentCoord, this.coordMap.get(0), distanceToTarget, dx-distTravelled);
+				move2(currentCoord, this.coordMap.get(0), distanceToTarget, dx - distTravelled);
 				distTravelled = (float) dx;
 				this.accummulatedDistance_ += dx;
 				lastStepMove_ = (float) dx;
@@ -1215,13 +1215,10 @@ public class Vehicle {
 	
 	
 	protected void leaveNetwork() {
-		Coordinate target = null;
-		target = this.destCoord;
-		this.setCurrentCoord(target);
+		this.setPreviousEpochCoord(this.currentCoord_);
 		this.clearShadowImpact();
 		this.removeFromLane();
 		this.removeFromMacroList();
-		this.setPreviousEpochCoord(target);
 		this.endTime = 0;
 		this.atOrigin = true;
 		this.accRate_ = 0;
@@ -1891,7 +1888,7 @@ public class Vehicle {
 			((ElectricVehicle) this).recSpeedVehicle();
 		}
 		else if(this.getVehicleClass() == 2){ //Bus
-			((Bus) this).recLinkSnaphotForUCBBus();
+			((ElectricBus) this).recLinkSnaphotForUCBBus();
 		}
 		
 		if (!this.changeRoad()){
