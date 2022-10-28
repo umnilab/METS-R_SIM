@@ -19,14 +19,12 @@ File: MetisNode.java
 
 */
 
-
-
 package mets_r.partition;
 
 import galois.objects.AbstractNoConflictBaseObject;
 import galois.objects.graph.GNode;
 
-public class MetisNode extends AbstractNoConflictBaseObject{
+public class MetisNode extends AbstractNoConflictBaseObject {
 
 	// Used for matching phase
 	private GNode<MetisNode> _match;
@@ -34,24 +32,25 @@ public class MetisNode extends AbstractNoConflictBaseObject{
 	private int _weight;
 
 	private int _numEdges;
-	// The sum of weights of its edges 
+	// The sum of weights of its edges
 	private int _adjwgtsum;
 
 	private int _partition;
 	private boolean _isBoundary;
 
-	// The node it maps to in the coarser graph  
+	// The node it maps to in the coarser graph
 	private GNode<MetisNode> _mapTo;
 	private int _id;
 
 	// The sum of the weights of its edges connecting neighbors in its partition
 	private int _idegree;
-	// The sum of the weights of its edges connecting neighbors in the other partition
+	// The sum of the weights of its edges connecting neighbors in the other
+	// partition
 	private int _edegree;
-	// If moving this node to the other partition, the reduced cut  
+	// If moving this node to the other partition, the reduced cut
 	private int _gain;
 
-	// The node it mapped in the subgraph got by bisecting the current graph 
+	// The node it mapped in the subgraph got by bisecting the current graph
 	private GNode<MetisNode> subGraphMap;
 
 	public MetisNode(int id, int weight) {
@@ -186,16 +185,16 @@ public class MetisNode extends AbstractNoConflictBaseObject{
 
 	public int[] partEd;
 	public int[] partIndex;
-	
-  @Override
-  public Object gclone() {
-	  // Cautious guarantee no undo is needed here
-  	return null;
-  }
 
-  @Override
-  public void restoreFrom(Object copy) {
-	  // Cautious guarantee no undo is needed here
-  }
+	@Override
+	public Object gclone() {
+		// Cautious guarantee no undo is needed here
+		return null;
+	}
+
+	@Override
+	public void restoreFrom(Object copy) {
+		// Cautious guarantee no undo is needed here
+	}
 
 }

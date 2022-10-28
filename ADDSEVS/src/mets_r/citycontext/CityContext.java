@@ -25,7 +25,10 @@ import repast.simphony.space.graph.RepastEdge;
 
 public class CityContext extends DefaultContext<Object> {
 
-	/* To memory a link between Roads (in the RoadGeography) and Edges in the RoadNetwork */
+	/*
+	 * To memory a link between Roads (in the RoadGeography) and Edges in the
+	 * RoadNetwork
+	 */
 	// Stores the linkIDs of Repast edges (Edge as key)
 	private HashMap<RepastEdge<?>, Integer> edgeLinkID_KeyEdge;
 	// Stores the TOIDs of edges (Edge as key)
@@ -36,10 +39,11 @@ public class CityContext extends DefaultContext<Object> {
 	private HashMap<Integer, Road> road_KeyLinkID;
 	private HashMap<Integer, Junction> junction_KeyJunctionID;
 
-	/* Cache the nearest road Coordinate to every zone/spawn point for efficiency  */
+	/* Cache the nearest road Coordinate to every zone/spawn point for efficiency */
 	private Map<Coordinate, Coordinate> nearestRoadCoordCache;
 
-	// Constructs a CityContextContext and creates a Geography (called RoadNetworkGeography) which is part of this context.
+	// Constructs a CityContextContext and creates a Geography (called
+	// RoadNetworkGeography) which is part of this context.
 	public CityContext() {
 		super("CityContext"); // Very important otherwise repast complains
 		this.edgeLinkID_KeyEdge = new HashMap<RepastEdge<?>, Integer>();
@@ -57,20 +61,22 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new LaneContext());
 		this.addSubContext(new ZoneContext());
 		this.addSubContext(new ChargingStationContext());
-		for(Lane lane: ContextCreator.getLaneGeography().getAllObjects()){
+		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
 			float distance = 0;
 			for (int i = 0; i < coords.length - 1; i++) {
 				distance += getDistance(coords[i], coords[i + 1]);
 			}
-			if(Math.abs(distance-lane.getLength())>1){
-				// detect distance inconsistent between the provided length and the geometry length
-				ContextCreator.logger.debug("Lane ID: " + lane.getLaneid() + "," + " Calculated distance: "+ distance+","+"Real distance: " + lane.getLength());
+			if (Math.abs(distance - lane.getLength()) > 1) {
+				// detect distance inconsistent between the provided length and the geometry
+				// length
+				ContextCreator.logger.debug("Lane ID: " + lane.getLaneid() + "," + " Calculated distance: " + distance
+						+ "," + "Real distance: " + lane.getLength());
 			}
 			lane.setLength(distance);
 		}
 	}
-	
+
 	/**
 	 * 
 	 * @param coordinate1: c1
@@ -78,8 +84,7 @@ public class CityContext extends DefaultContext<Object> {
 	 * @return distance between c1 and c2, unit: meter
 	 */
 	private double getDistance(Coordinate c1, Coordinate c2) {
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator
-				.getLaneGeography().getCRS());
+		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(c1.x, c1.y);
 		calculator.setDestinationGeographicPoint(c2.x, c2.y);
 		double distance;
@@ -91,11 +96,11 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		return distance;
 	}
-	
+
 	/**
 	 * Actually creates the road network. Runs through the RoadGeography and
-	 * generate nodes from the end points of each line. These nodes are added to
-	 * the RoadNetwork (part of the JunctionContext) as well as to edges.
+	 * generate nodes from the end points of each line. These nodes are added to the
+	 * RoadNetwork (part of the JunctionContext) as well as to edges.
 	 */
 	public void buildRoadNetwork() {
 		// Get lane geography
@@ -104,15 +109,15 @@ public class CityContext extends DefaultContext<Object> {
 
 		// Get road geography
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		Geography<Junction> junctionGeography = ContextCreator
-				.getJunctionGeography();
+		Geography<Junction> junctionGeography = ContextCreator.getJunctionGeography();
 		JunctionContext junctionContext = ContextCreator.getJunctionContext();
 		Network<Junction> roadNetwork = ContextCreator.getRoadNetwork();
 
-		/* Create a GeometryFactory so we can create points/lines from
-		* the junctions and roads (this is so they can be displayed
-		* on the same display to check if the network has been created
-		* successfully) */
+		/*
+		 * Create a GeometryFactory so we can create points/lines from the junctions and
+		 * roads (this is so they can be displayed on the same display to check if the
+		 * network has been created successfully)
+		 */
 		GeometryFactory geomFac = new GeometryFactory();
 
 		Iterable<Road> roadIt = roadGeography.getAllObjects();
@@ -150,8 +155,8 @@ public class CityContext extends DefaultContext<Object> {
 			junc1.addRoad(road);
 			junc2.addRoad(road);
 
-			RepastEdge<Junction> edge = new RepastEdge<Junction>(junc1, junc2,
-					true, road.getLength()); // KD: replace weight
+			RepastEdge<Junction> edge = new RepastEdge<Junction>(junc1, junc2, true, road.getLength()); // KD: replace
+																										// weight
 
 			// Store the road's TOID in a dictionary (one with edges as keys,
 			try {
@@ -164,11 +169,12 @@ public class CityContext extends DefaultContext<Object> {
 			if (!roadNetwork.containsEdge(edge)) {
 				roadNetwork.addEdge(edge);
 			} else {
-				ContextCreator.logger.error("CityContext: buildRoadNetwork: for some reason this edge that has just been created "
-						+ "already exists in the RoadNetwork!");
+				ContextCreator.logger
+						.error("CityContext: buildRoadNetwork: for some reason this edge that has just been created "
+								+ "already exists in the RoadNetwork!");
 			}
 
-		} 
+		}
 		// For road
 		roadIt = roadGeography.getAllObjects();
 		ContextCreator.logger.info("Junction initialized!");
@@ -243,9 +249,8 @@ public class CityContext extends DefaultContext<Object> {
 			dsLaneIds.add(curLane.getLeft());
 			dsLaneIds.add(curLane.getThrough());
 			dsLaneIds.add(curLane.getRight());
-			ContextCreator.logger.debug("Lane: " + curLane.getLaneid() + " from road "
-			 + curLane.road_().getIdentifier() +
-			 " has downstream connections: ");
+			ContextCreator.logger.debug("Lane: " + curLane.getLaneid() + " from road " + curLane.road_().getIdentifier()
+					+ " has downstream connections: ");
 			for (double dsLaneId : dsLaneIds) {
 				if (dsLaneId != 0) {
 					dsLane = this.lane_KeyLaneID.get((int) dsLaneId);
@@ -257,7 +262,7 @@ public class CityContext extends DefaultContext<Object> {
 		// Add u-connected lanes
 		if (road.getOppositeRoad() != null) {
 			curLane = road.getLanes().get(0);
-			if (curLane.getLength() > GlobalVariables.MIN_UTURN_LENGTH) { 
+			if (curLane.getLength() > GlobalVariables.MIN_UTURN_LENGTH) {
 				dsLane = road.getOppositeRoad().getLanes().get(0);
 				curLane.addDnLane(dsLane);
 				dsLane.addUpLane(curLane);
@@ -267,12 +272,11 @@ public class CityContext extends DefaultContext<Object> {
 
 	/* We update node based routing while modify road network */
 	public void modifyRoadNetwork() {
-		for (Road road :  ContextCreator.getRoadGeography().getAllObjects()) {
+		for (Road road : ContextCreator.getRoadGeography().getAllObjects()) {
 			road.setTravelTime();
 			Junction junc1 = road.getJunctions().get(0);
 			Junction junc2 = road.getJunctions().get(1);
-			ContextCreator.getRoadNetwork().getEdge(junc1, junc2)
-					.setWeight(road.getTravelTime());
+			ContextCreator.getRoadNetwork().getEdge(junc1, junc2).setWeight(road.getTravelTime());
 		}
 
 		// At beginning, initialize route object
@@ -290,7 +294,6 @@ public class CityContext extends DefaultContext<Object> {
 			e.printStackTrace();
 		}
 	}
-	
 
 	/*
 	 * Gets the ID String associated with a given edge. Useful for linking
@@ -302,7 +305,7 @@ public class CityContext extends DefaultContext<Object> {
 			id = this.edgeLinkID_KeyEdge.get(edge);
 		} catch (Exception e) {
 			ContextCreator.logger.error("CityContext: getIDDromEdge: Error, probably no id found for edge "
-							+ edge.toString()+ e.getStackTrace());
+					+ edge.toString() + e.getStackTrace());
 		}
 		return id;
 	}
@@ -322,8 +325,8 @@ public class CityContext extends DefaultContext<Object> {
 	}
 
 	/**
-	 * Get the repast edge with the given Road ID number This is the easiest way
-	 * to find an edge using the road info
+	 * Get the repast edge with the given Road ID number This is the easiest way to
+	 * find an edge using the road info
 	 * 
 	 * @param ID of the road
 	 */
@@ -332,8 +335,7 @@ public class CityContext extends DefaultContext<Object> {
 		try {
 			edge = this.edgeIDs_KeyIDNum.get(id);
 		} catch (Exception e) {
-			ContextCreator.logger.error("CityContext: getEdgeDromID: Error, probably no edge found for id "
-							+ id);
+			ContextCreator.logger.error("CityContext: getEdgeDromID: Error, probably no edge found for id " + id);
 			e.printStackTrace();
 		}
 		return edge;
@@ -343,11 +345,9 @@ public class CityContext extends DefaultContext<Object> {
 	 * Returns the road which is crosses the given coordinates (Actually it just
 	 * returns the nearest road to the coords)
 	 */
-	public int findRoadIDAtCoordinates(Coordinate coord)
-			throws NullPointerException {
+	public int findRoadIDAtCoordinates(Coordinate coord) throws NullPointerException {
 		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
+			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<?> roadGeography = ContextCreator.getRoadGeography();
@@ -357,18 +357,17 @@ public class CityContext extends DefaultContext<Object> {
 		double minDist = Double.MAX_VALUE;
 		int nearestRoadID = 0;
 		// Road nearestRoad = null;
-		for (Road road : roadGeography.getObjectsWithin(
-				buffer.getEnvelopeInternal(), Road.class)) {
-			DistanceOp distOp = new DistanceOp(point,
-					roadGeography.getGeometry(road));
+		for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+			DistanceOp distOp = new DistanceOp(point, roadGeography.getGeometry(road));
 			double thisDist = distOp.distance();
 			if (thisDist < minDist) { // If thisDist < minDist
 				minDist = thisDist;
 				nearestRoadID = road.getLinkid();
-			} 
-		} 
+			}
+		}
 		if (nearestRoadID == 0) { // For nearRoads
-			ContextCreator.logger.error("CityContext: findRoadAtCoordinates (Coordinate coord): ERROR: couldn't find a road at these coordinates:\n\t"
+			ContextCreator.logger.error(
+					"CityContext: findRoadAtCoordinates (Coordinate coord): ERROR: couldn't find a road at these coordinates:\n\t"
 							+ coord.toString());
 		}
 		return nearestRoadID;
@@ -378,11 +377,9 @@ public class CityContext extends DefaultContext<Object> {
 	 * Returns the road which is crosses the given coordinates (Actually it just
 	 * Returns the nearest road to the coords)
 	 */
-	public Road findRoadAtCoordinates(Coordinate coord)
-			throws NullPointerException {
+	public Road findRoadAtCoordinates(Coordinate coord) throws NullPointerException {
 		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
+			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<?> roadGeography = ContextCreator.getRoadGeography();
@@ -391,32 +388,31 @@ public class CityContext extends DefaultContext<Object> {
 		Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER);
 		double minDist = Double.MAX_VALUE;
 		Road nearestRoad = null;
-		for (Road road : roadGeography.getObjectsWithin(
-				buffer.getEnvelopeInternal(), Road.class)) {
-			DistanceOp distOp = new DistanceOp(point,
-					roadGeography.getGeometry(road));
+		for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+			DistanceOp distOp = new DistanceOp(point, roadGeography.getGeometry(road));
 			double thisDist = distOp.distance();
 			if (thisDist < minDist) { // If thisDist < minDist
 				minDist = thisDist;
 				nearestRoad = road;
-			} 
-		} 
+			}
+		}
 		if (nearestRoad == null) { // for nearRoads
-			ContextCreator.logger.error("CityContext: findRoadAtCoordinates (Coordinate coord): ERROR: couldn't find a road at these coordinates:\n\t"
+			ContextCreator.logger.error(
+					"CityContext: findRoadAtCoordinates (Coordinate coord): ERROR: couldn't find a road at these coordinates:\n\t"
 							+ coord.toString());
 		}
 		return nearestRoad;
 	}
-	
+
 	/*
-	 * Returns the closest charging station from the currentLocation 
+	 * Returns the closest charging station from the currentLocation
 	 */
-	public ChargingStation findNearestChargingStation(Coordinate coord) throws NullPointerException{
+	public ChargingStation findNearestChargingStation(Coordinate coord) throws NullPointerException {
 		if (coord == null) {
 			throw new NullPointerException(
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
 		}
-		
+
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
@@ -427,35 +423,38 @@ public class CityContext extends DefaultContext<Object> {
 		for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
 			DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
 			double thisDist = distOp.distance();
-			if ((thisDist < minDist) && cs.capacity()>0) { // if thisDist < minDist
+			if ((thisDist < minDist) && cs.capacity() > 0) { // if thisDist < minDist
 				minDist = thisDist;
 				nearestChargingStation = cs;
-			} 
+			}
 		}
-		
-		if (nearestChargingStation == null) { // Cannot find instant available charging station, go the closest one and wait there
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
+
+		if (nearestChargingStation == null) { // Cannot find instant available charging station, go the closest one and
+												// wait there
+			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
+					ChargingStation.class)) {
 				DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
 				double thisDist = distOp.distance();
-				if ((thisDist < minDist) && (cs.numL2()>0 || cs.numL3()>0)) { // if thisDist < minDist
+				if ((thisDist < minDist) && (cs.numL2() > 0 || cs.numL3() > 0)) { // if thisDist < minDist
 					minDist = thisDist;
 					nearestChargingStation = cs;
-				} 
+				}
 			}
 		}
 		if (nearestChargingStation == null) {
-			ContextCreator.logger.error("CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
+			ContextCreator.logger.error(
+					"CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
 							+ coord.toString());
 		}
 
 		return nearestChargingStation;
 	}
-	
+
 	/*
-	 * Returns the closest charging station for bus from the currentLocation 
-	 * For now, assume there are always enough bus chargers
+	 * Returns the closest charging station for bus from the currentLocation For
+	 * now, assume there are always enough bus chargers
 	 */
-	public ChargingStation findNearestBusChargingStation(Coordinate coord) throws NullPointerException{
+	public ChargingStation findNearestBusChargingStation(Coordinate coord) throws NullPointerException {
 		if (coord == null) {
 			throw new NullPointerException(
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
@@ -473,21 +472,19 @@ public class CityContext extends DefaultContext<Object> {
 			if ((thisDist < minDist)) { // if thisDist < minDist
 				minDist = thisDist;
 				nearestChargingStation = cs;
-			} 
+			}
 		}
 		if (nearestChargingStation == null) {
-			ContextCreator.logger.error("CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
+			ContextCreator.logger.error(
+					"CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
 							+ coord.toString());
 		}
 		return nearestChargingStation;
 	}
-	 
 
-	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest)
-			throws NullPointerException {
+	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest) throws NullPointerException {
 		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
+			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<?> roadGeography = ContextCreator.getRoadGeography();
@@ -499,11 +496,9 @@ public class CityContext extends DefaultContext<Object> {
 
 		// New code when nearest road was found based on distance from junction
 		// Requires the direction variable
-		for (Road road : roadGeography.getObjectsWithin(
-				buffer.getEnvelopeInternal(), Road.class)) {
+		for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 			if (toDest) {
-				Coordinate roadToNode = road.getJunctions().get(1)
-						.getCoordinate();
+				Coordinate roadToNode = road.getJunctions().get(1).getCoordinate();
 				Point pointToNode = geomFac.createPoint(roadToNode);
 				DistanceOp distOp = new DistanceOp(point, pointToNode);
 				double thisDist = distOp.distance();
@@ -512,20 +507,20 @@ public class CityContext extends DefaultContext<Object> {
 					nearestRoad = road;
 				} // If thisDist < minDist
 			} else {
-				Coordinate roadFromNode = road.getJunctions().get(0)
-						.getCoordinate();
+				Coordinate roadFromNode = road.getJunctions().get(0).getCoordinate();
 				Point pointFromNode = geomFac.createPoint(roadFromNode);
 				DistanceOp distOp = new DistanceOp(point, pointFromNode);
 				double thisDist = distOp.distance();
 				if (thisDist < minDist) { // If thisDist < minDist
 					minDist = thisDist;
 					nearestRoad = road;
-				} 
+				}
 			}
 
 		}
-		if (nearestRoad == null) {  // for nearRoads
-			ContextCreator.logger.error("CityContext: findRoadAtCoordinates (Coordinate coord, boolean toDest): ERROR: couldn't find a road at these coordinates:\n\t"
+		if (nearestRoad == null) { // for nearRoads
+			ContextCreator.logger.error(
+					"CityContext: findRoadAtCoordinates (Coordinate coord, boolean toDest): ERROR: couldn't find a road at these coordinates:\n\t"
 							+ coord.toString());
 		}
 		return nearestRoad;
@@ -537,9 +532,7 @@ public class CityContext extends DefaultContext<Object> {
 			if (road.getLinkid() == id)
 				return road;
 		}
-		System.err
-				.println("CityContext: findRoadWithID: Error, couldn't find a road woth id: "
-						+ id);
+		System.err.println("CityContext: findRoadWithID: Error, couldn't find a road woth id: " + id);
 		return new Road();
 	}
 
@@ -548,43 +541,43 @@ public class CityContext extends DefaultContext<Object> {
 		ArrayList<Junction> junctions;
 		for (Road road : roadGeography.getAllObjects()) {
 			junctions = road.getJunctions();
-			if ((junctions.get(0).getJunctionID() == junc1
-					&& junctions.get(1).getJunctionID() == junc2)) {
+			if ((junctions.get(0).getJunctionID() == junc1 && junctions.get(1).getJunctionID() == junc2)) {
 				return road;
 			}
 		}
 
 		ContextCreator.logger.error("CityContext: findRoadBetweenJunctionIDs: Error, couldn't find a road with id: "
-						+ junc1 + " to id: " + junc2);
+				+ junc1 + " to id: " + junc2);
 		return null;
 	}
 
 	public Road findRoadWithLinkID(int linkID) {
 		return this.road_KeyLinkID.get(linkID);
 	}
-	
+
 	public Zone findZoneWithID(int id) {
 		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
 		for (Zone zone : zoneGeography.getAllObjects()) {
 			if (zone.getId() == id)
 				return zone;
 		}
-		ContextCreator.logger.error("CityContext: findZoneWithID: Error, couldn't find a house with id: "
-						+ id);
+		ContextCreator.logger.error("CityContext: findZoneWithID: Error, couldn't find a house with id: " + id);
 		return null;
 	}
 
 	public Zone findZoneWithIntegerID(int integerID) {
 		return ContextCreator.getZoneContext().findZoneWithIntegerID(integerID);
 	}
-	
+
 	public ChargingStation findChargingStationWithID(int destid) {
 		Geography<ChargingStation> chargingStationGeogrpahy = ContextCreator.getChargingStationGeography();
 		for (ChargingStation cs : chargingStationGeogrpahy.getAllObjects()) {
 			if (cs.getIntegerID() == destid)
 				return cs;
 		}
-		ContextCreator.logger.error("CityContext: findChargingStationWithDestID: Error, couldn't find a charging station with id: " + destid);
+		ContextCreator.logger
+				.error("CityContext: findChargingStationWithDestID: Error, couldn't find a charging station with id: "
+						+ destid);
 		return null;
 	}
 
@@ -597,28 +590,27 @@ public class CityContext extends DefaultContext<Object> {
 
 		for (Zone h : ContextCreator.getZoneGeography().getAllObjects()) {
 			double minDist = Double.MAX_VALUE;
-			Coordinate houseCoord = ContextCreator.getZoneGeography()
-					.getGeometry(h).getCentroid().getCoordinate();
+			Coordinate houseCoord = ContextCreator.getZoneGeography().getGeometry(h).getCentroid().getCoordinate();
 			Coordinate nearestPoint = null;
-			Point coordGeom = ContextCreator.getZoneGeography().getGeometry(h)
-					.getCentroid();
+			Point coordGeom = ContextCreator.getZoneGeography().getGeometry(h).getCentroid();
 			for (Road r : allRoads.keySet()) {
 				Geometry roadGeom = allRoads.get(r);
 				DistanceOp distOp = new DistanceOp(coordGeom, roadGeom);
 				double thisDist = distOp.distance();
 				if (thisDist < minDist) { // If thisDist < minDist
 					minDist = thisDist;
-					// Two coordinates returned by closestPoints(), need to find the one which isn't the coord parameter
+					// Two coordinates returned by closestPoints(), need to find the one which isn't
+					// the coord parameter
 					for (Coordinate c : distOp.nearestPoints()) {
 						if (!c.equals(houseCoord)) {
 							nearestPoint = c;
 							break;
 						}
 					}
-				} 
+				}
 			} // For allRoads
 			this.nearestRoadCoordCache.put(houseCoord, nearestPoint);
-		} 
+		}
 	}
 
 	public Coordinate getNearestRoadCoordFromCache(Coordinate c) {
@@ -640,18 +632,17 @@ public class CityContext extends DefaultContext<Object> {
 
 		return Math.atan2(dy, dx);
 	}
-	
-	public static double squaredEuclideanDistance(Coordinate p0, Coordinate p1){
-		return (p0.x - p1.x)*(p0.x - p1.x) + (p0.y - p1.y)*(p0.y - p1.y);
+
+	public static double squaredEuclideanDistance(Coordinate p0, Coordinate p1) {
+		return (p0.x - p1.x) * (p0.x - p1.x) + (p0.y - p1.y) * (p0.y - p1.y);
 	}
-	
+
 	/*
 	 * Returns the closest zone from the currentLocation that has a bus available
 	 */
-	public Zone findNearestZoneWithBus(Coordinate coord, Integer destID) throws NullPointerException{
+	public Zone findNearestZoneWithBus(Coordinate coord, Integer destID) throws NullPointerException {
 		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findNearestZoneWithBus: ERROR: the input coordinate is null");
+			throw new NullPointerException("CityContext: findNearestZoneWithBus: ERROR: the input coordinate is null");
 		}
 		GeometryFactory geomFac = new GeometryFactory();
 		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
@@ -660,13 +651,13 @@ public class CityContext extends DefaultContext<Object> {
 		double minDist = Double.MAX_VALUE;
 		Zone nearestZone = null;
 		for (Zone z : zoneGeography.getAllObjects()) {
-			if(z.busReachableZone.contains(destID)) {
+			if (z.busReachableZone.contains(destID)) {
 				DistanceOp distOp = new DistanceOp(point, zoneGeography.getGeometry(z));
 				double thisDist = distOp.distance();
 				if (thisDist < minDist) {
 					minDist = thisDist;
 					nearestZone = z;
-				} 
+				}
 			}
 		}
 //		if (nearestZone == null) {
@@ -677,7 +668,7 @@ public class CityContext extends DefaultContext<Object> {
 
 		return nearestZone;
 	}
-	
+
 	/*
 	 * Set the possible relocation targets of all zones
 	 */
@@ -685,22 +676,22 @@ public class CityContext extends DefaultContext<Object> {
 		for (Zone z1 : ContextCreator.getZoneGeography().getAllObjects()) {
 			int threshold = 1000; // initial threshold as 1 km
 			boolean flag = true;
-			while(flag){
-				for (Zone z2: ContextCreator.getZoneGeography().getAllObjects()) {
-					if (this.getDistance(z1.getCoord(), z2.getCoord())<threshold && z1 != z2 && !z1.neighboringZones.contains(z2)) {
+			while (flag) {
+				for (Zone z2 : ContextCreator.getZoneGeography().getAllObjects()) {
+					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2
+							&& !z1.neighboringZones.contains(z2)) {
 						z1.neighboringZones.add(z2);
 					}
 				}
-				if(z1.neighboringZones.size() < ContextCreator.getZoneGeography().size() - 1) {
+				if (z1.neighboringZones.size() < ContextCreator.getZoneGeography().size() - 1) {
 					threshold = threshold + 1000;
-				}
-				else {
+				} else {
 					flag = false;
 				}
 			}
 		}
 	}
-	
+
 	public void refreshTravelTime() {
 		ContextCreator.logger.info("Update the estimation of travel time...");
 		// Reset the travel time and travel distance estimation
@@ -714,7 +705,7 @@ public class CityContext extends DefaultContext<Object> {
 			// Retrieve stations in order, from hub to other places
 			double travel_distance = 0;
 			double travel_time = 0;
-			
+
 			for (int shift = 0; shift < route.size(); shift++) {
 				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
 					Zone hub = this.findZoneWithIntegerID(route.get(shift));

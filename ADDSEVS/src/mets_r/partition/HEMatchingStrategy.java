@@ -28,31 +28,33 @@ import util.fn.Lambda2Void;
 import util.fn.LambdaVoid;
 
 /**
- * Finding a maximal matching that contains edges with large weight,
- * so in the partition phase, the bisection will be performed on small weight edge.
- * The vertices are visited in random order and match a vertex u with the neighbor vertex v
- * such that the weight of the edge (u, v) is maximum over all valid incident edges.
+ * Finding a maximal matching that contains edges with large weight, so in the
+ * partition phase, the bisection will be performed on small weight edge. The
+ * vertices are visited in random order and match a vertex u with the neighbor
+ * vertex v such that the weight of the edge (u, v) is maximum over all valid
+ * incident edges.
  */
 
 public class HEMatchingStrategy implements LambdaVoid<GNode<MetisNode>> {
 	private int maxVertexWeight;
-	IntGraph<MetisNode> graph; 
+	IntGraph<MetisNode> graph;
 	IntGraph<MetisNode> coarseGraph;
+
 	public HEMatchingStrategy(IntGraph<MetisNode> graph, IntGraph<MetisNode> coarseGraph, int maxVertexWeight) {
-		this.graph=graph;
-		this.coarseGraph=coarseGraph;
-		this.maxVertexWeight=maxVertexWeight;
+		this.graph = graph;
+		this.coarseGraph = coarseGraph;
+		this.maxVertexWeight = maxVertexWeight;
 	}
 
 	public void call(GNode<MetisNode> node) {
-		MetisNode nodeData = node.getData(MethodFlag.CHECK_CONFLICT,MethodFlag.NONE);
+		MetisNode nodeData = node.getData(MethodFlag.CHECK_CONFLICT, MethodFlag.NONE);
 		if (nodeData.isMatched()) {
 			return;
 		}
-		FindMaxUnmatchedNeighborClosure closure=new FindMaxUnmatchedNeighborClosure(node);
+		FindMaxUnmatchedNeighborClosure closure = new FindMaxUnmatchedNeighborClosure(node);
 		node.map(closure, node, MethodFlag.CHECK_CONFLICT);
-		GNode<MetisNode> match=closure.maxNode;
-		MetisNode matchNodeData = match.getData(MethodFlag.NONE,MethodFlag.NONE);
+		GNode<MetisNode> match = closure.maxNode;
+		MetisNode matchNodeData = match.getData(MethodFlag.NONE, MethodFlag.NONE);
 		nodeData.setMatch(match);
 		matchNodeData.setMatch(node);
 		int weight = nodeData.getWeight();
@@ -67,22 +69,24 @@ public class HEMatchingStrategy implements LambdaVoid<GNode<MetisNode>> {
 		matchNodeData.setMapTo(newNode);
 	}
 
-	class FindMaxUnmatchedNeighborClosure implements Lambda2Void<GNode<MetisNode>,GNode<MetisNode>>{
+	class FindMaxUnmatchedNeighborClosure implements Lambda2Void<GNode<MetisNode>, GNode<MetisNode>> {
 		int maxwgt;
 		GNode<MetisNode> maxNode;
 		GNode<MetisNode> temp;
-		public FindMaxUnmatchedNeighborClosure(GNode<MetisNode> node){
-			maxwgt=Integer.MIN_VALUE;
-			maxNode=node;
-			temp=node;
+
+		public FindMaxUnmatchedNeighborClosure(GNode<MetisNode> node) {
+			maxwgt = Integer.MIN_VALUE;
+			maxNode = node;
+			temp = node;
 		}
+
 		@Override
 		public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
-			assert node==temp;
-			assert neighbor!=temp;
-			MetisNode nodeData = node.getData(MethodFlag.NONE,MethodFlag.NONE);
+			assert node == temp;
+			assert neighbor != temp;
+			MetisNode nodeData = node.getData(MethodFlag.NONE, MethodFlag.NONE);
 			long edgeData = graph.getEdgeData(node, neighbor, MethodFlag.NONE);
-			MetisNode neighborData = neighbor.getData(MethodFlag.NONE,MethodFlag.NONE);
+			MetisNode neighborData = neighbor.getData(MethodFlag.NONE, MethodFlag.NONE);
 			if (!neighborData.isMatched() && maxwgt < edgeData
 					&& nodeData.getWeight() + neighborData.getWeight() <= maxVertexWeight) {
 				maxwgt = neighborData.getWeight();

@@ -38,7 +38,7 @@ public class Refiner {
 			Balancer.balanceTwoWay(metisGraph, tpwgts);
 			FMTwoWayRefiner.fmTwoWayEdgeRefine(metisGraph, tpwgts, 8);
 			projectTwoWayPartition(metisGraph);
-			metisGraph = metisGraph.getFinerGraph();   
+			metisGraph = metisGraph.getFinerGraph();
 		}
 		Balancer.balanceTwoWay(metisGraph, tpwgts);
 		FMTwoWayRefiner.fmTwoWayEdgeRefine(metisGraph, tpwgts, 8);
@@ -56,7 +56,7 @@ public class Refiner {
 		finer.setPartWeight(1, metisGraph.getPartWeight(1));
 		final IntGraph<MetisNode> finerGraph = finer.getGraph();
 
-		finerGraph.map(new LambdaVoid<GNode<MetisNode>>(){
+		finerGraph.map(new LambdaVoid<GNode<MetisNode>>() {
 			public void call(GNode<MetisNode> node) {
 				MetisNode nodeData = node.getData();
 				nodeData.setPartition(nodeData.getMapTo().getData().getPartition());
@@ -66,24 +66,25 @@ public class Refiner {
 			}
 		});
 
-		finerGraph.map(new LambdaVoid<GNode<MetisNode>>(){
+		finerGraph.map(new LambdaVoid<GNode<MetisNode>>() {
 			public void call(GNode<MetisNode> node) {
 				final MetisNode nodeData = node.getData();
 				nodeData.setIdegree(nodeData.getAdjWgtSum());
-				if (finerGraph.outNeighborsSize(node)!=0 && nodeData.getMapTo().getData().isBoundary()) {
-					node.map(new Lambda2Void<GNode<MetisNode>,GNode<MetisNode>> (){
+				if (finerGraph.outNeighborsSize(node) != 0 && nodeData.getMapTo().getData().isBoundary()) {
+					node.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
 						public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
 							MetisNode neighborData = neighbor.getData();
 							if (nodeData.getPartition() != neighborData.getPartition()) {
-								nodeData.setEdegree(nodeData.getEdegree() + (int)finerGraph.getEdgeData(node, neighbor));
-							}							
-						}	        	
+								nodeData.setEdegree(
+										nodeData.getEdegree() + (int) finerGraph.getEdgeData(node, neighbor));
+							}
+						}
 					}, node);
 				}
-				if (finerGraph.outNeighborsSize(node)!=0) {
+				if (finerGraph.outNeighborsSize(node) != 0) {
 					nodeData.setIdegree(nodeData.getIdegree() - nodeData.getEdegree());
 				}
-				if (finerGraph.outNeighborsSize(node)==0 || nodeData.getEdegree() > 0) {
+				if (finerGraph.outNeighborsSize(node) == 0 || nodeData.getEdegree() > 0) {
 					finer.setBoundaryNode(node);
 				}
 			}

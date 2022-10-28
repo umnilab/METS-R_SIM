@@ -19,8 +19,6 @@ File: Balancer.java
 
 */
 
-
-
 package mets_r.partition;
 
 import galois.objects.graph.GNode;
@@ -32,9 +30,10 @@ import util.fn.LambdaVoid;
 public class Balancer {
 
 	/**
-	 * A blancing algorithm for bisection 
+	 * A blancing algorithm for bisection
+	 * 
 	 * @param metisGraph the graph to balance
-	 * @param tpwgts the lowerbounds of weights for the two partitions
+	 * @param tpwgts     the lowerbounds of weights for the two partitions
 	 */
 	public static void balanceTwoWay(MetisGraph metisGraph, int[] tpwgts) {
 		int pwgts0 = metisGraph.getPartWeight(0);
@@ -101,16 +100,16 @@ public class Balancer {
 			/* Update the id[i]/ed[i] values of the affected nodes */
 			higainData.swapEDAndID();
 			higainData.updateGain();
-			if (higainData.getEdegree() == 0 && graph.outNeighborsSize(higain)!=0) {
+			if (higainData.getEdegree() == 0 && graph.outNeighborsSize(higain) != 0) {
 				metisGraph.unsetBoundaryNode(higain);
 			}
-			final int toConstant=to;
-			final int fromConstant=from;
-			higain.map(new Lambda2Void<GNode<MetisNode>,GNode<MetisNode>>(){
+			final int toConstant = to;
+			final int fromConstant = from;
+			higain.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
 				public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
 					MetisNode neighborData = neighbor.getData();
 					int oldgain = neighborData.getGain();
-					int edgeWeight = (int)graph.getEdgeData(higain, neighbor);
+					int edgeWeight = (int) graph.getEdgeData(higain, neighbor);
 					int kwgt = (toConstant == neighborData.getPartition() ? edgeWeight : -edgeWeight);
 					neighborData.setEdegree(neighborData.getEdegree() - kwgt);
 					neighborData.setIdegree(neighborData.getIdegree() + kwgt);
@@ -137,7 +136,7 @@ public class Balancer {
 							queue.insert(neighbor, neighborData.getGain());
 						}
 					}
-				}      	
+				}
 			}, higain);
 		}
 		metisGraph.setMinCut(mincut);
@@ -159,9 +158,9 @@ public class Balancer {
 		final PQueue queue = new PQueue(numNodes, metisGraph.getMaxAdjSum());
 
 		Arrays.fill(moved, -1);
-		final int fromConstant=from;  
+		final int fromConstant = from;
 		/* Insert boundary nodes in the priority queues */
-		graph.map(new LambdaVoid<GNode<MetisNode>>(){
+		graph.map(new LambdaVoid<GNode<MetisNode>>() {
 			@Override
 			public void call(GNode<MetisNode> node) {
 				MetisNode nodeData = node.getData();
@@ -192,19 +191,19 @@ public class Balancer {
 			/* Update the id[i]/ed[i] values of the affected nodes */
 			higainData.swapEDAndID();
 
-			if (higainData.getEdegree() == 0 && higainData.isBoundary() && graph.outNeighborsSize(higain)!=0) {
+			if (higainData.getEdegree() == 0 && higainData.isBoundary() && graph.outNeighborsSize(higain) != 0) {
 				metisGraph.unsetBoundaryNode(higain);
 			}
 			if (higainData.getEdegree() > 0 && !higainData.isBoundary()) {
 				metisGraph.setBoundaryNode(higain);
 			}
-			final int toConstant=to;
-			higain.map(new Lambda2Void<GNode<MetisNode>,GNode<MetisNode>>(){
+			final int toConstant = to;
+			higain.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
 				@Override
 				public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
 					MetisNode neighborData = neighbor.getData();
 					int oldgain = neighborData.getGain();
-					int edgeWeight = (int)graph.getEdgeData(higain, neighbor);
+					int edgeWeight = (int) graph.getEdgeData(higain, neighbor);
 					int kwgt = (toConstant == neighborData.getPartition() ? edgeWeight : -edgeWeight);
 					neighborData.setEdegree(neighborData.getEdegree() - kwgt);
 					neighborData.setIdegree(neighborData.getIdegree() + kwgt);
@@ -220,7 +219,7 @@ public class Balancer {
 					} else if (neighborData.getEdegree() > 0 && !neighborData.isBoundary()) {
 						metisGraph.setBoundaryNode(neighbor);
 					}
-				}      	
+				}
 			}, higain);
 		}
 		metisGraph.setMinCut(mincut);
@@ -277,8 +276,8 @@ public class Balancer {
 				for (; k < higainData.getNDegrees(); k++) {
 					int to = higainData.partIndex[k];
 					if (metisGraph.getPartWeight(to) + higainData.getWeight() <= maxwgts[to]
-					                                                                     || itpwgts[from] * (metisGraph.getPartWeight(to) + higainData.getWeight()) <= itpwgts[to]
-					                                                                                                                                                           * metisGraph.getPartWeight(from))
+							|| itpwgts[from] * (metisGraph.getPartWeight(to) + higainData.getWeight()) <= itpwgts[to]
+									* metisGraph.getPartWeight(from))
 						break;
 				}
 				if (k == higainData.getNDegrees())
@@ -287,19 +286,21 @@ public class Balancer {
 				for (int j = k + 1; j < higainData.getNDegrees(); j++) {
 					int to = higainData.partIndex[j];
 					if (itpwgts[higainData.partIndex[k]] * metisGraph.getPartWeight(to) < itpwgts[to]
-					                                                                              * metisGraph.getPartWeight(higainData.partIndex[k]))
+							* metisGraph.getPartWeight(higainData.partIndex[k]))
 						k = j;
 				}
 
 				final int to = higainData.partIndex[k];
 
 				if (metisGraph.getPartWeight(from) < maxwgts[from] && metisGraph.getPartWeight(to) > minwgts[to]
-				                                                                                             && higainData.partEd[k] - higainData.getIdegree() < 0)
+						&& higainData.partEd[k] - higainData.getIdegree() < 0)
 					continue;
 
-				/*=====================================================================
-				 * If we got here, we can now move the vertex from 'from' to 'to' 
-				 *======================================================================*/
+				/*
+				 * ===================================================================== If we
+				 * got here, we can now move the vertex from 'from' to 'to'
+				 * ======================================================================
+				 */
 
 				metisGraph.setMinCut(metisGraph.getMinCut() - (higainData.partEd[k] - higainData.getIdegree()));
 
@@ -325,29 +326,29 @@ public class Balancer {
 				}
 
 				/* Update the degrees of adjacent vertices */
-				higain.map(new Lambda2Void<GNode<MetisNode>,GNode<MetisNode>>(){
+				higain.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
 					@Override
 					public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
 						MetisNode neighborData = neighbor.getData();
 						int oldgain = neighborData.getGain();
 						if (neighborData.partEd == null) {
 							int numEdges = neighborData.getNumEdges();
-							
+
 							/* ZH: For a simple but may not correct fix for the partition error */
-				            int ndegree  = neighborData.getNDegrees();
-				            if (ndegree <= numEdges) {
-					            neighborData.partIndex = new int[numEdges];
-					            neighborData.partEd = new int[numEdges];
-				            } else {
-				            	neighborData.partIndex = new int[ndegree];
-					            neighborData.partEd = new int[ndegree];
-				            }
-				            
-				            /* Following two lines are the original implementation*/
+							int ndegree = neighborData.getNDegrees();
+							if (ndegree <= numEdges) {
+								neighborData.partIndex = new int[numEdges];
+								neighborData.partEd = new int[numEdges];
+							} else {
+								neighborData.partIndex = new int[ndegree];
+								neighborData.partEd = new int[ndegree];
+							}
+
+							/* Following two lines are the original implementation */
 //				            neighborData.partIndex = new int[numEdges];
 //				            neighborData.partEd = new int[numEdges];
 						}
-						int edgeWeight = (int)graph.getEdgeData(higain, neighbor);
+						int edgeWeight = (int) graph.getEdgeData(higain, neighbor);
 						if (neighborData.getPartition() == from) {
 							neighborData.setEdegree(neighborData.getEdegree() + edgeWeight);
 							neighborData.setIdegree(neighborData.getIdegree() - edgeWeight);
@@ -395,7 +396,7 @@ public class Balancer {
 									neighborData.partIndex = Arrays.copyOf(neighborData.partIndex, nd + 1);
 									neighborData.partEd = Arrays.copyOf(neighborData.partEd, nd + 1);
 								}
-									
+
 								neighborData.partIndex[nd] = to;
 								neighborData.partEd[nd++] = edgeWeight;
 								neighborData.setNDegrees(nd);
@@ -417,7 +418,7 @@ public class Balancer {
 								moved[neighborData.getNodeId()] = 2;
 							}
 						}
-					}        	
+					}
 				}, higain);
 			}
 		}

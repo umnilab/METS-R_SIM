@@ -1,9 +1,8 @@
 package mets_r;
 
-/** 
- * @author: Xianyuan Zhan
- * Event object that holds event information
- * Inherit from ARESCUE simulation
+/**
+ * @author: Xianyuan Zhan Event object that holds event information Inherit from
+ *          ARESCUE simulation
  * 
  **/
 public class NetworkEventObject {
@@ -16,7 +15,7 @@ public class NetworkEventObject {
 	public double value2;
 	// Field to be loaded from simulation
 	public double defaultValue;
-	
+
 	public NetworkEventObject(int startTime, int endTime, int eventID, int roadID, double value1, double value2) {
 		this.startTime = startTime;
 		this.endTime = endTime;

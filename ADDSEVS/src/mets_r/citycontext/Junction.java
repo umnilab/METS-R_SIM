@@ -10,16 +10,16 @@ import mets_r.ContextCreator;
 
 public class Junction {
 	private int ID;
-	private int junctionID; //From shape file
+	private int junctionID; // From shape file
 	private Coordinate coord;
 	protected int hasControl;
-	private ArrayList<Road> roads = new ArrayList<Road>(); 
-	
+	private ArrayList<Road> roads = new ArrayList<Road>();
+
 	public Junction(Coordinate coord, int id) {
 		this.ID = ContextCreator.generateAgentID();
 		this.coord = coord;
-		this.junctionID=id;
-		
+		this.junctionID = id;
+
 	}
 
 	@Override
@@ -34,7 +34,7 @@ public class Junction {
 	public int getJunctionID() {
 		return junctionID;
 	}
-	
+
 	public void setID(int id) {
 		this.ID = id;
 	}

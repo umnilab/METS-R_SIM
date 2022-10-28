@@ -33,65 +33,67 @@ import java.util.zip.GZIPInputStream;
 
 public class Utility {
 
-  public static IntGraph<MetisNode> getAllNodes(IntGraph<MetisNode> graph) {
-    return graph;
-  }
+	public static IntGraph<MetisNode> getAllNodes(IntGraph<MetisNode> graph) {
+		return graph;
+	}
 
-  private static Scanner getScanner(String filename) throws Exception {
-    try {
-      return new Scanner(new GZIPInputStream(new FileInputStream(filename + ".gz")));
-    } catch (FileNotFoundException fnfe) {
-      return new Scanner(new FileInputStream(filename));
-    }
-  }
-  
-  /**
-   * Read in the graph from a file and create a graph 
-   * @param file the input graph file
-   * @param useSerial create serial graph or parallel graph
-   */
-  public static MetisGraph readGraph(String file) {
+	private static Scanner getScanner(String filename) throws Exception {
+		try {
+			return new Scanner(new GZIPInputStream(new FileInputStream(filename + ".gz")));
+		} catch (FileNotFoundException fnfe) {
+			return new Scanner(new FileInputStream(filename));
+		}
+	}
 
-    try {
-      Scanner scanner = getScanner(file);
-      String line = scanner.nextLine().trim();
-      String[] segs = line.split(" ");
-      int nodeNum = Integer.valueOf(segs[0]);
-      IntGraph<MetisNode> graph = new MorphGraph.IntGraphBuilder().backedByVector(true).directed(true).create();     
-      assert graph != null;
-      ArrayList<GNode<MetisNode>> nodes = new ArrayList<GNode<MetisNode>>();
-      for (int i = 0; i < nodeNum; i++) {
-    	// Change this part to set the integer weight on the nodes
-        GNode<MetisNode> n = graph.createNode(new MetisNode(i, 1)); 
-        nodes.add(n);
-        graph.add(n);
-      }
-      int numEdges = 0;
-      for (int i = 0; i < nodeNum; i++) {
-        line = scanner.nextLine().trim();
-        GNode<MetisNode> n1 = nodes.get(i);
-        segs = line.split(" ");
-        for (int j = 0; j < segs.length; j++) {
-          GNode<MetisNode> n2 = nodes.get(Integer.valueOf(segs[j]) - 1);
-          graph.addEdge(n1, n2, 1);
-          // Change this part to set the integer weight on the edges
-          n1.getData().addEdgeWeight(1);
-          n1.getData().incNumEdges(); // This one is necessary, the number of edge will not automatically updated
-          numEdges++;
-        }
-      }
-      MetisGraph metisGraph = new MetisGraph();
-      metisGraph.setNumEdges(numEdges / 2); // Convert to an undirected graph
-      metisGraph.setGraph(graph);
-      System.out.println("finshied reading graph " + graph.size() + " " + metisGraph.getNumEdges());
-      scanner.close();
-      return metisGraph;
+	/**
+	 * Read in the graph from a file and create a graph
+	 * 
+	 * @param file      the input graph file
+	 * @param useSerial create serial graph or parallel graph
+	 */
+	public static MetisGraph readGraph(String file) {
 
-    } catch (IOException e) {
-      e.printStackTrace();
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-    return null;
-  }
+		try {
+			Scanner scanner = getScanner(file);
+			String line = scanner.nextLine().trim();
+			String[] segs = line.split(" ");
+			int nodeNum = Integer.valueOf(segs[0]);
+			IntGraph<MetisNode> graph = new MorphGraph.IntGraphBuilder().backedByVector(true).directed(true).create();
+			assert graph != null;
+			ArrayList<GNode<MetisNode>> nodes = new ArrayList<GNode<MetisNode>>();
+			for (int i = 0; i < nodeNum; i++) {
+				// Change this part to set the integer weight on the nodes
+				GNode<MetisNode> n = graph.createNode(new MetisNode(i, 1));
+				nodes.add(n);
+				graph.add(n);
+			}
+			int numEdges = 0;
+			for (int i = 0; i < nodeNum; i++) {
+				line = scanner.nextLine().trim();
+				GNode<MetisNode> n1 = nodes.get(i);
+				segs = line.split(" ");
+				for (int j = 0; j < segs.length; j++) {
+					GNode<MetisNode> n2 = nodes.get(Integer.valueOf(segs[j]) - 1);
+					graph.addEdge(n1, n2, 1);
+					// Change this part to set the integer weight on the edges
+					n1.getData().addEdgeWeight(1);
+					n1.getData().incNumEdges(); // This one is necessary, the number of edge will not automatically
+												// updated
+					numEdges++;
+				}
+			}
+			MetisGraph metisGraph = new MetisGraph();
+			metisGraph.setNumEdges(numEdges / 2); // Convert to an undirected graph
+			metisGraph.setGraph(graph);
+			System.out.println("finshied reading graph " + graph.size() + " " + metisGraph.getNumEdges());
+			scanner.close();
+			return metisGraph;
+
+		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return null;
+	}
 }

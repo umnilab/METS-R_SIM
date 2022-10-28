@@ -13,21 +13,22 @@ import mets_r.GlobalVariables;
 import java.util.*;
 
 /**
- * @author: Wenbo Zhang
- * Read background traffic into treemap with roadid as key and hourly link speed as arraylist
+ * @author: Wenbo Zhang Read background traffic into treemap with roadid as key
+ *          and hourly link speed as arraylist
  *
  **/
 
+public class BackgroundTraffic {
+	public TreeMap<Integer, ArrayList<Double>> backgroundTraffic;
+	public TreeMap<Integer, ArrayList<Double>> backgroundStd;
 
-public class BackgroundTraffic{
-	public TreeMap<Integer,ArrayList<Double>> backgroundTraffic;
-	public TreeMap<Integer,ArrayList<Double>> backgroundStd;
-	public BackgroundTraffic(){
-		backgroundTraffic=new TreeMap<Integer,ArrayList<Double>>();
-		backgroundStd=new TreeMap<Integer,ArrayList<Double>>();
+	public BackgroundTraffic() {
+		backgroundTraffic = new TreeMap<Integer, ArrayList<Double>>();
+		backgroundStd = new TreeMap<Integer, ArrayList<Double>>();
 		readEventFile();
 		readStdFile();
 	}
+
 	// Read and parse CSV files
 	public void readEventFile() {
 		File bteventFile = new File(GlobalVariables.BT_EVENT_FILE);
@@ -92,5 +93,5 @@ public class BackgroundTraffic{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-	}	
+	}
 }

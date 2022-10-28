@@ -19,7 +19,6 @@ File: KWayRefiner.java
 
 */
 
-
 package mets_r.partition;
 
 import galois.objects.MethodFlag;
@@ -41,119 +40,119 @@ import util.fn.LambdaVoid;
  */
 public class KWayRefiner {
 
-  public void refineKWay(MetisGraph metisGraph, MetisGraph orgGraph, float[] tpwgts, float ubfactor, int nparts)
-      throws ExecutionException {
-    metisGraph.computeKWayPartitionParams(nparts);
-    int nlevels = 0;
-    MetisGraph metisGraphTemp = metisGraph;
-    while (!metisGraphTemp.equals(orgGraph)) {
-      metisGraphTemp = metisGraphTemp.getFinerGraph();
-      nlevels++;
-    }
-    int i = 0;
-    RandomKwayEdgeRefiner rkRefiner = new RandomKwayEdgeRefiner(tpwgts, nparts, ubfactor, 10, 1);
-    while (!metisGraph.equals(orgGraph)) {
-      if (2 * i >= nlevels && !metisGraph.isBalanced(tpwgts, (float) 1.04 * ubfactor)) {
-        metisGraph.computeKWayBalanceBoundary();
-        Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
-        metisGraph.computeKWayBoundary();
-      }
+	public void refineKWay(MetisGraph metisGraph, MetisGraph orgGraph, float[] tpwgts, float ubfactor, int nparts)
+			throws ExecutionException {
+		metisGraph.computeKWayPartitionParams(nparts);
+		int nlevels = 0;
+		MetisGraph metisGraphTemp = metisGraph;
+		while (!metisGraphTemp.equals(orgGraph)) {
+			metisGraphTemp = metisGraphTemp.getFinerGraph();
+			nlevels++;
+		}
+		int i = 0;
+		RandomKwayEdgeRefiner rkRefiner = new RandomKwayEdgeRefiner(tpwgts, nparts, ubfactor, 10, 1);
+		while (!metisGraph.equals(orgGraph)) {
+			if (2 * i >= nlevels && !metisGraph.isBalanced(tpwgts, (float) 1.04 * ubfactor)) {
+				metisGraph.computeKWayBalanceBoundary();
+				Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
+				metisGraph.computeKWayBoundary();
+			}
 
-      rkRefiner.refine(metisGraph);
-      projectKWayPartition(metisGraph, nparts);
-      metisGraph = metisGraph.getFinerGraph();
-      i++;
-    }
-    if (2 * i >= nlevels && !metisGraph.isBalanced(tpwgts, (float) 1.04 * ubfactor)) {
-      metisGraph.computeKWayBalanceBoundary();
-      Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
-      metisGraph.computeKWayBoundary();
-    }
-    rkRefiner.refine(metisGraph);
+			rkRefiner.refine(metisGraph);
+			projectKWayPartition(metisGraph, nparts);
+			metisGraph = metisGraph.getFinerGraph();
+			i++;
+		}
+		if (2 * i >= nlevels && !metisGraph.isBalanced(tpwgts, (float) 1.04 * ubfactor)) {
+			metisGraph.computeKWayBalanceBoundary();
+			Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
+			metisGraph.computeKWayBoundary();
+		}
+		rkRefiner.refine(metisGraph);
 
-    if (!metisGraph.isBalanced(tpwgts, ubfactor)) {
-      metisGraph.computeKWayBalanceBoundary();
-      Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
-      rkRefiner.refine(metisGraph);
-    }
-  }
+		if (!metisGraph.isBalanced(tpwgts, ubfactor)) {
+			metisGraph.computeKWayBalanceBoundary();
+			Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
+			rkRefiner.refine(metisGraph);
+		}
+	}
 
-  public void projectKWayPartition(MetisGraph metisGraph, int nparts) throws ExecutionException {
-    final MetisGraph finer = metisGraph.getFinerGraph();
-    final IntGraph<MetisNode> coarseGraph = metisGraph.getGraph();
-    final IntGraph<MetisNode> graph = finer.getGraph();
-    graph.map(new LambdaVoid<GNode<MetisNode>>() {
-      public void call(GNode<MetisNode> node) {
-        MetisNode nodeData = node.getData();
-        nodeData.setPartition(nodeData.getMapTo().getData().getPartition());
-      }
-    });
+	public void projectKWayPartition(MetisGraph metisGraph, int nparts) throws ExecutionException {
+		final MetisGraph finer = metisGraph.getFinerGraph();
+		final IntGraph<MetisNode> coarseGraph = metisGraph.getGraph();
+		final IntGraph<MetisNode> graph = finer.getGraph();
+		graph.map(new LambdaVoid<GNode<MetisNode>>() {
+			public void call(GNode<MetisNode> node) {
+				MetisNode nodeData = node.getData();
+				nodeData.setPartition(nodeData.getMapTo().getData().getPartition());
+			}
+		});
 
-    computeKWayPartInfo(nparts, finer, coarseGraph, graph);
+		computeKWayPartInfo(nparts, finer, coarseGraph, graph);
 
-    finer.initPartWeight();
-    for (int i = 0; i < nparts; i++) {
-      finer.setPartWeight(i, metisGraph.getPartWeight(i));
-    }
-    finer.setMinCut(metisGraph.getMinCut());
-  }
+		finer.initPartWeight();
+		for (int i = 0; i < nparts; i++) {
+			finer.setPartWeight(i, metisGraph.getPartWeight(i));
+		}
+		finer.setMinCut(metisGraph.getMinCut());
+	}
 
-  private static void computeKWayPartInfo(final int nparts, final MetisGraph finer,
-      final IntGraph<MetisNode> coarseGraph, final IntGraph<MetisNode> graph) throws ExecutionException {
+	private static void computeKWayPartInfo(final int nparts, final MetisGraph finer,
+			final IntGraph<MetisNode> coarseGraph, final IntGraph<MetisNode> graph) throws ExecutionException {
 
-    GaloisRuntime.foreach(Utility.getAllNodes(graph),
-        new Lambda2Void<GNode<MetisNode>, ForeachContext<GNode<MetisNode>>>() {
-          @Override
-          public void call(GNode<MetisNode> node, ForeachContext<GNode<MetisNode>> ctx) {
-            MetisNode nodeData = node.getData(MethodFlag.NONE, MethodFlag.NONE);
-            int numEdges = graph.outNeighborsSize(node, MethodFlag.NONE);
-            nodeData.partIndex = new int[numEdges];
-            nodeData.partEd = new int[numEdges];
-            nodeData.setIdegree(nodeData.getAdjWgtSum());
-            if (nodeData.getMapTo().getData(MethodFlag.NONE, MethodFlag.NONE).getEdegree() > 0) {
-              int[] map = new int[nparts];
-              ProjectNeighborInKWayPartitionClosure closure = new ProjectNeighborInKWayPartitionClosure(graph, map,
-                  nodeData);
-              node.map(closure, node, MethodFlag.NONE);
-              nodeData.setEdegree(closure.ed);
-              nodeData.setIdegree(nodeData.getIdegree() - nodeData.getEdegree());
-              if (nodeData.getEdegree() - nodeData.getIdegree() >= 0)
-                finer.setBoundaryNode(node);
-              nodeData.setNDegrees(closure.ndegrees);
-            }
-          }
-        }, Priority.first(RandomPermutation.class));
-  }
+		GaloisRuntime.foreach(Utility.getAllNodes(graph),
+				new Lambda2Void<GNode<MetisNode>, ForeachContext<GNode<MetisNode>>>() {
+					@Override
+					public void call(GNode<MetisNode> node, ForeachContext<GNode<MetisNode>> ctx) {
+						MetisNode nodeData = node.getData(MethodFlag.NONE, MethodFlag.NONE);
+						int numEdges = graph.outNeighborsSize(node, MethodFlag.NONE);
+						nodeData.partIndex = new int[numEdges];
+						nodeData.partEd = new int[numEdges];
+						nodeData.setIdegree(nodeData.getAdjWgtSum());
+						if (nodeData.getMapTo().getData(MethodFlag.NONE, MethodFlag.NONE).getEdegree() > 0) {
+							int[] map = new int[nparts];
+							ProjectNeighborInKWayPartitionClosure closure = new ProjectNeighborInKWayPartitionClosure(
+									graph, map, nodeData);
+							node.map(closure, node, MethodFlag.NONE);
+							nodeData.setEdegree(closure.ed);
+							nodeData.setIdegree(nodeData.getIdegree() - nodeData.getEdegree());
+							if (nodeData.getEdegree() - nodeData.getIdegree() >= 0)
+								finer.setBoundaryNode(node);
+							nodeData.setNDegrees(closure.ndegrees);
+						}
+					}
+				}, Priority.first(RandomPermutation.class));
+	}
 
-  static class ProjectNeighborInKWayPartitionClosure implements Lambda2Void<GNode<MetisNode>, GNode<MetisNode>> {
-    MetisNode nodeData;
-    int ed;
-    int[] map;
-    int ndegrees;
-    IntGraph<MetisNode> graph;
+	static class ProjectNeighborInKWayPartitionClosure implements Lambda2Void<GNode<MetisNode>, GNode<MetisNode>> {
+		MetisNode nodeData;
+		int ed;
+		int[] map;
+		int ndegrees;
+		IntGraph<MetisNode> graph;
 
-    public ProjectNeighborInKWayPartitionClosure(IntGraph<MetisNode> graph, int[] map, MetisNode nodeData) {
-      this.graph = graph;
-      this.map = map;
-      this.nodeData = nodeData;
-      Arrays.fill(map, -1);
-    }
+		public ProjectNeighborInKWayPartitionClosure(IntGraph<MetisNode> graph, int[] map, MetisNode nodeData) {
+			this.graph = graph;
+			this.map = map;
+			this.nodeData = nodeData;
+			Arrays.fill(map, -1);
+		}
 
-    public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
-      MetisNode neighborData = neighbor.getData(MethodFlag.NONE);
-      if (nodeData.getPartition() != neighborData.getPartition()) {
-        int edgeWeight = (int) graph.getEdgeData(node, neighbor, MethodFlag.NONE);
-        ed += edgeWeight;
-        int index = map[neighborData.getPartition()];
-        if (index == -1) {
-          map[neighborData.getPartition()] = ndegrees;
-          nodeData.partIndex[ndegrees] = neighborData.getPartition();
-          nodeData.partEd[ndegrees] += edgeWeight;
-          ndegrees++;
-        } else {
-          nodeData.partEd[index] += edgeWeight;
-        }
-      }
-    }
-  }
+		public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
+			MetisNode neighborData = neighbor.getData(MethodFlag.NONE);
+			if (nodeData.getPartition() != neighborData.getPartition()) {
+				int edgeWeight = (int) graph.getEdgeData(node, neighbor, MethodFlag.NONE);
+				ed += edgeWeight;
+				int index = map[neighborData.getPartition()];
+				if (index == -1) {
+					map[neighborData.getPartition()] = ndegrees;
+					nodeData.partIndex[ndegrees] = neighborData.getPartition();
+					nodeData.partEd[ndegrees] += edgeWeight;
+					ndegrees++;
+				} else {
+					nodeData.partEd[index] += edgeWeight;
+				}
+			}
+		}
+	}
 }

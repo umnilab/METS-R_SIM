@@ -34,33 +34,35 @@ public class Road {
 	private int curhour; // To find the current hour of the simulation
 	private String identifier; // Can be used to match with shape file roads
 	private String description = "";
-	
+
 	public int nVehicles_; // Number of vehicles currently in the road
-	
+
 	private int nShadowVehicles; // Potential vehicles might be loaded on the road
 	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
-	
+
 	private double length;
 	private double travelTime;
 	private double freeSpeed_;
 	private double freeSpeedStd_;
-	
+
 	private Road oppositeRoad;
 	private ArrayList<Road> downStreamMovements;
-	
+
 	private ArrayList<Lane> lanes; // Use lanes as objects inside the road
 	private ArrayList<Junction> junctions;
-	
-	private TreeMap<Double, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering the road
-	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so using this as the middle layer
-	
+
+	private TreeMap<Double, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
+																	// the road
+	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so using this as the
+																// middle layer
+
 	private Vehicle lastVehicle_;
 	private Vehicle firstVehicle_;
-	
+
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
-	
+
 	private double defaultFreeSpeed_; // Store default speed limit value in case of events
-	
+
 	private double totalEnergy;
 	private int totalFlow;
 
@@ -71,64 +73,64 @@ public class Road {
 		this.junctions = new ArrayList<Junction>();
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = 0;
-		
+
 		this.freeSpeed_ = GlobalVariables.FREE_SPEED; // m/s
 		this.freeSpeedStd_ = 0; // m/s
 		this.downStreamMovements = new ArrayList<Road>();
 		this.oppositeRoad = null;
-		this.departureVehMap = new TreeMap<Double, ArrayList<Vehicle>>(); 
+		this.departureVehMap = new TreeMap<Double, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.identifier = " ";
 		this.curhour = -1;
 		this.travelTime = (float) this.length / this.freeSpeed_;
-		
+
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
 		this.nFutureRoutingVehicles = 0;
 		this.eventFlag = false;
-		
+
 		// Set default value
-		this.defaultFreeSpeed_ = this.freeSpeed_;	
+		this.defaultFreeSpeed_ = this.freeSpeed_;
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
 	}
-	
+
 	// Set the defaultFreeSpeed_
 	public void setDefaultFreeSpeed() {
 		this.defaultFreeSpeed_ = this.freeSpeed_;
 	}
-	
+
 	// Get the defaultFreeSpeed_
 	public double getDefaultFreeSpeed() {
 		return this.defaultFreeSpeed_;
 	}
-	
+
 	// Check the eventFlag
 	public boolean checkEventFlag() {
 		return this.eventFlag;
 	}
-	
+
 	// Set the eventFlag
 	public void setEventFlag() {
 		this.eventFlag = true;
 	}
-	
+
 	// Restore the eventFlag after the event
 	public void restoreEventFlag() {
 		this.eventFlag = false;
 	}
-	
+
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		if(tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0){
+		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0) {
 			this.recRoadSnaphot(); // Record vehicle location here!
 		}
 		try {
-			/* Vehicle loading*/
+			/* Vehicle loading */
 			this.addVehicleToDepartureMap();
-			
+
 			/* Vehicle departure */
 			int curr_size = this.departureVehMap.size();
 			for (int i = 0; i < curr_size; i++) {
@@ -136,29 +138,26 @@ public class Road {
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
 					// check whether the origin is the destination
 					if (v.getOriginID() == v.getDestID()) {
-						this.removeVehicleFromNewQueue(v); //Remove vehicle from the waiting vehicle queue
+						this.removeVehicleFromNewQueue(v); // Remove vehicle from the waiting vehicle queue
 						v.setReachDest();
-					}
-					else {
+					} else {
 						if (!v.enterNetwork(this)) {
-							break; //Vehicle entering the network
+							break; // Vehicle entering the network
 						}
 					}
-					
-				} 
-				else {
+
+				} else {
 					// Iterate all element in the TreeMap
 					@SuppressWarnings("rawtypes")
 					Set keys = (Set) this.departureVehMap.keySet();
-					for (@SuppressWarnings("rawtypes") 
+					for (@SuppressWarnings("rawtypes")
 					Iterator it = (Iterator) keys.iterator(); it.hasNext();) {
 						Double key = (Double) it.next();
 						ArrayList<Vehicle> temList = this.departureVehMap.get(key);
 						for (Vehicle pv : temList) {
 							if (tickcount >= pv.getDepTime()) {
 								pv.primitiveMove();
-							}
-							else{
+							} else {
 								break;
 							}
 						}
@@ -166,26 +165,27 @@ public class Road {
 					break;
 				}
 			}
-            
+
 			/* Vehicle movement */
 			Vehicle currentVehicle = this.firstVehicle();
 			// happened at time t, deciding acceleration and lane changing
-			while(currentVehicle != null) {
+			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
 				if (tickcount <= currentVehicle.getLastMoveTick()) {
 					break; // This vehicle just entered this link, which indicates
-					       // we reached the end of the linked list 
+							// we reached the end of the linked list
 				}
 				currentVehicle.calcState();
-				if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0){
-					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel, so we record vehicle location here!
+				if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0) {
+					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
+																// so we record vehicle location here!
 				}
 				currentVehicle = nextVehicle;
 			}
-			
+
 			// happened during time t to t + 1, conducting vehicle movements
 			currentVehicle = this.firstVehicle();
-			while(currentVehicle != null) {
+			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
 				if (tickcount <= currentVehicle.getLastMoveTick()) {
 					break; // Reached the end of linked list
@@ -196,13 +196,12 @@ public class Road {
 				currentVehicle = nextVehicle;
 			}
 		} catch (Exception e) {
-			ContextCreator.logger.error("Road " + this.linkid
-					+ " had an error while moving vehicles");
+			ContextCreator.logger.error("Road " + this.linkid + " had an error while moving vehicles");
 			e.printStackTrace();
 			RunEnvironment.getInstance().pauseRun();
 		}
 	}
-	
+
 	@Override
 	public String toString() {
 		return "Agent id: " + id + " description: " + description;
@@ -236,11 +235,10 @@ public class Road {
 	public Road getOppositeRoad() {
 		return this.oppositeRoad;
 	}
-	
+
 	public void setFreeflowsp(double freeflowsp) { // freeflowsp unit: mph
 		this.freeSpeed_ = freeflowsp * 0.44704;
-	}	
-
+	}
 
 	public void sortLanes() {
 		Collections.sort(this.lanes, new LaneComparator());
@@ -253,17 +251,17 @@ public class Road {
 	 * RoadNetwork (a repast Network Projection).
 	 * 
 	 * @return the identifier for this Road.
-	 * @throws NoIdentifierException
-	 *             if the identifier has not been set correctly. This might
-	 *             occur if the roads are not initialized correctly (e.g. there
-	 *             is no attribute called 'identifier' present in the shape-file
-	 *             used to create this Road).
+	 * @throws NoIdentifierException if the identifier has not been set correctly.
+	 *                               This might occur if the roads are not
+	 *                               initialized correctly (e.g. there is no
+	 *                               attribute called 'identifier' present in the
+	 *                               shape-file used to create this Road).
 	 */
 	public String getIdentifier() {
 		if (identifier == "" || identifier == null) {
 			ContextCreator.logger.error("Road: error, the identifier field for this road has not been initialised."
-							+ "\n\tIf reading in a shapefile please make sure there is a string column called 'identifier' which is"
-							+ " unique to each feature");
+					+ "\n\tIf reading in a shapefile please make sure there is a string column called 'identifier' which is"
+					+ " unique to each feature");
 		}
 		return identifier;
 	}
@@ -347,20 +345,19 @@ public class Road {
 	public ArrayList<Road> getConnectedRoads() {
 		return this.downStreamMovements;
 	}
-	
-	public void changeNumberOfVehicles(int nVeh){
+
+	public void changeNumberOfVehicles(int nVeh) {
 		this.nVehicles_ += nVeh;
-		if(this.nVehicles_<0) {
+		if (this.nVehicles_ < 0) {
 			ContextCreator.logger.error("Something went wrong, the vehicle number becomes negative!");
 		}
 	}
-	
+
 	public void firstVehicle(Vehicle v) {
 		if (v != null) {
 			this.firstVehicle_ = v;
-		    v.macroLeading(null);
-		}
-		else
+			v.macroLeading(null);
+		} else
 			this.firstVehicle_ = null;
 	}
 
@@ -368,8 +365,7 @@ public class Road {
 		if (v != null) {
 			this.lastVehicle_ = v;
 			v.macroTrailing(null);
-		}
-		else
+		} else
 			this.lastVehicle_ = null;
 	}
 
@@ -380,53 +376,52 @@ public class Road {
 	public Vehicle lastVehicle() {
 		return lastVehicle_;
 	}
-	
+
 	/* Number of vehicles on the road */
 	public int getVehicleNum() {
 		return this.nVehicles_;
 	}
-	
+
 	/* For adaptive network partitioning */
 	public int getShadowVehicleNum() {
 		return this.nShadowVehicles;
 	}
-	
+
 	public void incrementShadowVehicleNum() {
 		this.nShadowVehicles++;
 	}
-	
+
 	public void resetShadowVehicleNum() {
 		this.nShadowVehicles = 0;
 	}
-	
+
 	public void decreaseShadowVehicleNum() {
 		this.nShadowVehicles--;
 		if (this.nShadowVehicles < 0)
 			this.nShadowVehicles = 0;
 	}
-	
+
 	public int getFutureRoutingVehNum() {
 		return this.nFutureRoutingVehicles;
 	}
-	
+
 	public void incrementFutureRoutingVehNum() {
 		this.nFutureRoutingVehicles++;
 	}
-	
+
 	public void resetFutureRountingVehNum() {
 		this.nFutureRoutingVehicles = 0;
 	}
-	
+
 	public void decreaseFutureRoutingVehNum() {
 		this.nFutureRoutingVehicles--;
 		if (this.nFutureRoutingVehicles < 0)
 			this.nFutureRoutingVehicles = 0;
 	}
-	
 
-	//This add queue using TreeMap structure
+	// This add queue using TreeMap structure
 	public void addVehicleToDepartureMap() {
-		for(Vehicle v = this.toAddDepartureVeh.poll(); v!=null; v = this.toAddDepartureVeh.poll()) {
+		for (Vehicle v = this.toAddDepartureVeh.poll(); v != null; v = this.toAddDepartureVeh.poll()) {
 			double departuretime_ = v.getDepTime();
 			if (!this.departureVehMap.containsKey(departuretime_)) {
 				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
@@ -437,20 +432,18 @@ public class Road {
 			}
 		}
 	}
-	
+
 	// This add vehicle to the thread-safe pending list
 	public void addVehicleToPendingQueue(Vehicle v) {
 		this.toAddDepartureVeh.add(v);
 	}
 
-
 	/*
-	 * RemoveVehicleFromNewQueue, will remove vehicle v from the TreeMap by
-	 * looking at the departuretime_ of the vehicle if there are more than one
-	 * vehicle with the same departuretime_, it will remove the vehicle match
-	 * with id of v.
+	 * RemoveVehicleFromNewQueue, will remove vehicle v from the TreeMap by looking
+	 * at the departuretime_ of the vehicle if there are more than one vehicle with
+	 * the same departuretime_, it will remove the vehicle match with id of v.
 	 */
-	public void removeVehicleFromNewQueue(Vehicle v) { 
+	public void removeVehicleFromNewQueue(Vehicle v) {
 		double departuretime_ = v.getDepTime();
 		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departuretime_);
 		if (temporalList.size() > 1) {
@@ -472,11 +465,13 @@ public class Road {
 	public double getFreeSpeed() {
 		return this.freeSpeed_;
 	}
-	
+
 	public float getRandomFreeSpeed() {
-		return (float) Math.min(this.defaultFreeSpeed_, Math.max(this.freeSpeed_ + 
-				GlobalVariables.RandomGenerator.nextGaussian()*this.freeSpeedStd_, 
-				5*0.44704)); // at least 5 mph
+		return (float) Math.min(this.defaultFreeSpeed_, Math.max(
+				this.freeSpeed_ + GlobalVariables.RandomGenerator.nextGaussian() * this.freeSpeedStd_, 5 * 0.44704)); // at
+																														// least
+																														// 5
+																														// mph
 	}
 
 	public float calcSpeed() {
@@ -489,18 +484,18 @@ public class Road {
 			sum += pv.currentSpeed();
 			pv = pv.macroTrailing();
 		}
-		return (float) Math.max(sum / curr_size, 1*0.44704); // at least 1 mph
+		return (float) Math.max(sum / curr_size, 1 * 0.44704); // at least 1 mph
 	}
-	
+
 	/**
-	 * This function set the current travel time of the road based on the
-	 * average speed of the road.
+	 * This function set the current travel time of the road based on the average
+	 * speed of the road.
 	 * 
 	 * @author Zhan & Hemant
 	 */
 	public void setTravelTime() {
 		float averageSpeed = 0;
-		int curr_size=  this.nVehicles_;
+		int curr_size = this.nVehicles_;
 		if (curr_size == 0) {
 			averageSpeed = (float) this.freeSpeed_;
 		} else {
@@ -525,7 +520,7 @@ public class Road {
 		// outAverageSpeed: For output travel times
 		this.travelTime = (float) this.length / averageSpeed;
 	}
-	
+
 	public double getTravelTime() {
 		return this.travelTime;
 	}
@@ -577,11 +572,9 @@ public class Road {
 	}
 
 	public void printRoadInfo() {
-		ContextCreator.logger.info("Road: " + this.getIdentifier()
-				+ " has lanes from left to right as follow: ");
+		ContextCreator.logger.info("Road: " + this.getIdentifier() + " has lanes from left to right as follow: ");
 		for (int i = 0; i < this.lanes.size(); i++) {
-			ContextCreator.logger.info(this.lanes.get(i).getLaneid()
-					+ " with Repast ID: " + this.lanes.get(i).getID());
+			ContextCreator.logger.info(this.lanes.get(i).getLaneid() + " with Repast ID: " + this.lanes.get(i).getID());
 		}
 	}
 
@@ -593,8 +586,11 @@ public class Road {
 		ContextCreator.logger.info("Starting point: " + start);
 		ContextCreator.logger.info("Ending point: " + end);
 	}
-	
-	/* Wenbo: update background traffic through speed file. if road event flag is true, just pass to default free speed, else, update link free flow speed */
+
+	/*
+	 * Wenbo: update background traffic through speed file. if road event flag is
+	 * true, just pass to default free speed, else, update link free flow speed
+	 */
 	public void updateFreeFlowSpeed() {
 		// Get current tick
 		int tickcount = (int) RepastEssentials.GetTickCount();
@@ -603,14 +599,14 @@ public class Road {
 		// each hour set events
 		if (this.curhour < hour) {
 			double value = ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44704; // convert
-																													// from
-																													// mile
-																													// per
-																													// hour
-																													// to
-																													// meter
-																													// per
-																													// second
+																										// from
+																										// mile
+																										// per
+																										// hour
+																										// to
+																										// meter
+																										// per
+																										// second
 			double value2 = ContextCreator.getBackgroundTrafficStd().get(this.linkid).get(hour) * 0.44704;
 			if (this.checkEventFlag()) {
 				this.setDefaultFreeSpeed();
@@ -622,38 +618,36 @@ public class Road {
 		this.curhour = hour;
 	}
 
-	
 	/* Modify the free flow speed based on the events */
 	public void updateFreeFlowSpeed_event(double newFFSpd) {
-		this.freeSpeed_ = newFFSpd* 0.44704; //HG: convert from mph to m/s
+		this.freeSpeed_ = newFFSpd * 0.44704; // HG: convert from mph to m/s
 	}
-	
-	public void printTick(){
+
+	public void printTick() {
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		ContextCreator.logger.info("Tick: "+tickcount);
+		ContextCreator.logger.info("Tick: " + tickcount);
 	}
 
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
-		if(v.getVehicleClass() == 1){ //EV
+		if (v.getVehicleClass() == 1) { // EV
 			ElectricVehicle ev = (ElectricVehicle) v;
 			this.totalEnergy += ev.getLinkConsume();
 			ev.resetLinkConsume();
-		}
-		else if(v.getVehicleClass() == 2){
+		} else if (v.getVehicleClass() == 2) {
 			ElectricBus bv = (ElectricBus) v;
 			this.totalEnergy += bv.getLinkConsume();
 		}
 	}
-	
-	public double getTotalEnergy(){
+
+	public double getTotalEnergy() {
 		return totalEnergy;
 	}
-	
-	public int getTotalFlow(){
+
+	public int getTotalFlow() {
 		return totalFlow;
 	}
-	
+
 	public void recRoadSnaphot() {
 		try {
 			DataCollector.getInstance().recordRoadSnapshot(this);
@@ -662,5 +656,5 @@ public class Road {
 			DataCollector.printDebug("ERR" + t.getMessage());
 		}
 	}
-	
+
 }

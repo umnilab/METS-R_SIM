@@ -36,9 +36,9 @@ public class RMMatchingStrategy implements LambdaVoid<GNode<MetisNode>> {
 	IntGraph<MetisNode> coarseGraph;
 
 	public RMMatchingStrategy(IntGraph<MetisNode> graph, IntGraph<MetisNode> coarseGraph, int maxVertexWeight) {
-		this.coarseGraph=coarseGraph;
-		this.graph=graph;
-		this.maxVertexWeight=maxVertexWeight;
+		this.coarseGraph = coarseGraph;
+		this.graph = graph;
+		this.maxVertexWeight = maxVertexWeight;
 	}
 
 	@Override
@@ -47,7 +47,7 @@ public class RMMatchingStrategy implements LambdaVoid<GNode<MetisNode>> {
 		if (nodeData.isMatched()) {
 			return;
 		}
-		FindMatchNodeClosure closure=new FindMatchNodeClosure(node);
+		FindMatchNodeClosure closure = new FindMatchNodeClosure(node);
 		node.map(closure, node, MethodFlag.CHECK_CONFLICT);
 		GNode<MetisNode> matchNode = closure.match;
 		MetisNode maxNodeData = matchNode.getData(MethodFlag.NONE, MethodFlag.NONE);
@@ -61,21 +61,24 @@ public class RMMatchingStrategy implements LambdaVoid<GNode<MetisNode>> {
 		GNode<MetisNode> newNode = coarseGraph.createNode(newNodeData);
 		coarseGraph.add(newNode);
 		nodeData.setMapTo(newNode);
-		maxNodeData.setMapTo(newNode);		
+		maxNodeData.setMapTo(newNode);
 	}
 
-	private class FindMatchNodeClosure implements Lambda2Void<GNode<MetisNode>,GNode<MetisNode>>{
+	private class FindMatchNodeClosure implements Lambda2Void<GNode<MetisNode>, GNode<MetisNode>> {
 		GNode<MetisNode> match;
-		public FindMatchNodeClosure(GNode<MetisNode> node){
+
+		public FindMatchNodeClosure(GNode<MetisNode> node) {
 			match = node;
 		}
+
 		@Override
 		public void call(GNode<MetisNode> neighbor, GNode<MetisNode> src) {
 			MetisNode neighMNode = neighbor.getData(MethodFlag.NONE, MethodFlag.NONE);
-			if (!neighMNode.isMatched() && src.getData(MethodFlag.NONE, MethodFlag.NONE).getWeight() + neighMNode.getWeight() <= maxVertexWeight) {
+			if (!neighMNode.isMatched() && src.getData(MethodFlag.NONE, MethodFlag.NONE).getWeight()
+					+ neighMNode.getWeight() <= maxVertexWeight) {
 				if (match == src)
 					match = neighbor;
 			}
 		}
-	}	
+	}
 }

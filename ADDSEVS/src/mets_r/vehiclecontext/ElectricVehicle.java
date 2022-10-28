@@ -24,7 +24,7 @@ import repast.simphony.essentials.RepastEssentials;
  *
  */
 
-public class ElectricVehicle extends Vehicle{
+public class ElectricVehicle extends Vehicle {
 	// Local variables
 	private int numPeople_; // no of people inside the vehicle
 	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
@@ -34,24 +34,25 @@ public class ElectricVehicle extends Vehicle{
 	private double higherBatteryRechargeLevel_;
 	private double mass; // mass of the vehicle in kg
 	private boolean onChargingRoute_ = false;
-	
+
 	// Parameters for storing energy consumptions
 	private double tickConsume;
 	private double totalConsume;
-	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to zero once this ev entering a new road.
+	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
+								// zero once this ev entering a new road.
 	private double tripConsume; // For UCB testing
-	
+
 	public int served_pass = 0;
 	public int charging_time = 0;
 	public int charging_waiting_time = 0;
 	public double initial_charging_state = 0;
-	
+
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-    public static double batteryCapacity = GlobalVariables.EV_BATTERY; // the storedEnergy is 50 kWh.
-	
+	public static double batteryCapacity = GlobalVariables.EV_BATTERY; // the storedEnergy is 50 kWh.
+
 	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
-	
+
 	// Parameters for Fiori (2016) model
 	public static double p0 = 1.2256;
 	public static double A = 2.3316;
@@ -62,34 +63,36 @@ public class ElectricVehicle extends Vehicle{
 	public static double etaM = 0.92;
 	public static double etaG = 0.91;
 	public static double Pconst = 1500; // energy consumption by auxiliary accessories
-	
+
 	// Parameters for Maia (2012) model
-	//	public static double urr = 0.005; // 1996_1998_General Motor Model
-	//	public static double densityAir = 1.25; // air density = 1.25kg/m3
-	//	public static double A = 1.89; // A = 1.89m2
-	//	public static double Cd = 0.19; // Cv
-		// Parameter for Fhc, Fla calculation
-	//	public static double etaM = 0.95; // etaM
-	//	public static double etaG = 0.95; // etaG
-	//	public static double Pconst = 1300.0; // pConst
-	//	public static double Voc = 325.0; // nominal system voltage
-	//	public static double rIn = 0.0; // 
-	//	public static double T = 20.0; // assume the temperature is 20 Celsius degree;
-	//	public static double k = 1.03; // k is the Peukert coefficient, k = 1.03;
-	//	public static double cp = 77.0; // cp = 77.0; ///nominal capacity: 77 AH
-	//	public static double c = 20.0;
-	
-	public ElectricVehicle(){
+	// public static double urr = 0.005; // 1996_1998_General Motor Model
+	// public static double densityAir = 1.25; // air density = 1.25kg/m3
+	// public static double A = 1.89; // A = 1.89m2
+	// public static double Cd = 0.19; // Cv
+	// Parameter for Fhc, Fla calculation
+	// public static double etaM = 0.95; // etaM
+	// public static double etaG = 0.95; // etaG
+	// public static double Pconst = 1300.0; // pConst
+	// public static double Voc = 325.0; // nominal system voltage
+	// public static double rIn = 0.0; //
+	// public static double T = 20.0; // assume the temperature is 20 Celsius
+	// degree;
+	// public static double k = 1.03; // k is the Peukert coefficient, k = 1.03;
+	// public static double cp = 77.0; // cp = 77.0; ///nominal capacity: 77 AH
+	// public static double c = 20.0;
+
+	public ElectricVehicle() {
 		super(Vehicle.ETAXI);
 		this.setInitialParams();
 	}
+
 	public ElectricVehicle(float maximumAcceleration, float maximumDeceleration) {
-		super( maximumAcceleration, maximumDeceleration, 1);
+		super(maximumAcceleration, maximumDeceleration, 1);
 		this.setInitialParams();
 	}
-	
+
 	// Find the closest charging station and update the activity plan
-	public void goCharging(){
+	public void goCharging() {
 		super.setReachDest();
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();
@@ -102,43 +105,43 @@ public class ElectricVehicle extends Vehicle{
 		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
 		this.departure();
 		ContextCreator.getCityContext().findZoneWithIntegerID(current_dest_zone).removeFutureSupply();
-		ContextCreator.logger.debug("Vehicle "+ this.getId()+" is on route to charging");
+		ContextCreator.logger.debug("Vehicle " + this.getId() + " is on route to charging");
 	}
-	
-    @Override
+
+	@Override
 	public void updateBatteryLevel() {
-    	double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
-    	tickConsume = tickEnergy;
-    	linkConsume += tickEnergy; // Update energy consumption on current link
-    	totalConsume += tickEnergy;
-    	tripConsume += tickEnergy;
-    	batteryLevel_ -= tickEnergy;
+		double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
+		tickConsume = tickEnergy;
+		linkConsume += tickEnergy; // Update energy consumption on current link
+		totalConsume += tickEnergy;
+		tripConsume += tickEnergy;
+		batteryLevel_ -= tickEnergy;
 	}
-	
+
 	// Relocate vehicle
 	/**
 	 * @param p
 	 */
 	public void relocation(int orginID, int destinationID) {
-		this.addPlan(destinationID,
-				ContextCreator.getCityContext().findZoneWithIntegerID(destinationID).getCoord() , (int) RepastEssentials.GetTickCount());
+		this.addPlan(destinationID, ContextCreator.getCityContext().findZoneWithIntegerID(destinationID).getCoord(),
+				(int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
 		// Add vehicle to newqueue of corresponding road
 		this.departure();
 		this.setState(Vehicle.RELOCATION_TRIP);
 	}
-	
+
 	/**
 	 * @param list of passengers
 	 */
 	public void servePassenger(List<Request> plist) {
-		if(!plist.isEmpty()) {
-			for(Request p: plist) {
-				this.addPlan(
-						p.getDestination(),
-						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(), (int) RepastEssentials.GetTickCount());
+		if (!plist.isEmpty()) {
+			for (Request p : plist) {
+				this.addPlan(p.getDestination(),
+						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(),
+						(int) RepastEssentials.GetTickCount());
 				this.served_pass += 1;
-				this.setNumPeople(this.getNumPeople()+1);
+				this.setNumPeople(this.getNumPeople() + 1);
 			}
 			this.setNextPlan();
 			// Add vehicle to new queue of corresponding road
@@ -149,163 +152,173 @@ public class ElectricVehicle extends Vehicle{
 
 	@Override
 	public void setReachDest() {
-		// Check if the vehicle was on a charging route 
-		if(this.onChargingRoute_) {
-			String formated_msg = RepastEssentials.GetTickCount() + "," + 
-			this.getVehicleID() + ",4,"+ this.getOriginID()+","+
-					this.getDestID()+"," + this.getAccummulatedDistance() +"," +this.getDepTime()+","+this.getTripConsume()+",-1" + "," + this.getNumPeople();
-			try{
+		// Check if the vehicle was on a charging route
+		if (this.onChargingRoute_) {
+			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + ",4,"
+					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+			try {
 				ContextCreator.ev_logger.write(formated_msg);
 				ContextCreator.ev_logger.newLine();
-			} catch(IOException e){
+			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			super.setReachDest(); // remove from the network
 			// Add to the charging station
-			ContextCreator.logger.debug("Vehicle arriving at charging station:"+this.getId());
+			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
 			cs.receiveEV(this);
 //			this.reachActLocation = true;
-			this.tripConsume = 0; 
+			this.tripConsume = 0;
 		} else {
 			// Log the trip consume here
-			String formated_msg = RepastEssentials.GetTickCount() + "," + 
-			this.getVehicleID() + ","+this.getState()+","+ this.getOriginID()+","+
-					this.getDestID()+"," + this.getAccummulatedDistance() + "," + this.getDepTime()+","+this.getTripConsume()+","+this.getRouteChoice()+ "," + this.getNumPeople();
-			try{
+			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
+					+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + "," + this.getRouteChoice() + ","
+					+ this.getNumPeople();
+			try {
 				ContextCreator.ev_logger.write(formated_msg);
 				ContextCreator.ev_logger.newLine();
-			} catch(IOException e){
+			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			this.tripConsume = 0; 
-			
-			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
-			
-			if(this.getState() == Vehicle.OCCUPIED_TRIP) {
+			this.tripConsume = 0;
+
+			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone
+																								// info
+
+			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
 				z.taxiServedRequest += 1;
 				// if pass need to take the bus to complete his or her trip
-				if(this.passengerWithAdditionalActivityOnTaxi.size()>0) {
+				if (this.passengerWithAdditionalActivityOnTaxi.size() > 0) {
 					// generate a pass and add it to the corresponding zone
 					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
-					
-				    if(z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
-				    	z.toAddRequestForBus.add(p);
-				    }
-				    else {
-				    	// this happens when we dynamically update bus schedules
-				    	z.toAddRequestForTaxi.add(p);
-				    }
+
+					if (z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
+						z.toAddRequestForBus.add(p);
+					} else {
+						// this happens when we dynamically update bus schedules
+						z.toAddRequestForTaxi.add(p);
+					}
 				}
 			}
-			if(this.getNumPeople()>0){
+			if (this.getNumPeople() > 0) {
 				super.setReachDest();
 				this.setNextPlan();
 				this.departure();
-			}
-			else if(!onChargingRoute_ && 
-					(batteryLevel_ <= lowerBatteryRechargeLevel_ || 
-					(GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
+			} else if (!onChargingRoute_
+					&& (batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
 					&& this.getNumPeople() == 0) {
 				this.goCharging();
-			}
-			else{
-				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).add(this);//append this vehicle to the available vehicle of given zones
+			} else {
+				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).add(this);// append this vehicle
+																									// to the available
+																									// vehicle of given
+																									// zones
 				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
 				this.setState(Vehicle.PARKING);
 				super.setReachDest(); // Call setReachDest in vehicle class.
 			}
 		}
 	}
-	
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;
-		this.batteryLevel_ =  GlobalVariables.RECHARGE_LEVEL_LOW*GlobalVariables.EV_BATTERY + 
-				Math.random()*(1-GlobalVariables.RECHARGE_LEVEL_LOW)*GlobalVariables.EV_BATTERY; //unit:kWh, times a large number to disable charging
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW*GlobalVariables.EV_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH*GlobalVariables.EV_BATTERY;
-		this.mass = 1521; //kg
-		this.avgPersonMass_ = 60; //kg
-		
+		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
+				+ Math.random() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
+																											// times a
+																											// large
+																											// number to
+																											// disable
+																											// charging
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
+		this.mass = 1521; // kg
+		this.avgPersonMass_ = 60; // kg
+
 		// Parameters for energy calculation
-		this.tickConsume = 0.0;  //kWh
-		this.totalConsume = 0.0;  //kWh
-		//For Maia's model
+		this.tickConsume = 0.0; // kWh
+		this.totalConsume = 0.0; // kWh
+		// For Maia's model
 //		double soc[] = {0.00, 0.10, 0.20, 0.40, 0.60, 0.80, 1.00};             
 //		double r[] = {0.0419, 0.0288, 0.0221, 0.014, 0.0145, 0.0145, 0.0162}; 
 //		PolynomialSplineFunction f = splineFit(soc,r);                         
 //		this.splinef = f; 
-		//Parameters for UCB calculation
+		// Parameters for UCB calculation
 		this.linkConsume = 0;
 		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
 	}
-	
-	
+
 	public double getBatteryLevel() {
 		return batteryLevel_;
 	}
-	
+
 	public int getNumPeople() {
 		return numPeople_;
 	}
-	
-	public void setNumPeople(int numPeople){
+
+	public void setNumPeople(int numPeople) {
 		numPeople_ = numPeople;
 	}
-	
+
 	public double getMass() {
-		return 1.05*mass+numPeople_*avgPersonMass_;
+		return 1.05 * mass + numPeople_ * avgPersonMass_;
 	}
-	
-	public boolean onChargingRoute(){
+
+	public boolean onChargingRoute() {
 		return this.onChargingRoute_;
 	}
-	
+
 	// Charge the battery.
 	public void chargeItself(double batteryValue) {
 		charging_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		batteryLevel_ += batteryValue;
 	}
-	
+
 	// New EV energy consumption model
-	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle energy consumption model: Model development and validation. Applied Energy, 168, 257�268.
-	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0 AC_Dv^2+mgsin(\theta))v
-	public double calculateEnergy(){
-		double velocity = currentSpeed();   // obtain the speed
+	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle
+	// energy consumption model: Model development and validation. Applied Energy,
+	// 168, 257�268.
+	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0
+	// AC_Dv^2+mgsin(\theta))v
+	public double calculateEnergy() {
+		double velocity = currentSpeed(); // obtain the speed
 		double acceleration = currentAcc(); // obtain the acceleration
-		if(!this.movingFlag){
+		if (!this.movingFlag) {
 			velocity = 0;
 			acceleration = 0;
 		}
-		double slope = 0.0f;          //positive: uphill; negative: downhill, this is always 0, change this if the slope data is available
-		double dt = GlobalVariables.SIMULATION_STEP_SIZE;   // this time interval, the length of one tick. 0.3
+		double slope = 0.0f; // positive: uphill; negative: downhill, this is always 0, change this if the
+								// slope data is available
+		double dt = GlobalVariables.SIMULATION_STEP_SIZE; // this time interval, the length of one tick. 0.3
 		double f1 = getMass() * acceleration;
-		double f2 = getMass() * gravity * Math.cos(slope)*cr/1000*(c1*velocity+c2);
-		double f3 = 1/2*p0*A*cd*velocity*velocity;
+		double f2 = getMass() * gravity * Math.cos(slope) * cr / 1000 * (c1 * velocity + c2);
+		double f3 = 1 / 2 * p0 * A * cd * velocity * velocity;
 		double f4 = getMass() * gravity * Math.sin(slope);
-		double F = f1+f2+f3+f4;
-		double Pte = F*velocity;
+		double F = f1 + f2 + f3 + f4;
+		double Pte = F * velocity;
 		double Pbat;
-		if(acceleration>=0){
-			Pbat = (Pte + Pconst)/(etaM*etaG);
+		if (acceleration >= 0) {
+			Pbat = (Pte + Pconst) / (etaM * etaG);
+		} else {
+			double nrb = 1 / Math.exp(0.0411 / Math.abs(acceleration));
+			Pbat = (Pte + Pconst) * nrb;
 		}
-		else{
-			double nrb = 1/Math.exp(0.0411/Math.abs(acceleration));
-			Pbat = (Pte + Pconst)*nrb;
-		}
-		double energyConsumption = Pbat*dt/(3600*1000); //wh to kw	    
+		double energyConsumption = Pbat * dt / (3600 * 1000); // wh to kw
 		return energyConsumption;
 	}
-	
+
 	// Old EV energy consumption model:
-	/*R. Maia, M. Silva, R. Arajo, and U. Nunes, 
-	Electric vehicle simulator for energy consumption studies in electric mobility systems, 
-	 in 2011 IEEE Forum on Integrated and Sustainable Transportation Systems, 2011, pp.232.
-	*/
-	// Xue, Juan 20191212: calculate the energy for each vehicle per tick. return: kWh.
+	/*
+	 * R. Maia, M. Silva, R. Arajo, and U. Nunes, Electric vehicle simulator for
+	 * energy consumption studies in electric mobility systems, in 2011 IEEE Forum
+	 * on Integrated and Sustainable Transportation Systems, 2011, pp.232.
+	 */
+	// Xue, Juan 20191212: calculate the energy for each vehicle per tick. return:
+	// kWh.
 //	public double calculateEnergy(){		
 //		double velocity = currentSpeed();   // obtain the speed
 //		double acceleration = currentAcc(); // obtain the acceleration
@@ -378,9 +391,8 @@ public class ElectricVehicle extends Vehicle{
 //		}
 //		return energyConsumption;
 //	}
-	
-	
-	// spline interpolation 
+
+	// spline interpolation
 	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
 		SplineInterpolator splineInt = new SplineInterpolator();
 		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
@@ -394,11 +406,11 @@ public class ElectricVehicle extends Vehicle{
 	public double getTotalConsume() {
 		return totalConsume;
 	}
-	
-	public void finishCharging(Integer chargerID, String chargerType){
-		String formated_msg = RepastEssentials.GetTickCount()+ "," + chargerID + "," + this.getVehicleID() + "," + this.getVehicleClass()
-				+ "," + chargerType + "," + this.charging_waiting_time + "," + this.charging_time + ","
-				+ this.initial_charging_state;
+
+	public void finishCharging(Integer chargerID, String chargerType) {
+		String formated_msg = RepastEssentials.GetTickCount() + "," + chargerID + "," + this.getVehicleID() + ","
+				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
+				+ this.charging_time + "," + this.initial_charging_state;
 		try {
 			ContextCreator.charger_logger.write(formated_msg);
 			ContextCreator.charger_logger.newLine();
@@ -407,39 +419,39 @@ public class ElectricVehicle extends Vehicle{
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-				
+
 		this.onChargingRoute_ = false;
 		this.setNextPlan();
 		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
 		this.departure();
 	}
-	
-	public double getLinkConsume(){
+
+	public double getLinkConsume() {
 		return linkConsume;
 	}
-	
+
 	// Reset link consume once a ev has passed a link
-	public void resetLinkConsume(){ 
+	public void resetLinkConsume() {
 		this.linkConsume = 0;
 	}
+
 	public void recLinkSnaphotForUCB() {
-		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getLinkid(),this.getLinkConsume());
+		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getLinkid(), this.getLinkConsume());
 	}
-	
-	public void recSpeedVehicle(){
-		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getLinkid(),this.currentSpeed());
+
+	public void recSpeedVehicle() {
+		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getLinkid(), this.currentSpeed());
 	}
-	
-	public double getTripConsume(){
+
+	public double getTripConsume() {
 		return tripConsume;
 	}
-	
+
 	public void setRouteChoice(int i) {
 		this.routeChoice = i;
 	}
-	
+
 	public int getRouteChoice() {
 		return this.routeChoice;
 	}
 }
-

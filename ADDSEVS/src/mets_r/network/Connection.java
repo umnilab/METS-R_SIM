@@ -81,7 +81,7 @@ public class Connection implements DataConsumer {
 
 	/** The current tick number being processed (or just processed). */
 	private double currentTick;
-	
+
 	/** The current hour of the simulation. */
 	private static int prevhour = -1;
 
@@ -307,9 +307,9 @@ public class Connection implements DataConsumer {
 
 		// Create the heartbeat thread to keep the connection open
 		// Deprecated as we are looking for a reactive server
-        //this.heartbeatThread = new Thread(new HeartbeatRunnable());
-        //this.heartbeatThread.start();
-		
+		// this.heartbeatThread = new Thread(new HeartbeatRunnable());
+		// this.heartbeatThread.start();
+
 		// Register the connection in ContextCreator
 		ContextCreator.connection = this;
 
@@ -326,16 +326,15 @@ public class Connection implements DataConsumer {
 				session.getRemote().sendString(msg);
 			}
 			// July,2020,JiaweiXue
-			// commented due to conflicting with bus planning (the OD would change if the 
+			// commented due to conflicting with bus planning (the OD would change if the
 			// bus routes change
 //			for (String OD : ContextCreator.getUCBRouteODPairsBus()) {
 //				String msg = ContextCreator.getUCBRouteStringForODBus(OD);
 //				session.getRemote().sendString(msg);
 //			}
-			
+
 			// Send the first tick message
 			this.sendTickSnapshot(new TickSnapshot(0));
-			
 
 		} catch (IOException e) {
 			e.printStackTrace();
@@ -368,7 +367,7 @@ public class Connection implements DataConsumer {
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
 				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-				for (int index = 0; index < list_OD.size(); index ++) {
+				for (int index = 0; index < list_OD.size(); index++) {
 					Long result = (Long) list_result.get(index);
 					int result_int = result.intValue();
 					String OD = (String) list_OD.get(index);
@@ -376,18 +375,18 @@ public class Connection implements DataConsumer {
 				}
 			} else if (jsonMsg.get("MSG_TYPE").equals("BOD_PAIR")) {
 				ContextCreator.logger.info("Received bus route result!");
-				
+
 				// Clear the current map
 				// ContextCreator.routeResult_received.clear();
 				JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
 				JSONArray list_result = (JSONArray) jsonMsg.get("result");
-				for (int index = 0; index < list_OD.size(); index ++) {
+				for (int index = 0; index < list_OD.size(); index++) {
 					Long result = (Long) list_result.get(index);
 					int result_int = result.intValue();
 					String OD = (String) list_OD.get(index);
 					ContextCreator.routeResult_received_bus.put(OD, result_int);
 				}
-			} else if (jsonMsg.get("MSG_TYPE").equals("BUS_SCHEDULE")){
+			} else if (jsonMsg.get("MSG_TYPE").equals("BUS_SCHEDULE")) {
 				ContextCreator.logger.info("Received bus schedules!");
 				JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
 				JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
@@ -395,44 +394,44 @@ public class Connection implements DataConsumer {
 				JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
 				Long hour = Long.valueOf((String) jsonMsg.get("Bus_currenthour"));
 				int newhour = hour.intValue();
-				
+
 				if (prevhour < newhour) { // New schedules
 					prevhour = newhour;
 					// Json array to array list
-					int array_size=list_num.size();
+					int array_size = list_num.size();
 					ArrayList<Integer> newRouteName = new ArrayList<Integer>(array_size);
 					ArrayList<Integer> newBusNum = new ArrayList<Integer>(array_size);
 					ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
 					ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
-	                for (int index = 0; index < list_num.size(); index ++) {  
-	                	int bus_num_int = 0;
-	                	if (list_num.get(index) instanceof Number) {
-	                		bus_num_int = ((Number)list_num.get(index)).intValue();
-	                	}
-						if (bus_num_int>0) {
+					for (int index = 0; index < list_num.size(); index++) {
+						int bus_num_int = 0;
+						if (list_num.get(index) instanceof Number) {
+							bus_num_int = ((Number) list_num.get(index)).intValue();
+						}
+						if (bus_num_int > 0) {
 							// Verify the data, the last stop is the same as the start
 							@SuppressWarnings("unchecked")
-							ArrayList<Long> route = (ArrayList<Long>)list_route.get(index);
-							if(route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
+							ArrayList<Long> route = (ArrayList<Long>) list_route.get(index);
+							if (route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
 								newBusNum.add(bus_num_int);
-							    Double gap = (Double) list_gap.get(index);
-							    int gap_int = gap.intValue();
-							    // multiply by 60 for seconds
-							    newBusGap.add(gap_int);
-							    Long routename = (Long) list_routename.get(index);
-							    int list_routename_int = routename.intValue();
-							    newRouteName.add(list_routename_int);
-							    int route_size=route.size() - 1;
-							    ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
-						        for (int index_route =0; index_route < route_size; index_route++) {
-						         int route_int_i = route.get(index_route).intValue();
-						         route_int.add(route_int_i-1);
-						        }
-							    newRoutes.add(route_int);
+								Double gap = (Double) list_gap.get(index);
+								int gap_int = gap.intValue();
+								// multiply by 60 for seconds
+								newBusGap.add(gap_int);
+								Long routename = (Long) list_routename.get(index);
+								int list_routename_int = routename.intValue();
+								newRouteName.add(list_routename_int);
+								int route_size = route.size() - 1;
+								ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
+								for (int index_route = 0; index_route < route_size; index_route++) {
+									int route_int_i = route.get(index_route).intValue();
+									route_int.add(route_int_i - 1);
+								}
+								newRoutes.add(route_int);
 							}
 						}
 					}
-					ContextCreator.busSchedule.updateEvent(newhour,newRouteName, newRoutes, newBusNum, newBusGap);
+					ContextCreator.busSchedule.updateEvent(newhour, newRouteName, newRoutes, newBusNum, newBusGap);
 					ContextCreator.receiveNewBusSchedule = true;
 				}
 			}
@@ -477,14 +476,14 @@ public class Connection implements DataConsumer {
 	 * @return the socket message representation of the given tick.
 	 */
 	public static String createTickMessage(TickSnapshot tick) {
-		HashMap<String,Object> jsonObj = new HashMap<String,Object>();
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("MSG_TYPE", "TICK_MSG");
 		ArrayList<HashMap<String, Object>> entries = new ArrayList<HashMap<String, Object>>();
 		int hour = (int) (RepastEssentials.GetTickCount() / 3600 * GlobalVariables.SIMULATION_STEP_SIZE);
-		
+
 		// Send the latest progress of the simulation
 		if (hour > prevhour) {
-			HashMap<String, Object> entryObj = new HashMap<String, Object> ();
+			HashMap<String, Object> entryObj = new HashMap<String, Object>();
 			entryObj.put("TYPE", "H");
 			entryObj.put("hour", hour);
 			entries.add(entryObj);
@@ -502,7 +501,7 @@ public class Connection implements DataConsumer {
 			ArrayList<Double> energyList = tick.getLinkEnergyList(id);
 
 			if (energyList != null) {
-				HashMap<String, Object> entryObj = new HashMap<String, Object> ();
+				HashMap<String, Object> entryObj = new HashMap<String, Object>();
 				entryObj.put("values", Connection.createEnergyMesssage(energyList));
 				entryObj.put("TYPE", "E");
 				entryObj.put("hour", hour);
@@ -513,7 +512,7 @@ public class Connection implements DataConsumer {
 			ArrayList<Double> linkSpeed = tick.getSpeedVehicle(id);
 
 			if (linkSpeed != null) {
-				HashMap<String, Object> entryObj = new HashMap<String, Object> ();
+				HashMap<String, Object> entryObj = new HashMap<String, Object>();
 				entryObj.put("values", Connection.createEnergyMesssage(linkSpeed));
 				entryObj.put("TYPE", "V");
 				entryObj.put("hour", hour);
@@ -531,7 +530,7 @@ public class Connection implements DataConsumer {
 		List<Float> value_list = new ArrayList<>();
 
 		for (Double val : energyList) {
-		    value_list.add(val.floatValue());
+			value_list.add(val.floatValue());
 		}
 
 		return value_list;
@@ -636,7 +635,7 @@ public class Connection implements DataConsumer {
 						break;
 					}
 				}
-				 
+
 				// Get the next item from the buffer. HGehlot: I have changed from 1 to
 				// GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ to only send the data at the
 				// new frequency for viz interpolation
@@ -669,10 +668,10 @@ public class Connection implements DataConsumer {
 					// Loop around to try again
 					continue;
 				}
-				
+
 				// Update the currently processing tick index to this item
 				Connection.this.currentTick = snapshot.getTickNumber();
-				
+
 				// Process the current item into a socket message and send it
 				try {
 					Connection.this.sendTickSnapshot(snapshot);

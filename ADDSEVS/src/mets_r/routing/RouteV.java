@@ -55,12 +55,12 @@ public class RouteV {
 		vbr.calcRoute();
 		validRouteTime = (int) RepastEssentials.GetTickCount();
 	}
-	
-	public static int getValidTime(){
+
+	public static int getValidTime() {
 		return validRouteTime;
 	}
-	
-	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination){
+
+	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination) {
 		Coordinate originCoord = origin;
 		Coordinate destCoord = destination;
 		Coordinate nearestRoadCoord;
@@ -68,99 +68,96 @@ public class RouteV {
 			nearestRoadCoord = getNearestRoadCoord(originCoord);
 			originCoord = nearestRoadCoord;
 		}
-		
+
 		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
 		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
-		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord,
-				originRoad);
-		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
-				destRoad);
-		
+		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord, originRoad);
+		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord, destRoad);
+
 		if (originDownstreamJunc.getID() == destDownstreamJunc.getID()) { // Origin and destination is the same
 			return null;
 		}
 		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamJunc, destDownstreamJunc);
 		return path;
 	}
-	
-	public static List<List<Integer>> UCBRoute(Coordinate origin, Coordinate destination)
-			throws Exception {
+
+	public static List<List<Integer>> UCBRoute(Coordinate origin, Coordinate destination) throws Exception {
 		// Resolve the origin and destination road and junctions
-        Coordinate originCoord = origin;
+		Coordinate originCoord = origin;
 		Coordinate destCoord = destination;
-		
+
 		Coordinate nearestRoadCoord;
-		
+
 		// ContextCreator.logger.debug("Here1");
 		if (!onRoad(originCoord)) {
 			nearestRoadCoord = getNearestRoadCoord(originCoord);
 			originCoord = nearestRoadCoord;
 		}
-		
+
 		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
 		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
-		
+
 		// ContextCreator.logger.debug("Here2");
-		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord,
-				originRoad);
-		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord,
-				destRoad);
-		
+		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord, originRoad);
+		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord, destRoad);
+
 		// ContextCreator.logger.debug("Here3");
-		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad, originDownstreamJunc, destDownstreamJunc);
-		
+		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad,
+				originDownstreamJunc, destDownstreamJunc);
+
 		// Transform the paths into a list of link_ids
 		List<List<Integer>> result = new ArrayList<List<Integer>>();
 		for (List<Road> path : paths) {
 			result.add(new ArrayList<Integer>());
-			for(Road road: path) {
-				result.get(result.size()-1).add(road.getLinkid());
+			for (Road road : path) {
+				result.get(result.size() - 1).add(road.getLinkid());
 			}
 		}
 		return result;
 	}
-	
-	/* Perform vehicle routing: returns a path
-	 * The routing uses K-shortest path */
-	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination)
-		throws Exception {
+
+	/*
+	 * Perform vehicle routing: returns a path The routing uses K-shortest path
+	 */
+	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination) throws Exception {
 		/* The first part resolves the origin and destination road and junctions */
 		/*
 		 * See if the current position and the destination are on road segments.
 		 */
-		
+
 		/* Destination coordinate of the vehicle */
 		Road currentRoad = vehicle.getRoad();
 		Road destRoad = cityContext.findRoadAtCoordinates(destination, true);
-		
+
 		/* Current downstream junction of the road the vehicle is on */
 		Junction curDownstreamJunc = currentRoad.getJunctions().get(1);
-		
+
 		/* Current downstream junction of the destination junction the vehicle is on */
-		Junction destDownstreamJunc = getNearestDownStreamJunction(destination,
-				destRoad);
-		
+		Junction destDownstreamJunc = getNearestDownStreamJunction(destination, destRoad);
+
 		if (curDownstreamJunc.getID() == destDownstreamJunc.getID()) {
 			return null;
 		}
-		
+
 		List<Road> path = vbr.computeRoute(currentRoad, destRoad, curDownstreamJunc, destDownstreamJunc);
-		if( path == null || path.size()==0){
-			ContextCreator.logger.error("Route fails for vehicle: " +vehicle.getVehicleID() + " Plan: "+ vehicle.getPlan());
-			ContextCreator.logger.error("CurrentRoad: "+currentRoad+ " DestRoad: "+destRoad + " curDownstreamJunc: "+curDownstreamJunc + " destDownstreamJunc: "+ destDownstreamJunc);
+		if (path == null || path.size() == 0) {
+			ContextCreator.logger
+					.error("Route fails for vehicle: " + vehicle.getVehicleID() + " Plan: " + vehicle.getPlan());
+			ContextCreator.logger.error("CurrentRoad: " + currentRoad + " DestRoad: " + destRoad
+					+ " curDownstreamJunc: " + curDownstreamJunc + " destDownstreamJunc: " + destDownstreamJunc);
 		}
-		
+
 		return path;
 	}
-	
+
 	// Use ecoRoute to decide route
-	public static Pair<List<Road>,Integer> ecoRoute(int origin, int destination){
+	public static Pair<List<Road>, Integer> ecoRoute(int origin, int destination) {
 		String key = Integer.toString(origin) + ',' + destination;
-		if(!ContextCreator.routeResult_received.containsKey(key)){
+		if (!ContextCreator.routeResult_received.containsKey(key)) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		int choice = ContextCreator.routeResult_received.get(key);
-		if(choice < 0) {
+		if (choice < 0) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		List<Integer> path = (ContextCreator.route_UCB.get(key)).get(choice);
@@ -169,39 +166,39 @@ public class RouteV {
 		for (int link_id : path) {
 			result.add(cityContext.findRoadWithID(link_id));
 		}
-		Pair<List<Road>,Integer> final_result = new Pair<> (result, choice);
+		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
 	}
-	
-    // Use ecoRoute to decide route, uncommented this if you want to test eco-routing for buses
-	public static Pair<List<Road>,Integer> ecoRouteBus(int origin, int destination){
+
+	// Use ecoRoute to decide route, uncommented this if you want to test
+	// eco-routing for buses
+	public static Pair<List<Road>, Integer> ecoRouteBus(int origin, int destination) {
 		String key = Integer.toString(origin) + ',' + destination;
-		if(!ContextCreator.routeResult_received_bus.containsKey(key)){
+		if (!ContextCreator.routeResult_received_bus.containsKey(key)) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		int choice = ContextCreator.routeResult_received_bus.get(key);
-		if(choice < 0) {
+		if (choice < 0) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
 		}
 		List<Integer> path = (ContextCreator.route_UCB_bus.get(key)).get(choice);
-		
+
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
 			result.add(cityContext.findRoadWithID(link_id));
 		}
-		Pair<List<Road>,Integer> final_result = new Pair<> (result, choice);
+		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
 	}
 
-	public static void printRoute(List<Road> path){
+	public static void printRoute(List<Road> path) {
 		ContextCreator.logger.info("Route:");
 		for (Road r : path) {
 			ContextCreator.logger.info(" " + r.getLinkid());
 		}
 	}
-	
-	
+
 	public static Coordinate getNearestRoadCoord(Coordinate coord) {
 		// Search all roads in the vicinity, looking for the point which is
 		// nearest the person
@@ -209,13 +206,11 @@ public class RouteV {
 		// Road nearestRoad = null;
 		Coordinate nearestPoint = null;
 		Point coordGeom = geomFac.createPoint(coord);
-		for (Road road : roadGeography.getObjectsWithin(coordGeom.buffer(
-				big_buffer_distance).getEnvelopeInternal())) {
+		for (Road road : roadGeography.getObjectsWithin(coordGeom.buffer(big_buffer_distance).getEnvelopeInternal())) {
 			// XXXX: BUG:if an agent is on a really long road, the long road
 			// will not be found by
 			// getObjectsWithin because it is not within the buffer
-			DistanceOp distOp = new DistanceOp(coordGeom,
-					roadGeography.getGeometry(road));
+			DistanceOp distOp = new DistanceOp(coordGeom, roadGeography.getGeometry(road));
 			double thisDist = distOp.distance();
 			if (thisDist < minDist) {
 				minDist = thisDist;
@@ -238,10 +233,8 @@ public class RouteV {
 	 * Gets the nearest junction to the current coordinate on the road that the
 	 * coordinate lies on.
 	 * 
-	 * @param coord
-	 *            The coordinate we are interested in
-	 * @param road
-	 *            The road which this coordinate is situated on
+	 * @param coord The coordinate we are interested in
+	 * @param road  The road which this coordinate is situated on
 	 * @return the Junction which is closest to the coordinate.
 	 */
 	public static Junction getNearestJunction(Coordinate coord, Road road) {
@@ -256,10 +249,8 @@ public class RouteV {
 		j2 = (Junction) edge.getTarget();
 
 		Geometry coordGeom = geomFac.createPoint(coord);
-		Geometry geom1 = geomFac.createPoint(junctionGeography.getGeometry(j1)
-				.getCoordinate());
-		Geometry geom2 = geomFac.createPoint(junctionGeography.getGeometry(j2)
-				.getCoordinate());
+		Geometry geom1 = geomFac.createPoint(junctionGeography.getGeometry(j1).getCoordinate());
+		Geometry geom2 = geomFac.createPoint(junctionGeography.getGeometry(j2).getCoordinate());
 		DistanceOp dist1 = new DistanceOp(geom1, coordGeom);
 		DistanceOp dist2 = new DistanceOp(geom2, coordGeom);
 
@@ -281,8 +272,7 @@ public class RouteV {
 		return j1;
 	}
 
-	public static Junction getNearestDownStreamJunction(Coordinate coord,
-			Road road) {
+	public static Junction getNearestDownStreamJunction(Coordinate coord, Road road) {
 		// Find the associated edge in road network
 		RepastEdge<?> edge;
 		Junction j1 = null;
@@ -297,8 +287,7 @@ public class RouteV {
 	/**
 	 * Test if a coordinate is part of a road segment.
 	 * 
-	 * @param coord
-	 *            The coordinate which we want to test
+	 * @param coord The coordinate which we want to test
 	 * @return True if the coordinate is part of a road segment
 	 */
 	private static boolean onRoad(Coordinate coord) {

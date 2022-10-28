@@ -1,6 +1,5 @@
 package mets_r.routing;
 
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -24,12 +23,12 @@ public class VehicleRouting {
 	private Network<Junction> network;
 	public WeightedGraph<Junction, RepastEdge<Junction>> transformedNetwork = null;
 	public CityContext cityContext;
-	 
+
 	@SuppressWarnings({ "unchecked", "rawtypes" })
-	public VehicleRouting(Network<Junction> network){
+	public VehicleRouting(Network<Junction> network) {
 		this.cityContext = ContextCreator.getCityContext();
 		this.network = network;
-		
+
 		Graph<Junction, RepastEdge<Junction>> graphA = null;
 
 		if (network instanceof JungNetwork)
@@ -40,7 +39,7 @@ public class VehicleRouting {
 		JungToJgraph<Junction> converter = new JungToJgraph<Junction>();
 		this.transformedNetwork = converter.convertToJgraph(graphA);
 	}
-	
+
 	/**
 	 * Creates routing info using the Node Based routing algorithm
 	 */
@@ -52,23 +51,25 @@ public class VehicleRouting {
 			graphA = ((JungNetwork) network).getGraph();
 		else if (network instanceof ContextJungNetwork)
 			graphA = ((ContextJungNetwork) network).getGraph();
-		
+
 		JungToJgraph<Junction> converter = new JungToJgraph<Junction>();
 		this.transformedNetwork = converter.convertToJgraph(graphA);
 	}
-	
-	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad,
-			Junction currJunc, Junction destJunc){
-		List<List<Road>> roadPath_= new ArrayList<List<Road>>();
-		
-		KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc, K);
+
+	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad, Junction currJunc,
+			Junction destJunc) {
+		List<List<Road>> roadPath_ = new ArrayList<List<Road>>();
+
+		KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(
+				transformedNetwork, currJunc, K);
 		List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(destJunc);
-		
-		for(int k=0;k<kshortestPath.size();k++){
+
+		for (int k = 0; k < kshortestPath.size(); k++) {
 			List<RepastEdge<Junction>> shortestPath = kshortestPath.get(k).getEdgeList();
 			// Find the roads which are associated with these edges
-			if(shortestPath != null){ // Found the shortest path
-				List<Road> oneRoadPath_ = new ArrayList<Road>();  // Save this path as a list of road and store it in oneRoadPath_
+			if (shortestPath != null) { // Found the shortest path
+				List<Road> oneRoadPath_ = new ArrayList<Road>(); // Save this path as a list of road and store it in
+																	// oneRoadPath_
 				oneRoadPath_.add(currentRoad);
 				for (RepastEdge<Junction> edge : shortestPath) {
 					int linkID = cityContext.getLinkIDFromEdge(edge);
@@ -79,25 +80,26 @@ public class VehicleRouting {
 				roadPath_.add(oneRoadPath_);
 			}
 		}
-		
+
 		return roadPath_;
 	}
+
 	/* Perform the routing computation */
-	public List<Road> computeRoute(Road currentRoad, Road destRoad,
-			Junction currJunc, Junction destJunc) {
+	public List<Road> computeRoute(Road currentRoad, Road destRoad, Junction currJunc, Junction destJunc) {
 		List<Road> roadPath_;
 		List<RepastEdge<Junction>> shortestPath;
 		shortestPath = null;
-		
+
 		// Get the edges that make up the shortest path
 		int K = GlobalVariables.K_VALUE;
 		double theta = GlobalVariables.THETA_LOGIT;
-		
+
 		if (GlobalVariables.K_SHORTEST_PATH) {
 			// Find the k-shortest path
-			KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc, K);
+			KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(
+					transformedNetwork, currJunc, K);
 			List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(destJunc);
-			
+
 			List<Double> pathLength = new ArrayList<Double>();
 			List<Double> pathProb = new ArrayList<Double>();
 			List<Double> cumProb = new ArrayList<Double>();
@@ -130,17 +132,17 @@ public class VehicleRouting {
 				}
 			}
 			shortestPath = kshortestPath.get(k).getEdgeList();
-			
-		} else{ // Single shortest path
-			DijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(transformedNetwork, currJunc, destJunc);
+
+		} else { // Single shortest path
+			DijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(
+					transformedNetwork, currJunc, destJunc);
 			shortestPath = sp.getPathEdgeList();
 		}
 
-		
 		// Find the roads which are associated with these edges
 		double shortestPathLength = 0.0f;
 		roadPath_ = new ArrayList<Road>();
-		if(shortestPath != null){ //LZ: found the shortest path
+		if (shortestPath != null) { // LZ: found the shortest path
 			roadPath_.add(currentRoad);
 			for (RepastEdge<Junction> edge : shortestPath) {
 				int linkID = cityContext.getLinkIDFromEdge(edge);
@@ -151,6 +153,5 @@ public class VehicleRouting {
 		}
 		return roadPath_;
 	}
-	
 
 }

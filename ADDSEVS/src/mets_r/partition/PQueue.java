@@ -19,17 +19,16 @@ File: PQueue.java
 
 */
 
-
 package mets_r.partition;
 
 import galois.objects.graph.GNode;
 import java.util.Arrays;
 
 /**
- * A priority queue which combines two implementations: 
- * 1. heap based
- * 2. array(for priority values) + linked-list (saving the elemements of the queue having the same priority)
- * Which one to use depends on the max number of nodes of queue
+ * A priority queue which combines two implementations: 1. heap based 2.
+ * array(for priority values) + linked-list (saving the elemements of the queue
+ * having the same priority) Which one to use depends on the max number of nodes
+ * of queue
  */
 public class PQueue {
 
@@ -83,7 +82,8 @@ public class PQueue {
 			int id = node.getData().getNodeId();
 			nodes[id] = new ListNode(node);
 			ListNode newNode = nodes[id];
-			//			System.out.println(gain+" "+bucketIndex+" "+PLUS_GAINSPAN+" "+buckets.length+" ");
+			// System.out.println(gain+" "+bucketIndex+" "+PLUS_GAINSPAN+"
+			// "+buckets.length+" ");
 			newNode.next = buckets[gain + bucketIndex];
 			if (newNode.next != null)
 				newNode.next.prev = newNode;
@@ -145,13 +145,13 @@ public class PQueue {
 				if (oldgain < newgain) {
 					while (i > 0) {
 						int j = (i - 1) >> 1;
-			if (heap[j].key < newgain) {
-				heap[i].value = heap[j].value;
-				heap[i].key = heap[j].key;
-				locator[heap[i].value.getData().getNodeId()] = i;
-				i = j;
-			} else
-				break;
+						if (heap[j].key < newgain) {
+							heap[i].value = heap[j].value;
+							heap[i].key = heap[j].key;
+							locator[heap[i].value.getData().getNodeId()] = i;
+							i = j;
+						} else
+							break;
 					}
 				} else {
 					int j = 0;
@@ -181,7 +181,8 @@ public class PQueue {
 	}
 
 	/**
-	 * After changing the gain of a node, its position in the queue has to be updated  
+	 * After changing the gain of a node, its position in the queue has to be
+	 * updated
 	 */
 	public void update(GNode<MetisNode> value, int oldgain, int newgain) {
 		if (type == 1) {
@@ -192,13 +193,13 @@ public class PQueue {
 			if (oldgain < newgain) {
 				while (i > 0) {
 					int j = (i - 1) >> 1;
-			if (heap[j].key < newgain) {
-				heap[i].value = heap[j].value;
-				heap[i].key = heap[j].key;
-				locator[heap[i].value.getData().getNodeId()] = i;
-				i = j;
-			} else
-				break;
+					if (heap[j].key < newgain) {
+						heap[i].value = heap[j].value;
+						heap[i].key = heap[j].key;
+						locator[heap[i].value.getData().getNodeId()] = i;
+						i = j;
+					} else
+						break;
 				}
 			} else {
 				int j = 0;
@@ -307,6 +308,7 @@ class ListNode {
 	public ListNode(GNode<MetisNode> node) {
 		value = node;
 	}
+
 	GNode<MetisNode> value;
 	ListNode prev;
 	ListNode next;

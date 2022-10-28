@@ -19,8 +19,6 @@ File: FMTwoWayRefiner.java
 
 */
 
-
-
 package mets_r.partition;
 
 import galois.objects.graph.GNode;
@@ -36,9 +34,9 @@ import util.fn.Lambda2Void;
 
 public class FMTwoWayRefiner {
 
-	final static UpdateNeighborClosure updateNeighborClosure=new UpdateNeighborClosure();
+	final static UpdateNeighborClosure updateNeighborClosure = new UpdateNeighborClosure();
 
-	private static final class UpdateNeighborClosure implements Lambda2Void<GNode<MetisNode>,GNode<MetisNode>> {
+	private static final class UpdateNeighborClosure implements Lambda2Void<GNode<MetisNode>, GNode<MetisNode>> {
 		private MetisGraph metisGraph;
 		private GNode<MetisNode> higain;
 		private int to;
@@ -47,10 +45,11 @@ public class FMTwoWayRefiner {
 			this.metisGraph = metisGraph;
 			this.higain = higain;
 			this.to = to;
-		}		
+		}
+
 		public void call(GNode<MetisNode> neighbor, GNode<MetisNode> node) {
 			MetisNode neighborData = neighbor.getData();
-			int edgeWeight = (int)metisGraph.getGraph().getEdgeData(higain, neighbor);
+			int edgeWeight = (int) metisGraph.getGraph().getEdgeData(higain, neighbor);
 			int kwgt = (to == neighborData.getPartition() ? edgeWeight : -edgeWeight);
 			neighborData.setEdegree(neighborData.getEdegree() - kwgt);
 			neighborData.setIdegree(neighborData.getIdegree() + kwgt);
@@ -141,7 +140,7 @@ public class FMTwoWayRefiner {
 				moved[swaps[i].getData().getNodeId()] = -1; /* Reset moved array */
 			}
 			nswaps--;
-			for (; nswaps > mincutorder; nswaps--) {       
+			for (; nswaps > mincutorder; nswaps--) {
 				moveBackNode(metisGraph, swaps[nswaps]);
 			}
 			metisGraph.setMinCut(mincut);
@@ -151,8 +150,8 @@ public class FMTwoWayRefiner {
 		}
 	}
 
-	private static void moveNode(final MetisGraph metisGraph, final GNode<MetisNode> higain, final int to, final int[] moved,
-			GNode<MetisNode>[] swaps, int nswaps) {
+	private static void moveNode(final MetisGraph metisGraph, final GNode<MetisNode> higain, final int to,
+			final int[] moved, GNode<MetisNode>[] swaps, int nswaps) {
 		final IntGraph<MetisNode> graph = metisGraph.getGraph();
 		MetisNode higainData = higain.getData();
 		higainData.setPartition(to);
@@ -163,7 +162,7 @@ public class FMTwoWayRefiner {
 		higainData.swapEDAndID();
 		higainData.updateGain();
 
-		if (higainData.getEdegree() == 0 && graph.outNeighborsSize(higain) >0) {
+		if (higainData.getEdegree() == 0 && graph.outNeighborsSize(higain) > 0) {
 			metisGraph.unsetBoundaryNode(higain);
 		}
 		higain.map(new Lambda2Void<GNode<MetisNode>, GNode<MetisNode>>() {
@@ -178,15 +177,15 @@ public class FMTwoWayRefiner {
 
 				/* Update its boundary information and queue position */
 				if (neighborData.isBoundary()) { /* If k was a boundary node */
-					if (neighborData.getEdegree() == 0) { 
-					 /*
-					  * Not a boundary node any more
-					  */
+					if (neighborData.getEdegree() == 0) {
+						/*
+						 * Not a boundary node any more
+						 */
 						metisGraph.unsetBoundaryNode(neighbor);
 						if (moved[neighborData.getNodeId()] == -1) {
-						/*
-						 * Remove it if in the queues
-						 */
+							/*
+							 * Remove it if in the queues
+							 */
 							parts[neighborData.getPartition()].delete(neighbor, oldgain);
 						}
 					} else if (moved[neighborData.getNodeId()] == -1) {
@@ -194,8 +193,8 @@ public class FMTwoWayRefiner {
 						parts[neighborData.getPartition()].update(neighbor, oldgain, neighborData.getGain());
 					}
 				} else if (neighborData.getEdegree() > 0) { /*
-				 * It will now become a boundary node
-				 */
+															 * It will now become a boundary node
+															 */
 					metisGraph.setBoundaryNode(neighbor);
 					if (moved[neighborData.getNodeId()] == -1) {
 						parts[neighborData.getPartition()].insert(neighbor, neighborData.getGain());
@@ -214,7 +213,7 @@ public class FMTwoWayRefiner {
 		higainData.swapEDAndID();
 		higainData.updateGain();
 
-		if (higainData.getEdegree() == 0 && higainData.isBoundary() && graph.outNeighborsSize(higain)>0) {
+		if (higainData.getEdegree() == 0 && higainData.isBoundary() && graph.outNeighborsSize(higain) > 0) {
 			metisGraph.unsetBoundaryNode(higain);
 		} else if (higainData.getEdegree() > 0 && !higainData.isBoundary()) {
 			metisGraph.setBoundaryNode(higain);

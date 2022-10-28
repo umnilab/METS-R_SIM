@@ -42,7 +42,7 @@ public class MetisPartition {
 	private ArrayList<ArrayList<Zone>> partitionedZones;
 	private ArrayList<ArrayList<ChargingStation>> partitionedChargingStation;
 	private int partitionDuration; // how old is the current partition when next partitioning occurs
-	
+
 	public MetisPartition(int nparts) {
 		this.nPartition = nparts;
 		this.partitionedInRoads = new ArrayList<ArrayList<Road>>();
@@ -50,53 +50,53 @@ public class MetisPartition {
 //		this.partitionWeights = new ArrayList<Integer>();
 		this.partitionedZones = new ArrayList<ArrayList<Zone>>();
 		this.partitionedChargingStation = new ArrayList<ArrayList<ChargingStation>>();
-		for(int i = 0; i < nparts; i++) {
+		for (int i = 0; i < nparts; i++) {
 			partitionedZones.add(new ArrayList<Zone>());
 			partitionedChargingStation.add(new ArrayList<ChargingStation>());
 		}
 		this.partitionDuration = 0;
 	}
-	
-	public ArrayList<ArrayList<Road>> getPartitionedInRoads(){
+
+	public ArrayList<ArrayList<Road>> getPartitionedInRoads() {
 		return this.partitionedInRoads;
 	}
-	
+
 	public ArrayList<Road> getPartitionedBwRoads() {
 		return this.partitionedBwRoads;
 	}
-	
-	public ArrayList<ArrayList<Zone>> getpartitionedZones(){
-		return this.partitionedZones;	
+
+	public ArrayList<ArrayList<Zone>> getpartitionedZones() {
+		return this.partitionedZones;
 	}
-	
-	public ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations(){
-		return this.partitionedChargingStation;	
+
+	public ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations() {
+		return this.partitionedChargingStation;
 	}
-	
+
 	public void first_run() throws NumberFormatException, ExecutionException {
 		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
 		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(true);
 		ContextCreator.logger.debug("Metis Running...");
-		
+
 		if (Launcher.getLauncher().isFirstRun()) {
 			ContextCreator.logger.debug("Configuration");
 			ContextCreator.logger.debug("-------------");
 			ContextCreator.logger.debug(" Num of partitions: " + this.nPartition);
-			ContextCreator.logger.debug("Graph size: " + metisGraph.getGraph().size() + " nodes and " + metisGraph.getNumEdges()
-					+ " edges");
+			ContextCreator.logger.debug("Graph size: " + metisGraph.getGraph().size() + " nodes and "
+					+ metisGraph.getNumEdges() + " edges");
 		}
-		
+
 		System.gc(); // For gabage collection
-		
+
 		long time = System.nanoTime();
 		Launcher.getLauncher().startTiming();
 		IntGraph<MetisNode> resultGraph = partition(metisGraph, nPartition);
 		Launcher.getLauncher().stopTiming();
 		time = (System.nanoTime() - time) / 1000000;
-		
+
 		// Calling GaliosToRepastGraph method for testing
 		graphConverter.GaliosToRepastGraph(resultGraph, nPartition);
-		
+
 		// Testing retrieving the partitioned results
 		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
 		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
@@ -129,40 +129,42 @@ public class MetisPartition {
 //			totRoutingVeh += road.getFutureRoutingVehNum();
 //		}
 //		ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
-		
+
 		// Partition Zone by prospect demand
 		ArrayList<Double> totRequest = new ArrayList<Double>();
 		for (i = 0; i < this.nPartition; i++) {
 			totRequest.add(0.0);
 		}
-		for (Zone z: ContextCreator.getZoneGeography().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
 			for (i = 0; i < this.nPartition; i++) {
-				if(minWeight > totRequest.get(i)){
+				if (minWeight > totRequest.get(i)) {
 					minWeight = totRequest.get(i);
 					targetInd = i;
 				}
 			}
 			// Add the zone to the target partition
 			this.partitionedZones.get(targetInd).add(z);
-			// Update the weight of the partition, heuristic to send the hubs to different partitions
-			totRequest.set(targetInd, totRequest.get(targetInd) + ContextCreator.demand_per_zone.get(z.getIntegerID()) * (z.getZoneClass()==1?10.0:1.0));
+			// Update the weight of the partition, heuristic to send the hubs to different
+			// partitions
+			totRequest.set(targetInd, totRequest.get(targetInd)
+					+ ContextCreator.demand_per_zone.get(z.getIntegerID()) * (z.getZoneClass() == 1 ? 10.0 : 1.0));
 		}
 		ContextCreator.logger.info(totRequest);
-		
+
 		// Partition Charging stations by num of chargers
 		ArrayList<Integer> totCharger = new ArrayList<Integer>();
 		for (i = 0; i < this.nPartition; i++) {
 			totCharger.add(0);
 		}
-		for (ChargingStation cs: ContextCreator.getChargingStationGeography().getAllObjects()) {
+		for (ChargingStation cs : ContextCreator.getChargingStationGeography().getAllObjects()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
 			for (i = 0; i < this.nPartition; i++) {
-				if(minWeight > totCharger.get(i)){
+				if (minWeight > totCharger.get(i)) {
 					minWeight = totCharger.get(i);
 					targetInd = i;
 				}
@@ -172,52 +174,51 @@ public class MetisPartition {
 			// Update the weight of the partition
 			totCharger.set(targetInd, totCharger.get(targetInd) + cs.capacity());
 		}
-		
+
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
-	
-	
+
 	public void check_run() throws NumberFormatException, ExecutionException {
-		if (this.partitionDuration <= GlobalVariables.SIMULATION_MAX_PARTITION_REFRESH_INTERVAL){
+		if (this.partitionDuration <= GlobalVariables.SIMULATION_MAX_PARTITION_REFRESH_INTERVAL) {
 			/* Get the total number of vehicles in the network */
 			int TotVehNum = 0;
 			for (Road road : ContextCreator.getRoadGeography().getAllObjects()) {
 				TotVehNum += road.getVehicleNum();
 			}
-			
+
 			if (TotVehNum >= GlobalVariables.THRESHOLD_VEHICLE_NUMBER) {
 				this.run();
 			} else {
-				this.partitionDuration += GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;;
+				this.partitionDuration += GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
+				;
 			}
 		} else {
 			this.run();
 		}
-	} 
-	
-	
+	}
+
 	public void run() throws NumberFormatException, ExecutionException {
 		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
-		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(false);		
+		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(false);
 		System.gc(); // For gabage collection
-		
+
 		long time = System.nanoTime();
 		Launcher.getLauncher().startTiming();
 		IntGraph<MetisNode> resultGraph = partition(metisGraph, nPartition);
-		
+
 		Launcher.getLauncher().stopTiming();
 		time = (System.nanoTime() - time) / 1000000;
 		ContextCreator.logger.debug("mincut: " + metisGraph.getMinCut());
 		ContextCreator.logger.debug("runtime: " + time + " ms");
-		
-		/*// For testing only, remove after done
-		if (Launcher.getLauncher().isFirstRun()) {
-			verify(metisGraph);
-		}*/
-		
+
+		/*
+		 * // For testing only, remove after done if
+		 * (Launcher.getLauncher().isFirstRun()) { verify(metisGraph); }
+		 */
+
 		// Calling GaliosToRepastGraph method for testing
 		graphConverter.GaliosToRepastGraph(resultGraph, nPartition);
-		
+
 		// Testing retrieving the partitioned results
 		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
 		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
@@ -250,14 +251,15 @@ public class MetisPartition {
 //			totRoutingVeh += road.getFutureRoutingVehNum();
 //		}
 //		ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
-		
+
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
 
 	/**
-	 * KMetis Algorithm 
+	 * KMetis Algorithm
 	 */
-	public IntGraph<MetisNode> partition(MetisGraph metisGraph, int nparts) throws ExecutionException, ArrayIndexOutOfBoundsException {
+	public IntGraph<MetisNode> partition(MetisGraph metisGraph, int nparts)
+			throws ExecutionException, ArrayIndexOutOfBoundsException {
 		IntGraph<MetisNode> graph = metisGraph.getGraph();
 		// Zhan: Number of coarsen nodes
 		int coarsenTo = (int) Math.max(graph.size() / (40 * Math.log(nparts)), 20 * (nparts));
@@ -266,9 +268,9 @@ public class MetisPartition {
 		long time = System.nanoTime();
 		MetisGraph mcg = coarsener.coarsen(metisGraph);
 		time = (System.nanoTime() - time) / 1000000;
-		
+
 		ContextCreator.logger.debug("Coarsening time: " + time + " ms");
- 
+
 		MetisGraph.nparts = 2;
 		float[] totalPartitionWeights = new float[nparts];
 		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
@@ -285,7 +287,7 @@ public class MetisPartition {
 		KWayRefiner refiner = new KWayRefiner();
 		refiner.refineKWay(mcg, metisGraph, totalPartitionWeights, (float) 1.03, nparts);
 		time = (System.nanoTime() - time) / 1000000;
-		
+
 		return metisGraph.getGraph();
 	}
 
