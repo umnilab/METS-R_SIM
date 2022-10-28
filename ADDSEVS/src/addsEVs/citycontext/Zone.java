@@ -151,26 +151,26 @@ public class Zone {
 		if(this.lastUpdateHour != hour){ 
 			this.futureDemand.set(0);
 		}
-		
-		if(this.zoneClass == 0){ // From other place to hub
-            int j = 0;
-            for(int destination : GlobalVariables.HUB_INDEXES){
-            	double passRate = ContextCreator.getTravelDemand().get(this.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-        				GlobalVariables.NUM_OF_ZONE).get(hour) * (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL/
-        						(3600/GlobalVariables.SIMULATION_STEP_SIZE));
-            	passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
-            	double numToGenerate = Math.floor(passRate) + (Math.random()<(passRate-Math.floor(passRate))?1:0);
-            	
-				if(busReachableZone.contains(destination)) {
+		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
+			double passRate = ContextCreator.getTravelDemand(this.getIntegerID(), destination,hour)
+					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
+							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
+
+			if (passRate > 0) {
+
+				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
+				double numToGenerate = Math.floor(passRate)
+						+ (Math.random() < (passRate - Math.floor(passRate)) ? 1 : 0);
+
+				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
 					for (int i = 0; i < numToGenerate; i++) {
-                        Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
+						Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
 						if (Math.random() > threshold) {
-							if(new_pass.isShareable()) {
+							if (new_pass.isShareable()) {
 								this.addSharableTaxiPass(new_pass, destination);
-							}
-							else {
+							} else {
 								this.addTaxiPass(new_pass);
 							}
 							this.numberOfGeneratedTaxiRequest += 1;
@@ -179,166 +179,68 @@ public class Zone {
 							this.numberOfGeneratedBusRequest += 1;
 						}
 					}
-					if(this.lastUpdateHour != hour){ 
-	            		this.futureDemand.addAndGet((int) ( passRate * threshold));
-	            	}
-				}
-				else if (GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)){
-					// Split between taxi and taxi-bus combined, 
+					if (this.lastUpdateHour != hour) {
+						this.futureDemand.addAndGet((int) (passRate * threshold));
+					}
+				} else if (GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)) {
+					// Split between taxi and taxi-bus combined,
 					float threshold = getSplitRatio(destination, true);
 					for (int i = 0; i < numToGenerate; i++) {
 						if (Math.random() > threshold) {
-							Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
-							if(new_pass.isShareable()) {
+							Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2
+																								// hours
+							if (new_pass.isShareable()) {
 								nRequestForTaxi += 1;
-								if(!this.sharableRequestForTaxi.containsKey(destination)) {
+								if (!this.sharableRequestForTaxi.containsKey(destination)) {
 									this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
 								}
 								this.sharableRequestForTaxi.get(destination).add(new_pass);
-							}
-							else {
+							} else {
 								this.addTaxiPass(new_pass);
 							}
 							this.numberOfGeneratedTaxiRequest += 1;
-						}
-						else {
+						} else {
 							// First generate its activity plan
 							Queue<Plan> activityPlan = new LinkedList<Plan>();
-							Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(), 
+							Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
 									this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
 							activityPlan.add(plan);
-							Plan plan2 = new Plan(destination, 
-									ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(), tickcount);
+							Plan plan2 = new Plan(destination,
+									ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
+									tickcount);
 							activityPlan.add(plan2);
-							Request new_pass = new Request(this.integerID, activityPlan, 24000); // Wait for at most 2 hours
+							Request new_pass = new Request(this.integerID, activityPlan, 24000); // Wait for at most 2
+																									// hours
 							this.addTaxiPass(new_pass);
 							this.numberOfGeneratedCombinedRequest += 1;
 						}
 					}
-					if(this.lastUpdateHour != hour){ 
-						this.futureDemand.addAndGet((int) ( passRate * threshold));
-	            	}
-				}
-				else {
+					if (this.lastUpdateHour != hour) {
+						this.futureDemand.addAndGet((int) (passRate * threshold));
+					}
+				} else {
 					// Taxi only
 					for (int i = 0; i < numToGenerate; i++) {
 						Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
-						if(new_pass.isShareable()) {
+						if (new_pass.isShareable()) {
 							nRequestForTaxi += 1;
-							if(!this.sharableRequestForTaxi.containsKey(destination)) {
+							if (!this.sharableRequestForTaxi.containsKey(destination)) {
 								this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
 							}
 							this.sharableRequestForTaxi.get(destination).add(new_pass);
-						}
-						else {
+						} else {
 							this.addTaxiPass(new_pass);
 						}
 						this.numberOfGeneratedTaxiRequest += 1;
 					}
-					if(this.lastUpdateHour != hour){ 
-						this.futureDemand.addAndGet((int) ( passRate));
-	            	}
+					if (this.lastUpdateHour != hour) {
+						this.futureDemand.addAndGet((int) (passRate));
+					}
 				}
-				j+=1;
-			}
-			ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusRequest); 
-			ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiRequest);
-		}
-		else if (this.zoneClass == 1) { //From hub to other place
-			int j = GlobalVariables.HUB_INDEXES.indexOf(this.integerID);
-			for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-				int destination = i;
-				double passRate = ContextCreator.getTravelDemand().get(i+j*GlobalVariables.NUM_OF_ZONE*2).get(hour) * 
-						(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL/(3600/GlobalVariables.SIMULATION_STEP_SIZE));;
-				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
-				double numToGenerate = Math.floor(passRate) + (Math.random()<(passRate-Math.floor(passRate))?1:0);
-	            if (destination != this.integerID) {
-	            	if(busReachableZone.contains(destination)) {
-	            		float threshold = getSplitRatio(destination, false);
-	            		for (int k = 0; k < numToGenerate; k++) {
-	            			Request new_pass = new Request(this.integerID, destination, 24000);
-							if (Math.random() > threshold) {
-								if(new_pass.isShareable()) {
-									nRequestForTaxi += 1;
-									if(!this.sharableRequestForTaxi.containsKey(destination)) {
-										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-									}
-									this.sharableRequestForTaxi.get(destination).add(new_pass);
-								}
-								else {
-									this.addTaxiPass(new_pass);
-								}
-								
-								this.numberOfGeneratedTaxiRequest += 1;
-							} else {
-								this.addBusPass(new_pass);
-								this.numberOfGeneratedBusRequest += 1;
-							}
-	            		}
-	            		if(this.lastUpdateHour != hour){ 
-	            			this.futureDemand.addAndGet((int) ( passRate * threshold));
-		            	}
-	            	}
-	            	else if(GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)){
-	            		float threshold = getSplitRatio(destination, true);
-	            		for (int k = 0; k < numToGenerate; k++) {
-	            			if (Math.random() > threshold) {
-								Request new_pass = new Request(this.integerID, destination, 24000);
-								if(new_pass.isShareable()) {
-									nRequestForTaxi += 1;
-									if(!this.sharableRequestForTaxi.containsKey(destination)) {
-										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-									}
-									this.sharableRequestForTaxi.get(destination).add(new_pass);
-								}
-								else {
-									this.addTaxiPass(new_pass);
-								}
-								
-								this.numberOfGeneratedTaxiRequest += 1;
-							}
-							else {
-								LinkedList<Plan> activityPlan = new LinkedList<Plan>();
-								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(), 
-										this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
-								activityPlan.add(plan);
-								Plan plan2 = new Plan(destination, 
-										ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(), tickcount);
-								activityPlan.add(plan2);
-								Request new_pass = new Request(this.integerID, activityPlan, 24000); // Wait for at most 2 hours
-								this.addBusPass(new_pass);				
-								this.numberOfGeneratedCombinedRequest += 1;
-							}
-	            		}
-	            		if(this.lastUpdateHour != hour){ 
-	            			this.nearestZoneWithBus.get(destination).futureDemand.addAndGet((int) ( passRate * threshold));
-		            	}
-	            	}
-	            	else {
-	            		for (int k = 0; k < numToGenerate; k++) {
-	            			Request new_pass = new Request(this.integerID, destination, 24000); 
-							if(new_pass.isShareable()) {
-								nRequestForTaxi += 1;
-								if(!this.sharableRequestForTaxi.containsKey(destination)) {
-									this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-								}
-								this.sharableRequestForTaxi.get(destination).add(new_pass);
-							}
-							else {
-								this.addTaxiPass(new_pass);
-							}
-							
-							this.numberOfGeneratedTaxiRequest += 1;
-	            		}
-	            		if(this.lastUpdateHour != hour){ 
-	            			this.futureDemand.addAndGet((int) ( passRate));;
-		            	}
-	            	}
-				}
-			}
-		}
+		}}
 		ContextCreator.logger.debug("current buss pass is"+this.numberOfGeneratedBusRequest); 
 		ContextCreator.logger.debug("current taxi pass is"+this.numberOfGeneratedTaxiRequest);
+
 		if(this.lastUpdateHour!=hour){
 			this.lastUpdateHour = hour;
 		}

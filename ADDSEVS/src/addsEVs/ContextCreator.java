@@ -13,6 +13,7 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -150,18 +151,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for(Zone z: getZoneGeography().getAllObjects()) {
 			double demand_from_zone = 0;
 			if(z.getZoneClass() == 1) {
-				int j = GlobalVariables.HUB_INDEXES.indexOf(z.getIntegerID());
 				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(i+j*GlobalVariables.NUM_OF_ZONE*2), 
+					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), i),
 							GlobalVariables.HOUR_OF_DEMAND-1);
 				}
 			}
 			else {
-				for(int j = 0; j < GlobalVariables.HUB_INDEXES.size(); j++){
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand().
-							get(z.getIntegerID()+j*GlobalVariables.NUM_OF_ZONE*2+
-	        				GlobalVariables.NUM_OF_ZONE), GlobalVariables.HOUR_OF_DEMAND-1);
+				for(int j: GlobalVariables.HUB_INDEXES){
+					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), j),
+	        				GlobalVariables.HOUR_OF_DEMAND-1);
 				}
 			}
 			demand_total += demand_from_zone;
@@ -776,8 +774,25 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return backgroundTraffic.backgroundStd;
 	}
 
-	public static TreeMap<Integer, ArrayList<Double>> getTravelDemand() {
-		return backgroundDemand.travelDemand;
+	public static ArrayList<Double> getTravelDemand(int originID, int  destID) {
+		if(backgroundDemand.travelDemand.containsKey(originID)) {
+			if(backgroundDemand.travelDemand.get(originID).containsKey(destID)) {
+				return backgroundDemand.travelDemand.get(originID).get(destID);
+			}
+		}
+		return new ArrayList<Double>(Collections.nCopies(GlobalVariables.HOUR_OF_DEMAND,0.0d));
+	}
+	
+	public static Double getTravelDemand(int originID, int  destID, int hour) {
+		if(backgroundDemand.travelDemand.containsKey(originID)) {
+			if(backgroundDemand.travelDemand.get(originID).containsKey(destID)) {
+				if(hour < GlobalVariables.HOUR_OF_DEMAND) {
+					return backgroundDemand.travelDemand.get(originID).get(destID).get(hour);
+				}
+				
+			}
+		}
+		return 0d;
 	}
 
 	public static ArrayList<ArrayList<Integer>> getBusSchedule() {
