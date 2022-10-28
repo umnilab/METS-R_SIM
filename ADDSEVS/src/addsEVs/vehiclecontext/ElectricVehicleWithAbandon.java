@@ -28,6 +28,7 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 	public double utility_for_service = 0;
 	private double valuationdriver;//ev's valuation of the trip
 	
+	@Override
 	public void setInitialParams() {
 		// added by xiaowei on 09/29
 		super.setInitialParams();
@@ -42,29 +43,64 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 	
 	public ElectricVehicleWithAbandon(){
 		super();
-		this.setInitialParams();
 	}
 	public ElectricVehicleWithAbandon(float maximumAcceleration, float maximumDeceleration) {
 		super( maximumAcceleration, maximumDeceleration);
-		this.setInitialParams();
 	}
 	
 	// Find the closest charging station and update the activity plan
 	@Override
 	public void goCharging(){
-		super.setReachDest();
+		super.setVehicleReachDest();
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();
 		// Add a charging activity
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(), 0);
-		this.onChargingRoute_ = true;
-		this.setState(Vehicle.CHARGING_TRIP);
-		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
-		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
-		this.departure();
-		ContextCreator.getCityContext().findZoneWithIntegerID(current_dest_zone).removeFutureSupply();
-		ContextCreator.logger.info("Vehicle "+ this.EV_ID+" is on route to charging" + ", and its SOC is  "+ this.batteryLevel_);
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
+		
+		if(cs == null) {
+			if (this.batteryLevel_ > lowerBatteryRechargeLevel_) { // go back and provide services
+				System.out.println("No available CS nearby");
+				// set 12 = Vehicle cannot find charging station && battery is enough
+				String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleFakeID() + ","
+						+ this.start_zone_id + "," + this.getVehicleID() + ",12," + this.getOriginID() + ","
+						+ this.getDestID() + "," + this.getAccummulatedDistance() + "," + this.getDepTime() + ","
+						+ this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+				try {
+					ContextCreator.ev_logger.write(formated_msg);
+					ContextCreator.ev_logger.newLine();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				this.onChargingRoute_ = false;
+				this.sortid_charging_station = 0;
+				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).add(this);
+				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
+			} 
+			else { // leave the system
+				System.out.println("Vehicle leaves the system since cannot find CSs.");
+				// set 13 = Vehicle cannot find charging station && battery is low
+				String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleFakeID() + ","
+						+ this.start_zone_id + "," + this.getVehicleID() + ",13," + this.getOriginID() + ","
+						+ this.getDestID() + "," + this.getAccummulatedDistance() + "," + this.getDepTime() + ","
+						+ this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+				try {
+					ContextCreator.ev_logger.write(formated_msg);
+					ContextCreator.ev_logger.newLine();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		else {
+			this.onChargingRoute_ = true;
+			this.setState(Vehicle.CHARGING_TRIP);
+			this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
+			this.setNextPlan();
+			this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
+			this.departure();
+			ContextCreator.getCityContext().findZoneWithIntegerID(current_dest_zone).removeFutureSupply();
+			//ContextCreator.logger.info("Vehicle "+ this.EV_ID+" is on route to charging" + ", and its SOC is  "+ this.batteryLevel_);
+		}
 	}
 	
 	// re-find the closest charging station and update the activity plan, due to meeting a full charging station
@@ -76,29 +112,65 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 		this.onChargingRoute_ = true;
 		this.sortid_charging_station +=1;
 		// Find a list of sorted charging station based on distance, and find the id = sortid_charging_station one
-		// since the ev is in the nearest charging station (sorted id =0), find the next nearest one, so the sortid should be 1.		
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(), 1); 
-		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
-		this.setNextPlan();
-		this.addPlan(finalone_dest_zone, finalone_dest_coord, (int) RepastEssentials.GetTickCount());
-		this.departure();
-		System.out.println("vid:"+this.getVehicleFakeID()+" activityplan size: " + this.activityplan.size());
-		//ContextCreator.logger.info("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
+		// since the ev is in the nearest charging station (sorted id =0), find the next nearest one, so the sortid should be 0.		
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord()); 
+		if(cs == null) {
+			if (this.batteryLevel_ > lowerBatteryRechargeLevel_) { // go back and provide services
+				System.out.println("No available CS nearby");
+				// set 12 = Vehicle cannot find charging station && battery is enough
+				String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleFakeID() + ","
+						+ this.start_zone_id + "," + this.getVehicleID() + ",12," + this.getOriginID() + ","
+						+ this.getDestID() + "," + this.getAccummulatedDistance() + "," + this.getDepTime() + ","
+						+ this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+				try {
+					ContextCreator.ev_logger.write(formated_msg);
+					ContextCreator.ev_logger.newLine();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				this.onChargingRoute_ = false;
+				this.sortid_charging_station = 0;
+				this.setNextPlan();
+				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
+				this.departure();
+			} 
+			else { // leave the system
+				System.out.println("Vehicle leaves the system due to three full CSs.");
+				// set 13 = Vehicle cannot find charging station && battery is low
+				String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleFakeID() + ","
+						+ this.start_zone_id + "," + this.getVehicleID() + ",13," + this.getOriginID() + ","
+						+ this.getDestID() + "," + this.getAccummulatedDistance() + "," + this.getDepTime() + ","
+						+ this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+				try {
+					ContextCreator.ev_logger.write(formated_msg);
+					ContextCreator.ev_logger.newLine();
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		else {
+			this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
+			this.setNextPlan();
+			this.addPlan(finalone_dest_zone, finalone_dest_coord, (int) RepastEssentials.GetTickCount());
+			this.departure();
+			System.out.println("vid:"+this.getVehicleFakeID()+" activityplan size: " + this.activityplan.size());
+			//ContextCreator.logger.info("Vehicle "+ this.getId()+" is on route to charging ( road : "+this.road.getLinkid()+")");
+		}
 	}	
 
 	@Override
 	public void setReachDest() {
 		// Check if the vehicle was on a charging route
 		if (this.onChargingRoute_) {
-			super.setReachDest(); // remove from the network
+			super.setVehicleReachDest(); // remove from the network
 			// Add to the charging station
 			// if return_value ==0, the current charging station is full,
 			// then if the batteryLevel_ > batteryRechargeLevel, ev stops searching for cs
 			// and continue to provide service (which similar to the condition of finish
 			// charging)
 			// otherwise, the ev quits the entire system
-			ChargingStationWithAbandon cs = (ChargingStationWithAbandon) ContextCreator.getCityContext()
-					.findNearestChargingStation(this.getCurrentCoord(), 0);
+			ChargingStationWithAbandon cs = (ChargingStationWithAbandon) ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
 			boolean return_value = cs.tryToReceiveEV(this);
 			if (this.sortid_charging_station < 3 && !return_value) { // if ev face with full cs less than 3 times, and
 																		// the return_value==0, Do refindCharging
@@ -139,7 +211,8 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 					this.setNextPlan();
 					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
 					this.departure();
-				} else { // leave the system
+				} 
+				else { // leave the system
 					System.out.println("Vehicle leaves the system due to three full CSs.");
 					// set 6= Vehicle leaves system due to three full CSs
 					String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleFakeID() + ","
@@ -221,7 +294,7 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 																											// of given
 																											// zones
 						ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
-						super.setReachDest(); // Call setReachDest in vehicle class.
+						super.setVehicleReachDest(); // Call setReachDest in vehicle class.
 					}
 				} else if (this.batteryLevel_ <= lowerBatteryRechargeLevel_) { // if ev is not first show, then only
 																				// gocharging if reaches recharge level
@@ -233,10 +306,10 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 																										// vehicle of
 																										// given zones
 					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
-					super.setReachDest(); // Call setReachDest in vehicle class.
+					super.setVehicleReachDest(); // Call setReachDest in vehicle class.
 				}
 			} else if (this.getNumPeople() > 0) {
-				super.setReachDest();
+				super.setVehicleReachDest();
 				this.setNextPlan();
 				this.departure();
 			} else {
@@ -245,7 +318,7 @@ public class ElectricVehicleWithAbandon extends ElectricVehicle{
 																									// vehicle of given
 																									// zones
 				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
-				super.setReachDest(); // Call setReachDest in vehicle class.
+				super.setVehicleReachDest(); // Call setReachDest in vehicle class.
 			}
 		}
 	}

@@ -18,7 +18,6 @@ public class ChargingStationWithAbandon extends ChargingStation{
 	private LinkedList<ElectricVehicle> leaveChargingL3;  // Car leave L3 charging due to charging station capacity
 	private int waitnum2;       // Number of waiting space in L2 charging station
 	private int waitnum3;       // Number of waiting space in L3 charging station
-	private double distanceSort = 0; // This is the distance when ev search for nearby charging station, we sort the CSs by this value
 	private static double chargingRateL2 = 200.0;  // Charging rate for L2: 200.0kWh/hour // modified by xiaowei on 09/29
 	private static double chargingRateL3 = 200.0;  // Charging rate for L3: 200.0kWh/hour // modified by xiaowei on 09/29
 	private static double chargingRateBus = 100.0; // Charging rate for bus: 100.0kWh/hour
@@ -41,7 +40,7 @@ public class ChargingStationWithAbandon extends ChargingStation{
 	
 	@Override
 	public int capacity(){
-		return super.capacity() + this.waitnum2 + this.waitnum3;
+		return super.capacity() + this.waitnum2 + this.waitnum3 - queueChargingL2.size() - queueChargingL3.size();
 	}
 	
 	// Function2: vehicleArrive()
@@ -179,7 +178,10 @@ public class ChargingStationWithAbandon extends ChargingStation{
 					ev.utility_for_service +=  t * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
 				}else{
 					ev.chargeItself(maxChargingDemand);  // battery increases by maxChargingDemand
-					ev.utility_for_service +=  t * (maxChargingDemand/maxChargingSupply) * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
+					if (maxChargingSupply > 0) {
+						ev.utility_for_service +=  t * (maxChargingDemand/maxChargingSupply) * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
+						
+					}
 					toRemoveVeh.add(ev);	     // the vehicle leaves the charger
 					// add vehicle to newqueue of corresponding road
 					ev.finishCharging(this.getIntegerID(), "L2");
@@ -225,7 +227,9 @@ public class ChargingStationWithAbandon extends ChargingStation{
 					ev.utility_for_service +=  t * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
 				}else{
 					ev.chargeItself(maxChargingDemand);  // battery increases by maxChargingDemand
-					ev.utility_for_service +=  t * (maxChargingDemand/maxChargingSupply) * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
+					if(maxChargingSupply > 0) {
+						ev.utility_for_service +=  t * (maxChargingDemand/maxChargingSupply) * GlobalVariables.TIMEVALUE_DRIVER; // added by xiaowei on 09/29
+					}
 					toRemoveVeh.add(ev);	     // the vehicle leaves the charger
 					ev.finishCharging(this.getIntegerID(), "L3");
 				}
@@ -249,14 +253,6 @@ public class ChargingStationWithAbandon extends ChargingStation{
 		}
 	}
 	
-	public void setDistanceSort(double distance) { // added by xiaowei on 09/29
-		this.distanceSort = distance;
-	}
-
-	public double getDistanceSort() { // added by xiaowei on 09/29
-		return this.distanceSort;
-	}
-
 	public double Q1p0(double lamdad0, double num, double waitnum, double chargingRate) {
 		double rhoq1 = lamdad0 / (num * chargingRate);
 		// System.out.print("lamdad0:"+ lamdad0+ "; num: "+ num + "; chargingRate:" +

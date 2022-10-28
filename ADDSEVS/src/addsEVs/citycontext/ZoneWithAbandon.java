@@ -125,18 +125,20 @@ public class ZoneWithAbandon extends Zone{
 			else {
 				for (int k = 0; k < numToGenerate; k++) {
 					Zone z2 = ContextCreator.getCityContext().findZoneWithIntegerID(destination);
-					Request new_pass = new RequestWithValuation(this.integerID, destination,this.getCoord(), z2.getCoord()); // Pass wait for 10 mins
-					if(new_pass.isShareable()) {
-						nRequestForTaxi += 1;
-						if(!this.sharableRequestForTaxi.containsKey(destination)) {
-							this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
+					if(destination != this.getIntegerID()) {
+						Request new_pass = new RequestWithValuation(this.integerID, destination,this.getCoord(), z2.getCoord()); // Pass wait for 10 mins
+						if(new_pass.isShareable()) {
+							nRequestForTaxi += 1;
+							if(!this.sharableRequestForTaxi.containsKey(destination)) {
+								this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
+							}
+							this.sharableRequestForTaxi.get(destination).add(new_pass);
 						}
-						this.sharableRequestForTaxi.get(destination).add(new_pass);
+						else {
+							this.addTaxiPass(new_pass);
+						}
+						this.numberOfGeneratedTaxiRequest += 1;
 					}
-					else {
-						this.addTaxiPass(new_pass);
-					}
-					this.numberOfGeneratedTaxiRequest += 1;
 				}
 				if(this.lastUpdateHour != hour){ 
 					this.futureDemand.addAndGet((int) passRate);
@@ -186,9 +188,10 @@ public class ZoneWithAbandon extends Zone{
 		}
 		
 		// FCFS service for the rest of passengers
-		int curr_size = this.requestInQueueForTaxi.size();
-		for(int i = 0; i < curr_size; i++) {
-			ElectricVehicleWithAbandon v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).peek();
+		int curr_size = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size();
+		int i = 0;
+		while((!this.requestInQueueForTaxi.isEmpty()) && (i < curr_size)) {
+			ElectricVehicleWithAbandon v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
 			RequestWithValuation p = (RequestWithValuation) this.requestInQueueForTaxi.peek();
 			
 			double lamda_d_input = this.vehicleStock.get();
@@ -199,11 +202,15 @@ public class ZoneWithAbandon extends Zone{
 					w_mq* GlobalVariables.TIMEVALUE_PASS/(p.getTripDistance()/1000);
 			//assume that for ev battery, every kwh can support 3 miles trip
 			double prob_d_q = -1;
-			if(p!=null) {
-				prob_d_q = GlobalVariables.DRIVER_WAGE_FEE - v.getValuationDriver() - v.utility_for_service/3 - w_mq* GlobalVariables.TIMEVALUE_DRIVER/(p.getTripDistance()/1000);
+			prob_d_q = GlobalVariables.DRIVER_WAGE_FEE - v.getValuationDriver() - v.utility_for_service/3 - w_mq* GlobalVariables.TIMEVALUE_DRIVER/(p.getTripDistance()/1000);
+			
+			if (Double.isNaN(prob_d_q)) {
+				System.out.println("HEHHEHEHEH " + i  + ", curr_size" + curr_size +", lamda_d_input" + lamda_d_input + ", lamda_p1" + lamda_p1);
+				System.out.println("HEHHEHEHEH " + v.getVehicleFakeID() +", prob_d_q" + prob_d_q + ", " + v.utility_for_service + ", w_mq" + w_mq  + ", Dist" + p.getTripDistance() + ", Valua" + v.getValuationDriver());
 			}
 			
-			while(prob_p<0 && !this.requestInQueueForTaxi.isEmpty()) {
+			
+			while((prob_p<0) && (!this.requestInQueueForTaxi.isEmpty())) {
 				p = (RequestWithValuation) this.requestInQueueForTaxi.poll();
 				passAbandonList.add(p);
 				this.nRequestForTaxi-=1;
@@ -216,7 +223,7 @@ public class ZoneWithAbandon extends Zone{
 							w_mq* GlobalVariables.TIMEVALUE_PASS/(p.getTripDistance()/1000);	
 				}
 			}
-			while(prob_d_q<0 && ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).size()>0) {
+			while((prob_d_q<0) && (i<curr_size)) {
 				formated_msg = RepastEssentials.GetTickCount() + "," + 
 				v.getVehicleFakeID() + "," + v.start_zone_id + "," +  v.getVehicleID() + ",7,"+ v.getOriginID()+","+
 						v.getDestID()+"," + v.getAccummulatedDistance() +"," +v.getDepTime()+","+v.getTripConsume()+",-1" + "," + v.getNumPeople();
@@ -229,25 +236,26 @@ public class ZoneWithAbandon extends Zone{
 				}
 								
 				// delete the v with negative prob_d_q
-				v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
 				evAbandonList.add(v);
+				i++;
 				// for now, assume vehicle just refuse to serve current trip, vehicle can. if vehicle leaves forever, use the sentences with #1  
 				this.removeVehicleStock(1); // #1  
+				v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
 				
 				//generate next v from list
-				v =  (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).peek();
 				if (v != null) {
 					prob_d_q =  GlobalVariables.DRIVER_WAGE_FEE - v.getValuationDriver() - v.utility_for_service/3 - w_mq;
-					
+				}
+				else {
+					break;
 				}
 			}	
-			 
-			if((prob_p>=0 && prob_d_q>=0)){
+			
+			if((prob_p>=0) && (prob_d_q>=0)){
 				//System.out.println("Thanks, matched p and ev");
 				p = (RequestWithValuation) this.requestInQueueForTaxi.poll();
-				v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
 				v.servePassenger(Arrays.asList(p));
-				
+				i++;
 				ContextCreator.getCityContext().findZoneWithIntegerID(v.getDestID()).futureSupply.addAndGet(1);				
 				this.removeVehicleStock(1);
 				this.nRequestForTaxi-=1;
@@ -279,28 +287,9 @@ public class ZoneWithAbandon extends Zone{
 				} catch(IOException e){
 					e.printStackTrace();
 				}
-				
 			}else {
-				if(prob_p<0) {
-					p = (RequestWithValuation) this.requestInQueueForTaxi.poll();
-					passAbandonList.add(p);
-					this.nRequestForTaxi-=1;
-				}
-				if(prob_d_q<0) {
-					// set 7 = Vehicle leaves system due to price
-					formated_msg = RepastEssentials.GetTickCount() + "," + 
-					v.getVehicleFakeID() + "," + v.start_zone_id + "," +  v.getVehicleID() + ",7,"+ v.getOriginID()+","+
-							v.getDestID()+"," + v.getAccummulatedDistance() +"," +v.getDepTime()+","+v.getTripConsume()+",-1" + "," + v.getNumPeople();
-					try{
-						ContextCreator.ev_logger.write(formated_msg);
-						ContextCreator.ev_logger.newLine();
-					} catch(IOException e){
-						e.printStackTrace();
-					}
-					
-					v = (ElectricVehicleWithAbandon) ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
-					evAbandonList.add(v);
-					this.removeVehicleStock(1); // #1  
+				if (v != null) {
+					ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).add(v);
 				}
 			}
 		}
@@ -324,7 +313,10 @@ public class ZoneWithAbandon extends Zone{
 		double rho = lamda/mu2;
 		double w_mq = 0.0;
 		//System.out.println("lamda = "+lamda +"; mu2 = " + mu2 + "; rho = " + rho);
-		if(rho != 1) {
+		if(lamda==0) {
+			System.out.println("lamda==0!!!!!!");
+		}
+		if((rho != 1)& (lamda!=0)) {
 			w_mq = rho/(lamda*(1-rho)) - 1/mu2;
 		}
 		return w_mq;

@@ -146,6 +146,10 @@ public class ElectricVehicle extends Vehicle{
 			this.setState(Vehicle.OCCUPIED_TRIP);
 		}
 	}
+	
+	public void setVehicleReachDest() {
+		super.setReachDest();
+	}
 
 	@Override
 	public void setReachDest() {

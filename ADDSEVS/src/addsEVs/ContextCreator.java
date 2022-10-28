@@ -199,7 +199,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		/* Create output files */
 		String outDir = GlobalVariables.AGG_DEFAULT_PATH;
 		String timestamp = new SimpleDateFormat("YYYY-MM-dd-hh-mm-ss").format(new Date()); // get the current time stamp
-		String outpath = outDir + File.separatorChar + GlobalVariables.NUM_OF_EV + "_" + GlobalVariables.NUM_OF_BUS; // create the overall file path, named after the demand filename
+		String outpath = outDir + File.separatorChar + GlobalVariables.NUM_OF_EV + "_" + GlobalVariables.PASSENGER_DEMAND_FACTOR + 
+				"_" + GlobalVariables.PASSENGER_FEE+ "_" + GlobalVariables.DRIVER_WAGE_FEE + "_" + GlobalVariables.ELECTRICITY_FEE_L2 + 
+				"_" + GlobalVariables.EV_BATTERY; // create the overall file path, named after the demand filename
 		try {
 			Files.createDirectories(Paths.get(outpath));
 		} catch (IOException e1) {

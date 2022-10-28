@@ -14,7 +14,7 @@ import addsEVs.routing.RouteV;
  **/
 
 public class RequestWithValuation extends Request {
-	private double getValuationRequest;//p's valuation of the trip
+	private double valuationRequest;//p's valuation of the trip
 	private double tripDistance; // The estimate trip distance based on shortest path
 	private double tripTime; // The estimate trip time based on shortest path 
 	
@@ -30,8 +30,12 @@ public class RequestWithValuation extends Request {
 				this.tripTime += r.getTravelTime();
 			}
 		}
-		this.getValuationRequest = ContextCreator.cachedRandomValue.valuatioRequest.get(GlobalVariables.Random_ID_PASS);
+		this.valuationRequest = ContextCreator.cachedRandomValue.valuatioRequest.get(GlobalVariables.Random_ID_PASS);
 		GlobalVariables.Random_ID_PASS +=1;
+		
+		if(this.tripDistance <= 0) {
+			this.tripDistance = 1;
+		}
 	}
 	
 	public double getTripDistance(){ // added by xiaowei on 09/29
@@ -43,6 +47,6 @@ public class RequestWithValuation extends Request {
 	}
 	
 	public double getValuationRequest(){ // added by xiaowei on 09/29
-		return this.getValuationRequest;
+		return this.valuationRequest;
 	}
 }

@@ -140,7 +140,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			num_total -= vehicle_num_to_generate;
 			for (int i = 0; i < vehicle_num_to_generate; i++) {
 				// GeometryFactory fac = new GeometryFactory();
-				ElectricVehicleWithAbandon v = new ElectricVehicleWithAbandon();
+				ElectricVehicle v = new ElectricVehicle();
 				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the first plan
 				this.add(v);
 				ContextCreator.logger.debug("Vehicle:" + i+ " generated");
