@@ -591,7 +591,7 @@ public class JsonOutputWriter implements DataConsumer {
 
 		// Get the list of of vehicles stored in the tick snapshot
 		Collection<Integer> evIDs = tick.getEVList(Vehicle.OCCUPIED_TRIP);
-		ArrayList<ArrayList<Float>> occupiedArrayArray = new ArrayList<ArrayList<Float>>();
+		ArrayList<ArrayList<Object>> occupiedArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
@@ -602,7 +602,7 @@ public class JsonOutputWriter implements DataConsumer {
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Float> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -612,7 +612,7 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 
 		evIDs = tick.getEVList(Vehicle.RELOCATION_TRIP);
-		ArrayList<ArrayList<Float>> relocationArrayArray = new ArrayList<ArrayList<Float>>();
+		ArrayList<ArrayList<Object>> relocationArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
@@ -623,7 +623,7 @@ public class JsonOutputWriter implements DataConsumer {
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Float> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -633,7 +633,7 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 
 		evIDs = tick.getEVList(Vehicle.CHARGING_TRIP);
-		ArrayList<ArrayList<Float>> chargingArrayArray = new ArrayList<ArrayList<Float>>();
+		ArrayList<ArrayList<Object>> chargingArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
@@ -644,7 +644,7 @@ public class JsonOutputWriter implements DataConsumer {
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Float> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -653,7 +653,7 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 		Collection<Integer> busIDs = tick.getBusList();
-		ArrayList<ArrayList<Float>> busArrayArray = new ArrayList<ArrayList<Float>>();
+		ArrayList<ArrayList<Object>> busArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(busIDs == null || busIDs.isEmpty())) {
 
 			for (Integer id : busIDs) {
@@ -664,7 +664,7 @@ public class JsonOutputWriter implements DataConsumer {
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Float> busArray = JsonOutputWriter.createBusLine(bus);
+				ArrayList<Object> busArray = JsonOutputWriter.createBusLine(bus);
 				if (busArray == null) {
 					continue;
 				}
@@ -676,7 +676,7 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 
 		Collection<Integer> linkIDs = tick.getLinkList();
-		ArrayList<ArrayList<Float>> linkArrayArray = new ArrayList<ArrayList<Float>>();
+		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(linkIDs == null || linkIDs.isEmpty())) {
 			for (Integer id : linkIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
@@ -686,7 +686,7 @@ public class JsonOutputWriter implements DataConsumer {
 				}
 
 				// Get the arraylist representation of this link
-				ArrayList<Float> linkArray = JsonOutputWriter.createLinkLine(link);
+				ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(link);
 				if (linkArray == null) {
 					continue;
 				}
@@ -717,25 +717,25 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param ev the ev snapshot to convert to arraylist.
 	 * @return the arraylist representation of the given vehicle snapshot.
 	 */
-	public static ArrayList<Float> createEVLine(EVSnapshot ev) {
+	public static ArrayList<Object> createEVLine(EVSnapshot ev) {
 		if (ev == null) {
 			return null;
 		}
 
-		ArrayList<Float> vehicleArray = new ArrayList<Float>();
+		ArrayList<Object> vehicleArray = new ArrayList<Object>();
 		// extract the values from the vehicle snapshot
-		vehicleArray.add((float) ev.getId());
+		vehicleArray.add(ev.getId());
 		vehicleArray.add((float) ev.getPrevX());
 		vehicleArray.add((float) ev.getPrevY());
 		vehicleArray.add((float) ev.getX());
 		vehicleArray.add((float) ev.getY());
-		vehicleArray.add((float) ev.getSpeed());
-		vehicleArray.add((float) ev.getOriginID());
-		vehicleArray.add((float) ev.getDestID());
-		vehicleArray.add((float) ev.getBatteryLevel());
-		vehicleArray.add((float) ev.getTotalEnergyConsumption());
-		vehicleArray.add((float) ev.getRoadID());
-		vehicleArray.add((float) ev.getServedPass());
+		vehicleArray.add(Math.round(ev.getSpeed()*10)/10);
+		vehicleArray.add(ev.getOriginID());
+		vehicleArray.add(ev.getDestID());
+		vehicleArray.add(Math.round(ev.getBatteryLevel()*10)/10);
+		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10);
+		vehicleArray.add(ev.getRoadID());
+		vehicleArray.add(ev.getServedPass());
 
 		return vehicleArray;
 	}
@@ -746,23 +746,23 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param bus the bus snapshot to convert to arraylist.
 	 * @return the arraylist representation of the given vehicle snapshot.
 	 */
-	public static ArrayList<Float> createBusLine(BusSnapshot bus) {
+	public static ArrayList<Object> createBusLine(BusSnapshot bus) {
 		if (bus == null) {
 			return null;
 		}
 
-		ArrayList<Float> vehicleArray = new ArrayList<Float>();
+		ArrayList<Object> vehicleArray = new ArrayList<Object>();
 
 		// Extract the values from the vehicle snapshot
-		vehicleArray.add((float) bus.getId());
-		vehicleArray.add(Float.parseFloat(bus.getRouteID()));
+		vehicleArray.add(bus.getId());
+		vehicleArray.add(bus.getRouteID());
 		vehicleArray.add((float) bus.getPrevX());
 		vehicleArray.add((float) bus.getPrevY());
 		vehicleArray.add((float) bus.getX());
 		vehicleArray.add((float) bus.getY());
-		vehicleArray.add((float) bus.getSpeed());
-		vehicleArray.add((float) bus.getBatteryLevel());
-		vehicleArray.add((float) bus.getServedPass());
+		vehicleArray.add(Math.round(bus.getSpeed()*10)/10);
+		vehicleArray.add(Math.round(bus.getBatteryLevel()*10)/10);
+		vehicleArray.add(bus.getServedPass());
 		return vehicleArray;
 	}
 
@@ -772,19 +772,19 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param bus the bus snapshot to convert to arraylist.
 	 * @return the arraylist representation of the given vehicle snapshot.
 	 */
-	public static ArrayList<Float> createLinkLine(LinkSnapshot link) {
+	public static ArrayList<Object> createLinkLine(LinkSnapshot link) {
 		if (link == null) {
 			return null;
 		}
 
-		ArrayList<Float> linkArray = new ArrayList<Float>();
+		ArrayList<Object> linkArray = new ArrayList<Object>();
 
 		// Extract the values from the vehicle snapshot
-		linkArray.add((float) link.getId());
-		linkArray.add((float) link.nVehicles());
-		linkArray.add((float) link.getSpeed());
-		linkArray.add((float) link.getFlow());
-		linkArray.add((float) link.getEnergy());
+		linkArray.add(link.getId());
+		linkArray.add(link.nVehicles());
+		linkArray.add(Math.round(link.getSpeed()*10)/10.0);
+		linkArray.add(link.getFlow());
+		linkArray.add(Math.round(link.getEnergy()*10)/10.0);
 
 		return linkArray;
 	}
@@ -795,27 +795,27 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param vehicle the vehicle snapshot to convert to arraylist.
 	 * @return the arraylist representation of the given vehicle snapshot.
 	 */
-	public static ArrayList<Double> createVehicleLine(VehicleSnapshot vehicle) {
+	public static ArrayList<Object> createVehicleLine(VehicleSnapshot vehicle) {
 		if (vehicle == null) {
 			return null;
 		}
 
-		ArrayList<Double> vehicleArray = new ArrayList<Double>();
+		ArrayList<Object> vehicleArray = new ArrayList<Object>();
 
 		// Extract the values from the vehicle snapshot
-		vehicleArray.add(Double.valueOf(vehicle.getId()));
+		vehicleArray.add(vehicle.getId());
 		vehicleArray.add(vehicle.getPrevX());
 		vehicleArray.add(vehicle.getPrevY());
 		vehicleArray.add(vehicle.getX());
 		vehicleArray.add(vehicle.getY());
-		vehicleArray.add(Double.valueOf(vehicle.getSpeed()));
+		vehicleArray.add(Math.round(vehicle.getSpeed()*10)/10);
 		vehicleArray.add(vehicle.getOriginX());
 		vehicleArray.add(vehicle.getOriginY());
 		vehicleArray.add(vehicle.getDestX());
 		vehicleArray.add(vehicle.getDestY());
-		vehicleArray.add(Double.valueOf(vehicle.getNearlyArrived()));
-		vehicleArray.add(Double.valueOf(vehicle.getvehicleClass()));
-		vehicleArray.add(Double.valueOf(vehicle.getRoadID()));
+		vehicleArray.add(vehicle.getNearlyArrived());
+		vehicleArray.add(vehicle.getvehicleClass());
+		vehicleArray.add(vehicle.getRoadID());
 
 		return vehicleArray;
 	}
