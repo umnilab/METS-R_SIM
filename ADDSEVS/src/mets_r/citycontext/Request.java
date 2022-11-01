@@ -20,11 +20,11 @@ public class Request {
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
 	
-	public Request(Integer origin, Integer destination, Integer maxWaitingTime){
+	public Request(Integer origin, Integer destination){
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
-		this.maxWaitingTime = maxWaitingTime;
+		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;	
 		if(Math.random()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) {
 			this.willingToShare = true;
@@ -34,9 +34,9 @@ public class Request {
 		}
 	}
 	
-	public Request(Integer origin, Queue<Plan> activityPlan, Integer maxWaitingTime){
+	public Request(Integer origin, Queue<Plan> activityPlan){
 		this.activityPlan = activityPlan;
-		this.maxWaitingTime = maxWaitingTime;
+		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
 		this.currentWaitingTime = 0;	
 		this.willingToShare = false;
 		this.origin = origin;
@@ -57,12 +57,20 @@ public class Request {
 		}
 	}
 	
-	public int getWaitingTime(){
+	public int getCurrentWaitingTime(){
 		return this.currentWaitingTime;
 	}
 	
-	public void setWaitingTime(int waiting_time) {
+	public void setCurrentWaitingTime(int waiting_time) {
 		this.currentWaitingTime = waiting_time;
+	}
+	
+	public int getMaxWaitingTime() {
+		return this.maxWaitingTime;
+	}
+	
+	public void setMaxWaitingTime(int waiting_time) {
+		this.maxWaitingTime = waiting_time;
 	}
 	
 	public void setOrigin(Integer origin){

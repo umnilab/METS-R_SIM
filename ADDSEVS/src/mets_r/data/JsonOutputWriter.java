@@ -593,7 +593,6 @@ public class JsonOutputWriter implements DataConsumer {
 		Collection<Integer> evIDs = tick.getEVList(Vehicle.OCCUPIED_TRIP);
 		ArrayList<ArrayList<Object>> occupiedArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
-
 			for (Integer id : evIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
 				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.OCCUPIED_TRIP);

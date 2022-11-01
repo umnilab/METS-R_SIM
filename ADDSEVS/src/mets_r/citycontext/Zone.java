@@ -40,8 +40,10 @@ public class Zone {
 
 	private int nRequestForTaxi; // Number of requests for Taxi
 	private int nRequestForBus; // Number of requests for Bus
+	
+	private AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
 
-	// Parameters for mode choice model starts
+	// Parameters for mode choice model
 	private int curhour = -1; // the last time for updating the travel time estimation
 	public List<Integer> busReachableZone;
 	public Map<Integer, Float> busGap;
@@ -49,7 +51,6 @@ public class Zone {
 	public Map<Integer, Float> taxiTravelDistance;
 	public Map<Integer, Float> busTravelTime;
 	public Map<Integer, Float> busTravelDistance;
-	// Mode choice model end
 
 	// Metrics start
 	public int numberOfGeneratedTaxiRequest;
@@ -67,22 +68,19 @@ public class Zone {
 	public int taxiPassWaitingTime; // Waiting time of served Passengers
 	public int busPassWaitingTime;
 	public int taxiWaitingTime;
-	// Metrics end
-	private AtomicInteger vehicleStock = new AtomicInteger(0); // Number of available vehicles at this zone
 
 	// For vehicle repositioning
 	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
 	private AtomicInteger futureDemand = new AtomicInteger(0); // demand in the near future
 	private AtomicInteger futureSupply = new AtomicInteger(0); // supply in the near future
+	public List<Zone> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
 
 	// For collaborative taxi and transit
 	public Map<Integer, Zone> nearestZoneWithBus;
 	public ConcurrentLinkedQueue<Request> toAddRequestForTaxi; // demand from integrated services
 	public ConcurrentLinkedQueue<Request> toAddRequestForBus; // demand from integrated services
-
-	// Sorted neighboring Zone from the closest to the farthest
-	public List<Zone> neighboringZones;
-
+	
+    // Constructor
 	public Zone(int integerID) {
 		this.id = ContextCreator.generateAgentID();
 		this.integerID = integerID;
@@ -124,7 +122,8 @@ public class Zone {
 		this.toAddRequestForTaxi = new ConcurrentLinkedQueue<Request>();
 		this.toAddRequestForBus = new ConcurrentLinkedQueue<Request>();
 	}
-
+    
+	// Main logic goes here
 	public void step() {
 		this.processToAddPassengers();
 		// Happens at time step t
@@ -142,7 +141,8 @@ public class Zone {
 		this.taxiWaitPassenger();
 		this.generatePassenger();
 	}
-
+	
+	// Generate passenger
 	public void generatePassenger() {
 		int tickcount = (int) RepastEssentials.GetTickCount();
 		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL);
@@ -165,7 +165,7 @@ public class Zone {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
 					for (int i = 0; i < numToGenerate; i++) {
-						Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
+						Request new_pass = new Request(this.integerID, destination); // Wait for at most 2 hours
 						if (Math.random() > threshold) {
 							if (new_pass.isShareable()) {
 								this.addSharableTaxiPass(new_pass, destination);
@@ -186,8 +186,7 @@ public class Zone {
 					float threshold = getSplitRatio(destination, true);
 					for (int i = 0; i < numToGenerate; i++) {
 						if (Math.random() > threshold) {
-							Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2
-																								// hours
+							Request new_pass = new Request(this.integerID, destination); 
 							if (new_pass.isShareable()) {
 								nRequestForTaxi += 1;
 								if (!this.sharableRequestForTaxi.containsKey(destination)) {
@@ -208,8 +207,7 @@ public class Zone {
 									ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
 									tickcount);
 							activityPlan.add(plan2);
-							Request new_pass = new Request(this.integerID, activityPlan, 24000); // Wait for at most 2
-																									// hours
+							Request new_pass = new Request(this.integerID, activityPlan); 
 							this.addTaxiPass(new_pass);
 							this.numberOfGeneratedCombinedRequest += 1;
 						}
@@ -220,7 +218,7 @@ public class Zone {
 				} else {
 					// Taxi only
 					for (int i = 0; i < numToGenerate; i++) {
-						Request new_pass = new Request(this.integerID, destination, 24000); // Wait for at most 2 hours
+						Request new_pass = new Request(this.integerID, destination); 
 						if (new_pass.isShareable()) {
 							nRequestForTaxi += 1;
 							if (!this.sharableRequestForTaxi.containsKey(destination)) {
@@ -268,7 +266,7 @@ public class Zone {
 								// Record served passengers
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
-								this.taxiPassWaitingTime += p.getWaitingTime();
+								this.taxiPassWaitingTime += p.getCurrentWaitingTime();
 								GlobalVariables.SERVE_PASS += 1; // For Json ouput
 							}
 							v.servePassenger(tmp_pass);
@@ -304,28 +302,49 @@ public class Zone {
 				// Record served passenger
 				this.nRequestForTaxi -= 1;
 				GlobalVariables.SERVE_PASS += 1;
-				this.taxiPassWaitingTime += current_taxi_pass.getWaitingTime();
+				this.taxiPassWaitingTime += current_taxi_pass.getCurrentWaitingTime();
 			} else {
 				break; // no vehicle
 			}
 		}
 	}
+	
+	// Serve passenger using Bus
+		public ArrayList<Request> servePassengerByBus(int maxPassNum, ArrayList<Integer> busStop) {
+			ArrayList<Request> passOnBoard = new ArrayList<Request>();
+			for (Request p : this.requestInQueueForBus) { // If there are passengers
+				if (busStop.contains(p.getDestination())) {
+					if (passOnBoard.size() >= maxPassNum) {
+						break;
+					} else { // passenger get on board
+						passOnBoard.add(p);
+						this.busPassWaitingTime += p.getCurrentWaitingTime();
+						if (p.lenOfActivity() > 1) {
+							this.combinePickupPart1 += 1;
+						} else if (p.lenOfActivity() == 1) { // count it only when the last trip starts
+							this.combinePickupPart2 += 1;
+						} else if (p.lenOfActivity() == 0) {
+							this.busPickupRequest += 1;
+						}
+					}
+				}
+			}
+			this.nRequestForBus -= passOnBoard.size();
+			this.requestInQueueForBus.removeAll(passOnBoard);
+			return passOnBoard;
+		}
 
 	// Relocate when the vehicleStock is negative
-	// There are two implementations: 1. Using myopic info; 2. Using future
-	// estimation.
+	// There are two implementations: 1. Using myopic info; 2. Using future estimation (PROACTIVE_RELOCATION).
 	public void relocateTaxi() {
 		if (GlobalVariables.PROACTIVE_RELOCATION) {
 			// Decide the number of relocated vehicle with the precaution on potential
 			// future vehicle shortage/overflow
-			// Divided by (generated passenger interval/served passenger interval)=5
-			// (GlobalVariables.SIMULATION_PASSENGER_ARRIVAL_INTERVAL/GlobalVariables.SIMULATION_PASSENGER_SERVE_INTERVAL);
 			if (this.getFutureSupply() < 0) {
 				ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
 			}
 			// 5 means the time step of looking ahead
-			// 0.8 is the probability of vehicle with low battery level under the charging
-			// threshold
+			// 0.8 is the probability of vehicle with low battery level under the charging threshold
 			double relocateRate = 0;
 			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + 5 * this.futureDemand.get()
 					- 0.8 * this.futureSupply.get());
@@ -354,7 +373,7 @@ public class Zone {
 
 			}
 		} else {
-			// Reactive reposition
+			// Myopic reposition
 			double relocateRate = (nRequestForTaxi - this.vehicleStock.get());
 			int numToRelocate = (int) Math.floor(relocateRate)
 					+ (Math.random() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
@@ -378,31 +397,6 @@ public class Zone {
 
 			}
 		}
-	}
-
-	// Serve passenger using Bus
-	public ArrayList<Request> servePassengerByBus(int maxPassNum, ArrayList<Integer> busStop) {
-		ArrayList<Request> passOnBoard = new ArrayList<Request>();
-		for (Request p : this.requestInQueueForBus) { // If there are passengers
-			if (busStop.contains(p.getDestination())) {
-				if (passOnBoard.size() >= maxPassNum) {
-					break;
-				} else { // passenger get on board
-					passOnBoard.add(p);
-					this.busPassWaitingTime += p.getWaitingTime();
-					if (p.lenOfActivity() > 1) {
-						this.combinePickupPart1 += 1;
-					} else if (p.lenOfActivity() == 1) { // count it only when the last trip starts
-						this.combinePickupPart2 += 1;
-					} else if (p.lenOfActivity() == 0) {
-						this.busPickupRequest += 1;
-					}
-				}
-			}
-		}
-		this.nRequestForBus -= passOnBoard.size();
-		this.requestInQueueForBus.removeAll(passOnBoard);
-		return passOnBoard;
 	}
 
 	// Passenger waiting
@@ -454,84 +448,9 @@ public class Zone {
 		}
 	}
 
-	// Taxi waiting for passenger, update this if the relocation is based on the
-	// taxiWaiting time
+	// Taxi waiting for passenger, extend this if the relocation is based on the taxiWaiting time
 	public void taxiWaitPassenger() {
 		this.taxiWaitingTime += this.vehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
-	}
-
-	public int getTaxiPassengerNum() {
-		return nRequestForTaxi;
-	}
-
-	public int getBusPassengerNum() {
-		return nRequestForBus;
-	}
-
-	public int getId() {
-		return id;
-	}
-
-	public Coordinate getCoord() {
-		return ContextCreator.getZoneGeography().getGeometry(this).getCentroid().getCoordinate();
-	}
-
-	public int getIntegerID() {
-		return integerID;
-	}
-
-	public String getCharID() {
-		return charID;
-	}
-
-	public void addVehicleStock(int vehicle_num) {
-		this.vehicleStock.addAndGet(vehicle_num);
-	}
-
-	public void addOneVehicle() {
-		this.vehicleStock.addAndGet(1);
-		this.removeFutureSupply();
-	}
-
-	public void removeVehicleStock(int vehicle_num) {
-		if (this.getVehicleStock() - vehicle_num < 0) {
-			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
-			return;
-		}
-		this.addVehicleStock(-vehicle_num);
-	}
-
-	public int getVehicleStock() {
-		return this.vehicleStock.get();
-	}
-
-	public int getZoneClass() {
-		return this.zoneClass;
-	}
-
-	public void setBusInfo(int destID, float vehicleGap) {
-		if (busGap.containsKey(destID)) {
-			this.busGap.put(destID, Math.min(vehicleGap, this.busGap.get(destID)));
-		} else {
-			this.busGap.put(destID, vehicleGap);
-			this.busReachableZone.add(destID);
-		}
-	}
-
-	public void setTaxiTravelTimeMap(Map<Integer, Float> travelTime) {
-		this.taxiTravelTime = travelTime;
-	}
-
-	public void setTaxiTravelDistanceMap(Map<Integer, Float> travelDistance) {
-		this.taxiTravelDistance = travelDistance;
-	}
-
-	public void setBusTravelTimeMap(Map<Integer, Float> travelTime) {
-		this.busTravelTime = travelTime;
-	}
-
-	public void setBusTravelDistanceMap(Map<Integer, Float> travelDistance) {
-		this.busTravelDistance = travelDistance;
 	}
 
 	// Split taxi and bus passengers via a discrete choice model
@@ -697,9 +616,35 @@ public class Zone {
 			}
 		}
 	}
+	
+	// Update bus info and travel time estimation
+	public void setBusInfo(int destID, float vehicleGap) {
+		if (busGap.containsKey(destID)) {
+			this.busGap.put(destID, Math.min(vehicleGap, this.busGap.get(destID)));
+		} else {
+			this.busGap.put(destID, vehicleGap);
+			this.busReachableZone.add(destID);
+		}
+	}
 
-	public void reSplitPassengerDueToBusRescheduled() {
-		// Find the passengers whose bus routes are deprecated
+	public void setTaxiTravelTimeMap(Map<Integer, Float> travelTime) {
+		this.taxiTravelTime = travelTime;
+	}
+
+	public void setTaxiTravelDistanceMap(Map<Integer, Float> travelDistance) {
+		this.taxiTravelDistance = travelDistance;
+	}
+
+	public void setBusTravelTimeMap(Map<Integer, Float> travelTime) {
+		this.busTravelTime = travelTime;
+	}
+
+	public void setBusTravelDistanceMap(Map<Integer, Float> travelDistance) {
+		this.busTravelDistance = travelDistance;
+	}
+	
+	// Find the passengers whose bus routes no longer exist
+	public void reSplitPassengerDueToBusRescheduled() {	
 		List<Request> rePass = new ArrayList<Request>();
 		for (Request p : this.requestInQueueForBus) {
 			if (!this.busReachableZone.contains(p.getDestination())) { // No bus can serve this passenger anymore
@@ -731,14 +676,73 @@ public class Zone {
 		}
 
 	}
+	
+	// Generate passenger waiting time for taxi
+	// this is in Zone class since the observations
+	// are usually associate with Zones
+	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
+    public int generateWaitingTimeForTaxi() {
+		return (int) (0.25 * 3600 / GlobalVariables.SIMULATION_STEP_SIZE);
+	}
+    
+    // Generate passenger waiting time for bus
+ 	// Assume bus passenger will keep waiting (we treated this as an objective: evaluated by the simulation output)
+     public int generateWaitingTimeForBus() {
+ 		return (int) GlobalVariables.SIMULATION_STOP_TIME;
+ 	}
+	
+	// Get/Set states
+	public int getId() {
+		return id;
+	}
+	
+	public void addVehicleStock(int vehicle_num) {
+		this.vehicleStock.addAndGet(vehicle_num);
+	}
+
+	public void addOneVehicle() {
+		this.vehicleStock.addAndGet(1);
+		this.removeFutureSupply();
+	}
+
+	public void removeVehicleStock(int vehicle_num) {
+		if (this.getVehicleStock() - vehicle_num < 0) {
+			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.vehicleStock);
+			return;
+		}
+		this.addVehicleStock(-vehicle_num);
+	}
+
+	public int getVehicleStock() {
+		return this.vehicleStock.get();
+	}
+
+	public int getZoneClass() {
+		return this.zoneClass;
+	}
+	
+	public boolean hasEnoughTaxi(int k) { // k: future steps to consider
+		return this.getVehicleStock() - this.nRequestForTaxi - k * getFutureDemand() > 0;
+	}
+
+	public void processToAddPassengers() {
+		for (Request q = this.toAddRequestForTaxi.poll(); q != null; q = this.toAddRequestForTaxi.poll()) {
+			this.addTaxiPass(q);
+		}
+		for (Request q = this.toAddRequestForBus.poll(); q != null; q = this.toAddRequestForBus.poll()) {
+			this.addBusPass(q);
+		}
+	}
 
 	public void addTaxiPass(Request new_pass) {
 		this.nRequestForTaxi += 1;
+		new_pass.setMaxWaitingTime(this.generateWaitingTimeForTaxi());
 		this.requestInQueueForTaxi.add(new_pass);
 	}
 
 	public void addSharableTaxiPass(Request new_pass, int destination) {
 		this.nRequestForTaxi += 1;
+		new_pass.setMaxWaitingTime(this.generateWaitingTimeForTaxi());
 		if (!this.sharableRequestForTaxi.containsKey(destination)) {
 			this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
 		}
@@ -747,9 +751,10 @@ public class Zone {
 
 	public void addBusPass(Request new_pass) {
 		this.nRequestForBus += 1;
+		new_pass.setMaxWaitingTime(this.generateWaitingTimeForBus());
 		this.requestInQueueForBus.add(new_pass);
 	}
-
+	
 	public void addFutureSupply() {
 		this.futureSupply.addAndGet(1);
 	}
@@ -765,17 +770,24 @@ public class Zone {
 	public int getFutureSupply() {
 		return this.futureSupply.get();
 	}
-
-	public boolean hasEnoughTaxi(int k) { // k: future steps to consider
-		return this.getVehicleStock() - this.nRequestForTaxi - k * getFutureDemand() > 0;
+	
+	public int getTaxiPassengerNum() {
+		return nRequestForTaxi;
 	}
 
-	public void processToAddPassengers() {
-		for (Request q = this.toAddRequestForTaxi.poll(); q != null; q = this.toAddRequestForTaxi.poll()) {
-			this.addTaxiPass(q);
-		}
-		for (Request q = this.toAddRequestForBus.poll(); q != null; q = this.toAddRequestForBus.poll()) {
-			this.addBusPass(q);
-		}
+	public int getBusPassengerNum() {
+		return nRequestForBus;
+	}
+
+	public Coordinate getCoord() {
+		return ContextCreator.getZoneGeography().getGeometry(this).getCentroid().getCoordinate();
+	}
+
+	public int getIntegerID() {
+		return integerID;
+	}
+
+	public String getCharID() {
+		return charID;
 	}
 }
