@@ -34,6 +34,7 @@ public class Zone {
 	// Basic attributes
 	private int id;
 	private Random rand;
+	private Random rand_demand; // Random seed only for demand generation
 
 	private int integerID;
 	private int zoneClass; // 0 for normal zone, 1 for hub
@@ -90,6 +91,7 @@ public class Zone {
 	public Zone(int integerID, int capacity) {
 		this.id = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
+		this.rand_demand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.integerID = integerID;
 		if(capacity < 0) { // By default, infinite capacity
 			this.capacity = GlobalVariables.NUM_OF_EV;
@@ -173,10 +175,9 @@ public class Zone {
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 
 			if (passRate > 0) {
-
 				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
-						+ (rand.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
+						+ (rand_demand.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
 
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
@@ -198,39 +199,75 @@ public class Zone {
 					if (this.lastUpdateHour != hour) {
 						this.futureDemand.addAndGet((int) (passRate * threshold));
 					}
-				} else if (GlobalVariables.COLLABORATIVE_EV && this.nearestZoneWithBus.containsKey(destination)) {
-					// Split between taxi and taxi-bus combined,
-					float threshold = getSplitRatio(destination, true);
-					for (int i = 0; i < numToGenerate; i++) {
-						if (rand.nextDouble() > threshold) {
-							Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
-							if (new_pass.isShareable()) {
-								nRequestForTaxi += 1;
-								if (!this.sharableRequestForTaxi.containsKey(destination)) {
-									this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
+				} else if (GlobalVariables.COLLABORATIVE_EV) {
+					if (this.zoneClass == 0 && this.nearestZoneWithBus.containsKey(destination)) { // normal zone
+						// Split between taxi and taxi-bus combined,
+						float threshold = getSplitRatio(destination, true);
+						for (int i = 0; i < numToGenerate; i++) {
+							if (rand.nextDouble() > threshold) {
+								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
+								if (new_pass.isShareable()) {
+									nRequestForTaxi += 1;
+									if (!this.sharableRequestForTaxi.containsKey(destination)) {
+										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
+									}
+									this.sharableRequestForTaxi.get(destination).add(new_pass);
+								} else {
+									this.addTaxiPass(new_pass);
 								}
-								this.sharableRequestForTaxi.get(destination).add(new_pass);
+								this.numberOfGeneratedTaxiRequest += 1;
 							} else {
+								// First generate its activity plan
+								Queue<Plan> activityPlan = new LinkedList<Plan>();
+								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
+										this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
+								activityPlan.add(plan);
+								Plan plan2 = new Plan(destination,
+										ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
+										tickcount);
+								activityPlan.add(plan2);
+								Request new_pass = new Request(this.integerID, activityPlan); 
 								this.addTaxiPass(new_pass);
+								this.numberOfGeneratedCombinedRequest += 1;
 							}
-							this.numberOfGeneratedTaxiRequest += 1;
-						} else {
-							// First generate its activity plan
-							Queue<Plan> activityPlan = new LinkedList<Plan>();
-							Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
-									this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
-							activityPlan.add(plan);
-							Plan plan2 = new Plan(destination,
-									ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
-									tickcount);
-							activityPlan.add(plan2);
-							Request new_pass = new Request(this.integerID, activityPlan); 
-							this.addTaxiPass(new_pass);
-							this.numberOfGeneratedCombinedRequest += 1;
 						}
-					}
-					if (this.lastUpdateHour != hour) {
-						this.futureDemand.addAndGet((int) (passRate * threshold));
+						if (this.lastUpdateHour != hour) {
+							this.futureDemand.addAndGet((int) (passRate * threshold));
+						}
+					} else if (this.zoneClass == 1 && this.nearestZoneWithBus.containsKey(destination)) { // hub
+						// Split between taxi and taxi-bus combined,
+						float threshold = getSplitRatio(destination, true);
+						for (int i = 0; i < numToGenerate; i++) {
+							if (rand.nextDouble() > threshold) {
+								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
+								if (new_pass.isShareable()) {
+									nRequestForTaxi += 1;
+									if (!this.sharableRequestForTaxi.containsKey(destination)) {
+										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
+									}
+									this.sharableRequestForTaxi.get(destination).add(new_pass);
+								} else {
+									this.addTaxiPass(new_pass);
+								}
+								this.numberOfGeneratedTaxiRequest += 1;
+							} else {
+								// First generate its activity plan
+								Queue<Plan> activityPlan = new LinkedList<Plan>();
+								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
+										this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
+								activityPlan.add(plan);
+								Plan plan2 = new Plan(destination,
+										ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
+										tickcount);
+								activityPlan.add(plan2);
+								Request new_pass = new Request(this.integerID, activityPlan); 
+								this.addBusPass(new_pass);
+								this.numberOfGeneratedCombinedRequest += 1;
+							}
+						}
+						if (this.lastUpdateHour != hour) {
+							this.futureDemand.addAndGet((int) (passRate * threshold));
+						}
 					}
 				} else {
 					// Taxi only
@@ -586,7 +623,7 @@ public class Zone {
 
 	// Update travel time estimation for modes combining taxi and bus
 	public void updateCombinedTravelEstimation() {
-		if (this.zoneClass == 1) {
+		if (this.zoneClass == 1) { // hub
 			for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
 				if (!busReachableZone.contains(z2.getIntegerID())) { // Find the closest zone with bus that can connect
 																		// to this hub
