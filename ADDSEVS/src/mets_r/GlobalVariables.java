@@ -118,6 +118,7 @@ public class GlobalVariables {
 	public static final boolean COLLABORATIVE_EV = Boolean.valueOf(loadConfig("COLLABORATIVE_EV"));
 	public static final boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 	public static final boolean PROACTIVE_RELOCATION = Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
+	public static int MAX_CRUISING_TIME = Integer.valueOf(loadConfig("MAX_CRUISING_TIME"));
 
 	// Eco-routing Parameters
 	public static final boolean ENABLE_ECO_ROUTING_EV = Boolean.valueOf(loadConfig("ECO_ROUTING_EV"));
@@ -130,7 +131,9 @@ public class GlobalVariables {
 	public static final double RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("RECHARGE_LEVEL_HIGH"));
 
 	/* Simulation setup */
-	public static final Random RandomGenerator = new Random(123456777);
+	public static final int RANDOM_SEED = Integer
+			.valueOf(loadConfig("RANDOM_SEED"));
+	public static final Random RandomGenerator = new Random(RANDOM_SEED);
 	public static final float SIMULATION_STEP_SIZE = Float.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
 	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"));
@@ -210,13 +213,9 @@ public class GlobalVariables {
 	// EV batteries
 	public static int EV_BATTERY = Integer.valueOf(loadConfig("EV_BATTERY"));
 	public static int BUS_BATTERY = Integer.valueOf(loadConfig("BUS_BATTERY"));
-
-	// For debugging, tracking certain vehicles and roads
-	public static final int Global_Vehicle_ID = Integer.valueOf(loadConfig("Global_Vehicle_ID"));
-	public static final int Global_Road_ID = Integer.valueOf(loadConfig("Global_Road_ID"));
-	public static final boolean Debug_On_Road = Boolean.valueOf(loadConfig("Debug_On_Road"));
-	public static final double XXXX_BUFFER = Double.valueOf(loadConfig("XXXX_BUFFER")); // USed in
-																						// CityContext.getRoadAtCoords()
+	
+	// For searching nearby facilities
+	public static final double XXXX_BUFFER = Double.valueOf(loadConfig("XXXX_BUFFER")); 
 
 	/* Constants */
 	public static final int STATUS_REGIME_FREEFLOWING = 0x00000000; // 0

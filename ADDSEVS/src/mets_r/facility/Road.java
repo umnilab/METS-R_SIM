@@ -1,4 +1,4 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -11,9 +11,9 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.*;
 import mets_r.data.DataCollector;
-import mets_r.vehiclecontext.ElectricBus;
-import mets_r.vehiclecontext.ElectricVehicle;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
 
@@ -137,7 +137,7 @@ public class Road {
 				Vehicle v = this.departureVehicleQueueHead(); // Change to use the TreeMap
 				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
 					// check whether the origin is the destination
-					if (v.getOriginID() == v.getDestID()) {
+					if (v.getOriginCoord() == v.getDestCoord()) {
 						this.removeVehicleFromNewQueue(v); // Remove vehicle from the waiting vehicle queue
 						v.setReachDest();
 					} else {
@@ -466,9 +466,9 @@ public class Road {
 		return this.freeSpeed_;
 	}
 
-	public float getRandomFreeSpeed() {
+	public float getRandomFreeSpeed(double coef) {
 		return (float) Math.min(this.defaultFreeSpeed_, Math.max(
-				this.freeSpeed_ + GlobalVariables.RandomGenerator.nextGaussian() * this.freeSpeedStd_, 5 * 0.44704)); // at
+				this.freeSpeed_ + coef * this.freeSpeedStd_, 5 * 0.44704)); // at
 																														// least
 																														// 5
 																														// mph

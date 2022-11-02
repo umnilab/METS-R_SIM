@@ -1,9 +1,9 @@
 eclipse.preferences.version=1
 encoding//src/mets_r/GlobalVariables.java=UTF-8
-encoding//src/mets_r/citycontext/CityContext.java=UTF-8
-encoding//src/mets_r/citycontext/Road.java=UTF-8
-encoding//src/mets_r/citycontext/Zone.java=UTF-8
+encoding//src/mets_r/communication/Connection.java=UTF-8
 encoding//src/mets_r/data/DataCollectionContext.java=UTF-8
 encoding//src/mets_r/data/DataCollector.java=UTF-8
-encoding//src/mets_r/network/Connection.java=UTF-8
-encoding//src/mets_r/vehiclecontext/Vehicle.java=UTF-8
+encoding//src/mets_r/facility/CityContext.java=UTF-8
+encoding//src/mets_r/facility/Road.java=UTF-8
+encoding//src/mets_r/facility/Zone.java=UTF-8
+encoding//src/mets_r/mobility/Vehicle.java=UTF-8

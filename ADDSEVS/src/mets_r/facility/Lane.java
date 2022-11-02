@@ -1,10 +1,11 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.util.ArrayList;
+import java.util.Random;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.mobility.Vehicle;
 
 /**
  * @author Samiul Hasan and Binh Luong
@@ -15,6 +16,8 @@ import mets_r.vehiclecontext.Vehicle;
 @SuppressWarnings("unused")
 public class Lane {
 	private int id; // An auto-generated id from ContextCreater
+	private Random rand;
+	
 	private int laneid; // From shape file
 	private int link; // From shape file
 	private int left;
@@ -50,6 +53,7 @@ public class Lane {
 
 	public Lane() {
 		this.id = ContextCreator.generateAgentID();
+		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.nVehicles_ = 0;
 		this.lastVehicle_ = null;
 		this.upLanes_ = new ArrayList<Lane>();
@@ -311,8 +315,7 @@ public class Lane {
 			} else if (this.nVehicles_ > plane.nVehicles_) {
 				return plane;
 			} else {
-				double randomnumber = GlobalVariables.RandomGenerator.nextDouble();
-				if (randomnumber > 0.5)
+				if (rand.nextDouble() > 0.5)
 					return this;
 				else
 					return plane;

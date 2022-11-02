@@ -36,12 +36,12 @@ import org.apache.log4j.Logger;
 import org.json.simple.JSONObject;
 
 import mets_r.GlobalVariables;
-import mets_r.citycontext.*;
+import mets_r.communication.Connection;
 import mets_r.data.*;
-import mets_r.network.Connection;
+import mets_r.facility.*;
+import mets_r.mobility.*;
 import mets_r.partition.*;
 import mets_r.routing.RouteV;
-import mets_r.vehiclecontext.*;
 
 /*
  * This is the entrance point of the METS-R system, which includes:
@@ -149,13 +149,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.addSubContext(cityContext);
 		this.cityContext.createSubContexts();
 		this.cityContext.buildRoadNetwork();
-		this.cityContext.createNearestRoadCoordCache();
 		this.cityContext.setRelocationGraph();
 
 		/* Get the weight of each Zone by their Demand */
 		double demand_total = 0;
 
-		for (Zone z : getZoneGeography().getAllObjects()) {
+		for (Zone z : getZoneContext().getAllObjects()) {
 			double demand_from_zone = 0;
 			if (z.getZoneClass() == 1) {
 				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
@@ -327,10 +326,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 			fileIn.close();
 		} catch (FileNotFoundException i) { // File does not exist, let's create one
 			logger.info("Candidate routes initialization ...");
-			Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
 			// Loop over all OD pairs, will take several minutes
-			for (Zone origin : zoneGeography.getAllObjects()) {
-				for (Zone destination : zoneGeography.getAllObjects()) {
+			for (Zone origin : getZoneContext().getAllObjects()) {
+				for (Zone destination : getZoneContext().getAllObjects()) {
 					if (origin.getIntegerID() != destination.getIntegerID()
 							&& (GlobalVariables.HUB_INDEXES.contains(origin.getIntegerID())
 									|| GlobalVariables.HUB_INDEXES.contains(destination.getIntegerID()))) {
@@ -388,9 +386,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			fileIn.close();
 		} catch (FileNotFoundException i) { // File does not exist, let's create one
 			logger.info("Candidate routes initialization ...");
-			Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
-			for (Zone origin : zoneGeography.getAllObjects()) {
-				for (Zone destination : zoneGeography.getAllObjects()) {
+			for (Zone origin : getZoneContext().getAllObjects()) {
+				for (Zone destination : getZoneContext().getAllObjects()) {
 					if (origin.getIntegerID() != destination.getIntegerID()) {
 						logger.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
 						try {

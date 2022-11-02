@@ -15,9 +15,9 @@ import repast.simphony.space.graph.RepastEdge;
 import edu.uci.ics.jung.graph.Graph;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.CityContext;
-import mets_r.citycontext.Junction;
-import mets_r.citycontext.Road;
+import mets_r.facility.CityContext;
+import mets_r.facility.Junction;
+import mets_r.facility.Road;
 
 public class VehicleRouting {
 	private Network<Junction> network;
@@ -124,7 +124,7 @@ public class VehicleRouting {
 
 			// Find the path to go
 			int k = 0;
-			double random = Math.random();
+			double random = GlobalVariables.RandomGenerator.nextDouble();
 			for (int i = 0; i < kshortestPath.size(); i++) {
 				if (random < cumProb.get(i)) {
 					k = i;

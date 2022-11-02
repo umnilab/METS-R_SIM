@@ -9,10 +9,10 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.NetworkEventObject;
-import mets_r.citycontext.Road;
-import mets_r.vehiclecontext.ElectricBus;
-import mets_r.vehiclecontext.ElectricVehicle;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.facility.Road;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 
 /**

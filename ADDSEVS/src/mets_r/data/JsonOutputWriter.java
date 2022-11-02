@@ -4,6 +4,8 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -15,7 +17,7 @@ import java.util.Map;
 import org.json.simple.JSONObject;
 
 import mets_r.GlobalVariables;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.mobility.Vehicle;
 
 /**
  * 
@@ -840,16 +842,27 @@ public class JsonOutputWriter implements DataConsumer {
 		String timestamp = formatter.format(new Date());
 
 		// Build the filename
-		String filename = defaultFilename + "_" + timestamp + ".1." + defaultExtension;
+		String filename = defaultFilename + ".1." + defaultExtension;
 
 		// Get the default directory for placing the file
 		String defaultDir = GlobalVariables.JSON_DEFAULT_PATH;
+        
 		if (defaultDir == null || defaultDir.trim().length() < 1) {
 			defaultDir = System.getProperty("user.dir");
+		}
+		
+		defaultDir += File.separatorChar + timestamp;
+		
+		// Create the folder
+		try {
+			Files.createDirectories(Paths.get(defaultDir));
+		} catch (IOException e1) {
+			e1.printStackTrace();
 		}
 
 		// Build the full path to the file
 		String outpath = defaultDir + File.separatorChar + filename;
+		
 
 		// Check the path will be a valid file
 		File outfile = new File(outpath);
@@ -859,7 +872,7 @@ public class JsonOutputWriter implements DataConsumer {
 			// we will add the hashcode for the filename string object as
 			// a bit of randomization and just hope that is good enough.
 			int hashCode = System.identityHashCode(filename);
-			filename = defaultFilename + "_" + timestamp + "_" + hashCode + ".1." + defaultExtension;
+			filename = defaultFilename + "_" + hashCode + ".1." + defaultExtension;
 			outpath = defaultDir + File.pathSeparator + filename;
 			outfile = new File(outpath);
 		}

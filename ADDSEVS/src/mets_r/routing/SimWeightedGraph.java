@@ -6,14 +6,14 @@ import org.jgrapht.graph.*;
 import repast.simphony.space.graph.RepastEdge;
 
 @SuppressWarnings("serial")
-public class evacSimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E> {
+public class SimWeightedGraph<V, E> extends SimpleDirectedWeightedGraph<V, E> {
 
 	@SuppressWarnings({ "rawtypes", "unchecked" })
-	public evacSimWeightedGraph(EdgeFactory ef) {
+	public SimWeightedGraph(EdgeFactory ef) {
 		super(ef);
 	}
 
-	public evacSimWeightedGraph(Class<? extends E> edgeClass) {
+	public SimWeightedGraph(Class<? extends E> edgeClass) {
 		this(new ClassBasedEdgeFactory<V, E>(edgeClass));
 	}
 

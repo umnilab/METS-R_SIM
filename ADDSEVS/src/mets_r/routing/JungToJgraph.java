@@ -16,7 +16,7 @@ public class JungToJgraph<T> {
 	public org.jgrapht.WeightedGraph<T, RepastEdge<T>> convertToJgraph(Graph<T, RepastEdge<T>> jungGraph) {
 
 		// org.jgrapht.Graphs jGraphs;
-		evacSimWeightedGraph<T, RepastEdge<T>> jGraph = new evacSimWeightedGraph<T, RepastEdge<T>>(
+		SimWeightedGraph<T, RepastEdge<T>> jGraph = new SimWeightedGraph<T, RepastEdge<T>>(
 				new ClassBasedEdgeFactory<T, RepastEdge<T>>((Class<? extends RepastEdge<T>>) RepastEdge.class));
 
 		// Container<T> container=new Container<T> ();

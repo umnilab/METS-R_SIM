@@ -1,4 +1,4 @@
-package mets_r.vehiclecontext;
+package mets_r.mobility;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -6,12 +6,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.Geometry;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.*;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.facility.*;
+import mets_r.mobility.Vehicle;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
@@ -83,38 +81,74 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 //		}
 		// New mechanism: Generating vehicle according to demand distribution
 		double demand_total = 0;
-		for (double demand_per_zone : ContextCreator.demand_per_zone.values()) {
-			demand_total += demand_per_zone;
+		for (Zone z: zoneGeography.getAllObjects()) {
+			if(z.getCapacity()>0) {
+				demand_total += ContextCreator.demand_per_zone.get(z.getIntegerID());
+			}
 		}
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
-		for (Zone z : zoneGeography.getAllObjects()) {
-			Geometry hgeom = zoneGeography.getGeometry(z);
-			Coordinate coord = hgeom.getCoordinate();
+		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 			ConcurrentLinkedQueue<ElectricVehicle> tmpQueue = new ConcurrentLinkedQueue<ElectricVehicle>();
-			int vehicle_num_to_generate = (int) Math
-					.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
-			vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
-			num_total -= vehicle_num_to_generate;
-			for (int i = 0; i < vehicle_num_to_generate; i++) {
-				// GeometryFactory fac = new GeometryFactory();
-				ElectricVehicle v = new ElectricVehicle();
-				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
-																									// first plan
-				this.add(v);
-				ContextCreator.logger.debug("Vehicle:" + i + " generated");
-				v.setCurrentCoord(coord);
-//					Point geom = fac.createPoint(coord);
-//					vehicleGeography.move(v, geom);
-				v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
-				v.setNextPlan();
-				total_vehicles += 1;
-				this.vehicleList.add(v);
-				tmpQueue.add(v);
+			if(z.getCapacity()>0) {
+				Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
+				
+				int vehicle_num_to_generate = (int) Math
+						.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
+				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
+				vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
+				num_total -= vehicle_num_to_generate;
+				for (int i = 0; i < vehicle_num_to_generate; i++) {
+					// GeometryFactory fac = new GeometryFactory();
+					ElectricVehicle v = new ElectricVehicle();
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
+																										// first plan
+					this.add(v);
+					ContextCreator.logger.debug("Vehicle:" + i + " generated");
+					v.setCurrentCoord(coord);
+	//					Point geom = fac.createPoint(coord);
+	//					vehicleGeography.move(v, geom);
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					v.setNextPlan();
+					total_vehicles += 1;
+					this.vehicleList.add(v);
+					tmpQueue.add(v);
+				}
+				z.addParkingVehicleStock(vehicle_num_to_generate);
 			}
 			this.vehicleMap.put(z.getIntegerID(), tmpQueue);
-			z.addVehicleStock(vehicle_num_to_generate);
 		}
+		
+		if(num_total > 0) { //assign the rest vehicle to zones with additional space
+			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+				if(z.getCapacity()>0) {
+					Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
+					int vehicle_num_to_generate = num_total <= z.getCapacity()? num_total: z.getCapacity();
+					num_total -= vehicle_num_to_generate;
+					for (int i = 0; i < vehicle_num_to_generate; i++) {
+						// GeometryFactory fac = new GeometryFactory();
+						ElectricVehicle v = new ElectricVehicle();
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
+																											// first plan
+						this.add(v);
+						ContextCreator.logger.debug("Vehicle:" + i + " generated");
+						v.setCurrentCoord(coord);
+		//					Point geom = fac.createPoint(coord);
+		//					vehicleGeography.move(v, geom);
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+						v.setNextPlan();
+						total_vehicles += 1;
+						this.vehicleList.add(v);
+						this.vehicleMap.get(z.getIntegerID()).add(v);
+					}
+					z.addParkingVehicleStock(vehicle_num_to_generate);
+				}
+			}
+		}
+
+	    if(num_total > 0) {
+	    	ContextCreator.logger.info("There are still vehicles to generate, but no space for them, to generate number " + num_total);
+	    }
 
 		ContextCreator.logger.info("Total EV vehicles generated " + total_vehicles);
 	}

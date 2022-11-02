@@ -10,10 +10,10 @@ import java.util.Map;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.NetworkEventObject;
-import mets_r.citycontext.Road;
-import mets_r.vehiclecontext.ElectricBus;
-import mets_r.vehiclecontext.ElectricVehicle;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.facility.Road;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Vehicle;
 
 /**
  * 
@@ -196,7 +196,9 @@ public class TickSnapshot {
 
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			this.evs_occupied.put(id, snapshot);
-		} else if (vehState == Vehicle.RELOCATION_TRIP) {
+		} else if (vehState == Vehicle.RELOCATION_TRIP ||
+				vehState == Vehicle.CRUISING_TRIP ||
+				vehState == Vehicle.PICKUP_TRIP ) {
 			this.evs_relocation.put(id, snapshot);
 		} else if (vehState == Vehicle.CHARGING_TRIP) {
 			this.evs_charging.put(id, snapshot);

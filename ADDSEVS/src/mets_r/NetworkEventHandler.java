@@ -9,11 +9,10 @@ import java.util.Map;
 import java.util.TreeMap;
 
 import repast.simphony.essentials.RepastEssentials;
-import repast.simphony.space.gis.Geography;
 import au.com.bytecode.opencsv.CSVReader;
-import mets_r.citycontext.Road;
+import mets_r.communication.ConnectionManager;
 import mets_r.data.DataCollector;
-import mets_r.network.ConnectionManager;
+import mets_r.facility.Road;
 
 /**
  * @author: Xianyuan Zhan and Hemant Gehlot Schedules and handles the events to
@@ -164,8 +163,7 @@ public class NetworkEventHandler {
 		if (event == null)
 			return null;
 		// Iterate over the roads to identify the correct road object
-		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		Iterable<Road> roadIt = roadGeography.getAllObjects();
+		Iterable<Road> roadIt = ContextCreator.getRoadContext().getAllObjects();
 		for (Road road : roadIt) {
 			if (road.getLinkid() == event.roadID) {
 				// Found the road, and we do the change

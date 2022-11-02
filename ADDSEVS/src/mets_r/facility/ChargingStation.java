@@ -1,23 +1,26 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.vehiclecontext.ElectricBus;
-import mets_r.vehiclecontext.ElectricVehicle;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Vehicle;
 
 /**
  * @author: Jiawei Xue, Zengxiang Lei Charging facilities for EV cars and buses
  **/
 
 public class ChargingStation {
+	private int id;
 	private int integerID;
+	private Random rand;
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
 	// capacity for the taxi is 50.0 kWh.
 	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
@@ -48,9 +51,9 @@ public class ChargingStation {
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3) {
-		ContextCreator.generateAgentID();
+		this.setId(ContextCreator.generateAgentID());
 		this.integerID = integerID;
-		Integer.toString(integerID);
+		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.num2 = numL2; // Number of level 2 charger
 		this.num3 = numL3; // Number of level 3 charger
 		this.queueChargingL2 = new LinkedList<ElectricVehicle>();
@@ -109,7 +112,7 @@ public class ChargingStation {
 			double utilityL2 = -alpha * totalTimeL2(ev) / 3600 - chargingCostL2(ev);
 			double utilityL3 = -alpha * totalTimeL3(ev) / 3600 - chargingCostL3(ev);
 			double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
-			double random = Math.random();
+			double random = rand.nextDouble();
 			if (random < shareOfL2) {
 				toAddChargingL2.add(ev);
 			} else {
@@ -323,5 +326,13 @@ public class ChargingStation {
 		ContextCreator.logger
 				.debug("Charging test2!" + Math.cbrt(A + B) + " " + Math.cbrt(A - B) + " " + 4 * y / (3 * beta));
 		return SOC_f;
+	}
+
+	public int getId() {
+		return id;
+	}
+
+	public void setId(int id) {
+		this.id = id;
 	}
 }

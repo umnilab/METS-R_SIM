@@ -1,4 +1,4 @@
-package mets_r.citycontext;
+package mets_r.mobility;
 
 import java.util.LinkedList;
 import java.util.Queue;
@@ -20,18 +20,13 @@ public class Request {
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
 	
-	public Request(Integer origin, Integer destination){
+	public Request(Integer origin, Integer destination, Boolean willingToShare){
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;	
-		if(Math.random()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) {
-			this.willingToShare = true;
-		}
-		else {
-			this.willingToShare = false;
-		}
+		this.willingToShare = willingToShare;
 	}
 	
 	public Request(Integer origin, Queue<Plan> activityPlan){

@@ -14,8 +14,8 @@ import org.json.simple.parser.JSONParser;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.Zone;
-import mets_r.vehiclecontext.ElectricBus;
+import mets_r.facility.Zone;
+import mets_r.mobility.ElectricBus;
 import repast.simphony.essentials.RepastEssentials;
 
 class The_Comparator implements Comparator<OneBusSchedule> {
@@ -102,7 +102,7 @@ public class BusSchedule {
 			busNum = newBusNum;
 			busGap = newBusGap;
 
-			for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 				z.busReachableZone.clear(); // clear the bus info
 				z.busGap.clear();
 			}
@@ -132,7 +132,7 @@ public class BusSchedule {
 				i += 1;
 			}
 
-			for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 				// Deal with the remaining passengers for buses in each zone
 				z.reSplitPassengerDueToBusRescheduled();
 			}

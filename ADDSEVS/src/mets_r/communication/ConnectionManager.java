@@ -1,4 +1,4 @@
-package mets_r.network;
+package mets_r.communication;
 
 import java.util.Vector;
 

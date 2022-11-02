@@ -1,4 +1,4 @@
-package mets_r.citycontext;
+package mets_r.mobility;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -9,15 +9,15 @@ import com.vividsolutions.jts.geom.Coordinate;
  * @author: Zengxiang Lei
  **/
 
-public class Plan {
-	private Integer dest_id;
-	private Coordinate location; // Add coordination to allow relocating to any place
-	private Double duration;
+public class Plan { 
+	private Integer dest_id; // ID of the destination zone
+	private Coordinate location; // Exact coordinates of the destination
+	private Double departure_time; // Departure time
 
 	public Plan(int dest_id, Coordinate loc, double d) {
 		this.dest_id = dest_id;
 		this.location = loc;
-		this.duration = d;
+		this.departure_time = d;
 	}
 
 	public Coordinate getLocation() {
@@ -25,7 +25,7 @@ public class Plan {
 	}
 
 	public Double getDuration() {
-		return duration;
+		return departure_time;
 	}
 
 	public int getDestID() {

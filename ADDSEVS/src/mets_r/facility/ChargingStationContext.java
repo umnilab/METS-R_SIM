@@ -1,9 +1,11 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.net.URI;
+import java.util.Collection;
+import java.util.HashMap;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -14,11 +16,15 @@ import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 
 public class ChargingStationContext extends DefaultContext<ChargingStation> {
+	
+	private HashMap<Integer, ChargingStation> chargingStationDictionary;
+	
 	public ChargingStationContext() {
 
 		super("ChargingStationContext");
 
 		ContextCreator.logger.info("ChargingStationContext creation");
+		chargingStationDictionary = new HashMap<Integer, ChargingStation>();
 		/*
 		 * GIS projection for spatial information about Roads. This is used to then
 		 * create junctions and finally the road network.
@@ -29,7 +35,6 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 
 		/* Read in the data and add to the context and geography */
 		File chargingStationFile = null;
-		String chargerCsvName = null;
 		ShapefileLoader<ChargingStation> chargingStationLoader = null;
 		try {
 			chargingStationFile = new File(GlobalVariables.CHARGER_SHAPEFILE);
@@ -37,8 +42,7 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 			chargingStationLoader = new ShapefileLoader<ChargingStation>(ChargingStation.class, uri.toURL(),
 					chargingStationGeography, this);
 			// Read the charging station's attributes CSV file
-			chargerCsvName = GlobalVariables.CHARGER_CSV;
-			BufferedReader br = new BufferedReader(new FileReader(chargerCsvName));
+			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.CHARGER_CSV));
 			br.readLine(); // Skip the head line
 			int int_id = -1; // Use negative integers as charging station IDs
 			while (chargingStationLoader.hasNext()) {
@@ -46,15 +50,17 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 				String[] result = line.split(",");
 				// To support two formats, one with detailed charging station specifications,
 				// one just has ID and num of chargers
+				ChargingStation cs = null;
 				if (result.length == 13) {
-					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[11])),
+					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[11])),
 							(int) Math.round(Double.parseDouble(result[12]))); // Using customize parameters
 				} else if (result.length == 2) {
-					chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0);
+					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0);
 				} else {
 					ContextCreator.logger.error(
 							"Incorrect format for charging station plan. Is there anything wrong in data/NYC/charging_station?");
 				}
+				this.chargingStationDictionary.put(int_id, cs);
 				int_id -= 1;
 			}
 			br.close();
@@ -63,5 +69,17 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 			ContextCreator.logger.error("Malformed URL exception when reading housesshapefile.");
 			e.printStackTrace();
 		}
+	}
+	
+	public ChargingStation findChargingStationWithIntegerID(int integerID) {
+		if (this.chargingStationDictionary.containsKey(integerID)) {
+			return this.chargingStationDictionary.get(integerID);
+		} else {
+			return null;
+		}
+	}
+	
+	public Collection<ChargingStation> getAllObjects() {
+		return chargingStationDictionary.values();
 	}
 }

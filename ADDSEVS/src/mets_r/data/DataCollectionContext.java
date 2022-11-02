@@ -4,10 +4,10 @@ import java.io.IOException;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.ChargingStation;
-import mets_r.citycontext.Road;
-import mets_r.citycontext.Zone;
-import mets_r.vehiclecontext.ElectricVehicle;
+import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
+import mets_r.facility.Zone;
+import mets_r.mobility.ElectricVehicle;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.engine.environment.RunEnvironment;
 
@@ -105,7 +105,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 
 		int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
 
-		for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
 			numGeneratedBusPass += z.numberOfGeneratedBusRequest;
 			numGeneratedCombinedPass += z.numberOfGeneratedCombinedRequest;
@@ -138,7 +138,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			}
 		}
 
-		for (Road r : ContextCreator.getRoadGeography().getAllObjects()) {
+		for (Road r : ContextCreator.getRoadContext().getAllObjects()) {
 			vehicleOnRoad += r.nVehicles_;
 			if (r.getTotalEnergy() > 0) {
 				String formated_msg = currentTick + "," + r.getLinkid() + "," + r.getTotalFlow() + ","
@@ -152,7 +152,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			}
 		}
 
-		for (ChargingStation cs : ContextCreator.getChargingStationGeography().getAllObjects()) {
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAllObjects()) {
 			numChargedVehicle += cs.numChargedVehicle;
 		}
 

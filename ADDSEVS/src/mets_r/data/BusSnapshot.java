@@ -2,7 +2,7 @@ package mets_r.data;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-import mets_r.vehiclecontext.ElectricBus;
+import mets_r.mobility.ElectricBus;
 
 /**
  * 

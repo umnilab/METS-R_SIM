@@ -2,7 +2,7 @@ package mets_r.data;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-import mets_r.vehiclecontext.ElectricVehicle;
+import mets_r.mobility.ElectricVehicle;
 
 /**
  * This class is the simple data object for capturing the state of an EvacSim

@@ -1,4 +1,4 @@
-package mets_r.vehiclecontext;
+package mets_r.mobility;
 
 import java.io.IOException;
 import java.util.LinkedList;
@@ -12,10 +12,10 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.ChargingStation;
-import mets_r.citycontext.Request;
-import mets_r.citycontext.Zone;
 import mets_r.data.DataCollector;
+import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
+import mets_r.facility.Zone;
 import repast.simphony.essentials.RepastEssentials;
 
 /**
@@ -34,6 +34,7 @@ public class ElectricVehicle extends Vehicle {
 	private double higherBatteryRechargeLevel_;
 	private double mass; // mass of the vehicle in kg
 	private boolean onChargingRoute_ = false;
+	private int cruisingTime_;
 
 	// Parameters for storing energy consumptions
 	private double tickConsume;
@@ -93,9 +94,8 @@ public class ElectricVehicle extends Vehicle {
 
 	// Find the closest charging station and update the activity plan
 	public void goCharging() {
-		super.setReachDest();
 		int current_dest_zone = this.getDestID();
-		Coordinate current_dest_coord = this.getDestCoord();
+		Coordinate current_dest_coord = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).getCoord();
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
 		this.onChargingRoute_ = true;
@@ -104,8 +104,50 @@ public class ElectricVehicle extends Vehicle {
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
 		this.departure();
-		ContextCreator.getCityContext().findZoneWithIntegerID(current_dest_zone).removeFutureSupply();
 		ContextCreator.logger.debug("Vehicle " + this.getId() + " is on route to charging");
+	}
+	
+	// Randomly select a neighboring link and update the activity plan
+	public void goCrusing(Zone z) {
+		// Add a cruising activity
+		Road r = z.neighboringLinks.get(this.rand.nextInt(z.neighboringLinks.size()));
+		while(r.getJunctions().get(0) == this.getRoad().getJunctions().get(1)) {
+			r = z.neighboringLinks.get(this.rand.nextInt(z.neighboringLinks.size()));
+		}
+		this.addPlan(z.getIntegerID(), r.getJunctions().get(1).getCoordinate(), (int) RepastEssentials.GetTickCount());
+		this.setNextPlan();
+		this.departure();
+	}
+	
+	// Stop cruising
+	public void stopCruising() {
+		if(!this.isOnLane()) { // The vehicle is currently in a junction, so the routing will fail if not leave the network
+			this.leaveNetwork();
+		}
+		// Log the cruising trip here
+		String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
+		+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+		+ this.getDepTime() + "," + this.getTripConsume() + "," + this.getRouteChoice() + ","
+		+ this.getNumPeople()+ "\r\n";
+		try {
+			ContextCreator.ev_logger.write(formated_msg);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		this.tripConsume = 0;
+	}
+	
+	// Find the closest Zone with parking space and relocate to their
+	public void goParking() {
+		for(Zone z: ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).neighboringZones) {
+			if(z.getCapacity()>0) {
+				this.stopCruising();
+				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
+				z.addFutureSupply();
+				this.relocation(this.getDestID(), z.getIntegerID());
+				return;
+			}
+		}
 	}
 
 	@Override
@@ -123,6 +165,7 @@ public class ElectricVehicle extends Vehicle {
 	 * @param p
 	 */
 	public void relocation(int orginID, int destinationID) {
+		this.stopCruising();
 		this.addPlan(destinationID, ContextCreator.getCityContext().findZoneWithIntegerID(destinationID).getCoord(),
 				(int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
@@ -136,6 +179,18 @@ public class ElectricVehicle extends Vehicle {
 	 */
 	public void servePassenger(List<Request> plist) {
 		if (!plist.isEmpty()) {
+			if(this.getState() == Vehicle.CRUISING_TRIP) {
+				this.stopCruising();
+				// Ask the vehicle to move back to serve the request
+				this.addPlan(this.getDestID(),
+						ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).getCoord(),
+						(int) RepastEssentials.GetTickCount());
+				this.setState(Vehicle.PICKUP_TRIP);
+			}
+			else {
+				this.setState(Vehicle.OCCUPIED_TRIP);
+			}
+			
 			for (Request p : plist) {
 				this.addPlan(p.getDestination(),
 						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(),
@@ -146,7 +201,7 @@ public class ElectricVehicle extends Vehicle {
 			this.setNextPlan();
 			// Add vehicle to new queue of corresponding road
 			this.departure();
-			this.setState(Vehicle.OCCUPIED_TRIP);
+			
 		}
 	}
 
@@ -156,37 +211,36 @@ public class ElectricVehicle extends Vehicle {
 		if (this.onChargingRoute_) {
 			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + ",4,"
 					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getNumPeople();
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getNumPeople() + "\r\n";
 			try {
 				ContextCreator.ev_logger.write(formated_msg);
-				ContextCreator.ev_logger.newLine();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.setReachDest(); // remove from the network
+			super.setReachDest(); 
+			super.leaveNetwork(); // remove from the network
 			// Add to the charging station
 			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
 			cs.receiveEV(this);
-//			this.reachActLocation = true;
 			this.tripConsume = 0;
 		} else {
 			// Log the trip consume here
 			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
 					+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + "," + this.getRouteChoice() + ","
-					+ this.getNumPeople();
+					+ this.getNumPeople()+ "\r\n";
 			try {
 				ContextCreator.ev_logger.write(formated_msg);
-				ContextCreator.ev_logger.newLine();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			this.tripConsume = 0;
 
-			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone
-																								// info
-
+			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
+			
+			super.setReachDest(); // Update the vehicle status
+			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
 				z.taxiServedRequest += 1;
@@ -195,7 +249,6 @@ public class ElectricVehicle extends Vehicle {
 					// generate a pass and add it to the corresponding zone
 					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
-
 					if (z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
 						z.toAddRequestForBus.add(p);
 					} else {
@@ -203,32 +256,102 @@ public class ElectricVehicle extends Vehicle {
 						z.toAddRequestForTaxi.add(p);
 					}
 				}
+				
+				z.removeFutureSupply();
+				if (this.getNumPeople() > 0) { // keep serving more passengers
+					super.leaveNetwork();
+					this.setNextPlan();
+					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
+					this.departure();
+				}
+				else { // charging or join the current zone
+					if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
+						this.goCharging();
+					}
+					else { // join the current zone
+						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
+						if(z.getCapacity() > 0) { // Has capacity
+		                	z.addOneParkingVehicle();
+		    				this.setState(Vehicle.PARKING);
+		    				super.leaveNetwork();
+					    }
+		                else {
+		                	z.addOneCrusingVehicle();
+		                    this.setState(Vehicle.CRUISING_TRIP);
+		                	// Select a neighboring link and cruise to there
+		                	this.goCrusing(z);
+		                	this.cruisingTime_ = 0;
+		                }
+					}
+				}
 			}
-			if (this.getNumPeople() > 0) {
-				super.setReachDest();
+			else if(this.getState() == Vehicle.PICKUP_TRIP){
+				this.setState(Vehicle.OCCUPIED_TRIP);
+				super.leaveNetwork(); // Leave the network to pickup passengers
 				this.setNextPlan();
 				this.departure();
-			} else if (!onChargingRoute_
-					&& (batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
-							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
-					&& this.getNumPeople() == 0) {
-				this.goCharging();
-			} else {
-				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).add(this);// append this vehicle
-																									// to the available
-																									// vehicle of given
-																									// zones
-				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addOneVehicle();
-				this.setState(Vehicle.PARKING);
-				super.setReachDest(); // Call setReachDest in vehicle class.
+			}
+			else if (this.getState() == Vehicle.CRUISING_TRIP) {
+				if(this.cruisingTime_ <= GlobalVariables.MAX_CRUISING_TIME) {
+					if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
+						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).remove(this);
+						this.goCharging();
+					}
+					else {
+						if(z.getCapacity() > 0) { // Has capacity
+		                	z.addCruisingVehicleStock(-1);
+		                	z.addOneParkingVehicle();
+		    				this.setState(Vehicle.PARKING);
+		    				super.leaveNetwork();
+		    				this.cruisingTime_ = 0;
+					    }
+		                else {
+		                	// Keep cruising
+		                	this.cruisingTime_ += RepastEssentials.GetTickCount() - this.getDepTime();
+		                	this.goCrusing(z);
+		                }
+					}
+				}
+				else {
+					this.goParking();
+					this.cruisingTime_ = 0;
+				}
+			}
+			else if (this.getState() == Vehicle.RELOCATION_TRIP) {
+				z.removeFutureSupply();
+				if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+						&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
+					this.goCharging();
+				}
+				else { // join the current zone
+					ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
+					if(z.getCapacity() > 0) { // Has capacity
+	                	z.addOneParkingVehicle();
+	    				this.setState(Vehicle.PARKING);
+	    				super.leaveNetwork();
+				    }
+	                else {
+	                	z.addOneCrusingVehicle();
+	                    this.setState(Vehicle.CRUISING_TRIP);
+	                	// Select a neighboring link and cruise to there
+	                	this.goCrusing(z);
+	                	this.cruisingTime_ = 0;
+	                }
+				}
+			}
+			else {
+				ContextCreator.logger.error("Vehicle does not belong to any of given states!");
 			}
 		}
 	}
 
 	public void setInitialParams() {
 		this.numPeople_ = 0;
+		this.cruisingTime_ = 0;
 		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
-				+ Math.random() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
+				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
 																											// times a
 																											// large
 																											// number to
@@ -410,10 +533,9 @@ public class ElectricVehicle extends Vehicle {
 	public void finishCharging(Integer chargerID, String chargerType) {
 		String formated_msg = RepastEssentials.GetTickCount() + "," + chargerID + "," + this.getVehicleID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
-				+ this.charging_time + "," + this.initial_charging_state;
+				+ this.charging_time + "," + this.initial_charging_state + "\r\n";
 		try {
 			ContextCreator.charger_logger.write(formated_msg);
-			ContextCreator.charger_logger.newLine();
 			this.charging_waiting_time = 0;
 			this.charging_time = 0;
 		} catch (IOException e) {
@@ -421,6 +543,7 @@ public class ElectricVehicle extends Vehicle {
 		}
 
 		this.onChargingRoute_ = false;
+		this.setState(Vehicle.RELOCATION_TRIP);
 		this.setNextPlan();
 		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
 		this.departure();

@@ -10,7 +10,7 @@ import galois.objects.graph.IntGraph;
 import galois.objects.graph.MorphGraph;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.*;
+import mets_r.facility.*;
 import mets_r.partition.GrowBisection.SaveNodesToArray;
 import edu.uci.ics.jung.graph.Graph;
 import repast.simphony.context.space.graph.ContextJungNetwork;

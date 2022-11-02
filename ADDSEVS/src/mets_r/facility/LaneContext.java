@@ -1,4 +1,4 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.io.File;
 import java.net.URI;

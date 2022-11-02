@@ -1,7 +1,8 @@
-package mets_r.citycontext;
+package mets_r.facility;
 
 import java.io.File;
 import java.net.URI;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -27,7 +28,8 @@ import repast.simphony.space.gis.ShapefileLoader;
  */
 
 public class RoadContext extends DefaultContext<Road> {
-
+	
+	private HashMap<Integer, Road> roadDictionary;
 	// Cache every coordinate which forms a road so that Route.onRoad() becomes
 	// faster.
 	private static Map<Coordinate, ?> coordCache;
@@ -35,7 +37,7 @@ public class RoadContext extends DefaultContext<Road> {
 	public RoadContext() {
 		super("RoadContext");
 		ContextCreator.logger.info("RoadContext creation");
-
+		roadDictionary = new HashMap<Integer, Road>();
 		// Create the cache:
 		coordCache = new HashMap<Coordinate, Object>();
 
@@ -69,6 +71,8 @@ public class RoadContext extends DefaultContext<Road> {
 
 				// Update road information
 				road = setAttribute(road, result);
+				
+				roadDictionary.put(road.getLinkid(), road);
 
 				// Create lanes for this road
 				Geometry roadGeom = roadGeography.getGeometry(road);
@@ -105,6 +109,18 @@ public class RoadContext extends DefaultContext<Road> {
 		r.setFn(Integer.parseInt(att[3]));
 		r.setTn(Integer.parseInt(att[4]));
 		return r;
+	}
+	
+	public Road findRoadWithIntegerID(int integerID) {
+		if (this.roadDictionary.containsKey(integerID)) {
+			return this.roadDictionary.get(integerID);
+		} else {
+			return null;
+		}
+	}
+	
+	public Collection<Road> getAllObjects() {
+		return roadDictionary.values();
 	}
 
 }

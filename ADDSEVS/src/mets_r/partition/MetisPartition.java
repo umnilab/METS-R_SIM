@@ -24,9 +24,9 @@ package mets_r.partition;
 import galois.objects.graph.IntGraph;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.ChargingStation;
-import mets_r.citycontext.Road;
-import mets_r.citycontext.Zone;
+import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
+import mets_r.facility.Zone;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -135,7 +135,7 @@ public class MetisPartition {
 		for (i = 0; i < this.nPartition; i++) {
 			totRequest.add(0.0);
 		}
-		for (Zone z : ContextCreator.getZoneGeography().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
@@ -159,7 +159,7 @@ public class MetisPartition {
 		for (i = 0; i < this.nPartition; i++) {
 			totCharger.add(0);
 		}
-		for (ChargingStation cs : ContextCreator.getChargingStationGeography().getAllObjects()) {
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAllObjects()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
@@ -182,7 +182,7 @@ public class MetisPartition {
 		if (this.partitionDuration <= GlobalVariables.SIMULATION_MAX_PARTITION_REFRESH_INTERVAL) {
 			/* Get the total number of vehicles in the network */
 			int TotVehNum = 0;
-			for (Road road : ContextCreator.getRoadGeography().getAllObjects()) {
+			for (Road road : ContextCreator.getRoadContext().getAllObjects()) {
 				TotVehNum += road.getVehicleNum();
 			}
 

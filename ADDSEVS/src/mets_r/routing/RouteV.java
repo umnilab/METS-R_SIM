@@ -11,8 +11,8 @@ import com.vividsolutions.jts.operation.distance.DistanceOp;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.citycontext.*;
-import mets_r.vehiclecontext.Vehicle;
+import mets_r.facility.*;
+import mets_r.mobility.Vehicle;
 import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
@@ -69,8 +69,8 @@ public class RouteV {
 			originCoord = nearestRoadCoord;
 		}
 
-		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
-		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
+		Road originRoad = cityContext.findRoadAtCoordinates(originCoord);
+		Road destRoad = cityContext.findRoadAtCoordinates(destCoord);
 		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord, originRoad);
 		Junction destDownstreamJunc = getNearestDownStreamJunction(destCoord, destRoad);
 
@@ -94,8 +94,8 @@ public class RouteV {
 			originCoord = nearestRoadCoord;
 		}
 
-		Road originRoad = cityContext.findRoadAtCoordinates(originCoord, false);
-		Road destRoad = cityContext.findRoadAtCoordinates(destCoord, true);
+		Road originRoad = cityContext.findRoadAtCoordinates(originCoord);
+		Road destRoad = cityContext.findRoadAtCoordinates(destCoord);
 
 		// ContextCreator.logger.debug("Here2");
 		Junction originDownstreamJunc = getNearestDownStreamJunction(originCoord, originRoad);
@@ -127,7 +127,7 @@ public class RouteV {
 
 		/* Destination coordinate of the vehicle */
 		Road currentRoad = vehicle.getRoad();
-		Road destRoad = cityContext.findRoadAtCoordinates(destination, true);
+		Road destRoad = cityContext.findRoadAtCoordinates(destination);
 
 		/* Current downstream junction of the road the vehicle is on */
 		Junction curDownstreamJunc = currentRoad.getJunctions().get(1);
@@ -164,7 +164,7 @@ public class RouteV {
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
-			result.add(cityContext.findRoadWithID(link_id));
+			result.add(cityContext.getRoadWithID(link_id));
 		}
 		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
@@ -186,7 +186,7 @@ public class RouteV {
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
-			result.add(cityContext.findRoadWithID(link_id));
+			result.add(cityContext.getRoadWithID(link_id));
 		}
 		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
