@@ -467,8 +467,8 @@ public class Road {
 	}
 
 	public float getRandomFreeSpeed(double coef) {
-		return (float) Math.min(this.defaultFreeSpeed_, Math.max(
-				this.freeSpeed_ + coef * this.freeSpeedStd_, 5 * 0.44704)); // at
+		return (float) Math.max(
+				this.freeSpeed_ + coef * this.freeSpeedStd_, 5 * 0.44704); // at
 																														// least
 																														// 5
 																														// mph

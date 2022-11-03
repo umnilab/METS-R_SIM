@@ -26,8 +26,6 @@ import galois.objects.Mappable;
 import galois.objects.Mappables;
 import galois.runtime.ForeachContext;
 import galois.runtime.GaloisRuntime;
-import mets_r.GlobalVariables;
-
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
