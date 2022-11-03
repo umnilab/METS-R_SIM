@@ -236,10 +236,6 @@ public class Road {
 		return this.oppositeRoad;
 	}
 
-	public void setFreeflowsp(double freeflowsp) { // freeflowsp unit: mph
-		this.freeSpeed_ = freeflowsp * 0.44704;
-	}
-
 	public void sortLanes() {
 		Collections.sort(this.lanes, new LaneComparator());
 	}
@@ -468,10 +464,9 @@ public class Road {
 
 	public float getRandomFreeSpeed(double coef) {
 		return (float) Math.max(
-				this.freeSpeed_ + coef * this.freeSpeedStd_, 5 * 0.44704); // at
+				this.freeSpeed_ + coef * this.freeSpeedStd_, 1); // at
 																														// least
-																														// 5
-																														// mph
+																														// 1 m/s
 	}
 
 	public float calcSpeed() {
@@ -598,7 +593,7 @@ public class Road {
 		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.curhour < hour) {
-			double value = ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44704; // convert
+			double value = ContextCreator.getBackgroundTraffic().get(this.linkid).get(hour) * 0.44694; // convert
 																										// from
 																										// mile
 																										// per
@@ -607,7 +602,7 @@ public class Road {
 																										// meter
 																										// per
 																										// second
-			double value2 = ContextCreator.getBackgroundTrafficStd().get(this.linkid).get(hour) * 0.44704;
+			double value2 = ContextCreator.getBackgroundTrafficStd().get(this.linkid).get(hour) * 0.44694;
 			if (this.checkEventFlag()) {
 				this.setDefaultFreeSpeed();
 			} else {
@@ -620,7 +615,7 @@ public class Road {
 
 	/* Modify the free flow speed based on the events */
 	public void updateFreeFlowSpeed_event(double newFFSpd) {
-		this.freeSpeed_ = newFFSpd * 0.44704; // HG: convert from mph to m/s
+		this.freeSpeed_ = newFFSpd * 0.44694; // HG: convert from mph to m/s
 	}
 
 	public void printTick() {

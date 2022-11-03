@@ -223,7 +223,7 @@ public class Vehicle {
 			firstlane.updateLastEnterTick(tickcount);
 			this.updateLastMoveTick(tickcount);
 			currentSpeed_ = 0f; // The initial speed
-			desiredSpeed_ = road.getRandomFreeSpeed(rand.nextDouble());
+			desiredSpeed_ = road.getRandomFreeSpeed(rand.nextGaussian());
 			this.setRoad(road);
 			this.appendToLane(firstlane);
 			this.appendToRoad(this.road);
@@ -1008,12 +1008,12 @@ public class Vehicle {
 				this.setNextRoad();
 				this.assignNextLane();
 				// Reset the desired speed according to the new road
-				this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand.nextDouble());
+				this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand.nextGaussian());
 				return true;
 			}
 		}
 		coordMap.clear();
-		coordMap.add(this.getCurrentCoord());// LZ: Fail to enter next link, try again in the next tick
+		coordMap.add(this.getCurrentCoord());// Fail to enter next link, try again in the next tick
 		return false;
 	}
 
