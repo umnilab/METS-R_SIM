@@ -753,7 +753,7 @@ public class Zone {
 	// are usually associate with Zones
 	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
     public int generateWaitingTimeForTaxi() {
-		return (int) (0.25 * 3600 / GlobalVariables.SIMULATION_STEP_SIZE);
+		return (int) (GlobalVariables.PASSENGER_WAITING_THRESHOLD * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
 	}
     
     // Generate passenger waiting time for bus

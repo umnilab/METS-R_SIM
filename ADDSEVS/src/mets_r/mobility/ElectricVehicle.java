@@ -293,7 +293,7 @@ public class ElectricVehicle extends Vehicle {
 				this.departure();
 			}
 			else if (this.getState() == Vehicle.CRUISING_TRIP) {
-				if(this.cruisingTime_ <= GlobalVariables.MAX_CRUISING_TIME) {
+				if(this.cruisingTime_ <= GlobalVariables.MAX_CRUISING_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) {
 					if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
 						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).remove(this);

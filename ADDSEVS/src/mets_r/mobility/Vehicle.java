@@ -359,7 +359,7 @@ public class Vehicle {
 				}
 				// Try to stick on the routed path, modify this if you want to implement dynamic
 				// routing
-				if (this.stuckTime > GlobalVariables.MAX_STUCK_TIME) { // Stuck in one place for certain time steps,
+				if (this.stuckTime > GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // Stuck in one place for certain time steps,
 																		// potentially there is a grid lock
 					this.stuckTime = 0; // Refresh the stuck time to prevent the case that this function is called every
 										// tick
