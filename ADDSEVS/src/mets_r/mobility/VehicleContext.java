@@ -158,7 +158,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void createBusContextFromZone(Geography<Zone> zoneGeography, int bus_num) {
 		// Go through all routes, generate vehicle_num[i] buses in the beginning of the
 		// routes
-		int num_per_hub = (int) Math.ceil(bus_num / GlobalVariables.HUB_INDEXES.size());
+		int num_per_hub = (int) Math.ceil(bus_num / (GlobalVariables.HUB_INDEXES.size()>0?GlobalVariables.HUB_INDEXES.size():1));
 		try {
 			for (int startZone : GlobalVariables.HUB_INDEXES) {
 				ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));

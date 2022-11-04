@@ -152,7 +152,7 @@ public class Zone {
 			// Skip the last update which is outside of the study period
 			return;
 		}
-		this.updateTravelEstimation();
+		this.updateTravelTimeEstimation();
 
 		// Happens between t and t + 1
 		this.passengerWaitTaxi();
@@ -564,7 +564,7 @@ public class Zone {
 	}
 
 	// Update travel time estimation for taxi
-	public void updateTravelEstimation() {
+	public void updateTravelTimeEstimation() {
 		// Get current tick
 		int tickcount = (int) RepastEssentials.GetTickCount();
 		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);

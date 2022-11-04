@@ -156,16 +156,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		for (Zone z : getZoneContext().getAllObjects()) {
 			double demand_from_zone = 0;
-			if (z.getZoneClass() == 1) {
-				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), i),
-							GlobalVariables.HOUR_OF_DEMAND - 1);
-				}
-			} else {
-				for (int j : GlobalVariables.HUB_INDEXES) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), j),
-							GlobalVariables.HOUR_OF_DEMAND - 1);
-				}
+			int i = z.getIntegerID();
+			for (int j = 0; j < GlobalVariables.NUM_OF_ZONE; j++) {
+				demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(i, j),
+						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
 			demand_per_zone.put(z.getIntegerID(), demand_from_zone);

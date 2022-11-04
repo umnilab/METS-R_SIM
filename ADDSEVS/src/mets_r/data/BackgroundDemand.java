@@ -121,48 +121,4 @@ public class BackgroundDemand {
 			readJsonFile();
 		}
 	}
-
-	// To valid the number of pass via random generator
-	public void validPassNum() {
-		int pass_num = 0;
-		double pass_num2 = 0;
-		for (int k = 0; k < 12; k += 1) {
-			for (int hour = 0; hour < GlobalVariables.HOUR_OF_DEMAND; hour += 1) {
-				for (int ind = 0; ind < GlobalVariables.NUM_OF_ZONE; ind += 1) {
-					if (GlobalVariables.HUB_INDEXES.contains(ind)) {
-						int j = GlobalVariables.HUB_INDEXES.indexOf(ind);
-						for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-							if (ind != i) {
-								double numToGenerate = this.travelDemand.get(ind).get(j).get(hour) / 12.0;
-								numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
-								pass_num2 += numToGenerate;
-								numToGenerate = Math.floor(numToGenerate)
-										+ (Math.random() < (numToGenerate - Math.floor(numToGenerate)) ? 1 : 0);
-								for (int h = 0; h < numToGenerate; h++) {
-									pass_num += 1;
-								}
-							}
-						}
-					} else {
-						int j = 0;
-						for (int destination : GlobalVariables.HUB_INDEXES) {
-							if (j != destination) {
-								double numToGenerate = this.travelDemand.get(ind).get(destination).get(hour) / 12.0;
-								j += 1;
-								numToGenerate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
-								pass_num2 += numToGenerate;
-								numToGenerate = Math.floor(numToGenerate)
-										+ (Math.random() < (numToGenerate - Math.floor(numToGenerate)) ? 1 : 0);
-								for (int i = 0; i < numToGenerate; i++) {
-									pass_num += 1;
-								}
-							}
-						}
-					}
-				}
-			}
-		}
-		ContextCreator.logger.info("Total pass likely to generate: " + pass_num);
-		ContextCreator.logger.info("Total pass with fraction: " + pass_num2);
-	}
 }
