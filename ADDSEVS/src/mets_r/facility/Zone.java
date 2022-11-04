@@ -33,10 +33,10 @@ import repast.simphony.essentials.RepastEssentials;
 public class Zone {
 	// Basic attributes
 	private int id;
-	private Random rand;
-	private Random rand_demand; // Random seed only for demand generation
+	protected Random rand;
+	protected Random rand_demand; // Random seed only for demand generation
 
-	private int integerID;
+	protected int integerID;
 	private int zoneClass; // 0 for normal zone, 1 for hub
 	private int capacity; // parking space in this zone
 
@@ -44,7 +44,7 @@ public class Zone {
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; // Passenger queue for bus
 
-	private int nRequestForTaxi; // Number of requests for Taxi
+	protected int nRequestForTaxi; // Number of requests for Taxi
 	private int nRequestForBus; // Number of requests for Bus
 	
 	private AtomicInteger parkingVehicleStock; // Number of available vehicles at this zone
@@ -76,9 +76,9 @@ public class Zone {
 	public int taxiWaitingTime;
 
 	// For vehicle repositioning
-	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
-	private AtomicInteger futureDemand; // demand in the near future
-	private AtomicInteger futureSupply; // supply in the near future
+	protected int lastUpdateHour = -1; // the last time for updating the demand generation rate
+	protected AtomicInteger futureDemand; // demand in the near future
+	protected AtomicInteger futureSupply; // supply in the near future
 	public List<Zone> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
 	public List<Road> neighboringLinks; // Surrounding links for vehicle to cruise if there is no avaiable parking space
 	
@@ -751,7 +751,7 @@ public class Zone {
 	// Generate passenger waiting time for taxi
 	// this is in Zone class since the observations
 	// are usually associate with Zones
-	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
+	// Assume the maximum waiting time for taxi (we treated as the constraints: service quality demand)
     public int generateWaitingTimeForTaxi() {
 		return (int) (GlobalVariables.PASSENGER_WAITING_THRESHOLD * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
 	}

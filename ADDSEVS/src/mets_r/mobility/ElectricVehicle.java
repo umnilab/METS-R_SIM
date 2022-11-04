@@ -29,19 +29,19 @@ public class ElectricVehicle extends Vehicle {
 	private int numPeople_; // no of people inside the vehicle
 	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
 	private double avgPersonMass_; // average mass of a person in lbs
-	private double batteryLevel_; // current battery level
-	private double lowerBatteryRechargeLevel_;
-	private double higherBatteryRechargeLevel_;
+	protected double batteryLevel_; // current battery level
+	protected double lowerBatteryRechargeLevel_;
+	public double higherBatteryRechargeLevel_;
 	private double mass; // mass of the vehicle in kg
-	private boolean onChargingRoute_ = false;
-	private int cruisingTime_;
+	protected boolean onChargingRoute_ = false;
+	protected int cruisingTime_;
 
 	// Parameters for storing energy consumptions
 	private double tickConsume;
 	private double totalConsume;
 	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
 								// zero once this ev entering a new road.
-	private double tripConsume; // For UCB testing
+	protected double tripConsume; // For UCB testing
 
 	public int served_pass = 0;
 	public int charging_time = 0;
@@ -203,6 +203,10 @@ public class ElectricVehicle extends Vehicle {
 			this.departure();
 			
 		}
+	}
+	
+	public void setVehicleReachDest() {
+		super.setReachDest();
 	}
 
 	@Override

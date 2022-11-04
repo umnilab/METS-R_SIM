@@ -23,13 +23,13 @@ public class ChargingStation {
 	private Random rand;
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
 	// capacity for the taxi is 50.0 kWh.
-	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
-	private LinkedList<ElectricVehicle> queueChargingL3; // Car queue waiting for L3 charging
+	protected LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
+	protected LinkedList<ElectricVehicle> queueChargingL3; // Car queue waiting for L3 charging
 	private LinkedList<ElectricBus> queueChargingBus; // Bus queue waiting for bus charging
-	private int num2; // Number of L2 chargers
-	private int num3; // Number of L3 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
+	protected int num2; // Number of L2 chargers
+	protected int num3; // Number of L3 chargers
+	protected ArrayList<ElectricVehicle> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
+	protected ArrayList<ElectricVehicle> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
 	private ArrayList<ElectricBus> chargingBus; // Buses that are charging themselves under the bus chargers
 
 	private static double chargingRateL2 = 10.0; // Charging rate for L2: 10.0kWh/hour
@@ -46,8 +46,8 @@ public class ChargingStation {
 	public int numChargedVehicle;
 
 	// For thread-safe operation
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3; // Pending Car queue waiting for L3 charging
+	protected ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
+	protected ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3; // Pending Car queue waiting for L3 charging
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3) {

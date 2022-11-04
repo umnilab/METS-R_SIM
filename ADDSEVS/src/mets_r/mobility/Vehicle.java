@@ -105,7 +105,7 @@ public class Vehicle {
 	// For solving the grid-lock issue
 	private int lastMoveTick = -1;
 	private int stuckTime = 0;
-	private ArrayList<Plan> activityplan; // A set of zone for the vehicle to visit
+	protected ArrayList<Plan> activityplan; // A set of zone for the vehicle to visit
 
 	/* Vehicle movement that can be accessed through descendant classes */
 	private float accummulatedDistance_; // Accumulated travel distance in the current trip

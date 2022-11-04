@@ -86,6 +86,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				demand_total += ContextCreator.demand_per_zone.get(z.getIntegerID());
 			}
 		}
+		
+		System.out.println("TOTAL DEMAND: " + demand_total);
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
 		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
@@ -100,7 +102,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				num_total -= vehicle_num_to_generate;
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					// GeometryFactory fac = new GeometryFactory();
-					ElectricVehicle v = new ElectricVehicle();
+					ElectricVehicleWithAbandon v = new ElectricVehicleWithAbandon();
 					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
 																										// first plan
 					this.add(v);
@@ -158,7 +160,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void createBusContextFromZone(Geography<Zone> zoneGeography, int bus_num) {
 		// Go through all routes, generate vehicle_num[i] buses in the beginning of the
 		// routes
-		int num_per_hub = (int) Math.ceil(bus_num / GlobalVariables.HUB_INDEXES.size());
+		int num_per_hub = (int) Math.ceil(bus_num / (GlobalVariables.HUB_INDEXES.size()>0? GlobalVariables.HUB_INDEXES.size():1));
 		try {
 			for (int startZone : GlobalVariables.HUB_INDEXES) {
 				ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));

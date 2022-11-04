@@ -62,6 +62,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static BufferedWriter network_logger; // Road network vehicle logger
 	public static BufferedWriter zone_logger; // Zone logger
 	public static BufferedWriter charger_logger; // Charger logger
+	public static BufferedWriter passenger_logger; // Passenger Trip logger
 	// A general logger for console outputs
 	public static Logger logger = Logger.getLogger(ContextCreator.class);
 
@@ -156,16 +157,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		for (Zone z : getZoneContext().getAllObjects()) {
 			double demand_from_zone = 0;
-			if (z.getZoneClass() == 1) {
-				for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), i),
-							GlobalVariables.HOUR_OF_DEMAND - 1);
-				}
-			} else {
-				for (int j : GlobalVariables.HUB_INDEXES) {
-					demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), j),
-							GlobalVariables.HOUR_OF_DEMAND - 1);
-				}
+			for (int i = 0; i < GlobalVariables.NUM_OF_ZONE; i++) {
+				demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(z.getIntegerID(), i),
+						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
 			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
@@ -233,7 +227,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
 			ev_logger = new BufferedWriter(fw);
-			ev_logger.write("tick,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
+			ev_logger.write("tick,vehicleFakeID,startZoneID,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
 			ev_logger.newLine();
 			ev_logger.flush();
 			logger.info("EV logger created!");
@@ -254,7 +248,20 @@ public class ContextCreator implements ContextBuilder<Object> {
 			e.printStackTrace();
 			logger.error("Bus logger failed.");
 		}
-		logger.info("Link energy logger creating...");
+		logger.info("Request logger creating...");
+		try {
+			FileWriter fw = new FileWriter(outpath + File.separatorChar + "passengerLog-" + timestamp + ".csv", false);
+			passenger_logger = new BufferedWriter(fw);
+			passenger_logger.write("tick,vehicleID,originID,destID,batteryLevel,utilityForService,valuationDriver,"
+					+ "valueTimedriver,prob_d_q,WageFee,tripDistance,tripTime,valuationPass,valueTimePass,prob_p,passengerFEE");
+			passenger_logger.newLine();
+			passenger_logger.flush();
+			logger.info("Request logger created!");
+		} catch (IOException e) {
+			e.printStackTrace();
+			logger.error("Request logger failed.");
+		}
+	    logger.info("Link energy logger creating...");
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "LinkLog-" + timestamp + ".csv", false);
 			link_logger = new BufferedWriter(fw);
@@ -272,9 +279,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 			network_logger = new BufferedWriter(fw);
 			network_logger.write(
 					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
-							+ "taxiServedPass,busServedPass," + "taxiLeavedPass,busLeavedPass,"
-							+ "numWaitingTaxiPass,numWaitingBusPass," + "batteryMean,batteryStd,timeStamp");
+					+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					+ "taxiServedPass,busServedPass,"
+					+ "taxiLeavedPass,busLeavedPass,"
+					+ "numWaitingTaxiPass,numWaitingBusPass,"
+					+ "batteryMean,batteryStd,timeStamp,"
+					+ "numLeaveChargerL2,numLeaveChargerL3,numChargerL2Veh,numChargerL3Veh,numAbandonPass,numAbandonEV");
 			network_logger.newLine();
 			network_logger.flush();
 			logger.info("Network logger created!");
@@ -288,9 +298,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 			zone_logger = new BufferedWriter(fw);
 			zone_logger.write(
 					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
-							+ "taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,"
-							+ "taxiLeavedPass,busLeavedPass,taxiWaitingTime,futureDemand,futureSupply");
+					+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					+ "taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,"
+					+ "taxiLeavedPass,busLeavedPass,taxiWaitingTime,futureDemand,futureSupply"
+					+ "numTaxiRelocate,numAbandonP,numAbandonEV,"
+					+ "relocateTimes,wantRelocateTime,relocateSuccTimes,RelocateFailTimes");
 			zone_logger.newLine();
 			zone_logger.flush();
 			logger.info("Zone logger created!");
@@ -303,7 +315,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ChargerLog-" + timestamp + ".csv", false);
 			charger_logger = new BufferedWriter(fw);
 			charger_logger
-					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel");
+					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel,findNumCS");
 			charger_logger.newLine();
 			charger_logger.flush();
 			logger.info("Charger logger created!");

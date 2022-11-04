@@ -61,10 +61,26 @@ public class GlobalVariables {
 		}
 		return config.getProperty(property);
 	}
+	
+	/* Charging Price Input */
+	public static int Random_ID_PASS = 0;
+	public static int Random_ID_EV = 0;
+	public static final double PASSENGER_FEE = Double.valueOf(loadConfig("PASSENGER_FEE"));
+	public static final double ONE_TIME_TRIP_FEE = Double.valueOf(loadConfig("ONE_TIME_TRIP_FEE"));
+	public static final double ELECTRICITY_FEE_L2 = Double.valueOf(loadConfig("ELECTRICITY_FEE_L2"));
+	public static final double ELECTRICITY_FEE_L3 = Double.valueOf(loadConfig("ELECTRICITY_FEE_L3"));
+	public static final double DRIVER_WAGE_FEE = Double.valueOf(loadConfig("DRIVER_WAGE_FEE"));
+	public static final double ONE_TIME_CHARGING_FEE = Double.valueOf(loadConfig("ONE_TIME_CHARGING_FEE"));
+	public static final double TIMEVALUE_DRIVER = Double.valueOf(loadConfig("TIMEVALUE_DRIVER"));  
+	public static final double TIMEVALUE_PASS = Double.valueOf(loadConfig("TIMEVALUE_PASS"));  
+	public static final double VALUATION_PASS_MEAN = Double.valueOf(loadConfig("VALUATION_PASS_MEAN"));  
+	public static final double VALUATION_PASS_STD = Double.valueOf(loadConfig("VALUATION_PASS_STD"));  
+	public static final double VALUATION_EV_MEAN = Double.valueOf(loadConfig("VALUATION_EV_MEAN"));  
+	public static final double VALUATION_EV_STD = Double.valueOf(loadConfig("VALUATION_EV_STD"));  
 
 	/* Input Files */
 	// Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
-	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>(Arrays.asList(131, 140, 180));
+	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>();
 
 	// Road Network
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");

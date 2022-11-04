@@ -335,35 +335,17 @@ public class CityContext extends DefaultContext<Object> {
 		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
 		Point point = geomFac.createPoint(coord);
-		Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER);
 		double minDist = Double.MAX_VALUE;
 		ChargingStation nearestChargingStation = null;
-		int num_tried = 0;
-		while (nearestChargingStation == null && num_tried < 5) {
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
-				DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
-				double thisDist = distOp.distance();
-				if ((thisDist < minDist) && cs.capacity() > 0) { // if thisDist < minDist
-					minDist = thisDist;
-					nearestChargingStation = cs;
-				}
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAllObjects()) {
+			DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
+			double thisDist = distOp.distance();
+			if ((thisDist < minDist) && cs.capacity() > 0) { // if thisDist < minDist
+				minDist = thisDist;
+				nearestChargingStation = cs;
 			}
-			num_tried += 1;
-			buffer = point.buffer((num_tried + 1) * GlobalVariables.XXXX_BUFFER);
 		}
 		
-		if (nearestChargingStation == null) { // Cannot find instant available charging station, go the closest one and
-												// wait there
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
-					ChargingStation.class)) {
-				DistanceOp distOp = new DistanceOp(point, csGeography.getGeometry(cs));
-				double thisDist = distOp.distance();
-				if ((thisDist < minDist) && (cs.numL2() > 0 || cs.numL3() > 0)) { // if thisDist < minDist
-					minDist = thisDist;
-					nearestChargingStation = cs;
-				}
-			}
-		}
 		if (nearestChargingStation == null) {
 			ContextCreator.logger.error(
 					"CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"

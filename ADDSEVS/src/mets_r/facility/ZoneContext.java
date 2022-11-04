@@ -28,17 +28,17 @@ public class ZoneContext extends DefaultContext<Zone> {
 				.createGeography("ZoneGeography", this, geoParams);
 		/* Read in the data and add to the context and geography */
 		File zoneFile = null;
-		ShapefileLoader<Zone> zoneLoader = null;
+		ShapefileLoader<ZoneWithAbandon> zoneLoader = null;
 		try {
 			zoneFile = new File(GlobalVariables.ZONES_SHAPEFILE);
 			URI uri = zoneFile.toURI();
-			zoneLoader = new ShapefileLoader<Zone>(Zone.class, uri.toURL(), zoneGeography, this);
+			zoneLoader = new ShapefileLoader<ZoneWithAbandon>(ZoneWithAbandon.class, uri.toURL(), zoneGeography, this);
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
 			int int_id = 0;
 			while (zoneLoader.hasNext()) {
 				String line = br.readLine();
 				String[] result = line.split(",");
-				Zone zone = zoneLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[2]))); // Using customize parameters
+				ZoneWithAbandon zone = zoneLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[2]))); // Using customize parameters
 				this.zoneDictionary.put(int_id, zone);
 				int_id += 1;
 				ContextCreator.logger.debug("int_ID" + zone.getIntegerID() + ","

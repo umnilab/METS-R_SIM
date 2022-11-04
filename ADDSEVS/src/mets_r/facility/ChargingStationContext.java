@@ -35,11 +35,11 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 
 		/* Read in the data and add to the context and geography */
 		File chargingStationFile = null;
-		ShapefileLoader<ChargingStation> chargingStationLoader = null;
+		ShapefileLoader<ChargingStationWithAbandon> chargingStationLoader = null;
 		try {
 			chargingStationFile = new File(GlobalVariables.CHARGER_SHAPEFILE);
 			URI uri = chargingStationFile.toURI();
-			chargingStationLoader = new ShapefileLoader<ChargingStation>(ChargingStation.class, uri.toURL(),
+			chargingStationLoader = new ShapefileLoader<ChargingStationWithAbandon>(ChargingStationWithAbandon.class, uri.toURL(),
 					chargingStationGeography, this);
 			// Read the charging station's attributes CSV file
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.CHARGER_CSV));
@@ -50,7 +50,7 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 				String[] result = line.split(",");
 				// To support two formats, one with detailed charging station specifications,
 				// one just has ID and num of chargers
-				ChargingStation cs = null;
+				ChargingStationWithAbandon cs = null;
 				if (result.length == 13) {
 					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[11])),
 							(int) Math.round(Double.parseDouble(result[12]))); // Using customize parameters
