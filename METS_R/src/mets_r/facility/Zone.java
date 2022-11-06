@@ -73,7 +73,8 @@ public class Zone {
 	public int numberOfRelocatedVehicles;
 	public int taxiPassWaitingTime; // Waiting time of served Passengers
 	public int busPassWaitingTime;
-	public int taxiWaitingTime;
+	public int taxiParkingTime;
+	public int taxiCruisingTime;
 
 	// For vehicle repositioning
 	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
@@ -125,7 +126,7 @@ public class Zone {
 		this.numberOfRelocatedVehicles = 0;
 		this.taxiPassWaitingTime = 0;
 		this.busPassWaitingTime = 0;
-		this.taxiWaitingTime = 0;
+		this.taxiParkingTime = 0;
 		this.taxiTravelTime = new HashMap<Integer, Float>();
 		this.taxiTravelDistance = new HashMap<Integer, Float>();
 		this.busTravelTime = new HashMap<Integer, Float>();
@@ -521,7 +522,8 @@ public class Zone {
 
 	// Taxi waiting for passenger, extend this if the relocation is based on the taxiWaiting time
 	public void taxiWaitPassenger() {
-		this.taxiWaitingTime += this.parkingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
+		this.taxiParkingTime += this.parkingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
+	    this.taxiCruisingTime += this.cruisingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
 	}
 
 	// Split taxi and bus passengers via a discrete choice model
