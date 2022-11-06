@@ -782,7 +782,7 @@ public class Zone {
 	}
 	
 	public void addOneCrusingVehicle() {
-		this.parkingVehicleStock.addAndGet(1);
+		this.cruisingVehicleStock.addAndGet(1);
 	}
 	
 	public void removeOneParkingVehicle() {
@@ -794,7 +794,7 @@ public class Zone {
 	}
 	
 	public void removeOneCruisingVehicle() {
-		if (this.parkingVehicleStock.get() - 1 < 0) {
+		if (this.cruisingVehicleStock.get() - 1 < 0) {
 			ContextCreator.logger.error(this.integerID + " out of stock, vehicle_num: " + this.cruisingVehicleStock.get());
 			return;
 		}
