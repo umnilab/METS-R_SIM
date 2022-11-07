@@ -78,7 +78,7 @@ public class Zone {
 
 	// For vehicle repositioning
 	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
-	private AtomicInteger futureDemand; // demand in the near future
+	private double futureDemand; // demand in the near future
 	private AtomicInteger futureSupply; // supply in the near future
 	public List<Zone> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
 	public List<Road> neighboringLinks; // Surrounding links for vehicle to cruise if there is no avaiable parking space
@@ -119,8 +119,8 @@ public class Zone {
 		this.busPickupRequest = 0;
 		this.combinePickupPart1 = 0;
 		this.combinePickupPart2 = 0;
-		this.taxiServedRequest = 0;
-		this.busServedRequest = 0;
+		this.taxiServedRequest = 0; // Drop-off request number
+		this.busServedRequest = 0; // Drop-off request number
 		this.numberOfLeavedTaxiRequest = 0;
 		this.numberOfLeavedBusRequest = 0;
 		this.numberOfRelocatedVehicles = 0;
@@ -138,7 +138,7 @@ public class Zone {
 		this.toAddRequestForBus = new ConcurrentLinkedQueue<Request>();
 		this.parkingVehicleStock = new AtomicInteger(0); 
 		this.cruisingVehicleStock = new AtomicInteger(0); 
-		this.futureDemand = new AtomicInteger(0);
+		this.futureDemand = 0.0;
 		this.futureSupply = new AtomicInteger(0);
 		
 	}
@@ -168,7 +168,7 @@ public class Zone {
 		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL);
 		hour = hour % GlobalVariables.HOUR_OF_DEMAND;
 		if (this.lastUpdateHour != hour) {
-			this.futureDemand.set(0);
+			this.futureDemand = 0.0;
 		}
 		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
 			double passRate = ContextCreator.getTravelDemand(this.getIntegerID(), destination, hour)
@@ -198,7 +198,7 @@ public class Zone {
 						}
 					}
 					if (this.lastUpdateHour != hour) {
-						this.futureDemand.addAndGet((int) (passRate * threshold));
+						this.futureDemand+= (passRate * threshold);
 					}
 				} else if (GlobalVariables.COLLABORATIVE_EV) {
 					if (this.zoneClass == 0 && this.nearestZoneWithBus.containsKey(destination)) { // normal zone
@@ -229,7 +229,7 @@ public class Zone {
 							}
 						}
 						if (this.lastUpdateHour != hour) {
-							this.futureDemand.addAndGet((int) (passRate * threshold));
+							this.futureDemand+=(passRate * threshold);
 						}
 					} else if (this.zoneClass == 1 && this.nearestZoneWithBus.containsKey(destination)) { // hub
 						// Split between taxi and taxi-bus combined,
@@ -259,7 +259,7 @@ public class Zone {
 							}
 						}
 						if (this.lastUpdateHour != hour) {
-							this.futureDemand.addAndGet((int) (passRate * threshold));
+							this.futureDemand= (passRate * threshold);
 						}
 					}
 				} else {
@@ -274,7 +274,7 @@ public class Zone {
 						this.numberOfGeneratedTaxiRequest += 1;
 					}
 					if (this.lastUpdateHour != hour) {
-						this.futureDemand.addAndGet((int) (passRate));
+						this.futureDemand+=(passRate);
 					}
 				}
 			}
@@ -303,8 +303,11 @@ public class Zone {
 						if (v != null) {
 							if(v.getState() == Vehicle.PARKING) {
 								this.removeOneParkingVehicle();
-							}else {
+							}else if(v.getState() == Vehicle.CRUISING_TRIP) {
 								this.removeOneCruisingVehicle();
+							}
+							else {
+								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
 							ArrayList<Request> tmp_pass = new ArrayList<Request>();
 							for (int j = 0; j < Math.min(4, pass_num); j++) {
@@ -326,7 +329,6 @@ public class Zone {
 			}
 		}
 
-		// FCFS service for the rest of passengers
 		int curr_size = this.requestInQueueForTaxi.size();
 		for (int i = 0; i < curr_size; i++) {
 			ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
@@ -334,8 +336,11 @@ public class Zone {
 				Request current_taxi_pass = this.requestInQueueForTaxi.poll();
 				if(v.getState() == Vehicle.PARKING) {
 					this.removeOneParkingVehicle();
-				}else {
+				}else if(v.getState() == Vehicle.CRUISING_TRIP) {
 					this.removeOneCruisingVehicle();
+				}
+				else {
+					ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 				}
 				
 				if (current_taxi_pass.lenOfActivity() > 1) {
@@ -359,8 +364,7 @@ public class Zone {
 				break; // no vehicle
 			}
 		}
-	}
-	
+	}	
 	// Serve passenger using Bus
 		public ArrayList<Request> servePassengerByBus(int maxPassNum, ArrayList<Integer> busStop) {
 			ArrayList<Request> passOnBoard = new ArrayList<Request>();
@@ -395,10 +399,11 @@ public class Zone {
 			if (this.getFutureSupply() < 0) {
 				ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
 			}
-			// 5 means the time step of looking ahead
+			// H means the time steps (horizon) of looking ahead, heuristically, using the cruising time
 			// 0.8 is the probability of vehicle with low battery level under the charging threshold
+			double H = (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
 			double relocateRate = 0;
-			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + 5 * this.futureDemand.get()
+			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + H * this.futureDemand
 					- 0.8 * this.futureSupply.get());
 			int numToRelocate = (int) Math.floor(relocateRate)
 					+ (rand.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
@@ -406,7 +411,7 @@ public class Zone {
 				boolean systemHasVeh = false;
 				for (Zone z : this.neighboringZones) {
 					// Relocate from zones with sufficient supply
-					if (z.hasEnoughTaxi(5)) {
+					if (z.hasEnoughTaxi(H)) { 
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID())
 								.poll();
 						if (v != null) {
@@ -798,8 +803,8 @@ public class Zone {
 		return this.zoneClass;
 	}
 	
-	public boolean hasEnoughTaxi(int k) { // k: future steps to consider
-		return this.getVehicleStock() - this.nRequestForTaxi - k * getFutureDemand() > 0;
+	public boolean hasEnoughTaxi(double H) { // H: future steps (horizon) to consider
+		return this.getVehicleStock() - this.nRequestForTaxi - H * getFutureDemand() > 0;
 	}
 
 	public void processToAddPassengers() {
@@ -840,8 +845,8 @@ public class Zone {
 		this.futureSupply.addAndGet(-1);
 	}
 
-	public int getFutureDemand() {
-		return this.futureDemand.get();
+	public double getFutureDemand() {
+		return this.futureDemand;
 	}
 
 	public int getFutureSupply() {

@@ -149,13 +149,14 @@ public class ElectricBus extends Vehicle {
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();
 		this.onChargingRoute_ = true;
-		this.setState(Vehicle.CHARGING_TRIP);
+		
 		ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
 		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount()); // instantly go to
 																								// charging station
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount()); // Follow the old
 																									// schedule
+		this.setState(Vehicle.CHARGING_TRIP);
 		this.departure();
 		ContextCreator.logger.debug("Bus " + this.getId() + " is on route to charging station");
 	}
@@ -358,7 +359,9 @@ public class ElectricBus extends Vehicle {
 		}
 		this.onChargingRoute_ = false;
 		this.setNextPlan();
+		this.setState(Vehicle.RELOCATION_TRIP);
 		this.departure();
+		
 	}
 
 	public void setRouteChoice(int i) {

@@ -99,10 +99,10 @@ public class ElectricVehicle extends Vehicle {
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
 		this.onChargingRoute_ = true;
-		this.setState(Vehicle.CHARGING_TRIP);
 		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount());
+		this.setState(Vehicle.CHARGING_TRIP);
 		this.departure();
 		ContextCreator.logger.debug("Vehicle " + this.getId() + " is on route to charging");
 	}
@@ -116,6 +116,7 @@ public class ElectricVehicle extends Vehicle {
 		}
 		this.addPlan(z.getIntegerID(), r.getJunctions().get(1).getCoordinate(), (int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
+		this.setState(Vehicle.CRUISING_TRIP);
 		this.departure();
 	}
 	
@@ -124,6 +125,7 @@ public class ElectricVehicle extends Vehicle {
 		if(!this.isOnLane()) { // The vehicle is currently in a junction, so the routing will fail if not leave the network
 			this.leaveNetwork();
 		}
+		
 		// Log the cruising trip here
 		String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
 		+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
@@ -135,13 +137,15 @@ public class ElectricVehicle extends Vehicle {
 			e.printStackTrace();
 		}
 		this.tripConsume = 0;
+		
+		this.setState(Vehicle.NONE_OF_THE_ABOVE);
 	}
 	
 	// Find the closest Zone with parking space and relocate to their
 	public void goParking() {
+		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).removeOneCruisingVehicle();
 		for(Zone z: ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).neighboringZones) {
 			if(z.getCapacity()>0) {
-				this.stopCruising();
 				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
 				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).numberOfRelocatedVehicles += 1;
 				z.addFutureSupply();
@@ -149,6 +153,12 @@ public class ElectricVehicle extends Vehicle {
 				return;
 			}
 		}
+	}
+	
+	// Parking at Zone z
+	public void getParked(Zone z) {
+		super.leaveNetwork();
+		this.setState(Vehicle.PARKING);
 	}
 
 	@Override
@@ -188,8 +198,11 @@ public class ElectricVehicle extends Vehicle {
 						(int) RepastEssentials.GetTickCount());
 				this.setState(Vehicle.PICKUP_TRIP);
 			}
-			else {
+			else if (this.getState() == Vehicle.PARKING) {
 				this.setState(Vehicle.OCCUPIED_TRIP);
+			}
+			else {
+				ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 			}
 			
 			for (Request p : plist) {
@@ -241,6 +254,7 @@ public class ElectricVehicle extends Vehicle {
 			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
 			
 			super.setReachDest(); // Update the vehicle status
+			
 			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
 				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
@@ -250,11 +264,10 @@ public class ElectricVehicle extends Vehicle {
 					// generate a pass and add it to the corresponding zone
 					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
-					if (z.busReachableZone.contains(p.getDestination())) {// if bus can reach the destination
-						z.toAddRequestForBus.add(p);
+					if (z.busReachableZone.contains(p.getDestination())) {
+						z.toAddRequestForBus.add(p); // if bus can reach the destination
 					} else {
-						// this happens when we dynamically update bus schedules
-						z.toAddRequestForTaxi.add(p);
+						z.toAddRequestForTaxi.add(p); // this is called when we dynamically update bus schedules
 					}
 				}
 				
@@ -273,13 +286,11 @@ public class ElectricVehicle extends Vehicle {
 					else { // join the current zone
 						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
 						if(z.getCapacity() > 0) { // Has capacity
-		                	z.addOneParkingVehicle();
-		    				this.setState(Vehicle.PARKING);
-		    				super.leaveNetwork();
+							z.addOneParkingVehicle();
+		                	this.getParked(z);
 					    }
 		                else {
 		                	z.addOneCrusingVehicle();
-		                    this.setState(Vehicle.CRUISING_TRIP);
 		                	// Select a neighboring link and cruise to there
 		                	this.goCrusing(z);
 		                	this.cruisingTime_ = 0;
@@ -304,20 +315,19 @@ public class ElectricVehicle extends Vehicle {
 						if(z.getCapacity() > 0) { // Has capacity
 		                	z.removeOneCruisingVehicle();
 		                	z.addOneParkingVehicle();
-		    				this.setState(Vehicle.PARKING);
-		    				super.leaveNetwork();
-		    				this.cruisingTime_ = 0;
+		                	this.cruisingTime_ = 0;
+		    				this.getParked(z);
 					    }
 		                else {
-		                	// Keep cruising
 		                	this.cruisingTime_ += RepastEssentials.GetTickCount() - this.getDepTime();
+		                	// Keep cruising
 		                	this.goCrusing(z);
 		                }
 					}
 				}
 				else {
-					this.goParking();
 					this.cruisingTime_ = 0;
+					this.goParking();
 				}
 			}
 			else if (this.getState() == Vehicle.RELOCATION_TRIP) {
@@ -330,15 +340,13 @@ public class ElectricVehicle extends Vehicle {
 					ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
 					if(z.getCapacity() > 0) { // Has capacity
 	                	z.addOneParkingVehicle();
-	    				this.setState(Vehicle.PARKING);
-	    				super.leaveNetwork();
+	    				this.getParked(z);
 				    }
 	                else {
 	                	z.addOneCrusingVehicle();
-	                    this.setState(Vehicle.CRUISING_TRIP);
-	                	// Select a neighboring link and cruise to there
-	                	this.goCrusing(z);
 	                	this.cruisingTime_ = 0;
+	                	this.goCrusing(z); // Select a neighboring link and cruise to there
+	                	
 	                }
 				}
 			}
@@ -544,9 +552,9 @@ public class ElectricVehicle extends Vehicle {
 		}
 
 		this.onChargingRoute_ = false;
-		this.setState(Vehicle.RELOCATION_TRIP);
 		this.setNextPlan();
 		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
+		this.setState(Vehicle.RELOCATION_TRIP);
 		this.departure();
 	}
 

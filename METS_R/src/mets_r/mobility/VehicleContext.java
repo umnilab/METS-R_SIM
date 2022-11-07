@@ -110,6 +110,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	//					vehicleGeography.move(v, geom);
 					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
 					v.setNextPlan();
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					v.setNextPlan();
 					total_vehicles += 1;
 					this.vehicleList.add(v);
 					tmpQueue.add(v);
@@ -135,6 +137,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 						v.setCurrentCoord(coord);
 		//					Point geom = fac.createPoint(coord);
 		//					vehicleGeography.move(v, geom);
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+						v.setNextPlan();
 						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
 						v.setNextPlan();
 						total_vehicles += 1;
@@ -172,12 +176,14 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				for (int j = 0; j < num_per_hub; j++) {
 					ElectricBus b;
 					b = new ElectricBus(-1, route, next_departure_time);
-					b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); // Initialize the first plan
+					b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
 					this.add(b);
 					b.setCurrentCoord(z.getCoord());
 //				Point geom = fac.createPoint(z.getCoord());
 //				vehicleGeography.move(b, geom);
-					b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time);
+					b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					b.setNextPlan();
+					b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); // Initialize the first plan
 					b.setNextPlan();
 					b.departure();
 					next_departure_time += vehicle_gap;
