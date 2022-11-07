@@ -143,6 +143,7 @@ public class ElectricVehicle extends Vehicle {
 			if(z.getCapacity()>0) {
 				this.stopCruising();
 				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
+				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).numberOfRelocatedVehicles += 1;
 				z.addFutureSupply();
 				this.relocation(this.getDestID(), z.getIntegerID());
 				return;
