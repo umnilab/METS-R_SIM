@@ -301,7 +301,7 @@ public class ElectricVehicle extends Vehicle {
 					}
 					else {
 						if(z.getCapacity() > 0) { // Has capacity
-		                	z.addCruisingVehicleStock(-1);
+		                	z.removeOneCruisingVehicle();
 		                	z.addOneParkingVehicle();
 		    				this.setState(Vehicle.PARKING);
 		    				super.leaveNetwork();

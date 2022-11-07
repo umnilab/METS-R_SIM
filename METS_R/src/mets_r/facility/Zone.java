@@ -208,11 +208,7 @@ public class Zone {
 							if (rand.nextDouble() > threshold) {
 								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
 								if (new_pass.isShareable()) {
-									nRequestForTaxi += 1;
-									if (!this.sharableRequestForTaxi.containsKey(destination)) {
-										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-									}
-									this.sharableRequestForTaxi.get(destination).add(new_pass);
+									this.addSharableTaxiPass(new_pass, destination);
 								} else {
 									this.addTaxiPass(new_pass);
 								}
@@ -242,11 +238,7 @@ public class Zone {
 							if (rand.nextDouble() > threshold) {
 								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
 								if (new_pass.isShareable()) {
-									nRequestForTaxi += 1;
-									if (!this.sharableRequestForTaxi.containsKey(destination)) {
-										this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-									}
-									this.sharableRequestForTaxi.get(destination).add(new_pass);
+									this.addSharableTaxiPass(new_pass, destination);
 								} else {
 									this.addTaxiPass(new_pass);
 								}
@@ -275,11 +267,7 @@ public class Zone {
 					for (int i = 0; i < numToGenerate; i++) {
 						Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
 						if (new_pass.isShareable()) {
-							nRequestForTaxi += 1;
-							if (!this.sharableRequestForTaxi.containsKey(destination)) {
-								this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
-							}
-							this.sharableRequestForTaxi.get(destination).add(new_pass);
+							this.addSharableTaxiPass(new_pass, destination);
 						} else {
 							this.addTaxiPass(new_pass);
 						}
@@ -422,13 +410,13 @@ public class Zone {
 						ElectricVehicle v = ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID())
 								.poll();
 						if (v != null) {
-							v.relocation(z.getIntegerID(), this.integerID);
 							this.numberOfRelocatedVehicles += 1;
 							if(v.getState() == Vehicle.PARKING) {
 								z.removeOneParkingVehicle();
 							}else {
 								z.removeOneCruisingVehicle();
 							}
+							v.relocation(z.getIntegerID(), this.integerID);
 							this.addFutureSupply();
 							systemHasVeh = true;
 							break;
@@ -482,7 +470,7 @@ public class Zone {
 			for (int i = 0; i < curr_size; i++) {
 				if (passQueue.peek().check()) {
 					passQueue.poll();
-					this.numberOfLeavedTaxiRequest += 1;
+					numberOfLeavedTaxiRequest += 1;
 					nRequestForTaxi -= 1;
 				} else {
 					break;
@@ -494,10 +482,11 @@ public class Zone {
 			p.waitNextTime(GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL);
 		}
 		curr_size = requestInQueueForTaxi.size();
+		
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForTaxi.peek().check()) {
 				requestInQueueForTaxi.poll();
-				this.numberOfLeavedTaxiRequest += 1;
+				numberOfLeavedTaxiRequest += 1;
 				nRequestForTaxi -= 1;
 			} else {
 				break;

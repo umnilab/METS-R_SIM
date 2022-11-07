@@ -155,48 +155,17 @@ public class Vehicle {
 		this.Nshadow = 0;
 		this.futureRoutingRoad = new ArrayList<Road>();
 		this.setVehicleClass(vClass);
-		this.setState(NONE_OF_THE_ABOVE);
+		
+		// Start with parking
+		this.setState(Vehicle.PARKING);
 	}
 
 	// This is a new subclass of Vehicle class that has some different parameters
 	// like max acceleration and max deceleration
 	public Vehicle(float maximumAcceleration, float maximumDeceleration, int vClass) {
-		this.id = ContextCreator.generateAgentID();
-		this.currentCoord_ = new Coordinate();
-		this.activityplan = new ArrayList<Plan>(); // empty plan
-		this.length = GlobalVariables.DEFAULT_VEHICLE_LENGTH;
-		this.travelPerTurn = GlobalVariables.TRAVEL_PER_TURN;
+		this(vClass);
 		this.maxAcceleration_ = maximumAcceleration;
 		this.maxDeceleration_ = maximumDeceleration;
-		this.normalDeceleration_ = -0.5f;
-		this.previousEpochCoord = new Coordinate();
-		this.endTime = 0;
-		this.atOrigin = true;
-		this.reachDest = false;
-		this.accRate_ = 0;
-		this.lane = null;
-		this.nextLane_ = null;
-		this.nosingFlag = false;
-		this.yieldingFlag = false;
-		this.macroLeading_ = null;
-		this.macroTrailing_ = null;
-		this.leading_ = null;
-		this.trailing_ = null;
-		this.road = null;
-		this.nextRoad_ = null;
-		this.laneGeography = ContextCreator.getLaneGeography();
-		this.coordMap = new ArrayList<Coordinate>();
-		this.setDestRoadID(0);
-		// Upload the vehicle into the queue of the corresponding link
-		this.lastStepMove_ = 0;
-		this.vehicleID_ = this.id;
-		this.accummulatedDistance_ = 0;
-		this.roadPath = null;
-
-		// For adaptive network partitioning
-		this.Nshadow = 0;
-		this.futureRoutingRoad = new ArrayList<Road>();
-		this.setVehicleClass(vClass);
 	}
 
 	// Change the destination of the vehicle
@@ -371,7 +340,7 @@ public class Vehicle {
 					if ((tempPath != null) && (tempPath.size() > 1)) {
 						this.nextRoad_ = roadPath.get(1);
 					} else {
-						this.nextRoad_ = null;
+						// Do nothing, keep the original route
 					}
 				} else {
 					this.removeShadowCount(this.roadPath.get(0));
