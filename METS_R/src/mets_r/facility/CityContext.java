@@ -537,12 +537,11 @@ public class CityContext extends DefaultContext<Object> {
 			boolean flag = true;
 			while (flag) {
 				for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
-					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2
-							&& !z1.neighboringZones.contains(z2)) {
-						z1.neighboringZones.add(z2);
+					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2) {
+						z1.addNeighboringZone(z2);
 					}
 				}
-				if (z1.neighboringZones.size() < ContextCreator.getZoneGeography().size() - 1) {
+				if (z1.getNeighboringZoneSize() < ContextCreator.getZoneGeography().size() - 1) {
 					threshold = threshold + 1000;
 				} else {
 					flag = false;
@@ -555,7 +554,7 @@ public class CityContext extends DefaultContext<Object> {
 			Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER); // 5km surrounding area for cruising
 			// Road nearestRoad = null;
 			for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				z1.neighboringLinks.add(road);
+				z1.addNeighboringLink(road);
 			}
 			
 		}

@@ -2,6 +2,7 @@ package mets_r.facility;
 
 import java.util.ArrayList;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -49,7 +50,7 @@ public class Lane {
 	private ArrayList<Lane> upLanes_;// Upstream lanes that connect to this
 	private ArrayList<Lane> dnLanes_;// Down stream lanes that connect to
 	private int index;
-	private int lastEnterTick = -1; // Store the latest enter time of vehicles
+	private AtomicInteger lastEnterTick = new AtomicInteger(-1); // Store the latest enter time of vehicles
 
 	public Lane() {
 		this.id = ContextCreator.generateAgentID();
@@ -61,11 +62,11 @@ public class Lane {
 	}
 
 	public void updateLastEnterTick(int current_tick) {
-		this.lastEnterTick = current_tick;
+		this.lastEnterTick.set(current_tick);
 	}
 
 	public int getLastEnterTick() {
-		return this.lastEnterTick;
+		return this.lastEnterTick.get();
 	}
 
 	public int getLaneid() {

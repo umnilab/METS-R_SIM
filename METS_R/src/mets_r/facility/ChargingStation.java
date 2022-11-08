@@ -10,7 +10,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -23,13 +23,13 @@ public class ChargingStation {
 	private Random rand;
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
 	// capacity for the taxi is 50.0 kWh.
-	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
-	private LinkedList<ElectricVehicle> queueChargingL3; // Car queue waiting for L3 charging
+	private LinkedList<ElectricTaxi> queueChargingL2; // Car queue waiting for L2 charging
+	private LinkedList<ElectricTaxi> queueChargingL3; // Car queue waiting for L3 charging
 	private LinkedList<ElectricBus> queueChargingBus; // Bus queue waiting for bus charging
 	private int num2; // Number of L2 chargers
 	private int num3; // Number of L3 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
-	private ArrayList<ElectricVehicle> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
+	private ArrayList<ElectricTaxi> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
+	private ArrayList<ElectricTaxi> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
 	private ArrayList<ElectricBus> chargingBus; // Buses that are charging themselves under the bus chargers
 
 	private static double chargingRateL2 = 10.0; // Charging rate for L2: 10.0kWh/hour
@@ -46,8 +46,8 @@ public class ChargingStation {
 	public int numChargedVehicle;
 
 	// For thread-safe operation
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3; // Pending Car queue waiting for L3 charging
+	private ConcurrentLinkedQueue<ElectricTaxi> toAddChargingL2; // Pending Car queue waiting for L2 charging
+	private ConcurrentLinkedQueue<ElectricTaxi> toAddChargingL3; // Pending Car queue waiting for L3 charging
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
 
 	public ChargingStation(int integerID, int numL2, int numL3) {
@@ -56,14 +56,14 @@ public class ChargingStation {
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.num2 = numL2; // Number of level 2 charger
 		this.num3 = numL3; // Number of level 3 charger
-		this.queueChargingL2 = new LinkedList<ElectricVehicle>();
-		this.queueChargingL3 = new LinkedList<ElectricVehicle>();
+		this.queueChargingL2 = new LinkedList<ElectricTaxi>();
+		this.queueChargingL3 = new LinkedList<ElectricTaxi>();
 		this.queueChargingBus = new LinkedList<ElectricBus>();
-		this.chargingVehicleL2 = new ArrayList<ElectricVehicle>();
-		this.chargingVehicleL3 = new ArrayList<ElectricVehicle>();
+		this.chargingVehicleL2 = new ArrayList<ElectricTaxi>();
+		this.chargingVehicleL3 = new ArrayList<ElectricTaxi>();
 		this.chargingBus = new ArrayList<ElectricBus>();
-		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
-		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricTaxi>();
+		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricTaxi>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<ElectricBus>();
 		this.numChargedVehicle = 0;
 	}
@@ -105,7 +105,7 @@ public class ChargingStation {
 	}
 
 	// Function2: vehicleArrive()
-	public void receiveEV(ElectricVehicle ev) {
+	public void receiveEV(ElectricTaxi ev) {
 		ev.initial_charging_state = ev.getBatteryLevel();
 		this.numChargedVehicle += 1;
 		if ((num2 > 0) && (num3 > 0)) {
@@ -129,10 +129,10 @@ public class ChargingStation {
 	}
 
 	public void processToAddEV() {
-		for (ElectricVehicle ev = this.toAddChargingL2.poll(); ev != null; ev = this.toAddChargingL2.poll()) {
+		for (ElectricTaxi ev = this.toAddChargingL2.poll(); ev != null; ev = this.toAddChargingL2.poll()) {
 			queueChargingL2.add(ev);
 		}
-		for (ElectricVehicle ev = this.toAddChargingL3.poll(); ev != null; ev = this.toAddChargingL3.poll()) {
+		for (ElectricTaxi ev = this.toAddChargingL3.poll(); ev != null; ev = this.toAddChargingL3.poll()) {
 			queueChargingL3.add(ev);
 		}
 	}
@@ -140,8 +140,8 @@ public class ChargingStation {
 	// Function3: charge the vehicle by the L2 chargers.
 	public void chargeL2() {
 		if (chargingVehicleL2.size() > 0) { // the number of vehicles that are at chargers.
-			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
-			for (ElectricVehicle ev : chargingVehicleL2) {
+			ArrayList<ElectricTaxi> toRemoveVeh = new ArrayList<ElectricTaxi>();
+			for (ElectricTaxi ev : chargingVehicleL2) {
 				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel(); // the maximal battery
 																								// level is 50.0kWh
 
@@ -172,10 +172,10 @@ public class ChargingStation {
 		if (chargingVehicleL2.size() < num2) { // num2: number of L2 charger.
 			int addNumber = Math.min(num2 - chargingVehicleL2.size(), queueChargingL2.size());
 			for (int i = 0; i < addNumber; i++) {
-				ElectricVehicle vehicleEnter = queueChargingL2.poll();
+				ElectricTaxi vehicleEnter = queueChargingL2.poll();
 				chargingVehicleL2.add(vehicleEnter); // the vehicle enters the charging areas.
 			}
-			for (ElectricVehicle v : queueChargingL2) {
+			for (ElectricTaxi v : queueChargingL2) {
 				v.charging_waiting_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 			}
 		}
@@ -184,8 +184,8 @@ public class ChargingStation {
 	// Function4: charge the vehicle by the L3 chargers.
 	public void chargeL3() {
 		if (chargingVehicleL3.size() > 0) { // the number of vehicles that are at chargers.
-			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
-			for (ElectricVehicle ev : chargingVehicleL3) {
+			ArrayList<ElectricTaxi> toRemoveVeh = new ArrayList<ElectricTaxi>();
+			for (ElectricTaxi ev : chargingVehicleL3) {
 				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel(); // the maximal battery
 																								// level is 50.0kWh
 				double C_car = GlobalVariables.EV_BATTERY;
@@ -209,10 +209,10 @@ public class ChargingStation {
 		if (chargingVehicleL3.size() < num3) { // num3: number of L3 charger.
 			int addNumber = Math.min(num3 - chargingVehicleL3.size(), queueChargingL3.size());
 			for (int i = 0; i < addNumber; i++) {
-				ElectricVehicle vehicleEnter = queueChargingL3.poll();
+				ElectricTaxi vehicleEnter = queueChargingL3.poll();
 				chargingVehicleL3.add(vehicleEnter); // the vehicle enters the charging areas.
 			}
-			for (ElectricVehicle v : queueChargingL3) {
+			for (ElectricTaxi v : queueChargingL3) {
 				v.charging_waiting_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 			}
 		}
@@ -259,7 +259,7 @@ public class ChargingStation {
 	// It consists of two parts: waiting time and charging time.
 	// Waiting time is equal to total charging demand in front of the vehicle
 	// divided by the maximal L2 charging supply.//
-	public double totalTimeL2(ElectricVehicle ev) { // hour
+	public double totalTimeL2(ElectricTaxi ev) { // hour
 		int numChargingVehicle = chargingVehicleL2.size(); // Number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL2.size(); // Number of vehicles that in the queue.
 		// Assume each charging vehicle needs 20kWh more, each waiting vehicle needs
@@ -272,7 +272,7 @@ public class ChargingStation {
 	}
 
 	// Function: the charging price of using L2 charger.
-	public double chargingCostL2(ElectricVehicle ev) {
+	public double chargingCostL2(ElectricTaxi ev) {
 		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL2; // unit: hour
 		double price = chargingTime * chargingFeeL2; // unit: dollar
 		return price;
@@ -282,7 +282,7 @@ public class ChargingStation {
 	// It consists of two parts: waiting time and charging time.
 	// Waiting time is equal to total charging demand in front of the vehicle
 	// divided by the maximal L2 charging supply.//
-	public double totalTimeL3(ElectricVehicle ev) { // hour
+	public double totalTimeL3(ElectricTaxi ev) { // hour
 		int numChargingVehicle = chargingVehicleL3.size(); // number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL3.size(); // number of vehicles that in the queue.
 		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs
@@ -295,7 +295,7 @@ public class ChargingStation {
 	}
 
 	// Function: the charging price of using L2 chager.
-	public double chargingCostL3(ElectricVehicle ev) {
+	public double chargingCostL3(ElectricTaxi ev) {
 		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL3; // unit: hour
 		double price = chargingTime * chargingFeeL3; // unit: dollar
 		return price;

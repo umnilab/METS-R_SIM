@@ -11,7 +11,7 @@ import mets_r.GlobalVariables;
 import mets_r.NetworkEventObject;
 import mets_r.facility.Road;
 import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 
@@ -295,7 +295,7 @@ public class DataCollector {
 		}
 		if (vehicle.getVehicleClass() == 1) { // EV
 			// Add the vehicle to the current snapshot
-			this.currentSnapshot.logEV((ElectricVehicle) vehicle, coordinate, vehicle.getState());
+			this.currentSnapshot.logEV((ElectricTaxi) vehicle, coordinate, vehicle.getState());
 		}
 
 		if (vehicle.getVehicleClass() == 2) { // Bus

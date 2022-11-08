@@ -21,7 +21,7 @@ import mets_r.facility.Zone;
 import repast.simphony.essentials.RepastEssentials;
 
 /**
- * 
+ * Electric buses
  * @author Zengxiang Lei, Jiawei Xue
  *
  */
@@ -214,7 +214,7 @@ public class ElectricBus extends Vehicle {
 								.isEmpty(); p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size())
 										.poll()) {
 					p.moveToNextActivity();
-					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).toAddRequestForTaxi.add(p);
+					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).insertTaxiPass(p);
 				}
 			}
 			

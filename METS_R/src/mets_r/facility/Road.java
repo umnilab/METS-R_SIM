@@ -12,7 +12,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.*;
 import mets_r.data.DataCollector;
 import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 import repast.simphony.essentials.RepastEssentials;
@@ -33,10 +33,8 @@ public class Road {
 	private int toNode;
 	private int curhour; // To find the current hour of the simulation
 	private String identifier; // Can be used to match with shape file roads
-	private String description = "";
-
-	public int nVehicles_; // Number of vehicles currently in the road
-
+	private String description = ""; // Real world name of the links
+	private int nVehicles_; // Number of vehicles currently in the road
 	private int nShadowVehicles; // Potential vehicles might be loaded on the road
 	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
 
@@ -47,7 +45,6 @@ public class Road {
 
 	private Road oppositeRoad;
 	private ArrayList<Road> downStreamMovements;
-
 	private ArrayList<Lane> lanes; // Use lanes as objects inside the road
 	private ArrayList<Junction> junctions;
 
@@ -60,11 +57,11 @@ public class Road {
 	private Vehicle firstVehicle_;
 
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
-
 	private double defaultFreeSpeed_; // Store default speed limit value in case of events
-
-	private double totalEnergy;
-	private int totalFlow;
+	
+	// Service metrics
+    public double totalEnergy;
+    public int totalFlow;
 
 	// Road constructor
 	public Road() {
@@ -626,7 +623,7 @@ public class Road {
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
 		if (v.getVehicleClass() == 1) { // EV
-			ElectricVehicle ev = (ElectricVehicle) v;
+			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
 			ev.resetLinkConsume();
 		} else if (v.getVehicleClass() == 2) {

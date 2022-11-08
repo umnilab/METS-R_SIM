@@ -2,7 +2,7 @@ package mets_r.data;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 
 /**
  * This class is the simple data object for capturing the state of an EvacSim
@@ -76,7 +76,7 @@ public class EVSnapshot {
 	 * @param coordinate the vehicle's current position in the simulation.
 	 * @throws Throwable if the supplied vehicle object is not valid.
 	 */
-	public EVSnapshot(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
+	public EVSnapshot(ElectricTaxi vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getVehicleID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),

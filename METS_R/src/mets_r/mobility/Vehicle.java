@@ -5,7 +5,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.DataCollector;
-import mets_r.facility.CityContext;
 import mets_r.facility.Junction;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
@@ -16,6 +15,7 @@ import org.opengis.referencing.operation.MathTransformFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.geotools.referencing.GeodeticCalculator;
 import org.geotools.referencing.ReferencingFactoryFinder;
@@ -30,13 +30,11 @@ import util.Pair;
  **/
 
 public class Vehicle {
-	protected int id;
-	protected Random rand;
-	protected int vehicleID_;
-	// Constants
+	/* Constants */
 	public final static int GASOLINE = 0;
 	public final static int ETAXI = 1;
 	public final static int EBUS = 2;
+	public final static int PRIVATE_EV = 3;
 	public final static int PARKING = 0;
 	public final static int OCCUPIED_TRIP = 1;
 	public final static int RELOCATION_TRIP = 2;
@@ -45,14 +43,9 @@ public class Vehicle {
 	public final static int BUS_TRIP = 3;
 	public final static int CHARGING_TRIP = 4;
 	public final static int NONE_OF_THE_ABOVE = -1;
-	// Vehicle status and class
-	private int vehicleClass; // 0 for gasoline vehicle, 1 for electric vehicle, 2 for bus.
-	private int vehicleState; // 0 for empty, 1 for normal trip, 2 for relocation trip, 3 for bus trip, 4 for
-								// charging trip
-
+	
 	/*
-	 * Vehicle movement variables that do not need to be visible to descendant
-	 * classes
+	 * Private variables that do not need to be visible to descendant classes
 	 */
 	private int destRoadID;
 	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized
@@ -76,8 +69,8 @@ public class Vehicle {
 	private int destinationID = -1;
 	private Coordinate originCoord;
 	private Coordinate destCoord;
-	private Coordinate previousEpochCoord;// HGehlot: this variable stores the coordinates of the vehicle when last time
-											// vehicle snapshot was recorded for visualization interpolation
+	private Coordinate previousEpochCoord;// This variable stores the coordinates of the vehicle when last time
+										  // vehicle snapshot was recorded for visualization interpolation
 	private boolean reachDest;
 	private boolean onLane;
 	private boolean atOrigin;
@@ -85,35 +78,47 @@ public class Vehicle {
 	private Road nextRoad_;
 	private Lane lane;
 	private Lane nextLane_;
+	
+	// Vehicle status and class
+	private int vehicleClass; 
+	private int vehicleState; 
+	
 	// For vehicle based routing
 	private List<Road> roadPath; // The route is always started with the current road, whenever entering the next
-									// road, the current road will be popped out
+								 // road, the current road will be popped out
 	private List<Coordinate> coordMap;
 	private Geography<Lane> laneGeography;
 	private Vehicle leading_; // leading vehicle in the lane
 	private Vehicle trailing_; // Trailing vehicle in the lane
 	private Vehicle macroLeading_; // Leading vehicle on the road (with all lanes combined)
 	private Vehicle macroTrailing_; // Trailing vehicle on the road (with all lanes combined)
+	
 	// Variables for lane changing model
 	private Lane targetLane_; // This is the correct lane that vehicle should change to.
 	private boolean correctLane; // To check if the vehicle is in the correct lane
 	private boolean nosingFlag;// If a vehicle in MLC and it can't find gap acceptance then nosing is true.
 	private boolean yieldingFlag; // The vehicle need to yield if true
+	
 	// For adaptive network partitioning
 	private int Nshadow; // Number of current shadow roads in the path
 	private ArrayList<Road> futureRoutingRoad;
-	// For solving the grid-lock issue
-	private int lastMoveTick = -1;
-	private int stuckTime = 0;
 	private ArrayList<Plan> activityplan; // A set of zone for the vehicle to visit
-
-	/* Vehicle movement that can be accessed through descendant classes */
-	private float accummulatedDistance_; // Accumulated travel distance in the current trip
-	protected boolean movingFlag = false; // Whether this vehicle is moving
-
+	
+	// For calculating vehicle coordinates
 	GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 	MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
+	
+	// For solving the grid-lock issue in the multi-thread mode
+	private AtomicInteger lastMoveTick = new AtomicInteger(0);
+	private int stuckTime = 0;
 
+	/* Protected variables that can be accessed through descendant classes */
+	protected int id;
+	protected int vehicleID_;
+	protected Random rand; // Random seeds for making lane changing, cruising decisions
+	protected float accummulatedDistance_; // Accumulated travel distance in the current trip
+	protected boolean movingFlag = false; // Whether this vehicle is moving
+	
 	public Vehicle(int vClass) {
 		this.id = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
@@ -175,9 +180,8 @@ public class Vehicle {
 		this.destinationID = next.getDestID();
 		double duration = next.getDuration();
 		this.deptime = (int) duration;
-		CityContext cityContext = (CityContext) ContextCreator.getCityContext();
 		this.destCoord = next.getLocation();
-		this.setDestRoadID(cityContext.findRoadAtCoordinates(this.destCoord).getLinkid());
+		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord).getLinkid());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
 		this.activityplan.remove(0); // Remove current schedule
 	}
@@ -356,7 +360,7 @@ public class Vehicle {
 				this.clearShadowImpact();
 				this.roadPath = new ArrayList<Road>();
 				if (this.getVehicleClass() == 1 && this.getState() == Vehicle.OCCUPIED_TRIP) { // EV taxis
-					ElectricVehicle ev = (ElectricVehicle) this;
+					ElectricTaxi ev = (ElectricTaxi) this;
 					if (!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV
 							&& !ev.onChargingRoute()) {
 						Pair<List<Road>, Integer> route_result = RouteV.ecoRoute(ev.getOriginID(), ev.getDestID());
@@ -1258,11 +1262,11 @@ public class Vehicle {
 	}
 
 	public void updateLastMoveTick(int current_tick) {
-		this.lastMoveTick = current_tick;
+		this.lastMoveTick.set(current_tick);
 	}
 
 	public int getLastMoveTick() {
-		return this.lastMoveTick;
+		return this.lastMoveTick.get();
 	}
 
 	// Remove a vehicle from the macro vehicle list in the current road
@@ -1846,8 +1850,8 @@ public class Vehicle {
 
 		// Record energy consumption
 		if (this.getVehicleClass() == 1) { // EV
-			((ElectricVehicle) this).recLinkSnaphotForUCB();
-			((ElectricVehicle) this).recSpeedVehicle();
+			((ElectricTaxi) this).recLinkSnaphotForUCB();
+			((ElectricTaxi) this).recSpeedVehicle();
 		} else if (this.getVehicleClass() == 2) { // Bus
 			((ElectricBus) this).recLinkSnaphotForUCBBus();
 		}

@@ -12,7 +12,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.NetworkEventObject;
 import mets_r.facility.Road;
 import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -157,7 +157,7 @@ public class TickSnapshot {
 	}
 
 	// Store the current state of the given EV to the tick snapshot.
-	public void logEV(ElectricVehicle vehicle, Coordinate coordinate, int vehState) throws Throwable {
+	public void logEV(ElectricTaxi vehicle, Coordinate coordinate, int vehState) throws Throwable {
 		if (vehicle == null) {
 			return;
 		}

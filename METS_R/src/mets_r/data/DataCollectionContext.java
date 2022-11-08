@@ -7,7 +7,7 @@ import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 import repast.simphony.context.DefaultContext;
 import repast.simphony.engine.environment.RunEnvironment;
 
@@ -139,7 +139,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		}
 
 		for (Road r : ContextCreator.getRoadContext().getAllObjects()) {
-			vehicleOnRoad += r.nVehicles_;
+			vehicleOnRoad += r.getVehicleNum();
 			if (r.getTotalEnergy() > 0) {
 				String formated_msg = currentTick + "," + r.getLinkid() + "," + r.getTotalFlow() + ","
 						+ r.getTotalEnergy();
@@ -156,7 +156,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			numChargedVehicle += cs.numChargedVehicle;
 		}
 
-		for (ElectricVehicle v : ContextCreator.getVehicleContext().getVehicles()) {
+		for (ElectricTaxi v : ContextCreator.getVehicleContext().getVehicles()) {
 			battery_mean += v.getBatteryLevel();
 			battery_std += v.getBatteryLevel() * v.getBatteryLevel();
 		}

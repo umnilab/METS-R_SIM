@@ -19,41 +19,16 @@ import mets_r.facility.Zone;
 import repast.simphony.essentials.RepastEssentials;
 
 /**
- * 
+ * Electric taxis
  * @author Zengxiang Lei, Jiawei Xue, Juan Suarez
  *
  */
 
-public class ElectricVehicle extends Vehicle {
-	// Local variables
-	private int numPeople_; // no of people inside the vehicle
-	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
-	private double avgPersonMass_; // average mass of a person in lbs
-	private double batteryLevel_; // current battery level
-	private double lowerBatteryRechargeLevel_;
-	private double higherBatteryRechargeLevel_;
-	private double mass; // mass of the vehicle in kg
-	private boolean onChargingRoute_ = false;
-	private int cruisingTime_;
-
-	// Parameters for storing energy consumptions
-	private double tickConsume;
-	private double totalConsume;
-	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
-								// zero once this ev entering a new road.
-	private double tripConsume; // For UCB testing
-
-	public int served_pass = 0;
-	public int charging_time = 0;
-	public int charging_waiting_time = 0;
-	public double initial_charging_state = 0;
-
+public class ElectricTaxi extends Vehicle {
+	/* Constant */
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
 	public static double batteryCapacity = GlobalVariables.EV_BATTERY; // the storedEnergy is 50 kWh.
-
-	// Parameter to show which route has been chosen in eco-routing.
-	private int routeChoice = -1;
-
+	
 	// Parameters for Fiori (2016) model
 	public static double p0 = 1.2256;
 	public static double A = 2.3316;
@@ -82,13 +57,40 @@ public class ElectricVehicle extends Vehicle {
 	// public static double cp = 77.0; // cp = 77.0; ///nominal capacity: 77 AH
 	// public static double c = 20.0;
 
-	public ElectricVehicle() {
+	// Local variables
+	private int numPeople_; // no of people inside the vehicle
+	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
+	private double avgPersonMass_; // average mass of a person in lbs
+	private double batteryLevel_; // current battery level
+	private double lowerBatteryRechargeLevel_;
+	private double higherBatteryRechargeLevel_;
+	private double mass; // mass of the vehicle in kg
+	private boolean onChargingRoute_ = false;
+	private int cruisingTime_;
+
+	// Parameters for storing energy consumptions
+	private double tickConsume;
+	private double totalConsume;
+	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
+								// zero once this ev entering a new road.
+	private double tripConsume; // For UCB testing
+	
+	// Service metrics
+	public int served_pass = 0;
+	public int charging_time = 0;
+	public int charging_waiting_time = 0;
+	public double initial_charging_state = 0;
+
+	// Parameter to show which route has been chosen in eco-routing.
+	private int routeChoice = -1;
+	
+	public ElectricTaxi() {
 		super(Vehicle.ETAXI);
 		this.setInitialParams();
 	}
 
-	public ElectricVehicle(float maximumAcceleration, float maximumDeceleration) {
-		super(maximumAcceleration, maximumDeceleration, 1);
+	public ElectricTaxi(float maximumAcceleration, float maximumDeceleration) {
+		super(maximumAcceleration, maximumDeceleration, Vehicle.ETAXI);
 		this.setInitialParams();
 	}
 
@@ -110,9 +112,9 @@ public class ElectricVehicle extends Vehicle {
 	// Randomly select a neighboring link and update the activity plan
 	public void goCrusing(Zone z) {
 		// Add a cruising activity
-		Road r = z.neighboringLinks.get(this.rand.nextInt(z.neighboringLinks.size()));
+		Road r = z.getNeighboringLink(this.rand.nextInt(z.getNeighboringLinkSize()));
 		while(r.getJunctions().get(0) == this.getRoad().getJunctions().get(1)) {
-			r = z.neighboringLinks.get(this.rand.nextInt(z.neighboringLinks.size()));
+			r = z.getNeighboringLink(this.rand.nextInt(z.getNeighboringLinkSize()));
 		}
 		this.addPlan(z.getIntegerID(), r.getJunctions().get(1).getCoordinate(), (int) RepastEssentials.GetTickCount());
 		this.setNextPlan();
@@ -144,7 +146,7 @@ public class ElectricVehicle extends Vehicle {
 	// Find the closest Zone with parking space and relocate to their
 	public void goParking() {
 		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).removeOneCruisingVehicle();
-		for(Zone z: ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).neighboringZones) {
+		for(Zone z: ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).getNeighboringZones()) {
 			if(z.getCapacity()>0) {
 				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
 				ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).numberOfRelocatedVehicles += 1;
@@ -265,9 +267,9 @@ public class ElectricVehicle extends Vehicle {
 					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
 					if (z.busReachableZone.contains(p.getDestination())) {
-						z.toAddRequestForBus.add(p); // if bus can reach the destination
+						z.insertBusPass(p); // if bus can reach the destination
 					} else {
-						z.toAddRequestForTaxi.add(p); // this is called when we dynamically update bus schedules
+						z.insertTaxiPass(p); // this is called when we dynamically update bus schedules
 					}
 				}
 				
