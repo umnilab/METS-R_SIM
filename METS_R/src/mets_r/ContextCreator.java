@@ -459,7 +459,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
 		logger.info("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
 		// Schedule start of sim
-		ScheduleParameters startParams = ScheduleParameters.createOneTime(1);
+		ScheduleParameters startParams = ScheduleParameters.createOneTime(ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(startParams, this, "start");
 		// Schedule end of sim
 		ScheduleParameters endParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
@@ -598,22 +598,22 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	// Schedule the event for data collection
 	public void scheduleDataCollection() {
-		double tickDuration = 1.0d;
+		int tickDuration = 1;
 
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-			ScheduleParameters dataStartParams = ScheduleParameters.createOneTime(0.0,
+			ScheduleParameters dataStartParams = ScheduleParameters.createOneTime(0,
 					ScheduleParameters.FIRST_PRIORITY);
 			schedule.schedule(dataStartParams, dataContext, "startCollecting");
 
 			ScheduleParameters dataEndParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
 			schedule.schedule(dataEndParams, dataContext, "stopCollecting");
 
-			ScheduleParameters tickStartParams = ScheduleParameters.createRepeating(0.0d, tickDuration,
+			ScheduleParameters tickStartParams = ScheduleParameters.createRepeating(0, tickDuration,
 					ScheduleParameters.FIRST_PRIORITY);
 			schedule.schedule(tickStartParams, dataContext, "startTick");
 
-			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(0.0d, tickDuration,
+			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(0, tickDuration,
 					ScheduleParameters.LAST_PRIORITY);
 			schedule.schedule(tickEndParams, dataContext, "stopTick");
 
@@ -637,6 +637,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduleRoadNetworkRefresh();
 		scheduleFreeFlowSpeedRefresh();
 		scheduleNetworkEventHandling(); // For temporarily alter the link speed
+		
+		// Set up data collection
+		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
+			scheduleDataCollection();
+		}
 
 		// Schedule events for both sequential and parallel updates
 		if (GlobalVariables.MULTI_THREADING) {
@@ -648,12 +653,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleSequentialZoneStep();
 			scheduleSequentialChargingStationStep();
 		}
-
-		// Set up data collection
-		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
-			scheduleDataCollection();
-		}
-
+		
 		logger.info("Events scheduled!");
 
 		agentID = 0;
