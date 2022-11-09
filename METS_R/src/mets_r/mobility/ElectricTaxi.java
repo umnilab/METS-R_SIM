@@ -554,10 +554,10 @@ public class ElectricTaxi extends Vehicle {
 		}
 
 		this.onChargingRoute_ = false;
-		this.setNextPlan();
+		this.setNextPlan(); // Return to where it was before goCharging
 		ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).addFutureSupply();
 		this.setState(Vehicle.RELOCATION_TRIP);
-		this.departure();
+		this.departure(); 
 	}
 
 	public double getLinkConsume() {

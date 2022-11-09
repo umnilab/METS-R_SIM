@@ -229,7 +229,6 @@ public class DataCollector {
 	 * @param tickNumber the number of the time step of the simulation tick.
 	 */
 	public void startTickCollection(double tickNumber) {
-
 		GlobalVariables.datacollection_start = System.currentTimeMillis();
 
 //        if ((int)tickNumber % 100 == 0) {

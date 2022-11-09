@@ -210,7 +210,7 @@ public class Vehicle {
 	// Add vehicle to the closest road
 	public void departure() {
 		this.reachDest = false;
-		if(!this.onLane) {
+		if(!this.onLane) { // If the vehicle not in the network, we add it to a pending list to the closest link
 			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord());
 			// The first list of coordinates for the vehicle to follow
 			Coordinate[] coords = laneGeography.getGeometry(road.firstLane()).getCoordinates();
@@ -219,7 +219,7 @@ public class Vehicle {
 			}
 			road.addVehicleToPendingQueue(this);
 		}
-		else {
+		else { // The vehicle is on road, we just need to reroute it
 			this.setNextRoad(); // refresh the CoordMap
 			this.assignNextLane();
 		}
