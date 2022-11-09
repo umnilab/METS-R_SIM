@@ -170,7 +170,7 @@ public class Road {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
 				if (tickcount <= currentVehicle.getLastMoveTick()) {
 					break; // This vehicle just entered this link, which indicates
-							// we reached the end of the linked list
+							// that we have reached the end of the linked list
 				}
 				currentVehicle.calcState();
 				if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0) {

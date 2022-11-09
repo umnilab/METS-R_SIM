@@ -109,7 +109,7 @@ public class Vehicle {
 	MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
 	
 	// For solving the grid-lock issue in the multi-thread mode
-	private AtomicInteger lastMoveTick = new AtomicInteger(0);
+	private AtomicInteger lastMoveTick = new AtomicInteger(-1);
 	private int stuckTime = 0;
 
 	/* Protected variables that can be accessed through descendant classes */

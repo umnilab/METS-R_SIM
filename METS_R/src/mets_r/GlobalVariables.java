@@ -65,6 +65,10 @@ public class GlobalVariables {
 	/* Input Files */
 	// Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
 	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>(Arrays.asList(131, 140, 180));
+	public static final List<Integer> PASSENGER_WAITING_THRESHOLD =  new ArrayList<Integer>(Arrays.asList(1031, 796, 522, 
+			496, 457, 432, 430, 476, 530, 534, 597, 528, 504, 504, 527, 587, 553, 578, 791, 667, 658, 653, 808, 772, 738, 
+			585, 527, 495, 459, 437, 440, 460, 527, 559, 588, 649, 548, 539, 561, 583, 621, 809, 1007, 1049, 1124, 
+			804, 963, 900));
 
 	// Road Network
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");
@@ -87,7 +91,6 @@ public class GlobalVariables {
 	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
 	public static final double PASSENGER_DEMAND_FACTOR = Double.valueOf(loadConfig("PASSENGER_DEMAND_FACTOR"));
 	public static final double PASSENGER_SHARE_PERCENTAGE = Double.valueOf(loadConfig("PASSENGER_SHARE_PERCENTAGE"));
-	public static final int PASSENGER_WAITING_THRESHOLD = Integer.valueOf(loadConfig("PASSENGER_WAITING_THRESHOLD"));
 	
 	// Default bus schedule
 	public static final String BUS_SCHEDULE = loadConfig("BUS_SCHEDULE");

@@ -38,10 +38,11 @@ public class Zone {
 	private int nRequestForBus; // Number of requests for Bus
 	private AtomicInteger parkingVehicleStock; // Number of available vehicles at this zone
 	private AtomicInteger cruisingVehicleStock;
-	private int curhour = -1; // the last time for updating the travel time estimation
+	private int current_hour = -1;
+	private int lastTravelTimeUpdateHour = -1; // the last time for updating the travel time estimation
 	
 	// For vehicle repositioning
-	private int lastUpdateHour = -1; // the last time for updating the demand generation rate
+	private int lastDemandUpdateHour = -1; // the last time for updating the demand generation rate
 	private double futureDemand; // demand in the near future
 	private AtomicInteger futureSupply; // supply in the near future
 	
@@ -165,13 +166,12 @@ public class Zone {
 	// Generate passenger
 	protected void generatePassenger() {
 		int tickcount = (int) RepastEssentials.GetTickCount();
-		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL);
-		hour = hour % GlobalVariables.HOUR_OF_DEMAND;
-		if (this.lastUpdateHour != hour) {
+		this.current_hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
+		if (this.lastDemandUpdateHour != this.current_hour) {
 			this.futureDemand = 0.0;
 		}
 		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
-			double passRate = ContextCreator.getTravelDemand(this.getIntegerID(), destination, hour)
+			double passRate = ContextCreator.getTravelDemand(this.getIntegerID(), destination, this.current_hour)
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 
@@ -197,7 +197,7 @@ public class Zone {
 							this.numberOfGeneratedBusRequest += 1;
 						}
 					}
-					if (this.lastUpdateHour != hour) {
+					if (this.lastDemandUpdateHour != this.current_hour) {
 						this.futureDemand+= (passRate * threshold);
 					}
 				} else if (GlobalVariables.COLLABORATIVE_EV) {
@@ -228,7 +228,7 @@ public class Zone {
 								this.numberOfGeneratedCombinedRequest += 1;
 							}
 						}
-						if (this.lastUpdateHour != hour) {
+						if (this.lastDemandUpdateHour != this.current_hour) {
 							this.futureDemand+=(passRate * threshold);
 						}
 					} else if (this.zoneClass == 1 && this.nearestZoneWithBus.containsKey(destination)) { // hub
@@ -258,7 +258,7 @@ public class Zone {
 								this.numberOfGeneratedCombinedRequest += 1;
 							}
 						}
-						if (this.lastUpdateHour != hour) {
+						if (this.lastDemandUpdateHour != this.current_hour) {
 							this.futureDemand= (passRate * threshold);
 						}
 					}
@@ -273,7 +273,7 @@ public class Zone {
 						}
 						this.numberOfGeneratedTaxiRequest += 1;
 					}
-					if (this.lastUpdateHour != hour) {
+					if (this.lastDemandUpdateHour != this.current_hour) {
 						this.futureDemand+=(passRate);
 					}
 				}
@@ -282,8 +282,8 @@ public class Zone {
 		ContextCreator.logger.debug("current buss pass is" + this.numberOfGeneratedBusRequest);
 		ContextCreator.logger.debug("current taxi pass is" + this.numberOfGeneratedTaxiRequest);
 
-		if (this.lastUpdateHour != hour) {
-			this.lastUpdateHour = hour;
+		if (this.lastDemandUpdateHour != this.current_hour) {
+			this.lastDemandUpdateHour = this.current_hour;
 		}
 	}
 
@@ -564,7 +564,7 @@ public class Zone {
 		// Get current tick
 		int tickcount = (int) RepastEssentials.GetTickCount();
 		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
-		if (this.curhour < hour) {
+		if (this.lastTravelTimeUpdateHour < hour) {
 			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
 			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
 			// is hub
@@ -613,7 +613,7 @@ public class Zone {
 				this.updateCombinedTravelEstimation();
 			}
 
-			this.curhour = hour;
+			this.lastTravelTimeUpdateHour = hour;
 		}
 	}
 
@@ -749,7 +749,7 @@ public class Zone {
 	// are usually associate with Zones
 	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
     protected int generateWaitingTimeForTaxi() {
-		return (int) (GlobalVariables.PASSENGER_WAITING_THRESHOLD * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
+		return (int) (GlobalVariables.PASSENGER_WAITING_THRESHOLD.get(this.current_hour) / GlobalVariables.SIMULATION_STEP_SIZE);
 	}
     
     // Generate passenger waiting time for bus
