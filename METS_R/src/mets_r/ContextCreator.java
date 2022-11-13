@@ -283,8 +283,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 			zone_logger.write(
 					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
 							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
-							+ "taxiServedPass,busServedPass,taxiPassWaitingTime,busPassWaitingTime,"
-							+ "taxiLeavedPass,busLeavedPass,taxiParkingTime,taxiCruisingTime,futureDemand,futureSupply");
+							+ "taxiServedPass,busServedPass,taxiServedPassWaitingTime,busServedPassWaitingTime,"
+							+ "taxiLeavedPass,busLeavedPass,taxiLeavedPassWaitingTime,busLeavedPassWaitingTime,"
+							+ "taxiParkingTime,taxiCruisingTime,futureDemand,futureSupply");
 			zone_logger.newLine();
 			zone_logger.flush();
 			logger.info("Zone logger created!");

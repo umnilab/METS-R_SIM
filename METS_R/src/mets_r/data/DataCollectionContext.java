@@ -125,8 +125,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
 					+ z.numberOfGeneratedBusRequest + "," + z.numberOfGeneratedCombinedRequest + ","
 					+ z.taxiPickupRequest + "," + z.busPickupRequest + "," + z.combinePickupPart1 + ","
 					+ z.combinePickupPart2 + "," + z.taxiServedRequest + "," + z.busServedRequest + ","
-					+ z.taxiPassWaitingTime + "," + z.busPassWaitingTime + "," + z.numberOfLeavedTaxiRequest + ","
-					+ z.numberOfLeavedBusRequest + "," + z.taxiParkingTime + "," + z.taxiCruisingTime + "," + z.getFutureDemand() + ","
+					+ z.taxiServedPassWaitingTime + "," + z.busServedPassWaitingTime + "," + z.numberOfLeavedTaxiRequest + ","
+					+ z.numberOfLeavedBusRequest + "," + z.taxiParkingTime + "," + z.taxiLeavedPassWaitingTime + "," + z.busLeavedPassWaitingTime + ","
+					+ z.taxiCruisingTime + "," + z.getFutureDemand() + ","
 					+ z.getFutureSupply();
 			try {
 				ContextCreator.zone_logger.write(formatted_msg2);

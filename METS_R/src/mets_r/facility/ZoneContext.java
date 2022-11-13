@@ -34,10 +34,15 @@ public class ZoneContext extends DefaultContext<Zone> {
 			URI uri = zoneFile.toURI();
 			zoneLoader = new ShapefileLoader<Zone>(Zone.class, uri.toURL(), zoneGeography, this);
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
+			String line = br.readLine();
+			String[] result = line.split(",");
+			if(result.length < 3) {
+				ContextCreator.logger.error("Missing fields in Zone configuration, a proper one should contain (Name, externalID, Capacity)");
+			}
 			int int_id = 0;
 			while (zoneLoader.hasNext()) {
-				String line = br.readLine();
-				String[] result = line.split(",");
+				line = br.readLine();
+				result = line.split(",");
 				Zone zone = zoneLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[2]))); // Using customize parameters
 				this.zoneDictionary.put(int_id, zone);
 				int_id += 1;

@@ -56,6 +56,7 @@ public class BusSchedule {
 		try {
 			Map<Integer, Integer> locationIDMap = new HashMap<Integer, Integer>();
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
+			br.readLine();
 			int integerID = 0;
 			String line;
 			while ((line = br.readLine()) != null) {

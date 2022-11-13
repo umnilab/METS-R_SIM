@@ -57,7 +57,7 @@ public class Road {
 	private Vehicle firstVehicle_;
 
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
-	private double defaultFreeSpeed_; // Store default speed limit value in case of events
+	private double cachedFreeSpeed_; // For caching the speed before certain regulation events
 	
 	// Service metrics
     public double totalEnergy;
@@ -87,19 +87,19 @@ public class Road {
 		this.eventFlag = false;
 
 		// Set default value
-		this.defaultFreeSpeed_ = this.freeSpeed_;
+		this.cachedFreeSpeed_ = this.freeSpeed_; 
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
 	}
 
 	// Set the defaultFreeSpeed_
 	public void setDefaultFreeSpeed() {
-		this.defaultFreeSpeed_ = this.freeSpeed_;
+		this.cachedFreeSpeed_ = this.freeSpeed_;
 	}
 
 	// Get the defaultFreeSpeed_
 	public double getDefaultFreeSpeed() {
-		return this.defaultFreeSpeed_;
+		return this.cachedFreeSpeed_;
 	}
 
 	// Check the eventFlag

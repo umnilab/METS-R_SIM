@@ -45,12 +45,16 @@ public class LaneContext extends DefaultContext<Lane> {
 			laneFile = new File(GlobalVariables.LANES_SHAPEFILE);
 			URI uri = laneFile.toURI();
 			laneLoader = new ShapefileLoader<Lane>(Lane.class, uri.toURL(), laneGeography, this);
-
 			BufferedReader br = new BufferedReader(new FileReader(fileName));
+			String line = br.readLine();
+			String[] result = line.split(",");
+			if(result.length < 6) {
+				ContextCreator.logger.error("Missing fields in Lane configuration, a proper one should contain (LaneID, LinkID, Left, Through, Right, Length(m))");
+			}
 			while (laneLoader.hasNext()) {
 				Lane lane = laneLoader.next();
-				String line = br.readLine();
-				String[] result = line.split(",");
+				line = br.readLine();
+				result = line.split(",");
 				lane = setAttribute(lane, result);
 			}
 			br.close();

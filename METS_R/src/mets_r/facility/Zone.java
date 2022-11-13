@@ -84,8 +84,10 @@ public class Zone {
 	public int numberOfLeavedTaxiRequest;
 	public int numberOfLeavedBusRequest;
 	public int numberOfRelocatedVehicles;
-	public int taxiPassWaitingTime; // Waiting time of served Passengers
-	public int busPassWaitingTime;
+	public int taxiServedPassWaitingTime; // Waiting time of served Passengers
+	public int busServedPassWaitingTime;
+	public int taxiLeavedPassWaitingTime; // Waiting time of served Passengers
+	public int busLeavedPassWaitingTime;
 	public int taxiParkingTime;
 	public int taxiCruisingTime;
 	
@@ -93,7 +95,8 @@ public class Zone {
 	public Zone(int integerID, int capacity) {
 		this.id = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
-		this.rand_demand = new Random(GlobalVariables.RandomGenerator.nextInt());
+		int the_seed = GlobalVariables.RandomGenerator.nextInt();
+		this.rand_demand = new Random(the_seed);
 		this.integerID = integerID;
 		if(capacity < 0) { // By default, infinite capacity
 			this.capacity = GlobalVariables.NUM_OF_EV;
@@ -125,8 +128,10 @@ public class Zone {
 		this.numberOfLeavedTaxiRequest = 0;
 		this.numberOfLeavedBusRequest = 0;
 		this.numberOfRelocatedVehicles = 0;
-		this.taxiPassWaitingTime = 0;
-		this.busPassWaitingTime = 0;
+		this.taxiServedPassWaitingTime = 0;
+		this.busServedPassWaitingTime = 0;
+		this.taxiLeavedPassWaitingTime = 0;
+		this.busLeavedPassWaitingTime = 0;
 		this.taxiParkingTime = 0;
 		this.taxiTravelTime = new HashMap<Integer, Float>();
 		this.taxiTravelDistance = new HashMap<Integer, Float>();
@@ -174,12 +179,12 @@ public class Zone {
 			double passRate = ContextCreator.getTravelDemand(this.getIntegerID(), destination, this.currentHour)
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
-
+		    
 			if (passRate > 0) {
 				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
-
+				System.out.println("Zone: " + this.getIntegerID()+","+destination + " hour: " + this.currentHour + " passRate: " + passRate +" generate:" + numToGenerate);
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
@@ -261,6 +266,21 @@ public class Zone {
 						if (this.lastDemandUpdateHour != this.currentHour) {
 							this.futureDemand= (passRate * threshold);
 						}
+					} 
+					else {
+						// Taxi only
+						for (int i = 0; i < numToGenerate; i++) {
+							Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
+							if (new_pass.isShareable()) {
+								this.addSharableTaxiPass(new_pass, destination);
+							} else {
+								this.addTaxiPass(new_pass);
+							}
+							this.numberOfGeneratedTaxiRequest += 1;
+						}
+						if (this.lastDemandUpdateHour != this.currentHour) {
+							this.futureDemand+=(passRate);
+						}
 					}
 				} else {
 					// Taxi only
@@ -316,7 +336,7 @@ public class Zone {
 								// Record served passengers
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
-								this.taxiPassWaitingTime += p.getCurrentWaitingTime();
+								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
 								GlobalVariables.SERVE_PASS += 1; // For Json ouput
 							}
 							v.servePassenger(tmp_pass);
@@ -359,7 +379,7 @@ public class Zone {
 				// Record served passenger
 				this.nRequestForTaxi -= 1;
 				GlobalVariables.SERVE_PASS += 1;
-				this.taxiPassWaitingTime += current_taxi_pass.getCurrentWaitingTime();
+				this.taxiServedPassWaitingTime += current_taxi_pass.getCurrentWaitingTime();
 			} else {
 				break; // no vehicle
 			}
@@ -374,7 +394,7 @@ public class Zone {
 					break;
 				} else { // passenger get on board
 					passOnBoard.add(p);
-					this.busPassWaitingTime += p.getCurrentWaitingTime();
+					this.busServedPassWaitingTime += p.getCurrentWaitingTime();
 					if (p.lenOfActivity() > 1) {
 						this.combinePickupPart1 += 1;
 					} else if (p.lenOfActivity() == 1) { // count it only when the last trip starts
@@ -474,7 +494,7 @@ public class Zone {
 			curr_size = passQueue.size();
 			for (int i = 0; i < curr_size; i++) {
 				if (passQueue.peek().check()) {
-					passQueue.poll();
+					taxiLeavedPassWaitingTime += passQueue.poll().getCurrentWaitingTime();
 					numberOfLeavedTaxiRequest += 1;
 					nRequestForTaxi -= 1;
 				} else {
@@ -490,7 +510,7 @@ public class Zone {
 		
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForTaxi.peek().check()) {
-				requestInQueueForTaxi.poll();
+				taxiLeavedPassWaitingTime += requestInQueueForTaxi.poll().getCurrentWaitingTime();
 				numberOfLeavedTaxiRequest += 1;
 				nRequestForTaxi -= 1;
 			} else {
@@ -507,7 +527,7 @@ public class Zone {
 		int curr_size = requestInQueueForBus.size();
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForBus.peek().check()) {
-				requestInQueueForBus.poll();
+				busLeavedPassWaitingTime += requestInQueueForBus.poll().getCurrentWaitingTime();
 				this.numberOfLeavedBusRequest += 1;
 				nRequestForBus -= 1;
 			}
@@ -734,8 +754,9 @@ public class Zone {
 				p.moveToNextActivity();
 				p.setOrigin(this.integerID);
 				p.clearActivityPlan();
-			} else if (p.lenOfActivity() == 1) { // Is trying to finish the second trip of a combined trips
-				this.numberOfGeneratedTaxiRequest -= 1; // do nothing, here -1 cancel the +1 below
+			} else if (p.lenOfActivity() == 1) { // Is trying to finish the second trip of its plan
+				this.numberOfGeneratedTaxiRequest -= 1; // do nothing as it is still considered as a combined trip
+				                                        // here -1 will cancel with the +1 below
 			}
 
 			this.toAddRequestForTaxi.add(p);

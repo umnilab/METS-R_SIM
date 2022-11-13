@@ -60,18 +60,18 @@ public class RoadContext extends DefaultContext<Road> {
 			roadFile = new File(GlobalVariables.ROADS_SHAPEFILE);
 			URI uri = roadFile.toURI();
 			roadLoader = new ShapefileLoader<Road>(Road.class, uri.toURL(), roadGeography, this);
-
 			BufferedReader br = new BufferedReader(new FileReader(fileName));
-
+			String line = br.readLine();
+			String[] result = line.split(",");
+			if(result.length < 18) {
+				ContextCreator.logger.error("Missing fields in Road configuration, a proper one should contain (LinkID, LaneNum, TLinkID, FnJunction, TNJunction, SpeedLimit, Left, Throgh, Right, Lane1 - Lane 9)");
+			}
 			while (roadLoader.hasNext()) {
 				Road road = roadLoader.next();
-
-				String line = br.readLine();
-				String[] result = line.split(",");
-
+				line = br.readLine();
+				result = line.split(",");
 				// Update road information
 				road = setAttribute(road, result);
-				
 				roadDictionary.put(road.getLinkid(), road);
 
 				// Create lanes for this road
@@ -102,9 +102,9 @@ public class RoadContext extends DefaultContext<Road> {
 
 	public Road setAttribute(Road r, String[] att) {
 		r.setLinkid(Integer.parseInt(att[0]));
-		r.setLeft(Integer.parseInt(att[8]));
-		r.setThrough(Integer.parseInt(att[9]));
-		r.setRight(Integer.parseInt(att[10]));
+		r.setLeft(Integer.parseInt(att[6]));
+		r.setThrough(Integer.parseInt(att[7]));
+		r.setRight(Integer.parseInt(att[8]));
 		r.setTlinkid(Integer.parseInt(att[2]));
 		r.setFn(Integer.parseInt(att[3]));
 		r.setTn(Integer.parseInt(att[4]));
