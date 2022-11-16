@@ -119,7 +119,7 @@ public class RouteV {
 	/*
 	 * Perform vehicle routing: returns a path The routing uses K-shortest path
 	 */
-	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination) throws Exception {
+	public static List<Road> vehicleRoute(Vehicle vehicle, Coordinate destination){
 		/* The first part resolves the origin and destination road and junctions */
 		/*
 		 * See if the current position and the destination are on road segments.

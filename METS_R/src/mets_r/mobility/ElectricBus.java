@@ -7,6 +7,7 @@ import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Hashtable;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Queue;
 
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
@@ -17,8 +18,11 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.DataCollector;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.routing.RouteV;
 import repast.simphony.essentials.RepastEssentials;
+import util.Pair;
 
 /**
  * Electric buses
@@ -160,12 +164,42 @@ public class ElectricBus extends Vehicle {
 		this.departure();
 		ContextCreator.logger.debug("Bus " + this.getId() + " is on route to charging station");
 	}
+	
+	@Override
+	public void setNextRoad() {
+		if(!this.atOrigin) {
+			super.setNextRoad();
+		}
+		else {
+			// Clear legacy impact
+			this.clearShadowImpact();
+			this.roadPath = new ArrayList<Road>();
+			if (!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
+				Pair<List<Road>, Integer> route_result = RouteV.ecoRouteBus(this.getOriginID(), this.getDestID());
+				this.roadPath = route_result.getFirst();
+				this.setRouteChoice(route_result.getSecond());
+			}
+			// Compute new route if eco-routing is not used or the OD pair is uncovered
+			if (this.roadPath == null || this.roadPath.isEmpty()) {
+				this.roadPath = RouteV.vehicleRoute(this, this.getDestCoord()); // K-shortest path or shortest path
+			}
+			this.setShadowImpact();
+			if (this.roadPath == null || this.roadPath.size() < 2) { // The origin and destination share the same Junction
+				this.atOrigin = false;
+				this.nextRoad_ = null;
+			} else {
+				this.atOrigin = false;
+				this.nextRoad_ = roadPath.get(1);
+			}
+		}
+	}
 
 	// The setReachDest() function applies for three cases:
 	// Case 1: arrive at the charging station.
 	// Case 2: arrive at the start bus stop, and then go the charging station
 	// Case 3: (arrive at the other bus stop), or (arrive at the start bus stop and
 	// continue to move)
+	@Override
 	public void setReachDest() {
 		// Case 1: the bus arrives at the charging station
 		if (onChargingRoute_) {
@@ -302,7 +336,6 @@ public class ElectricBus extends Vehicle {
 	// New EV energy consumption model
 	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle
 	// energy consumption model: Model development and validation. Applied Energy,
-	// 168, 257�268.
 	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0
 	// AC_Dv^2+mgsin(\theta))v
 	public double calculateEnergy() {

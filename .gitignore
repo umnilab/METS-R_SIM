@@ -1,2 +1,5 @@
-
+METS_R/logs/*
+METS_R/agg_output/*
+METS_R/sim_output/*
+*.log
 *.class

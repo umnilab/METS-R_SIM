@@ -1,6 +1,7 @@
 package mets_r.mobility;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -16,7 +17,9 @@ import mets_r.data.DataCollector;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.routing.RouteV;
 import repast.simphony.essentials.RepastEssentials;
+import util.Pair;
 
 /**
  * Electric taxis
@@ -218,6 +221,35 @@ public class ElectricTaxi extends Vehicle {
 			// Add vehicle to new queue of corresponding road
 			this.departure();
 			
+		}
+	}
+	
+	@Override
+	public void setNextRoad() {
+		if(!this.atOrigin) {
+			super.setNextRoad();
+		}
+		else {
+			// Clear legacy impact
+			this.clearShadowImpact();
+			this.roadPath = new ArrayList<Road>();
+			if (!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV) {
+				Pair<List<Road>, Integer> route_result = RouteV.ecoRoute(this.getOriginID(), this.getDestID());
+				this.roadPath = route_result.getFirst();
+				this.setRouteChoice(route_result.getSecond());
+			}
+			// Compute new route if eco-routing is not used or the OD pair is uncovered
+			if (this.roadPath == null || this.roadPath.isEmpty() || this.roadPath.get(0) != this.getRoad()) {
+				this.roadPath = RouteV.vehicleRoute(this, this.getDestCoord()); // K-shortest path or shortest path
+			}
+			this.setShadowImpact();
+			if (this.roadPath == null || this.roadPath.size() < 2) { // The origin and destination share the same Junction
+				this.atOrigin = false;
+				this.nextRoad_ = null;
+			} else {
+				this.atOrigin = false;
+				this.nextRoad_ = roadPath.get(1);
+			}
 		}
 	}
 

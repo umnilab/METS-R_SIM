@@ -22,7 +22,6 @@ import org.geotools.referencing.ReferencingFactoryFinder;
 
 import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
-import util.Pair;
 
 /**
  * @author Xianyuan Zhan, Xinwu Qian, Hemant Gehlot, Zengxiang Lei
@@ -73,19 +72,14 @@ public class Vehicle {
 										  // vehicle snapshot was recorded for visualization interpolation
 	private boolean reachDest;
 	private boolean onLane;
-	private boolean atOrigin;
 	private Road road;
-	private Road nextRoad_;
 	private Lane lane;
-	private Lane nextLane_;
 	
 	// Vehicle status and class
 	private int vehicleClass; 
 	private int vehicleState; 
 	
 	// For vehicle based routing
-	private List<Road> roadPath; // The route is always started with the current road, whenever entering the next
-								 // road, the current road will be popped out
 	private List<Coordinate> coordMap;
 	private Geography<Lane> laneGeography;
 	private Vehicle leading_; // leading vehicle in the lane
@@ -118,6 +112,11 @@ public class Vehicle {
 	protected Random rand; // Random seeds for making lane changing, cruising decisions
 	protected float accummulatedDistance_; // Accumulated travel distance in the current trip
 	protected boolean movingFlag = false; // Whether this vehicle is moving
+	protected boolean atOrigin;
+	protected List<Road> roadPath; // The route is always started with the current road, whenever entering the next
+	 // road, the current road will be popped out
+	protected Road nextRoad_;
+	protected Lane nextLane_;
 	
 	public Vehicle(int vClass) {
 		this.id = ContextCreator.generateAgentID();
@@ -322,80 +321,51 @@ public class Vehicle {
 	}
 
 	public void setNextRoad() {
-		try {
-			if (!this.atOrigin) { // Not at origin
-				// Special case, the roadPath is null which means the origin
-				// and destination are at the same link
-				if (this.roadPath == null) {
-					this.nextRoad_ = null;
-					return;
-				}
-				// Try to stick on the routed path, modify this if you want to implement dynamic
-				// routing
-				if (this.stuckTime > GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // Stuck in one place for certain time steps,
-																		// potentially there is a grid lock
-					this.stuckTime = 0; // Refresh the stuck time to prevent the case that this function is called every
-										// tick
-					List<Road> tempPath = RouteV.vehicleRoute(this, this.destCoord); // Recalculate the route
-					this.clearShadowImpact();
-					// Compute new route
-					this.roadPath = tempPath;
-					this.setShadowImpact();
-					if ((tempPath != null) && (tempPath.size() > 1)) {
-						this.nextRoad_ = roadPath.get(1);
-					} else {
-						// Do nothing, keep the original route
-					}
+		if (!this.atOrigin) { // Not at origin
+			// Special case, the roadPath is null which means the origin
+			// and destination are at the same link
+			if (this.roadPath == null) {
+				this.nextRoad_ = null;
+				return;
+			}
+			// Try to stick on the routed path, modify this if you want to implement dynamic
+			// routing
+			if (this.stuckTime > GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // Stuck in one place for certain time steps,
+																	// potentially there is a grid lock
+				this.stuckTime = 0; // Refresh the stuck time to prevent the case that this function is called every
+									// tick
+				List<Road> tempPath = RouteV.vehicleRoute(this, this.destCoord); // Recalculate the route
+				this.clearShadowImpact();
+				// Compute new route
+				this.roadPath = tempPath;
+				this.setShadowImpact();
+				if ((tempPath != null) && (tempPath.size() > 1)) {
+					this.nextRoad_ = roadPath.get(1);
 				} else {
-					this.removeShadowCount(this.roadPath.get(0));
-					this.roadPath.remove(0);
-					if (this.road.getLinkid() == this.getDestRoadID() || this.roadPath.size() <= 1) {
-						this.nextRoad_ = null;
-					} else {
-						this.nextRoad_ = this.roadPath.get(1);
-					}
+					// Do nothing, keep the original route
 				}
 			} else {
-				// Clear legacy impact
-				this.clearShadowImpact();
-				this.roadPath = new ArrayList<Road>();
-				if (this.getVehicleClass() == 1 && this.getState() == Vehicle.OCCUPIED_TRIP) { // EV taxis
-					ElectricTaxi ev = (ElectricTaxi) this;
-					if (!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV
-							&& !ev.onChargingRoute()) {
-						Pair<List<Road>, Integer> route_result = RouteV.ecoRoute(ev.getOriginID(), ev.getDestID());
-						this.roadPath = route_result.getFirst();
-						ev.setRouteChoice(route_result.getSecond());
-					}
-				} else if (this.getVehicleClass() == 2) { // EV buses
-					ElectricBus evBus = (ElectricBus) this;
-					if (!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS
-							&& !evBus.onChargingRoute()) {
-						Pair<List<Road>, Integer> route_result = RouteV.ecoRouteBus(evBus.getOriginID(),
-								evBus.getDestID());
-						this.roadPath = route_result.getFirst();
-						evBus.setRouteChoice(route_result.getSecond());
-					}
-				}
-				// Compute new route if eco-routing is not used
-				if (this.roadPath == null || this.roadPath.isEmpty()) {
-					this.roadPath = RouteV.vehicleRoute(this, this.destCoord); // K-shortest path or shortest path
-				}
-				this.setShadowImpact();
-				
-				if (this.roadPath == null || this.roadPath.size() < 2) { // The origin and destination share the same Junction
-					this.atOrigin = false;
+				this.removeShadowCount(this.roadPath.get(0));
+				this.roadPath.remove(0);
+				if (this.road.getLinkid() == this.getDestRoadID() || this.roadPath.size() <= 1) {
 					this.nextRoad_ = null;
 				} else {
-					this.atOrigin = false;
-					this.nextRoad_ = roadPath.get(1);
+					this.nextRoad_ = this.roadPath.get(1);
 				}
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			ContextCreator.logger.error("No next road found for Vehicle " + this.getId() + "( roadPath : "
-					+ this.roadPath + ")" + " on Road " + this.road.getLinkid());
-			this.nextRoad_ = null;
+		} else {
+			// Clear legacy impact
+			this.clearShadowImpact();
+			this.roadPath = new ArrayList<Road>();
+			this.roadPath = RouteV.vehicleRoute(this, this.destCoord); // K-shortest path or shortest path
+			this.setShadowImpact();
+			if (this.roadPath == null || this.roadPath.size() < 2) { // The origin and destination share the same Junction
+				this.atOrigin = false;
+				this.nextRoad_ = null;
+			} else {
+				this.atOrigin = false;
+				this.nextRoad_ = roadPath.get(1);
+			}
 		}
 	}
 
