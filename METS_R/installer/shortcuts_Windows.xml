@@ -4,10 +4,10 @@
 
   <skipIfNotSupported/>
   
-  <programGroup defaultName="EvacSim" location="StartMenu"/>
+  <programGroup defaultName="METS_R" location="StartMenu"/>
   
   <shortcut
-     name="EvacSim"
+     name="METS_R"
      programGroup="yes"
      desktop="no"
      applications="no"
@@ -17,7 +17,7 @@
      commandLine=""
      workingDirectory="$INSTALL_PATH"
      description="Model"
-     iconFile="$INSTALL_PATH\EvacSim\icons\model.bmp"
+     iconFile="$INSTALL_PATH\METS_R\icons\model.bmp"
      iconIndex="0"
      initialState="noShow">
      <createForPack name="Model"/>
@@ -30,7 +30,7 @@
      applications="no"
      startMenu="no"
      startup="no"
-     target="$INSTALL_PATH\EvacSim\docs\index.html"
+     target="$INSTALL_PATH\METS_R\docs\index.html"
      commandLine=""
 	 iconFile="%SystemRoot%\system32\SHELL32.dll"
      iconIndex="23" 
@@ -40,7 +40,7 @@
   </shortcut>
   
   <shortcut
-     name="EvacSim Uninstaller"
+     name="METS_R Uninstaller"
      programGroup="yes"
      desktop="no"
      applications="no"

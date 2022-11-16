@@ -11,7 +11,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 /**
- * evacSim.network.ConnectionManager
+ * METS_R.communication.ConnectionManager
  * 
  * The connection manager is created with the start of the simulation program
  * and monitors the network for any incoming connections to the simulation. It

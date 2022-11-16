@@ -18,7 +18,7 @@ import repast.simphony.engine.environment.RunEnvironment;
 /**
  * 
  * This class is a collection system and data buffer for capturing all the data
- * about an EvacSim execution that other pieces of code within the program (such
+ * about an METS_R execution that other pieces of code within the program (such
  * as an output file saving code, a network connection code, or some other local
  * form of analysis) can use to easily gather the results of the model without
  * intrusively interrupting or impacting its operation.

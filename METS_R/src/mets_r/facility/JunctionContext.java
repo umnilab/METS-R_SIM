@@ -7,7 +7,6 @@ import repast.simphony.context.space.gis.GeographyFactoryFinder;
 import repast.simphony.context.space.graph.NetworkFactory;
 import repast.simphony.context.space.graph.NetworkFactoryFinder;
 import repast.simphony.space.gis.GeographyParameters;
-//import evacSim.ContextCreator;
 
 import java.util.HashMap;
 

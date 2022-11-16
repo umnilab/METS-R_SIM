@@ -9,7 +9,28 @@
 
 <project name="BuildModelInstaller" default="BuildUserModelInstaller" basedir="..">
 
-	<target name="BuildUserModelInstaller">
+	<!-- Perform a check against the Repast creator version which is this
+	     hard coded value that corresponds to the version that created the 
+	     model installer files, against the version of Repast that is actually
+	     in use in the workspace. -->
+	
+	<!-- The Repast creator version variable is hard-coded against the release 
+	     version. DO NOT USE A VARIABLE HERE! -->
+	<property name="RepastCreatorVersion" value="2.6.0" />
+				
+	<condition property="repast.version">
+	  <equals arg1="${RepastCreatorVersion}" arg2="${REPAST_VERSION}"/>
+	</condition>
+				
+	<target name="repast.version.OK" if="repast.version">
+		<echo message="Using Repast version ${REPAST_VERSION}"/>
+	</target>
+		
+	<target name="repast.version.check" depends="repast.version.OK" unless="repast.version">
+		<fail message="Inompatible Repast version.  The model builder configureation was built with ${RepastCreatorVersion}, but the current version is ${REPAST_VERSION}"/>
+	</target>
+		
+	<target name="BuildUserModelInstaller" if="repast.version" depends="repast.version.OK,repast.version.check">
 
 		<!-- Declare the local variables -->
 		<echo message="EclipsePluginsDirectory = ${EclipsePluginsDirectory}" />
@@ -21,14 +42,17 @@
 			<not>
 				<filename name="groovy-all-*-sources.jar" />
 			</not>
+			<not>
+				<filename name="groovy-all-*-javadoc.jar" />
+			</not>
 		</fileset>
 		<property name="Groovy_All_Jar" refid="gAll.jar" />
 		<echo message="Groovy_All_Jar = ${Groovy_All_Jar}" />
 		<property name="GroovyAllJarLocation" value="${GroovyLibDirectory}/${Groovy_All_Jar}" />
 
 		<!-- A hidden staging dirctory to store the install files that will be deleted at cleanup -->
-		<property name="StagingArea" value="./.temp/EvacSim" />
-		<property name="StagingOptionalArea" value="./.temp" />
+		<property name="StagingArea" value=".temp/METS_R" />
+		<property name="StagingOptionalArea" value=".temp" />
 		<echo message="StagingArea = ${StagingArea}" />
 		<property name="IzPackHomeDirectory" value="${EclipsePluginsDirectory}/repast.simphony.eclipse_${REPAST_VERSION}/setupfiles/IzPack" />
 		<echo message="IzPackHomeDirectory = ${IzPackHomeDirectory}" />
@@ -52,7 +76,6 @@
 		<copy todir="${StagingArea}" overwrite="true" failonerror="false">
 			<fileset dir="." casesensitive="no">
 				<exclude name="**/src/**" />
-				<exclude name="**/docs/**" />
 			</fileset>
 		</copy>
 
@@ -60,7 +83,7 @@
 		<copy todir="${StagingOptionalArea}" overwrite="true" failonerror="false">
 			<fileset dir="." casesensitive="no">
 				<include name="**/src/**" />
-				<include name="**/docs/**" />
+				<include name="**/data/**" />
 			</fileset>
 		</copy>
 

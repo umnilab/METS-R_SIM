@@ -1,5 +1,5 @@
 @ECHO OFF
-TITLE EvacSim
+TITLE METS_R
 
 REM Repast Simphony Model Starter
 REM By Michael J. North
@@ -28,7 +28,7 @@ SET CP=%CP%;%REPAST_SIMPHONY_LIB%commons-cli-1.2.jar
 SET CP=%CP%;../groovylib/$Groovy_All_Jar
 
 REM Change to the Default Repast Simphony Directory
-CD EvacSim
+CD METS_R
 
 REM Start the Model
-START javaw -Xss10M -Xmx400M -cp %CP% repast.simphony.runtime.RepastMain ./EvacSim.rs
+START javaw -Xss10M -Xmx400M -cp %CP% repast.simphony.runtime.RepastMain ./METS_R.rs

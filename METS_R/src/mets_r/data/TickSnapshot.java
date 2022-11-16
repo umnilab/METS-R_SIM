@@ -17,7 +17,7 @@ import mets_r.mobility.Vehicle;
 
 /**
  * 
- * The tick "snapshot" is the basic bundle of data for the EvacSim output data
+ * The tick "snapshot" is the basic bundle of data for the METS_R output data
  * buffer. All pieces of data collected about the simulation during one model
  * tick will be packaged into one of these objects and placed into the
  * simulation data buffer as one single item.

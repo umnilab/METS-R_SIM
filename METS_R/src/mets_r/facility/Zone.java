@@ -184,7 +184,6 @@ public class Zone {
 				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
-				System.out.println("Zone: " + this.getIntegerID()+","+destination + " hour: " + this.currentHour + " passRate: " + passRate +" generate:" + numToGenerate);
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);

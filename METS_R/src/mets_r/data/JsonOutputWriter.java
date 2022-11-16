@@ -24,8 +24,8 @@ import mets_r.mobility.Vehicle;
  * This data consumer writes the contents of the simulation output buffer to
  * disk in the JSON format. If no file is specified, the output will be written
  * to the same location as this program with a default name of the format
- * "EvacSim_Output_<timestamp>.json". If this is the case, a new filename with
- * an updated timestamp will be used for each restart of the writing process.
+ * "Output_<index>.json". If this is the case, a new filename with
+ * an updated index will be used for each restart of the writing process.
  * 
  * The way data is stored in this file is dependent on what format is needed for
  * web-interface/visualization. Each JSON file consists of two entries for two
@@ -824,7 +824,7 @@ public class JsonOutputWriter implements DataConsumer {
 	/**
 	 * Returns a guaranteed unique absolute path for writing output from the
 	 * simulation within the current working directory and using the filename format
-	 * of "EvacSim_Output_<timestamp>.json" so long as this method is not called
+	 * of "Output_<index>.json" so long as this method is not called
 	 * more frequently than once per second. If there is a problem writing to this
 	 * location, the file will be saved to a temporary directory determined by the
 	 * Java library determined by the operating system upon which this program is

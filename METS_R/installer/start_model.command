@@ -25,7 +25,7 @@ CP=$CP:$REPAST_SIMPHONY_LIB/commons-cli-1.2.jar
 CP=$CP:$PWD/groovylib/$Groovy_All_Jar
 
 # Change to the Default Repast Simphony Directory
-cd EvacSim
+cd METS_R
 
 # Start the Model
-java -Xss10M -Xmx400M -cp $CP repast.simphony.runtime.RepastMain  ./EvacSim.rs
+java -Xss10M -Xmx400M -cp $CP repast.simphony.runtime.RepastMain  ./METS_R.rs

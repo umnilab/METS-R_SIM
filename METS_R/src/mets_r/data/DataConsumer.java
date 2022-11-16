@@ -5,7 +5,7 @@ import java.util.Collection;
 
 /**
  * 
- * Classes wishing to read data from the EvacSim data collection buffer should
+ * Classes wishing to read data from the METS_R data collection buffer should
  * implement the methods of this interface and be registered with the
  * DataCollector instance within the program.
  * 
@@ -93,7 +93,7 @@ public interface DataConsumer {
 
 	/**
 	 * Returns a collection of all available types of data consumers within the
-	 * EvacSim program.
+	 * METS_R program.
 	 * 
 	 * @return a collection of all available types of data consumers.
 	 */

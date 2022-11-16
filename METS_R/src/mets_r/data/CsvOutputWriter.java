@@ -16,8 +16,8 @@ import mets_r.GlobalVariables;
  * This data consumer writes the contents of the simulation output buffer to
  * disk in the CSV format. If no file is specified, the output will be written
  * to the same location as this program with a default name of the format
- * "EvacSim_Output_<timestamp>.csv". If this is the case, a new filename with an
- * updated timestamp will be used for each restart of the writing process.
+ * "Output_<index>.csv". If this is the case, a new filename with an
+ * updated index will be used for each restart of the writing process.
  * 
  * The first field of each line is the simulation tick to which the data of the
  * line pertains, and the second field of each line is the type of data
@@ -649,7 +649,7 @@ public class CsvOutputWriter implements DataConsumer {
 	/**
 	 * Returns a guaranteed unique absolute path for writing output from the
 	 * simulation within the current working directory and using the filename format
-	 * of "EvacSim_Output_<timestamp>.csv" so long as this method is not called more
+	 * of "Output_<index>.csv" so long as this method is not called more
 	 * frequently than once per second. If there is a problem writing to this
 	 * location, the file will be saved to a temporary directory determined by the
 	 * Java library determined by the operating system upon which this program is

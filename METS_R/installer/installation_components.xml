@@ -4,7 +4,7 @@
 
 <installation version="1.0">
     <info>
-      <appname>EvacSim</appname>
+      <appname>METS-R</appname>
 			<appversion>1.0</appversion>
       <summarylogfilepath>$INSTALL_PATH/installinfo/Summary.htm</summarylogfilepath>
     </info>
@@ -105,7 +105,7 @@
             <!-- Groovy Library -->
             <file src="$GroovyAllJarLocation" targetdir="$INSTALL_PATH/groovylib"/>
         
-        		<!-- Repast comppnents  -->
+        	<!-- Repast comppnents  -->
             <file src="$EclipsePluginsDirectory/libs.bsf_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
             <file src="$EclipsePluginsDirectory/libs.ext_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
             <file src="$EclipsePluginsDirectory/libs.piccolo_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
@@ -142,8 +142,6 @@
             <file src="$EclipsePluginsDirectory/repast.simphony.sql_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
             <file src="$EclipsePluginsDirectory/repast.simphony.statecharts_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
             <file src="$EclipsePluginsDirectory/repast.simphony.statecharts.visualization_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
-            <file src="$EclipsePluginsDirectory/repast.simphony.systemdynamics_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
-            <file src="$EclipsePluginsDirectory/repast.simphony.systemdynamics.generator_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
             
             <file src="$EclipsePluginsDirectory/repast.simphony.userpanel.ui_$REPAST_VERSION" targetdir="$INSTALL_PATH/repast.simphony"/>
            
@@ -155,18 +153,13 @@
 
 		<pack name="Sources" required="no">
            	<description>The model source code</description>
-           	<file src="$StagingOptionalArea/src" targetdir="$INSTALL_PATH/EvacSim"/>
+           	<file src="$StagingOptionalArea/src" targetdir="$INSTALL_PATH/METS_R"/>
         </pack>
 
-        <pack name="Documentation" required="no">
-           	<description>The model documentation</description>
-           	<file src="$StagingOptionalArea/docs" targetdir="$INSTALL_PATH/EvacSim"/>
+        <pack name="Data" required="no">
+            <description>The simulation data</description>
+            <file src="$StagingOptionalArea/data" targetdir="$INSTALL_PATH/METS_R"/>
         </pack>
-
-<!--        <pack name="Data" required="no">-->
-<!--            <description>The user data</description>-->
-<!--            <file src="repast.simphony.bin_and_src_$REPAST_VERSION/temp/freezedried_data" targetdir="$INSTALL_PATH/EvacSim"/>-->
-<!--        </pack>-->
     </packs>
 
 </installation>

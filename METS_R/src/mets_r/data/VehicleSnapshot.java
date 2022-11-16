@@ -6,7 +6,7 @@ import mets_r.mobility.Vehicle;
 
 /**
  * 
- * This class is the simple data object for capturing the state of an EvacSim
+ * This class is the simple data object for capturing the state of an METS_R
  * vehicle at a particular point in time.
  * 
  * This object is immutable and composed of simple data variables. It should be

@@ -1,6 +1,5 @@
 package mets_r.communication;
 
-//import evacSim.NetworkEventHandler;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
@@ -26,7 +25,7 @@ import mets_r.data.TickSnapshot;
 import mets_r.data.VehicleSnapshot;
 
 /**
- * evacSim.network.Connection
+ * METS_R.communication.Connection
  * 
  * When a request from a remote program for a network connection is received,
  * the network connection manager will produce a new WebSocket connection to be

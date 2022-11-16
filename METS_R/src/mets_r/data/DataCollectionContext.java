@@ -15,7 +15,7 @@ import repast.simphony.engine.environment.RunEnvironment;
  * DataCollectionContext
  * 
  * This functions as the home for the core of the data collection system within
- * EvacSim and the object through which the Repast framework will ensure it is
+ * METS_R and the object through which the Repast framework will ensure it is
  * scheduled to receive the signals it needs to operate at key points in the
  * execution of the simulation.
  * 
@@ -182,7 +182,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			e.printStackTrace();
 		}
 		if (GlobalVariables.ENABLE_METRICS_DISPLAY) {
-			System.out.println("tick=" + currentTick + ", nGeneratedPass="
+			ContextCreator.logger.info("tick=" + currentTick + ", nGeneratedPass="
 					+ (numGeneratedTaxiPass + numGeneratedBusPass + numGeneratedCombinedPass) + ", taxiPickupPass="
 					+ taxiPickupPass + ", busPickupPass=" + busPickupPass + ", combinePickupPass=" + combinePickupPart1
 					+ ", nLeavedPass=" + (numLeavedTaxiPass + numLeavedBusPass) + ", nRelocatedVeh=" + numRelocatedTaxi
