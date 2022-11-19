@@ -48,8 +48,8 @@ public class LaneContext extends DefaultContext<Lane> {
 			BufferedReader br = new BufferedReader(new FileReader(fileName));
 			String line = br.readLine();
 			String[] result = line.split(",");
-			if(result.length < 6) {
-				ContextCreator.logger.error("Missing fields in Lane configuration, a proper one should contain (LaneID, LinkID, Left, Through, Right, Length(m))");
+			if(result.length < 5) {
+				ContextCreator.logger.error("Missing fields in Lane configuration, a proper one should contain (LaneID, LinkID, Left, Through, Right)");
 			}
 			while (laneLoader.hasNext()) {
 				Lane lane = laneLoader.next();
@@ -60,11 +60,11 @@ public class LaneContext extends DefaultContext<Lane> {
 			br.close();
 
 		} catch (java.net.MalformedURLException e) {
-			System.out.println(
+			ContextCreator.logger.error(
 					"ContextCreator: malformed URL exception when reading roadshapefile. Check the 'roadLoc' parameter is correct");
 			e.printStackTrace();
 		} catch (FileNotFoundException e) {
-			System.out.println("ContextCreator: No road csv file found");
+			ContextCreator.logger.error("ContextCreator: No road csv file found");
 			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();

@@ -173,7 +173,7 @@ public class NetworkEventHandler {
 					case 1: // Change speed limit
 						if (!road.checkEventFlag()) {
 							road.setDefaultFreeSpeed();
-							road.updateFreeFlowSpeed_event(event.value1);
+							road.updateFreeFlowSpeed(event.value1);
 							road.setEventFlag();
 							return event;
 						} else {
@@ -214,7 +214,7 @@ public class NetworkEventHandler {
 					// Restore the event
 					switch (event.eventID) {
 					case 1: // restore speed limit
-						road.updateFreeFlowSpeed_event(road.getDefaultFreeSpeed()); // To be moved into a buffer
+						road.updateFreeFlowSpeed(road.getDefaultFreeSpeed()); // To be moved into a buffer
 																					// variable in the road
 						road.restoreEventFlag();
 						return event;

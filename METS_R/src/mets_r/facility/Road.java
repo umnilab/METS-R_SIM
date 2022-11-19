@@ -168,10 +168,6 @@ public class Road {
 			// happened at time t, deciding acceleration and lane changing
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (tickcount <= currentVehicle.getLastMoveTick()) {
-					break; // This vehicle just entered this link, which indicates
-							// that we have reached the end of the linked list
-				}
 				currentVehicle.calcState();
 				if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0) {
 					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
@@ -611,7 +607,7 @@ public class Road {
 	}
 
 	/* Modify the free flow speed based on the events */
-	public void updateFreeFlowSpeed_event(double newFFSpd) {
+	public void updateFreeFlowSpeed(double newFFSpd) {
 		this.freeSpeed_ = newFFSpd * 0.44694; // HG: convert from mph to m/s
 	}
 

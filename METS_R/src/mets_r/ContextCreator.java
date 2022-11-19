@@ -149,7 +149,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.addSubContext(cityContext);
 		this.cityContext.createSubContexts();
 		this.cityContext.buildRoadNetwork();
-		this.cityContext.setRelocationGraph();
 
 		/* Get the weight of each Zone by their Demand */
 		double demand_total = 0;

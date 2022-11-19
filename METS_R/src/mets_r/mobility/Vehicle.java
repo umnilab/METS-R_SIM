@@ -747,20 +747,10 @@ public class Vehicle {
 			ContextCreator.logger.error("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
 		if (Double.isNaN(accRate_))
 			ContextCreator.logger.error("Vehicle.move(): accRate_=" + accRate_ + " " + this);
-
-		Coordinate currentCoord = null;
-		Coordinate target = null;
-		double dx = 0; // Travel distance calculated by physics
-		boolean travelledMaxDist = false; // True when traveled with maximum distance (=dx).
-		float distTravelled = 0; // The distance traveled so far.
-		float oldv = currentSpeed_; // Speed at the beginning
-		float step = GlobalVariables.SIMULATION_STEP_SIZE; // 0.3 s
-		double minSpeed = GlobalVariables.SPEED_EPSILON; // min allowed speed (m/s)
-		double minAcc = GlobalVariables.ACC_EPSILON; // min allowed absolute acceleration(m/s2)
-
-		/* Case 1: Within an intersection */
+		
 		Road current_road = this.road;
-		if (distance_ < GlobalVariables.INTERSECTION_BUFFER_LENGTH) {
+		if (distance_ < GlobalVariables.INTERSECTION_BUFFER_LENGTH) { 
+			// Case 1: Within an intersection
 			if (this.nextRoad_ != null) { // This has not reached destination
 				if (this.isOnLane()) { // On lane
 					this.coordMap.add(this.getCurrentCoord()); // Stop and wait
@@ -772,10 +762,8 @@ public class Vehicle {
 						current_road.recordEnergyConsumption(this);
 						this.lastStepMove_ = distance_; // Successfully entered the next road, update the lastStepMove
 														// and accumulatedDistance
-						this.accummulatedDistance_ += this.lastStepMove_;
 						this.movingFlag = true;
 					}
-					return; // Move finished
 				} else { // Not on lane, directly changing road
 					if (!this.changeRoad()) { // Zero means the vehicle cannot enter the next road
 						stuckTime += 1;
@@ -786,123 +774,106 @@ public class Vehicle {
 						current_road.recordEnergyConsumption(this);
 						this.lastStepMove_ = distance_; // Successfully entered the next road, update the lastStepMove
 														// and accumulatedDistance
-						this.accummulatedDistance_ += this.lastStepMove_;
 						this.movingFlag = true;
 					}
 				}
 			}
-			return;// Move finished
 		}
+		else { 
+			// Case 2: On a link 
+			double dx = 0; // Travel distance calculated by physics
+			boolean travelledMaxDist = false; // True when traveled with maximum distance (=dx).
+			float distTravelled = 0; // The distance traveled so far.
+			float oldv = currentSpeed_; // Speed at the beginning
+			float step = GlobalVariables.SIMULATION_STEP_SIZE; // 0.3 s
+			double minSpeed = GlobalVariables.SPEED_EPSILON; // min allowed speed (m/s)
+			double minAcc = GlobalVariables.ACC_EPSILON; // min allowed absolute acceleration(m/s2)
 
-		/* Case 2.1: On a link */
+			// Calculate the actual speed and acceleration
+			float dv = accRate_ * step; // Change of speed
+			if (dv + currentSpeed_ > 0) { // Still moving at the end of the cycle
+				dx = currentSpeed_ * step + 0.5f * dv * step;
 
-		// Calculate the speed and acceleration
-		float dv = accRate_ * step; // Change of speed
-		if (dv + currentSpeed_ > 0) { // Still moving at the end of the cycle
-			dx = currentSpeed_ * step + 0.5f * dv * step;
-
-		} else { // Stops before the cycle end
-			dx = -0.5f * currentSpeed_ * currentSpeed_ / accRate_;
-			if (currentSpeed_ < minSpeed && accRate_ < minAcc) {
-				dx = 0.0f;
-			}
-		}
-		if (Double.isNaN(dx)) {
-			ContextCreator.logger.error("dx is NaN in move() for " + this);
-		}
-
-		// Solve the crash problem
-		double gap = gapDistance(this.vehicleAhead());
-		dx = Math.min(dx, gap); // no trespass
-
-		// Actual acceleration rate applied in last time interval.
-		accRate_ = (float) Math.max(this.maxDeceleration_, 2.0f * (dx - oldv * step) / (step * step));
-
-		// Update speed
-		currentSpeed_ += accRate_ * step;
-		if (currentSpeed_ < minSpeed) {
-			currentSpeed_ = 0.0f;
-			accRate_ = 0.0f; // no back up allowed
-		} else {
-			accRate_ = ((currentSpeed_ - oldv) / step);
-		}
-
-		if (dx <= 0.0f) {
-			lastStepMove_ = 0;
-			this.movingFlag = false;
-			return;
-		}
-
-		// Update vehicle coords
-		double[] distAndAngle = new double[2];
-		while (!travelledMaxDist) {
-			target = this.coordMap.get(0);
-			// If we can get all the way to the next coords on the route then, just go there
-			if (distTravelled + nextDistance_ <= dx) {
-				distTravelled += nextDistance_;
-				this.setCurrentCoord(target);
-				this.coordMap.remove(0);
-				if (this.coordMap.isEmpty()) {
-					this.distance_ -= nextDistance_;
-					this.nextDistance_ = 0;
-					if (this.nextRoad_ != null) { // has next road
-						if (this.isOnLane()) { // is at the end of a segment
-							this.coordMap.add(this.getCurrentCoord()); // Stop and wait
-							if (this.appendToJunction(nextLane_)) {
-								current_road.recordEnergyConsumption(this);
-							}
-							lastStepMove_ = distTravelled;
-							accummulatedDistance_ += distTravelled;
-							break;
-						} else { // is in the intersection
-							if (this.changeRoad()) {
-								stuckTime = 0;
-								current_road.recordEnergyConsumption(this);
-							} else {
-								stuckTime += 1;
-							}
-							lastStepMove_ = distTravelled;
-							accummulatedDistance_ += distTravelled;
-							break;
-						}
-					} else { // No next road, the vehicle arrived at the destination
-						this.coordMap.clear();
-						this.coordMap.add(this.currentCoord_);
-						break;
-					}
-				} else {
-					currentCoord = this.getCurrentCoord();
-					this.distance2(currentCoord, this.coordMap.get(0), distAndAngle);
-					this.distance_ -= this.nextDistance_;
-					this.nextDistance_ = distAndAngle[0];
-					this.setBearing(distAndAngle[1]);
+			} else { // Stops before the cycle end
+				dx = -0.5f * currentSpeed_ * currentSpeed_ / accRate_;
+				if (currentSpeed_ < minSpeed && accRate_ < minAcc) {
+					dx = 0.0f;
 				}
 			}
-			// Otherwise move as far as we can towards the target along the road
-			// we're on get the angle between the two points
-			// (current and target)
+			if (Double.isNaN(dx)) {
+				ContextCreator.logger.error("dx is NaN in move() for " + this);
+			}
+
+			// Solve the crash problem
+			double gap = gapDistance(this.vehicleAhead());
+			dx = Math.min(dx, gap); // no trespass
+
+			// Actual acceleration rate applied in last time interval.
+			accRate_ = (float) Math.max(this.maxDeceleration_, 2.0f * (dx - oldv * step) / (step * step));
+
+			// Update speed
+			currentSpeed_ += accRate_ * step;
+
+			if (dx <= 0.0f) { // no back up allowed
+				lastStepMove_ = 0;
+			}
 			else {
-				double distanceToTarget = this.nextDistance_;
-				this.distance_ -= dx - distTravelled;
-				this.nextDistance_ -= dx - distTravelled;
-				currentCoord = this.getCurrentCoord();
-				move2(currentCoord, this.coordMap.get(0), distanceToTarget, dx - distTravelled);
-				distTravelled = (float) dx;
-				this.accummulatedDistance_ += dx;
-				lastStepMove_ = (float) dx;
-				travelledMaxDist = true;
+				// Update vehicle coords
+				double[] distAndAngle = new double[2];
+				while (!travelledMaxDist) {
+					// If we can get all the way to the next coords on the route then, just go there
+					if (distTravelled + nextDistance_ <= dx) {
+						distTravelled += nextDistance_;
+						this.setCurrentCoord(this.coordMap.get(0));
+						this.coordMap.remove(0);
+						if (this.coordMap.isEmpty()) {
+							this.distance_ -= nextDistance_;
+							this.nextDistance_ = 0;
+							this.lastStepMove_ = distTravelled;
+							if (this.nextRoad_ != null) { // has next road
+								this.coordMap.add(this.getCurrentCoord()); // Stop and wait
+								if (this.appendToJunction(nextLane_)) {
+									current_road.recordEnergyConsumption(this);
+								}
+								break;
+							} else { // No next road, the vehicle arrived at the destination
+								current_road.recordEnergyConsumption(this);
+								this.coordMap.clear();
+								this.coordMap.add(this.currentCoord_);
+								break;
+							}
+						} else {
+							this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
+							this.distance_ -= this.nextDistance_;
+							this.nextDistance_ = distAndAngle[0];
+							this.setBearing(distAndAngle[1]);
+						}
+					}
+					// Otherwise move as far as we can 
+					else {
+						double distToMove = dx - distTravelled;;
+						this.distance_ -=  distToMove;
+						move2(this.getCurrentCoord(), this.coordMap.get(0), nextDistance_, distToMove);
+						this.nextDistance_ -= distToMove;
+						lastStepMove_ = (float) dx;
+						travelledMaxDist = true;
+					}
+				}
 			}
 		}
+		
+		// Record the moved distance
+		this.accummulatedDistance_ += lastStepMove_;
+		
 		// Update the position of vehicles, 0<=distance_<=lane.length()
 		if (distance_ < 0) {
 			distance_ = 0;
 		}
-		if (distTravelled > 0) {
+		if (lastStepMove_ > 0) {
 			this.movingFlag = true;
 		} else {
 			this.movingFlag = false;
 		}
-		return;
 	}
 
 	public void primitiveMove() {

@@ -3,7 +3,6 @@ package mets_r.facility;
 import java.util.Comparator;
 
 class LaneComparator implements Comparator<Lane> {
-	// Parameter are of type Object, so we have to downcast it to vehicle objects
 	public int compare(Lane l1, Lane l2) {
 		int LaneID1, LaneID2;
 

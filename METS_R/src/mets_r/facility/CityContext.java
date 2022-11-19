@@ -53,24 +53,58 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new RoadContext());
 		this.addSubContext(new JunctionContext());
 		this.addSubContext(new LaneContext());
+		this.initializeLaneDistance();
 		this.addSubContext(new ZoneContext());
+		this.setRelocationGraph();
 		this.addSubContext(new ChargingStationContext());
+	}
+	
+	/**
+	 * Calculate and set the length of each length based on their geometries
+	 */
+	private void initializeLaneDistance() {
 		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
 			float distance = 0;
 			for (int i = 0; i < coords.length - 1; i++) {
 				distance += getDistance(coords[i], coords[i + 1]);
 			}
-			if (Math.abs(distance - lane.getLength()) > 1) {
-				// detect distance inconsistent between the provided length and the geometry
-				// length
-				ContextCreator.logger.debug("Lane ID: " + lane.getLaneid() + "," + " Calculated distance: " + distance
-						+ "," + "Real distance: " + lane.getLength());
-			}
 			lane.setLength(distance);
 		}
 	}
-
+	
+	/*
+	 * Set the possible relocation targets of all zones
+	 */
+	private void setRelocationGraph() {
+		for (Zone z1 : ContextCreator.getZoneContext().getAllObjects()) {
+			int threshold = 1000; // initial threshold as 1 km
+			boolean flag = true;
+			while (flag) {
+				for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
+					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2) {
+						z1.addNeighboringZone(z2);
+					}
+				}
+				if (z1.getNeighboringZoneSize() < ContextCreator.getZoneGeography().size() - 1) {
+					threshold = threshold + 1000;
+				} else {
+					flag = false;
+				}
+			}
+			
+			Geography<Road> roadGeography = ContextCreator.getRoadGeography();
+			GeometryFactory geomFac = new GeometryFactory();
+			Point point = geomFac.createPoint(z1.getCoord());
+			Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER); // 5km surrounding area for cruising
+			// Road nearestRoad = null;
+			for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+				z1.addNeighboringLink(road);
+			}
+			
+		}
+	}
+	
 	/**
 	 * 
 	 * @param coordinate1: c1
@@ -526,38 +560,6 @@ public class CityContext extends DefaultContext<Object> {
 //		}
 
 		return nearestZone;
-	}
-
-	/*
-	 * Set the possible relocation targets of all zones
-	 */
-	public void setRelocationGraph() {
-		for (Zone z1 : ContextCreator.getZoneContext().getAllObjects()) {
-			int threshold = 1000; // initial threshold as 1 km
-			boolean flag = true;
-			while (flag) {
-				for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
-					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2) {
-						z1.addNeighboringZone(z2);
-					}
-				}
-				if (z1.getNeighboringZoneSize() < ContextCreator.getZoneGeography().size() - 1) {
-					threshold = threshold + 1000;
-				} else {
-					flag = false;
-				}
-			}
-			
-			Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-			GeometryFactory geomFac = new GeometryFactory();
-			Point point = geomFac.createPoint(z1.getCoord());
-			Geometry buffer = point.buffer(GlobalVariables.XXXX_BUFFER); // 5km surrounding area for cruising
-			// Road nearestRoad = null;
-			for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				z1.addNeighboringLink(road);
-			}
-			
-		}
 	}
 
 	public void refreshTravelTime() {
