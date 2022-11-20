@@ -184,8 +184,9 @@ public class Road {
 					break; // Reached the end of linked list
 				}
 				currentVehicle.updateLastMoveTick(tickcount);
-				currentVehicle.travel();
+				currentVehicle.move();
 				currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				currentVehicle.checkAtDestination();
 				currentVehicle = nextVehicle;
 			}
 		} catch (Exception e) {
@@ -454,12 +455,12 @@ public class Road {
 	public double getFreeSpeed() {
 		return this.freeSpeed_;
 	}
-
+	
+	// Assume speed is randomly distributed based on
+	// Berry, D. S., & Belmont, D. M. (1951, July). Distribution of vehicle speeds and travel times.
 	public float getRandomFreeSpeed(double coef) {
 		return (float) Math.max(
-				this.freeSpeed_ + coef * this.freeSpeedStd_, 1); // at
-																														// least
-																														// 1 m/s
+				this.freeSpeed_ + coef * this.freeSpeedStd_, 0);
 	}
 
 	public float calcSpeed() {

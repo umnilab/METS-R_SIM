@@ -127,9 +127,6 @@ public class ElectricTaxi extends Vehicle {
 	
 	// Stop cruising
 	public void stopCruising() {
-		if(!this.isOnLane()) { // The vehicle is currently in a junction, so the routing will fail if not leave the network
-			this.leaveNetwork();
-		}
 		
 		// Log the cruising trip here
 		String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
@@ -142,6 +139,10 @@ public class ElectricTaxi extends Vehicle {
 			e.printStackTrace();
 		}
 		this.tripConsume = 0;
+		
+		if(!this.isOnLane()) { // The vehicle is currently in a junction, so the routing will fail if not leave the network
+			this.leaveNetwork();
+		}
 		
 		this.setState(Vehicle.NONE_OF_THE_ABOVE);
 	}

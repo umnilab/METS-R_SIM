@@ -138,9 +138,6 @@ public class ElectricBus extends Vehicle {
 			totalConsume += tickEnergy;
 			linkConsume += tickEnergy;
 			tripConsume += tickEnergy;
-			ContextCreator.logger
-					.debug(Double.toString(totalConsume) + ',' + Double.toString(this.getAccummulatedDistance()));
-			ContextCreator.logger.debug(Double.toString(tickConsume) + ',' + Double.toString(this.currentSpeed()));
 			batteryLevel_ -= tickEnergy;
 		}
 	}

@@ -247,11 +247,8 @@ public class GlobalVariables {
 	public static final float MAX_DECELERATION = Float.valueOf(loadConfig("MAX_DECELERATION")); // meter/sec2
 	public static final float DEFAULT_VEHICLE_WIDTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_WIDTH")); // meters
 	public static final float DEFAULT_VEHICLE_LENGTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_LENGTH")); // meters
-	public static final float INTERSECTION_BUFFER_LENGTH = Float.valueOf(loadConfig("INTERSECTION_BUFFER_LENGTH")); // meters
 	public static final float NO_LANECHANGING_LENGTH = Float.valueOf(loadConfig("NO_LANECHANGING_LENGTH")); // meters
 	public static final float MIN_UTURN_LENGTH = Float.valueOf(loadConfig("MIN_UTURN_LENGTH")); // meters
-	public static final double SPEED_EPSILON = Double.valueOf(loadConfig("SPEED_EPSILON")); // meter/sec
-	public static final double ACC_EPSILON = Double.valueOf(loadConfig("ACC_EPSILON")); // meter/sec2
 	public static final float LANE_WIDTH = Float.valueOf(loadConfig("LANE_WIDTH"));
 	public static final float LANE_CHANGING_PROB_PART1 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
 	public static final float LANE_CHANGING_PROB_PART2 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));

@@ -202,6 +202,23 @@ public class ContextCreator implements ContextBuilder<Object> {
 							// save time
 		createUCBBusRoutes(); // generate Bus UCB routes before the simulation is started, store one copy of
 								// it to save time
+		
+		
+		/* For debug, check the shortest path distance between each OD pair, commented after debugging */
+//		for (Zone z1: getZoneContext().getAllObjects()) {
+//			for (Zone z2: getZoneContext().getAllObjects()) {
+//				if(z1.getIntegerID()!=z2.getIntegerID()) {
+//					double distance = 0;
+//					List<Road> path = RouteV.shortestPathRoute(z1.getCoord(), z2.getCoord());
+//					if(path != null && path.size() >0) {
+//						for(Road r: path){
+//							distance += r.getLength();
+//						}
+//						ContextCreator.logger.info("Zone " + z1.getIntegerID()+" to "+"Zone " + z2.getIntegerID()+" distance:" + distance/1609.1);
+//					}
+//				}
+//				}
+//		}
 
 		/* Create output files */
 		String outDir = GlobalVariables.AGG_DEFAULT_PATH;
