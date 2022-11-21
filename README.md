@@ -1,67 +1,56 @@
 # Welcome to the METS-R simulator!
 
-The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulator is a high-fidelity, parallel, agent-based simulator for simulating large-scale electric vehicle services. It consists of a traffic simulator module that is able to model EV taxis and EV transits and a control center with high-performance computing (HPC) architecture.
+The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulator is a high-fidelity, parallel, agent-based simulator for simulating large-scale electric vehicle services. 
+
+<video src="https://user-images.githubusercontent.com/7522913/203042173-8eaa13db-bcdc-4fc3-aa54-40d3640fa6ee.mp4" data-canonical-src="https://user-images.githubusercontent.com/7522913/203042173-8eaa13db-bcdc-4fc3-aa54-40d3640fa6ee.mp4" controls="controls" muted="muted" class="d-block rounded-bottom-2 border-top width-fit" style="max-height:640px;">
+</video>
 
 # 1 Overall framework
 
-The overall framework of the METS-R simulator is shown in the following figure. In this framework, multiple instances are connected under a single remote data client manager. The benefits are two-fold:
+The METS-R simulator consists of a traffic simulator module that is able to model EV taxis and EV transits and a single remote data client manager (i.e., control center), multiple instances are connected under a single remote data client manager. The benefits are three-fold:
 
 1. For testing some operational algorithms (e.g., reinforcement learning algorithms) that require large amount of simulation trajectories, this framework has better data collection efficiency; 
 
 2. For some operational algorithms that need to solve an optimization (e.g., ILP), this framework allows caching the solutions so one can reuse them in multiple simulation instances.
 
+3. It mimics the real world platform company scenario in which a cloud service is provided to coordinate riders/drivers.
+
 ![Simulation framework](res/framework.jpg)
 
-# 2 Installation
+# 2 Getting start
 
-## 2.1 Prerequisite
+## 2.1 For users
+1. Download the installer (the latest is *mets_r_v0.9.0.jar*) from the [the METS-R repository](https://github.com/umnilab/METS-R_SIM/releases/tag/0.9.0).
+2. Double click the installer and follow the instruction to decompress the METS-R SIM into a proper folder.
+3. Go to that folder, and double click *start_model.bat* (in linux use "start_model.command")
+4. Click Run and you should see the below *Repast Symphony* simulation window (After specified in the first time, you can also use *Run* button in the Eclipse toolbar).
+    
+    ![Example of METS-R](res/addsevs_interface.png)
+    
+5. Click on the *Start Run* button in the pop-up window to begin the simulation.
+
+6. The simulation outputs can be found in the agg_output folder, the vehicle trajectories is in the sim_output folder.
+
+7. If required, you can modify the inputs of the simulation run scenario according to your needs in the configuration file (`METS_R/data/Data.properties`)
+
+## 2.2 For developers
 1. Download and install Eclipse IDE with *Repast Simphony* 2.6 from [here](https://github.com/Repast/repast.simphony/releases).
 2. Clone the METS-R repository using `git` to a target folder.
     
     ```
-    git clone https://github.com/umnilab/METS-R_ADDSAEVS.git
+    git clone https://github.com/umnilab/METS-R_SIM.git
     ```
-3. If started from HPC module, *Python* (version >= 3.7) and the following packages are needed:
-+ [lapsolver] (https://github.com/cheind/py-lapsolver)
-+ [geopandas] (https://geopandas.org/en/stable/getting_started/install.html)
-+ [seaborn] (https://seaborn.pydata.org/installing.html)
-+ [psutil] (https://pypi.org/project/psutil/) 
-**NOTE** : HPC module only works for Linux machines.
-
-## 2.2 Start a single simulation instance
-The following steps only run the traffic simulator (built-in Java) without the HPC module. In order to run the HPC module, please follow the steps in *[Running simulation with HPC module]*.
+The following steps only run the traffic simulator (built-in Java) without the HPC module. In order to run the HPC module, please follow the steps in *[Running HPC module]*.
 
 1. Open Eclipse and go to File -> *Open Projects from File System…*
-2. In the *Import Projects from File System or Archive* window click on *Directory* and open the *ADDSEVS* directory you cloned in step 3.
-3. Under *Folder* check *ADDSEVS* only and click *Finish*. This should open the METS-R java code in Eclipse as shown in the following figure.   
+2. In the *Import Projects from File System or Archive* window click on *Directory* and open the *METS_R* directory you cloned in step 3.
+3. Check *METS_R* and click *Finish*. This should open the METS-R SIM project in Eclipse as shown in the following figure.   
     
-    ![Load the ADDSEVS project in Eclipse](res/load_sim_in_eclipse.png)                                                        
+    ![Load the METS_R SIM project in Eclipse](res/load_sim_in_eclipse.png)                                                        
     
-4. If required, modify the inputs of the simulation run scenario according to your needs in the configuration file ( `ADDSEVS/data/Data.properties`).
-5. Go to *Run -> Run Configurations.*
-6. In *Main* tab use (These values may be auto-filled, in that case, skip steps 9 and 10).
-    
-    ```
-    Project : ADDSEVS
-    Main class : repast.simphony.runtime.RepastMain
-    ```
-    
-7. In *Arguments* tab use (note that VM arguments can be changed depending on the available memory on your machine).
-    
-    ```
-    Program Arguments : "${workspace_loc:ADDSEVS}/ADDSEVS.rs"
-    VM arguments : -Xss1024M -Xms1024M -Xmx8G
-    ```
-    
-8. Click Run and you should see the below *Repast Symphony* simulation window (After specified in the first time, you can also use *Run* button in the Eclipse toolbar).
-    
-    ![Example of ADDSEVS](res/addsevs_interface.png)
-    
-9. Click on the *Start Run* button in the pop-up window to begin the simulation.
+4. Go to the *laucher* folder in the project explorer, then right click *METS_R Model.launch* and select "Run as -> METS-R Model" to start the simulation.
 
-10. The simulation outputs can be found in the agg_output folder, one can also obtain the vehicle trajectories by following the 
-
-## 2.3 Running simulation with HPC module (Linux)
+## 2.3 Advanced options
 
 ### 2.3.1 Running HPC module
 
@@ -71,36 +60,34 @@ The following steps only run the traffic simulator (built-in Java) without the H
     git clone git@github.com:umnilab/METSR_HPC.git
     cd METSR_HPC
     ```
-    
-2. View the HPC configuration json file. Currently, this HPC module consists of 3 modules: eco-routing, bus-scheduling, and ridesharing. As shown in the figure below, all configuration parameters are defined at `run.config.scenario.json`.   
-    
-    ![Example of run.config.scenario.json](res/run_config_scenario.png)
-    
-3. Modify the existing `run.config.scenario.json` file with the configurations you want:
+
+3. Set up a *Python* (version >= 3.7) environment and install the packages in &requirements.txt&.
+2. View the HPC configuration json file. Currently, you need to the  `run.config.scenario.json` file with the configurations:
     - `java_path` - set the absolute path of your java installation.
     - `java_options` - change the jvm memory limits depending on your machine specs.
-    - `addsevs_dir` - the absolute path of ADDSEVS directory.
+    - `sim_dir` - the absolute path of METS_R directory.
     - `groovy_dir` - the absolute path of your groovy installation.
     - `repast_plugin_dir` - absolute path pf your repast plugin installation.
-    - `charger_plan` - the charging plan for EVs.
+    - `charger_plan` - the charging station plan.
     - `num_sim_instances` - number of parallel simulation instances you need to run.
 4. Finally, run
     
     ```
-    python3 run_hpc.py -s 0 -c 0 -p 1 -e -b
+    python3 run_hpc.py -s 2 -c 3 -p 0.5 -e -b -tf 2000 -bf 100 -co -df 0.1 -f
     ```
-    - `-s 0` means the scenario index is 0. The available indexes are 0,1,2 and 3.
-    - `-c 0` denotes that the case index is 0. It can range from 0 to 9.
-    - `-p 1` shows that ride-sharing module is performed and the ridesharing percentage is 100%.
+    - `-s 2` means the scenario index is 2. The available indexes are 0,1,2 and 3.
+    - `-c 3` denotes that the case index is 3. It can range from 0 to 9.
+    - `-p 0.5` shows that ride-sharing module is performed and the willing-to-share percentage is 50%.
     - `-e` means the eco-routing module is open.
     - `-b` means the bus scheduling module is open.
-    - More options can be found in `run_hpc.py`
-5. This will start the simulation instances in parallel and run RDCM. All the files related to each simulation run will be created in a separate directory `eco_true_bus_true_share_100/scenario<i>/<j>_<k>` , where `i` means i'th scenario index, `j`  is j'th case index, and `k` represents the k’th instance index. You should see several log files and output folders as shown in the following figure.
-    
-    ![Example of the output directory](res/output_directory.png)
+    - `-tf 2000` means the taxi fleet size is 2000.
+    - `-bf` means the bus fleet size is 100.
+    - `-co` allows coordinative operation that integrates bus and taxis.
+    - `-df 0.1` means the demand factor is 10%.
+    - `-f` means using the citywide demand, otherwise using the demand from/to transportation hubs.
+5. This will start the simulation instances in parallel and run RDCM. All the files related to each simulation run will be created in a separate directory in the `output` folder.
 
-
-### 2.3.2 Advanced options: change demand files
+### 2.3.2 Use your own demand files
 
 1. The demand prediction module is hosted in METRS_HPC repo. Clone it if you have not done that.
 2. Download and process the data required to train the models.
@@ -128,7 +115,7 @@ The following steps only run the traffic simulator (built-in Java) without the H
         - `taxiZone` : taxi zone number
     - `public void RefreshResult()` : Use this function to repopulate the prediction result from the `.csv` file. This is useful if you want to update the demand prediction while the simulator is also running.
 
-### 2.3.3 Advanced options: utilize dynamic bus scheduling planning with gurobi license
+### 2.3.3 Utilize dynamic bus scheduling planning with gurobi license
 
 1 It should be noted that the bus scheduling module in the HPC part utilizes the gurobi package to solve the optimization problem. If users want to use the bus scheduling module, users need to install the packages of gurobi provided [here](https://www.gurobi.com/documentation/9.5/quickstart_mac/cs_python_installation_opt.html) and lapsolver provided [here](https://pypi.org/project/lapsolver/). 
 
@@ -153,7 +140,7 @@ As shown in the following figure, the traffic simulator contains the input data,
 
 ### 3.2.1 Input data
 
-All the required inputs for running the simulation are listed and described in the configuration file `~/ADDSEVS/data/Data.properties`. The paths of the input data are provided in the first section of the file. Below are the details of each input:
+All the required inputs for running the simulation are listed and described in the configuration file `METS_R/data/Data.properties`. The paths of the input data are provided in the first section of the file. Below are the details of each input:
 
 1. `Zone shapefile (Point)`: the locations of origins/destinations of all demand. One also needs to specify the number of zones in `NUM_OF_ZONES`  in `Data.properties` and which zones are corresponding to the hubs in the variable  `HUB_INDEXES` in `addsEVs.GlobalVariables.java`. For example, `HUB_INDEXES=[131,140,180]` means the 131th row (JFK), 140th row (LGA), and 180th row (PENN) of the zone shape are corresponding to transportation hubs. 
 2. `Charging station shapefile (Point)`:  similar to the zone shapefile, this is the shapefile for charging stations. For a given scenario, a CSV file needs to be specific for the variable `CHARGER_CSV` to configure the chargers in each charging station. It has to have at least two rows for each charger to specify the ID of the charger (in the same order as in the shapefile) and the number of the (L2) chargers. An example is as follows.
@@ -167,23 +154,23 @@ All the required inputs for running the simulation are listed and described in t
 
 3. `Road shapefile (Polyline)`: map of the roads. Should contain the information on which lane belongs to which road.  Each shapefile is associated with a CSV file that contains the same feature tables as the shapefile with the following format:
 
-| Id    | nLane  | tLinkID  | FN  | TN  | linkID  | freeflowsp (mph)  |  length (m)  |  Left | Through | Right | Lane1 | Lane2 | ... | Lane9 |
+| linkID    | nLane  | TLinkID  | FnJunction  | TnJunction  | linkID  | SpeedLimit (mph)  |  Left | Through | Right | Lane1 | Lane2 | ... | Lane9 |
 | ---       | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---   |
-| 100000    | 1        | 100001     | 506  | 507  | 100000  | 35 | 6.35 | 100006 | 100058 | 0 | 1000001 | 0 | ... | 0 |
-| 100002    | 1        | 100003     | 506  | 594  | 100002  | 35 | 563.5 | 100006 | 0 | 0 | 0 | 1000021  | ... | 0 |
+| 100000    | 1        | 100001     | 506  | 507  | 35 | 100006 | 100058 | 0 | 1000001 | 0 | ... | 0 |
+| 100002    | 1        | 100003     | 506  | 594  | 35 | 100006 | 0 | 0 | 0 | 1000021  | ... | 0 |
 | ...       | ...       | ... | ... | ... 
-| 110522    | 3        | 110523    | 4843  | 4919  | 110522    | 35 | 2239.6 | 0 | 110514 | 110512 | 1105221 | 1105222 | ... | 0 |
+| 110522    | 3        | 110523    | 4843  | 4919  | 35 | 0 | 110514 | 110512 | 1105221 | 1105222 | ... | 0 |
 
 4. `Lane shapefile (Polyline)`: map of the lanes, generated from road shapefile. This shapefile should contain lane connection information. Each shapefile is associated with a CSV file that contains the same feature tables as the shapefile with the following format：
 
-| ID    | linkID |  Left | Through | Right | laneID | length |
+| laneID    | linkID |  Left | Through | Right | length |
 | ---       | ---:      | ---:      | ---:      | ---:      | ---:   | ---   |
-| 2    | 100000        | 1000061     | 1000581    | 0  | 1000001  | 6.35 |
-| 3    | 100002        | 0     | 0    | 0  | 1000021  | 558.1 |
+| 2    | 100000        | 1000061     | 1000581    | 0  | 6.35 |
+| 3    | 100002        | 0     | 0    | 0  | 558.1 |
 | ...       | ...       | ... | ... | ... 
-| 26279    | 100522        | 0     | 0    | 0  | 1105221  | 2238.92 |
+| 26279    | 100522        | 0     | 0    | 0  | 2238.92 |
 
-5. `Demand profiles (CSV)`: OD flow for different hours of the day, which is a matrix with m rows and n columsn, m corresponds to the number of OD pairs, and n corresponds to the number of hours to simulate.
+5. `Demand profiles (CSV/JSON)`: OD flow for different hours of the day, which is a matrix with m rows and n columns, m corresponds to the number of OD pairs, and n corresponds to the number of hours to simulate.
 6. `Background traffic speed (CSV)`: the traffic speed (in miles/h) of each link for different times of the day.
 
 | linkID  | Hour1   |  Hour2   | ... | Hour48 |
@@ -204,9 +191,9 @@ All the required inputs for running the simulation are listed and described in t
 
 ### 3.2.2 Preparation of road shapefile and lane shapefile
 
-The data preparation is fulfilled by scripts located in `~/ADDSEVS/data/data_preparation`. It consists of a multiple set of steps to be performed in order to have a prepared shape that has velocity, strong connectivity, and a set of properties. To start, this code is written in python and requires to have a set of packages installed such as geopandas, pandas, numpy, and scipy. The whole process of conversion takes around 30 minutes, and there are two requirements: a shapefile or gpkg with the information on the roads and an elevation shapefile of points with information on elevation. The final result gives multiple sets of shapes with the main ones to use in the simulation being the road and the lane shapefile. 
+The data preparation is fulfilled by scripts located in `METS_R/data/data_preparation`. It consists of a multiple set of steps to be performed in order to have a prepared shape that has velocity, strong connectivity, and a set of properties. To start, this code is written in python and requires to have a set of packages installed such as geopandas, pandas, numpy, and scipy. The whole process of conversion takes around 30 minutes, and there are two requirements: a shapefile or gpkg with the information on the roads and an elevation shapefile of points with information on elevation. The final result gives multiple sets of shapes with the main ones to use in the simulation being the road and the lane shapefile. 
 
-The way of using it is by opening the `[run.py](http://run.py)` file and changing the name of the files to use as inputs. These files should have the information requirements: road shape should be composed of polylines and must have the following fields included: 
+The way of using it is by opening the `METS_R/util/map preparation/run.py` file and changing the name of the files to use as inputs. These files should have the information requirements: road shape should be composed of polylines and must have the following fields included: 
 
 - `SPEED(number)`: speed limit in mph
 - `OneWay(String)`: direction field. if FT: means that draw direction equals real direction of the road, if TF: means that drawing direction is contrary to real road direction if none means bidirectional
@@ -225,36 +212,42 @@ As a response to this code, a new folder or an indicated folder will be created 
 
 ### 3.2.3 Output data
 
-1. The aggregated output data generated in the folder `~/agg_output/`  records the number of served passengers by taxis and EVs, the trip numbers, the passenger waiting time, and the energy consumption. Such output files are stored under the agg_output file folder, including `Buslog.csv`,`Chargerlog.csv`,`EVlog.csv`, `Linklog.csv`, `Networklog.csv`, and `Zonelog.csv`. 
+1. The aggregated output data generated in the folder `agg_output/`  records the number of served requests by taxis and EVs, the trip numbers, the passenger waiting time, and the energy consumption. Such output files are stored under the agg_output file folder, including `Buslog.csv`,`Chargerlog.csv`,`EVlog.csv`, `Linklog.csv`, `Networklog.csv`, and `Zonelog.csv`. 
     1. `Networklog.csv` summarizes the overall operational information of the entire system, the fields of `Networklog.csv` file are:
     - `tick` is the simulation time tick.
     - `vehOnRoad` is the current number of on-road AEV taxis.
     - `emptyTrip` is the cumulative number of empty trips performed by AEV taxis.
     - `chargingTrip` is the cumulative number of charging trips performed by AEV taxis.
-    - `generatedTaxiPass` is the total number of generated taxi passengers in the simulation.
-    - `taxiServedPass` is the total number of taxi passengers served in the simulation.
-    - `taxiLeavedPass` is the total number of taxi passengers that left the system unserved.
-    - `numWaitingTaxiPass` shows the current number of passengers who are waiting for AEV taxis.
-    - `generatedBusPass` is the total number of generated bus passengers in the simulation.
-    - `busServedPass` is the total number of bus passengers served in the simulation.
-    - `busLeavedPass` is the total number of bus passengers that left the system unserved.
-    - `numWaitingBusPass` shows the current number of passengers who are waiting for AEV buses.
+    - `generatedTaxiPass` is the total number of generated taxi requests.
+    - `generatedBusPass` is the total number of generated bus requests.
+    - `generatedCombinedPass` is the total number of generated bus-taxi integrated requests.
+    - `taxiPickupPass` is the total number of taxi requests got onborad.
+    - `busPickupPass` is the total number of bus requests got onborad.
+    - `combinePickupPart1` is the total number of combined requests got onborad in the first trip.
+    - `combinePickupPart2` is the total number of combined requests got onborad in the second trip.
+    - `taxiServedPass` is the total number of taxi requests served (arrived).
+    - `busServedPass` is the total number of bus requests served (arrived).
+    - `taxiLeavedPass` is the total number of taxi requests that left the system unserved.
+    - `busLeavedPass` is the total number of bus requests that left the system unserved.
+    - `numWaitingTaxiPass` shows the current number of requests who are waiting for AEV taxis.
+    - `numWaitingBusPass` shows the current number of requests who are waiting for AEV buses.
+    - `timeStamp` shows the time of the record (in milisecond).
     
     b. The attributes of `Zonelog.csv` file are:
     - `tick` is the simulation time tick.
     - `zoneID` is the index of the corresponding pickup/drop-off zone.
-    - `numTaxiPass` is the current number of AEV taxi passengers.
-    - `numBusPass` is the current number of AEV bus passengers.
+    - `numTaxiPass` is the current number of AEV taxi requests.
+    - `numBusPass` is the current number of AEV bus requests.
     - `vehStock` is the cumulative number of charging trips performed by AEV taxis.
-    - `taxiGeneratedPass` is the total number of generated taxi passengers in the zone.
-    - `taxiServedPass` is the total number of taxi passengers served in the zone.
-    - `taxiLeavedPass` is the total number of taxi passengers that left the zone unserved.
-    - `taxiPassWaitingTime` shows the cumulative waiting time of served taxi passengers.
-    - `busGeneratedPass` is the total number of generated bus passengers in the zone.
-    - `busPassWaitingTime` is the total number of generated bus passengers in the zone.
-    - `busServedPass` is the total number of bus passengers served in the zone.
-    - `busLeavedPass` is the total number of bus passengers that left the zone unserved.
-    - `busPassWaitingTime` shows the cumulative waiting time of served bus passengers.
+    - `taxiGeneratedPass` is the total number of generated taxi requests in the zone.
+    - `taxiServedPass` is the total number of taxi requests served in the zone.
+    - `taxiLeavedPass` is the total number of taxi requests that left the zone unserved.
+    - `taxiPassWaitingTime` shows the cumulative waiting time of served taxi requests.
+    - `busGeneratedPass` is the total number of generated bus requests in the zone.
+    - `busPassWaitingTime` is the total number of generated bus requests in the zone.
+    - `busServedPass` is the total number of bus requests served in the zone.
+    - `busLeavedPass` is the total number of bus requests that left the zone unserved.
+    - `busPassWaitingTime` shows the cumulative waiting time of served bus requests.
     - `taxiWaitingTime` is the cumulative idling time of AEV taxis in the zone.
     
     c. The attributes of `Linklog.csv` file are:
@@ -273,7 +266,7 @@ As a response to this code, a new folder or an indicated folder will be created 
     - `departure time` is the departure time of the trip.
     - `cost` is the energy consumed by the trip
     - `choice` is the choice of rountes among the candidates if eco-routing is enabled.
-    - `passNum` is the number of passengers.
+    - `passNum` is the number of requests.
     
     c. The attributes of `Buslog.csv` file are:
     - `tick` is the simulation time tick.
@@ -286,7 +279,7 @@ As a response to this code, a new folder or an indicated folder will be created 
     - `departure time` is the departure time of the trip.
     - `cost` is the energy consumed by the trip
     - `choice` is the choice of rountes among the candidates if eco-routing is enabled.
-    - `passOnBoard` is the number of passengers on the AEV bus.
+    - `passOnBoard` is the number of requests on the AEV bus.
     
     c. The attributes of `Chargerlog.csv` file are:
     - `tick` is the simulation time tick.
@@ -297,10 +290,10 @@ As a response to this code, a new folder or an indicated folder will be created 
     - `chargingTime` is the time between the start of charging and the time of full charged.
     - `initialBatteryLevel` is the initial battery level (kWh) of the charging vehicles.
     
-2. One can toggle the `ENABLE_JSON_WRITE` to enable the collection of vehicle trajectory files, which are stored in `~/simulation_output/`and are the necessary inputs for the visualization module.  Each JSON object within each file stores the following information for each snapshot period:
-    1. ev:  trajectory of AEV taxis, including its coordinates, speed, battery level, origin, destination, current link, and number of passengers
-    2. bus: trajectory of AEV buses, including its coordinates, speed, battery level, current link, and number of on-board passengers
-    3. pass: number of newly served passengers.
+2. One can toggle the `ENABLE_JSON_WRITE` to enable the collection of vehicle trajectory files, which are stored in `sim_output/`and are the necessary inputs for the visualization module.  Each JSON object within each file stores the following information for each snapshot period:
+    1. ev:  trajectory of AEV taxis, including its coordinates, speed, battery level, origin, destination, current link, and number of requests
+    2. bus: trajectory of AEV buses, including its coordinates, speed, battery level, current link, and number of on-board requests
+    3. pass: number of newly served requests.
     4. link: linkID, cumulative flow, averge speed, cumulative energy consumption aggregated by link
     An example file of the output `JSON` is shown below:
 
@@ -311,7 +304,7 @@ As a response to this code, a new folder or an indicated folder will be created 
       ...],
     "bus": [ // buss currently on the road network [47130.0,10001.0,-73.78925,40.65492,-73.790596,40.65552,21.471409,245.1268,0.0],[47131.0,10004.0,-73.783134,40.64676,-73.78348,40.646606,5.166832,247.56361,0.0],
       ...],
-    "pass": 67 // newly served passengers,
+    "pass": 67 // newly served requests,
     "link": [ // roads whose state (speed) has been updated during this road snapshot period
       [110349.0,0.0,5.36448,0.0,0.0],[110348.0,0.0,17.8816,0.0,0.0],
       ...]
@@ -337,7 +330,7 @@ For electric buses, each bus travels on the loop route with one terminal station
 
 ### 3.3.3 Passenger module
 
-The passenger module describes the decision-making process of passengers while traveling to and from the transportation hubs. The module consists of five components: trip generation, time/cost-based split model, queuing structure, passenger departure as well as bus/taxi departure. The implemented passenger activity module in our simulator is described in the figure below.
+The passenger module describes the decision-making process of requests while traveling to and from the transportation hubs. The module consists of five components: trip generation, time/cost-based split model, queuing structure, passenger departure as well as bus/taxi departure. The implemented passenger activity module in our simulator is described in the figure below.
 
 ![Passenger module](res/passenger_module.png)
 
@@ -383,7 +376,7 @@ We extended the online eco-routing module to implement the energy-optimal online
 
 ## 4.2.2 Ridesharing module
 
-The hub-based ridesharing module takes the input as the origin-destination matrix of the waiting passenger and the number of available vehicles, then it outputs the schedules for vehicles to serve to a collection of passengers. In the simulation, we introduced a HashMap of Queue to store passenger information to facilitate the encoding/decoding of the input/output data and implemented the myopic ridesharing algorithm to match passengers with the same destination together.
+The hub-based ridesharing module takes the input as the origin-destination matrix of the waiting passenger and the number of available vehicles, then it outputs the schedules for vehicles to serve to a collection of requests. In the simulation, we introduced a HashMap of Queue to store passenger information to facilitate the encoding/decoding of the input/output data and implemented the myopic ridesharing algorithm to match requests with the same destination together.
 
 ## 4.2.3 Bus scheduling module
 
@@ -401,9 +394,9 @@ A web-based visualization module is developed to display simulation information.
 
 The visualization module consists of five components:
 
-1. Energy map: The energy map shows the vehicle locations, facilities, and link status. The vehicle locations can be displayed as icons or as a heat map. For the link status, the user can choose among speed (mph), total energy consumed by crossing EVs (kwh), and energy efficiency (kwh/mile). In addition, by hovering the individual vehicle icon, the user can check the detailed information such as the battery level and the number of served passengers; The user can also hover the link to see the link flow and link energy consumption.
+1. Energy map: The energy map shows the vehicle locations, facilities, and link status. The vehicle locations can be displayed as icons or as a heat map. For the link status, the user can choose among speed (mph), total energy consumed by crossing EVs (kwh), and energy efficiency (kwh/mile). In addition, by hovering the individual vehicle icon, the user can check the detailed information such as the battery level and the number of served requests; The user can also hover the link to see the link flow and link energy consumption.
 2. Control panel: In the control panel, the user can choose the layer to display in the energy map. The control panel also allows the user to control the play speed of vehicle movement and to adjust the visualization to any simulation time.
-3. Performance charts: The performance charts show the dynamics of the relevant metrics. In the current version, we display the total energy consumption of vehicle movements (kWh) and the number of served passengers.
+3. Performance charts: The performance charts show the dynamics of the relevant metrics. In the current version, we display the total energy consumption of vehicle movements (kWh) and the number of served requests.
 4. Connection: The connection panel allows the user to input the URL of the data source for the visualization.
 5. Legend: The legend panel shows the example of different elements in the energy map.
 
@@ -499,9 +492,9 @@ We document changes by 6 categories which are: 1. City, including road and lanes
     
     **Zone.generatePassenger**, generate Passenger according to passArrivalRate and destDistribution. Then based on busTicketPrice and travel time decide the travel mode. Add passenger to the Taxi / Bus queue.
     
-    **Zone.servePassengerByTaxi**, serve passengers via taxis based FCFS (first come first serve) rule.
+    **Zone.servePassengerByTaxi**, serve requests via taxis based FCFS (first come first serve) rule.
     
-    **Zone.servePassengerByBus**, serve passengers via buses based FCFS (first come first serve) rule.
+    **Zone.servePassengerByBus**, serve requests via buses based FCFS (first come first serve) rule.
     
     **Zone.passengerWaitTaxi**, increase the passenger waiting time by one interval, and call Passenger.check() to decide whether to remove this passenger.
     
@@ -585,7 +578,7 @@ Simulation Driver
     
     **Bus. updateBatteryLevel():** the process is the same as the electric vehicle class.
     
-    **Bus. setReachDest():** There are three cases: 1) The bus arrives at the charging station; 2) The bus arrives at the bus station and the SOC is less than 20%; 3) The bus arrives at other bus stops, or arrives at the bus station with SOC > 20%. For the first case, it is analogous to the charging process of Electric Vehicles. When the bus arrives at the charging station, it continues to run or goes to the charging station. In addition, when the bus arrives at the stop or station, drop off the passengers and call the **Bus.servePassenger()** function.
+    **Bus. setReachDest():** There are three cases: 1) The bus arrives at the charging station; 2) The bus arrives at the bus station and the SOC is less than 20%; 3) The bus arrives at other bus stops, or arrives at the bus station with SOC > 20%. For the first case, it is analogous to the charging process of Electric Vehicles. When the bus arrives at the charging station, it continues to run or goes to the charging station. In addition, when the bus arrives at the stop or station, drop off the requests and call the **Bus.servePassenger()** function.
     
     **Bus. chargeItself():** charge the bus.
     
@@ -595,7 +588,7 @@ Simulation Driver
     
      **Bus.setReachDest()**, add the call of bus.departure(), note that the third parameters of bus.addPlan(destID, destCoord, **minutes to trigger this plan**) can be used to simulate the time table of buses.
     
-    **Bus.servePassenger()**, first calculate the number of available seats, then invoke Zone.servePassengerByBus(# of available seats) to obtain a list of passengers that are being served, finally add these passengers to the passenger list based on their destinations.
+    **Bus.servePassenger()**, first calculate the number of available seats, then invoke Zone.servePassengerByBus(# of available seats) to obtain a list of requests that are being served, finally add these requests to the passenger list based on their destinations.
     
     **VehicleContext.createBusContextFromZone()**, initialize Buses for each route, the inputs are zoneGeography, vehicleGeography,  **ArrayList<ArrayList<Integer>>routes, ArrayList<Integer>vehicle_nums**.
     
@@ -612,7 +605,7 @@ Charging stations
 
 - Modified
 
-**Zone.servePassengerByBus()**, assume each zone is covered by one bus lane, take the number of passengers as input, output the list of passengers to be served.
+**Zone.servePassengerByBus()**, assume each zone is covered by one bus lane, take the number of requests as input, output the list of requests to be served.
 
 **December 12th, 2019 to February11th, 2020, Energy model profiling**
 
