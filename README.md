@@ -48,7 +48,7 @@ The following steps only run the traffic simulator (built-in Java) without the H
     
     ![Load the METS_R SIM project in Eclipse](res/load_sim_in_eclipse.png)                                                        
     
-4. Go to the *laucher* folder in the project explorer, then right click `METS_R Model.launch` and select "Run as -> METS-R Model" to start the simulation.
+4. Go to the *laucher* folder in the project explorer, then right click `METS_R Model.launch` and select Run as -> *METS-R Model* to start the simulation.
 
 ## 2.3 Advanced options
 
