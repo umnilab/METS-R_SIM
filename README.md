@@ -7,7 +7,7 @@ The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulat
 
 # 1 Overall framework
 
-The METS-R simulator consists of a traffic simulator module that is able to model EV taxis and EV transits and a single remote data client manager (i.e., control center), multiple instances are connected under a single remote data client manager. The benefits are three-fold:
+The METS-R simulator consists of a traffic simulator module for EV services and a remote data client manager (i.e., control center), multiple instances are connected under a single remote data client manager. The benefits of this framework are three-fold:
 
 1. For testing some operational algorithms (e.g., reinforcement learning algorithms) that require large amount of simulation trajectories, this framework has better data collection efficiency; 
 
@@ -20,9 +20,9 @@ The METS-R simulator consists of a traffic simulator module that is able to mode
 # 2 Getting start
 
 ## 2.1 For users
-1. Download the installer (the latest is *mets_r_v0.9.0.jar*) from the [the METS-R repository](https://github.com/umnilab/METS-R_SIM/releases/tag/0.9.0).
+1. Download the installer (the latest is `mets_r_v0.9.0.jar`) from the [the METS-R repository](https://github.com/umnilab/METS-R_SIM/releases/tag/0.9.0).
 2. Double click the installer and follow the instruction to decompress the METS-R SIM into a proper folder.
-3. Go to that folder, and double click *start_model.bat* (in linux use "start_model.command")
+3. Go to that folder, and double click `start_model.bat` (in linux use "start_model.command")
 4. Click Run and you should see the below *Repast Symphony* simulation window (After specified in the first time, you can also use *Run* button in the Eclipse toolbar).
     
     ![Example of METS-R](res/addsevs_interface.png)
@@ -35,7 +35,7 @@ The METS-R simulator consists of a traffic simulator module that is able to mode
 
 ## 2.2 For developers
 1. Download and install Eclipse IDE with *Repast Simphony* 2.6 from [here](https://github.com/Repast/repast.simphony/releases).
-2. Clone the METS-R repository using `git` to a target folder.
+2. Clone the *METS-R* repository using git to a target folder.
     
     ```
     git clone https://github.com/umnilab/METS-R_SIM.git
@@ -48,13 +48,13 @@ The following steps only run the traffic simulator (built-in Java) without the H
     
     ![Load the METS_R SIM project in Eclipse](res/load_sim_in_eclipse.png)                                                        
     
-4. Go to the *laucher* folder in the project explorer, then right click *METS_R Model.launch* and select "Run as -> METS-R Model" to start the simulation.
+4. Go to the *laucher* folder in the project explorer, then right click `METS_R Model.launch` and select "Run as -> METS-R Model" to start the simulation.
 
 ## 2.3 Advanced options
 
 ### 2.3.1 Running HPC module
 
-1. Download the `METSR_HPC` code to run the HPC module.
+1. Download the *METSR_HPC* code to run the HPC module.
     
     ```
     git clone git@github.com:umnilab/METSR_HPC.git
@@ -127,7 +127,7 @@ busPlanningResults = json.load(bus_scheduling_read_raw)
 ```
 # 3. Structure of METS-R simulator
 
-METS-R simulator is written in `java` and it consists of various classes to represent different entities in a transportation network. This section describes the main components of the simulator including the variables and functionalities of the important classes used.
+*METS-R* simulator is written in `java` and it consists of various classes to represent different entities in a transportation network. This section describes the main components of the simulator including the variables and functionalities of the important classes used.
 
 ## 3.1 Framework
 
@@ -154,8 +154,8 @@ All the required inputs for running the simulation are listed and described in t
 
 3. `Road shapefile (Polyline)`: map of the roads. Should contain the information on which lane belongs to which road.  Each shapefile is associated with a CSV file that contains the same feature tables as the shapefile with the following format:
 
-| linkID    | nLane  | TLinkID  | FnJunction  | TnJunction  | linkID  | SpeedLimit (mph)  |  Left | Through | Right | Lane1 | Lane2 | ... | Lane9 |
-| ---       | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---   |
+| linkID    | nLane  | TLinkID  | FnJunction  | TnJunction  | SpeedLimit (mph)  |  Left | Through | Right | Lane1 | Lane2 | ... | Lane9 |
+| ---       | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---:      | ---   |
 | 100000    | 1        | 100001     | 506  | 507  | 35 | 100006 | 100058 | 0 | 1000001 | 0 | ... | 0 |
 | 100002    | 1        | 100003     | 506  | 594  | 35 | 100006 | 0 | 0 | 0 | 1000021  | ... | 0 |
 | ...       | ...       | ... | ... | ... 
@@ -164,7 +164,7 @@ All the required inputs for running the simulation are listed and described in t
 4. `Lane shapefile (Polyline)`: map of the lanes, generated from road shapefile. This shapefile should contain lane connection information. Each shapefile is associated with a CSV file that contains the same feature tables as the shapefile with the following format：
 
 | laneID    | linkID |  Left | Through | Right | length |
-| ---       | ---:      | ---:      | ---:      | ---:      | ---:   | ---   |
+| ---       | ---:      | ---:      | ---:      | ---:   | ---   |
 | 2    | 100000        | 1000061     | 1000581    | 0  | 6.35 |
 | 3    | 100002        | 0     | 0    | 0  | 558.1 |
 | ...       | ...       | ... | ... | ... 
