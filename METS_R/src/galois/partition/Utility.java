@@ -19,7 +19,7 @@ File: Utility.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
@@ -85,7 +85,6 @@ public class Utility {
 			MetisGraph metisGraph = new MetisGraph();
 			metisGraph.setNumEdges(numEdges / 2); // Convert to an undirected graph
 			metisGraph.setGraph(graph);
-			System.out.println("finshied reading graph " + graph.size() + " " + metisGraph.getNumEdges());
 			scanner.close();
 			return metisGraph;
 

@@ -8,7 +8,6 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.TreeMap;
 
-import repast.simphony.essentials.RepastEssentials;
 import au.com.bytecode.opencsv.CSVReader;
 import mets_r.communication.ConnectionManager;
 import mets_r.data.DataCollector;
@@ -86,7 +85,7 @@ public class NetworkEventHandler {
 	// To be scheduled at every tick in Context Creator
 	public void checkEvents() {
 		// Get current tick
-		int tickcount = (int) RepastEssentials.GetTickCount();
+		int tickcount = ContextCreator.getCurrentTick();
 		// check new events
 		checkNewEvents(tickcount);
 		// terminate old events

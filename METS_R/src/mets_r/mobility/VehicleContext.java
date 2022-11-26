@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map.Entry;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
@@ -11,12 +13,15 @@ import mets_r.GlobalVariables;
 import mets_r.facility.*;
 import mets_r.mobility.Vehicle;
 import repast.simphony.context.DefaultContext;
-import repast.simphony.essentials.RepastEssentials;
 import repast.simphony.space.gis.Geography;
 
 public class VehicleContext extends DefaultContext<Vehicle> {
-	private HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>> vehicleMap; // For operation
-	private ArrayList<ElectricTaxi> vehicleList; // For data collection
+	// For operation
+	private HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
+	private ConcurrentHashMap<ElectricTaxi, Zone> relocationTaxiMap; 
+	
+	// For data collection
+	private ArrayList<ElectricTaxi> taxiList; 
 	private ArrayList<ElectricBus> busList;
 
 	public VehicleContext() {
@@ -25,8 +30,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		Geography<Zone> zoneGeography;
 		zoneGeography = ContextCreator.getZoneGeography();
 
-		this.vehicleMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>>();
-		this.vehicleList = new ArrayList<ElectricTaxi>();
+		this.availableTaxiMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>>();
+		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Zone>();
+		this.taxiList = new ArrayList<ElectricTaxi>();
 		this.busList = new ArrayList<ElectricBus>();
 		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
@@ -37,49 +43,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void createVehicleContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
 		int total_vehicles = 0;
 
-		// Old mechanism: Generate uniformly with heuristics at hubs
-//		int num_total = vehicle_num;
-//		// 1/4 of vehicles initialized in hubs
-//		int num_hub;
-//		if (GlobalVariables.HUB_INDEXES.size() > 0) {
-//			num_hub = (int) Math.ceil((float) num_total / 4.0 / GlobalVariables.HUB_INDEXES.size());
-//		}
-//		else{
-//			num_hub = 0;
-//		}
-//		// Generate the rest vehicles in other zones
-//		int num_per_zone = (int) Math.ceil((float) vehicle_num * 3.0 / 4.0 / (zoneGeography.size() - GlobalVariables.HUB_INDEXES.size()));
-//		for (Zone z : zoneGeography.getAllObjects()) {
-//			Geometry hgeom = zoneGeography.getGeometry(z);
-//			Coordinate coord = hgeom.getCoordinate();
-//			LinkedBlockingQueue<ElectricVehicle> tmpQueue = new LinkedBlockingQueue<ElectricVehicle>();
-//			int vehicle_num_to_generate = 0;
-//			if (GlobalVariables.HUB_INDEXES.contains(z.getIntegerID())) {
-//				vehicle_num_to_generate = num_hub;
-//			} else {
-//				vehicle_num_to_generate = num_per_zone;
-//			}
-//			vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
-//			num_total -= vehicle_num_to_generate;
-//			for (int i = 0; i < vehicle_num_to_generate; i++) {
-//				// GeometryFactory fac = new GeometryFactory();
-//				ElectricVehicle v;
-//				v = new ElectricVehicle();
-//				v.addPlan(z.getIntegerID(), z.getCoord(), 0.0); // Initialize the first plan
-//				this.add(v);
-//				tmpQueue.add(v);
-//				ContextCreator.logger.debug("Vehicle:" + i+ " generated");
-//				v.setOriginalCoord(coord);
-//				v.setCurrentCoord(coord);
-////					Point geom = fac.createPoint(coord);
-////					vehicleGeography.move(v, geom);
-//				vehicleList.add(v);
-//				total_vehicles += 1;
-//			}
-//			this.vehicleMap.put(z.getIntegerID(), tmpQueue);
-//			z.addVehicleStock(vehicle_num_to_generate);
-//		}
-		// New mechanism: Generating vehicle according to demand distribution
+		// Generating vehicle according to demand distribution
 		double demand_total = 0;
 		for (Zone z: zoneGeography.getAllObjects()) {
 			if(z.getCapacity()>0) {
@@ -101,24 +65,22 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					// GeometryFactory fac = new GeometryFactory();
 					ElectricTaxi v = new ElectricTaxi();
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick()); // Initialize the
 																										// first plan
 					this.add(v);
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
 					v.setCurrentCoord(coord);
-	//					Point geom = fac.createPoint(coord);
-	//					vehicleGeography.move(v, geom);
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 					v.setNextPlan();
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 					v.setNextPlan();
 					total_vehicles += 1;
-					this.vehicleList.add(v);
+					this.taxiList.add(v);
 					tmpQueue.add(v);
 				}
 				z.addParkingVehicleStock(vehicle_num_to_generate);
 			}
-			this.vehicleMap.put(z.getIntegerID(), tmpQueue);
+			this.availableTaxiMap.put(z.getIntegerID(), tmpQueue);
 		}
 		
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
@@ -130,20 +92,18 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					for (int i = 0; i < vehicle_num_to_generate; i++) {
 						// GeometryFactory fac = new GeometryFactory();
 						ElectricTaxi v = new ElectricTaxi();
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount()); // Initialize the
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick()); // Initialize the
 																											// first plan
 						this.add(v);
 						ContextCreator.logger.debug("Vehicle:" + i + " generated");
 						v.setCurrentCoord(coord);
-		//					Point geom = fac.createPoint(coord);
-		//					vehicleGeography.move(v, geom);
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 						v.setNextPlan();
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 						v.setNextPlan();
 						total_vehicles += 1;
-						this.vehicleList.add(v);
-						this.vehicleMap.get(z.getIntegerID()).add(v);
+						this.taxiList.add(v);
+						this.availableTaxiMap.get(z.getIntegerID()).add(v);
 					}
 					z.addParkingVehicleStock(vehicle_num_to_generate);
 				}
@@ -176,12 +136,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				for (int j = 0; j < num_per_hub; j++) {
 					ElectricBus b;
 					b = new ElectricBus(-1, route, next_departure_time);
-					b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					b.addPlan(z.getIntegerID(), z.getCoord(), ContextCreator.getCurrentTick());
 					this.add(b);
 					b.setCurrentCoord(z.getCoord());
-//				Point geom = fac.createPoint(z.getCoord());
-//				vehicleGeography.move(b, geom);
-					b.addPlan(z.getIntegerID(), z.getCoord(), (int) RepastEssentials.GetTickCount());
+					b.addPlan(z.getIntegerID(), z.getCoord(), ContextCreator.getCurrentTick());
 					b.setNextPlan();
 					b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); // Initialize the first plan
 					b.setNextPlan();
@@ -200,11 +158,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 
 	// Return the list of vehicles for certain zone
 	public ConcurrentLinkedQueue<ElectricTaxi> getVehiclesByZone(int integerID) {
-		return this.vehicleMap.get(integerID);
+		return this.availableTaxiMap.get(integerID);
 	}
 
-	public List<ElectricTaxi> getVehicles() {
-		return this.vehicleList;
+	public List<ElectricTaxi> getTaxis() {
+		return this.taxiList;
 	}
 
 	public List<ElectricBus> getBuses() {
@@ -212,8 +170,28 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 
 	// Add vehicle to zones
-	public void addVehicle(ElectricTaxi v, int integerID) {
-		this.vehicleMap.get(integerID).add(v);
+	public void addAvailableTaxi(ElectricTaxi v, int integerID) {
+		this.availableTaxiMap.get(integerID).add(v);
+	}
+	
+	public void addRelocationTaxi(ElectricTaxi v, Zone z) {
+		this.relocationTaxiMap.put(v, z);
+	}
+	
+	public void removeRelocationTaxi(ElectricTaxi v){
+		this.relocationTaxiMap.remove(v);
+	}
+	
+	public List<ElectricTaxi> getRelocationTaxi(Zone z){
+		List<ElectricTaxi> result = new ArrayList<ElectricTaxi>();
+		if(this.relocationTaxiMap.containsValue(z)) {
+			for (Entry<ElectricTaxi, Zone> entry : this.relocationTaxiMap.entrySet()) {
+	              if (entry.getValue() == z) {
+	                  result.add(entry.getKey());
+	              }
+	          }
+		}
+		return result;
 	}
 
 }

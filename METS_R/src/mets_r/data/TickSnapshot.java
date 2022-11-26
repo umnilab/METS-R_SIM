@@ -16,6 +16,7 @@ import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 
 /**
+ * Inherent from A-RESCUE
  * 
  * The tick "snapshot" is the basic bundle of data for the METS_R output data
  * buffer. All pieces of data collected about the simulation during one model
@@ -27,10 +28,9 @@ import mets_r.mobility.Vehicle;
  * read the next tick snapshot from the buffer.
  * 
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @version 1.0
- * @date 28 June 2017
- */
+ * @author Christopher Thompson
+ **/
+
 public class TickSnapshot {
 
 	/** The number of the time step of this snapshot of the simulation. */
@@ -39,20 +39,14 @@ public class TickSnapshot {
 	/** The collection of vehicle data gathered during this time tick. */
 	/** Consider two classes of vehicles: EV and Bus */
 	private HashMap<Integer, VehicleSnapshot> vehicles;
-
 	private HashMap<Integer, EVSnapshot> evs_occupied;
-
 	private HashMap<Integer, EVSnapshot> evs_relocation;
-
 	private HashMap<Integer, EVSnapshot> evs_charging;
-
 	private HashMap<Integer, BusSnapshot> buses;
-
 	private HashMap<Integer, LinkSnapshot> links;
 
 	// Link energy consumptions for UCB
-	private Map<Integer, ArrayList<Double>> link_UCB; //
-
+	private Map<Integer, ArrayList<Double>> link_UCB; // the link energy consumption for taxis
 	private Map<Integer, ArrayList<Double>> link_UCB_BUS; // the link energy consumption for bus.
 	private Map<Integer, ArrayList<Double>> speed_vehicle; // used for shadow bus construction.
 
@@ -97,7 +91,6 @@ public class TickSnapshot {
 		// Setup the map for holding the link energy consumption, which is a map of
 		// linkid: link of passed vehicles, we store this for each tick
 		this.link_UCB = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
-
 		this.link_UCB_BUS = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
 		this.speed_vehicle = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
 	}
@@ -126,33 +119,23 @@ public class TickSnapshot {
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
 		double y = coordinate.y;
-		float speed = vehicle.currentSpeed();
+		double speed = vehicle.currentSpeed();
 		double originalX = vehicle.getOriginCoord().x;
 		double originalY = vehicle.getOriginCoord().y;
 		double destX = vehicle.getDestCoord().x;
 		double destY = vehicle.getDestCoord().y;
-		int nearlyArrived = vehicle.nearlyArrived();
 		int vehicleClass = vehicle.getVehicleClass();
 		int roadID = vehicle.getRoad().getLinkid();
-		// double batteryLevel = vehicle.getBatteryLevel();
-		// int departure = vehicle.getDepTime();
-		// int arrival = vehicle.getEndTime();
-		// float distance = vehicle.accummulatedDistance_;
-		// double z = coordinate.z;
 
 		// Check if there is already a vehicleSnapshot in this tick due to visualization
-		// interpolation recording.
-		// If so, then use the previous coordinates from the recorded snapshot because
-		// we had set the previous coordinates to the current coordinates
-		// when we ended the function recVehSnaphotForVisInterp() in vehicle class.
+		// If so, then use the previous coordinates from the recorded snapshot 
 		if (this.getVehicleSnapshot(id) != null) {
 			prev_x = this.getVehicleSnapshot(id).prev_x;
 			prev_y = this.getVehicleSnapshot(id).prev_y;
 		}
 
-		// Create a snapshot for the vehicle and store it in the map
 		VehicleSnapshot snapshot = new VehicleSnapshot(id, prev_x, prev_y, x, y, speed, originalX, originalY, destX,
-				destY, nearlyArrived, vehicleClass, roadID);
+				destY, vehicleClass, roadID);
 		this.vehicles.put(id, snapshot);
 	}
 
@@ -164,14 +147,13 @@ public class TickSnapshot {
 		if (coordinate == null) {
 			return;
 		}
-
 		// Pull out values from the vehicle & coord we need to capture
 		int id = vehicle.getVehicleID();
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
 		double y = coordinate.y;
-		float speed = vehicle.currentSpeed();
+		double speed = vehicle.currentSpeed();
 		int originID = vehicle.getOriginID();
 		int destID = vehicle.getDestID();
 		int nearlyArrived = vehicle.nearlyArrived();
@@ -189,14 +171,11 @@ public class TickSnapshot {
 		// Create a snapshot for the vehicle and store it in the map
 		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, speed, originID, destID, nearlyArrived,
 				vehicleClass, batteryLevel, energyConsumption, roadID, servedPass
-		// departure,
-		// arrival,
-		// distance,
 		);
 
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			this.evs_occupied.put(id, snapshot);
-		} else if (vehState == Vehicle.RELOCATION_TRIP ||
+		} else if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP ||
 				vehState == Vehicle.CRUISING_TRIP ||
 				vehState == Vehicle.PICKUP_TRIP ) {
 			this.evs_relocation.put(id, snapshot);
@@ -236,39 +215,23 @@ public class TickSnapshot {
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
 		double y = coordinate.y;
-		float speed = vehicle.currentSpeed();
-		float acc = vehicle.currentAcc();
+		double speed = vehicle.currentSpeed();
+		double acc = vehicle.currentAcc();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass = vehicle.served_pass;
 		int roadID = vehicle.getRoad().getLinkid();
 
-		// Check if there is already a vehicleSnapshot in this tick due
-		// to visualization interpolation recording.
-		// If so, then use the previous coordinates from the recorded snapshot
-		// because we had set the previous coordinates to the current
-		// coordinates
-		// When we ended the function recVehSnaphotForVisInterp() in vehicle
-		// class.
 		if (this.getBusSnapshot(id) != null) {
 			prev_x = this.getBusSnapshot(id).prev_x;
 			prev_y = this.getBusSnapshot(id).prev_y;
 		}
 
-		// Create a snapshot for the vehicle and store it in the map
 		BusSnapshot snapshot = new BusSnapshot(id, routeID, prev_x, prev_y, x, y, speed, acc, batteryLevel,
 				energyConsumption, roadID, servedPass);
 		this.buses.put(id, snapshot);
 	}
 
-	/**
-	 * Stores the current state of the given event to the tick snapshot.
-	 * 
-	 * @param event the event for which a snapshot is being recorded.
-	 * @param type  whether it is starting or end of the event. 1: starting, 2:
-	 *              ending
-	 * @throws Throwable if an error occurs trying to record the event.
-	 */
 	public void logEvent(NetworkEventObject event, int type) throws Throwable {
 
 		// Make sure the given event object is valid
@@ -286,11 +249,6 @@ public class TickSnapshot {
 		}
 	}
 
-	/**
-	 * Returns a list of vehicle IDs stored in the tick snapshot.
-	 * 
-	 * @return a list of vehicle IDs stored in the tick snapshot.
-	 */
 	public Collection<Integer> getVehicleList() {
 		if (this.vehicles == null || this.vehicles.isEmpty()) {
 			return null;
@@ -299,11 +257,6 @@ public class TickSnapshot {
 		return this.vehicles.keySet();
 	}
 
-	/**
-	 * Returns a list of ev IDs stored in the tick snapshot.
-	 * 
-	 * @return a list of ev IDs stored in the tick snapshot.
-	 */
 	public Collection<Integer> getEVList(int vehState) {
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			if (this.evs_occupied == null || this.evs_occupied.isEmpty()) {
@@ -312,7 +265,7 @@ public class TickSnapshot {
 
 			return this.evs_occupied.keySet();
 		}
-		if (vehState == Vehicle.RELOCATION_TRIP) {
+		if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP) {
 			if (this.evs_relocation == null || this.evs_relocation.isEmpty()) {
 				return null;
 			}
@@ -330,11 +283,6 @@ public class TickSnapshot {
 
 	}
 
-	/**
-	 * Returns a list of bus IDs stored in the tick snapshot.
-	 * 
-	 * @return a list of bus IDs stored in the tick snapshot.
-	 */
 	public Collection<Integer> getBusList() {
 		if (this.buses == null || this.buses.isEmpty()) {
 			return null;
@@ -343,11 +291,6 @@ public class TickSnapshot {
 		return this.buses.keySet();
 	}
 
-	/**
-	 * Returns a list of link IDs stored in the tick snapshot.
-	 * 
-	 * @return a list of link IDs stored in the tick snapshot.
-	 */
 	public Collection<Integer> getLinkList() {
 		if (this.links == null || this.links.isEmpty()) {
 			return null;
@@ -356,11 +299,6 @@ public class TickSnapshot {
 		return this.links.keySet();
 	}
 
-	/**
-	 * HG: Returns a list of events stored in the tick snapshot.
-	 * 
-	 * @return a list of events stored in the tick snapshot.
-	 */
 	public ArrayList<ArrayList<NetworkEventObject>> getEventList() {
 		if (this.events == null || this.events.isEmpty()) {
 			return null;
@@ -369,7 +307,6 @@ public class TickSnapshot {
 		return this.events;
 	}
 
-	// Function to get the linkIDs for UCB
 	public Collection<Integer> getLinkIDList() {
 		synchronized (link_UCB) {
 			return this.link_UCB.keySet();
@@ -382,13 +319,6 @@ public class TickSnapshot {
 		}
 	}
 
-	/**
-	 * Retrieves the matching vehicle from the snapshot list or null if this vehicle
-	 * has not yet been recorded within this tick.
-	 * 
-	 * @param id the identity of the vehicle for which a snapshot is requested.
-	 * @return the vehicle snapshot for the given id or null if not found.
-	 */
 	public VehicleSnapshot getVehicleSnapshot(int id) {
 		// Check the map exists and is not empty
 		if (this.vehicles == null || this.vehicles.isEmpty()) {
@@ -415,7 +345,7 @@ public class TickSnapshot {
 			// Return the found vehicle snapshot or null if nothing found
 			return snapshot;
 		}
-		if (vehState == Vehicle.RELOCATION_TRIP) {
+		if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP) {
 			// Check the map exists and is not empty
 			if (this.evs_relocation == null || this.evs_relocation.isEmpty()) {
 				return null;
@@ -505,21 +435,11 @@ public class TickSnapshot {
 		return linkSpeed;
 	}
 
-	/**
-	 * Returns whether or not anything was recorded in the snapshot.
-	 * 
-	 * @return whether or not anything was recorded in the snapshot.
-	 */
 	public boolean isEmpty() {
 		return (this.vehicles.isEmpty() && this.evs_occupied.isEmpty() && this.evs_relocation.isEmpty()
 				&& this.evs_charging.isEmpty() && this.buses.isEmpty());
 	}
 
-	/**
-	 * Returns the model time step for the tick this snapshot represents.
-	 * 
-	 * @return the model time step for the tick this snapshot represents.
-	 */
 	public double getTickNumber() {
 		return this.tickNumber;
 	}

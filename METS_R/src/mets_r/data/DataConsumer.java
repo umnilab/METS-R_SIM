@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 
 /**
+ * Inherent from A-RESCUE
  * 
  * Classes wishing to read data from the METS_R data collection buffer should
  * implement the methods of this interface and be registered with the
@@ -17,10 +18,9 @@ import java.util.Collection;
  * buffer (which is stored sequentially), the data collector is free to discard
  * that data item to free memory within the simulation.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @version 1.0
- * @date 28 June 2017
- */
+ * @author Christopher Thompson
+ **/
+
 public interface DataConsumer {
 
 	/**
@@ -102,9 +102,6 @@ public interface DataConsumer {
 
 		// Create the list for holding all the class references for consumers
 		ArrayList<Class> consumerList = new ArrayList<Class>();
-
-		// Add each consumer class in the program to the list
-		consumerList.add(mets_r.data.CsvOutputWriter.class);
 
 		// Return the list of classes which are consumers
 		return consumerList;

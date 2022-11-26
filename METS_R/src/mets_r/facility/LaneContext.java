@@ -26,19 +26,17 @@ public class LaneContext extends DefaultContext<Lane> {
 	public LaneContext() {
 		super("LaneContext");
 
-		/*
-		 * GIS projection for spatial information about Lanes.
-		 */
+		// GIS projection for spatial information about Lanes.
 		ContextCreator.logger.info("LaneContext: building lane context and projections");
 		GeographyParameters<Lane> geoParams = new GeographyParameters<Lane>();
 		Geography<Lane> laneGeography = GeographyFactoryFinder.createGeographyFactory(null)
 				.createGeography("LaneGeography", this, geoParams);
 
-		/* Read in the data and add to the context and geography */
+		// Read in the data and add to the context and geography
 		File laneFile = null;
 		ShapefileLoader<Lane> laneLoader = null;
 
-		/* CSV file for data attribute */
+		// CSV file for data attributes
 		String fileName = GlobalVariables.LANES_CSV;
 
 		try {

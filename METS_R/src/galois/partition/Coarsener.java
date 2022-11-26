@@ -19,7 +19,7 @@ File: Coarsener.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.MethodFlag;
 import galois.objects.graph.GNode;

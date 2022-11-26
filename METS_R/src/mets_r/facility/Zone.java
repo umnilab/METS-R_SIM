@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -28,16 +29,19 @@ import mets_r.mobility.Plan;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
 import mets_r.routing.RouteV;
-import repast.simphony.essentials.RepastEssentials;
 
 public class Zone {
+	/* Constants */
+	public final static int ZONE = 0;
+	public final static int HUB = 1;
+	
 	/* Private variables */
 	private int zoneClass; // 0 for normal zone, 1 for hub
 	private int capacity; // parking space in this zone
-	private int nRequestForTaxi; // Number of requests for Taxi
-	private int nRequestForBus; // Number of requests for Bus
-	private AtomicInteger parkingVehicleStock; // Number of available vehicles at this zone
-	private AtomicInteger cruisingVehicleStock;
+	private int nRequestForTaxi; // number of requests for Taxi
+	private int nRequestForBus; // number of requests for Bus
+	private AtomicInteger parkingVehicleStock; // number of parking vehicles at this zone
+	private AtomicInteger cruisingVehicleStock;  // number of cruising vehicles at this zone
 	private int currentHour = -1;
 	private int lastTravelTimeUpdateHour = -1; // the last time for updating the travel time estimation
 	
@@ -52,24 +56,26 @@ public class Zone {
 	
 	/* Protected variables */
 	protected int id;
+	protected Coordinate coord;
 	protected Random rand;
-	protected Random rand_demand; // Random seed only for demand generation
+	protected Random rand_demand_only; // Random seed only for demand generation
 	protected int integerID;
 	protected Queue<Request> requestInQueueForTaxi; // Nonsharable passenger queue for taxis
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; // Passenger queue for bus
 	protected List<Zone> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
 	protected List<Road> neighboringLinks; // Surrounding links for vehicle to cruise if there is no avaiable parking space
-	protected Map<Integer, Zone> nearestZoneWithBus; // For collaborative taxi and transit
+	// For multi-thread mode
+	protected ConcurrentHashMap<Integer, Zone> nearestZoneWithBus; // For collaborative taxi and transit
 	
 	/* Public variables */
 	// Parameters for mode choice model
 	public List<Integer> busReachableZone;
-	public Map<Integer, Float> busGap;
-	public Map<Integer, Float> taxiTravelTime;
-	public Map<Integer, Float> taxiTravelDistance;
-	public Map<Integer, Float> busTravelTime;
-	public Map<Integer, Float> busTravelDistance;
+	public ConcurrentHashMap<Integer, Float> busGap;
+	public ConcurrentHashMap<Integer, Float> taxiTravelTime;
+	public ConcurrentHashMap<Integer, Float> taxiTravelDistance;
+	public ConcurrentHashMap<Integer, Float> busTravelTime;
+	public ConcurrentHashMap<Integer, Float> busTravelDistance;
 
 	// Service metrics
 	public int numberOfGeneratedTaxiRequest;
@@ -94,9 +100,8 @@ public class Zone {
     // Constructor
 	public Zone(int integerID, int capacity) {
 		this.id = ContextCreator.generateAgentID();
-		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
-		int the_seed = GlobalVariables.RandomGenerator.nextInt();
-		this.rand_demand = new Random(the_seed);
+		rand = new Random(GlobalVariables.RandomGenerator.nextInt());
+		rand_demand_only = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.integerID = integerID;
 		if(capacity < 0) { // By default, infinite capacity
 			this.capacity = GlobalVariables.NUM_OF_EV;
@@ -109,7 +114,7 @@ public class Zone {
 		this.nRequestForBus = 0;
 		this.nRequestForTaxi = 0;
 		this.busReachableZone = new ArrayList<Integer>();
-		this.busGap = new HashMap<Integer, Float>();
+		this.busGap = new ConcurrentHashMap<Integer, Float>();
 		if (GlobalVariables.HUB_INDEXES.contains(this.integerID)) {
 			this.zoneClass = 1;
 		} else {
@@ -133,11 +138,11 @@ public class Zone {
 		this.taxiLeavedPassWaitingTime = 0;
 		this.busLeavedPassWaitingTime = 0;
 		this.taxiParkingTime = 0;
-		this.taxiTravelTime = new HashMap<Integer, Float>();
-		this.taxiTravelDistance = new HashMap<Integer, Float>();
-		this.busTravelTime = new HashMap<Integer, Float>();
-		this.busTravelDistance = new HashMap<Integer, Float>();
-		this.nearestZoneWithBus = new HashMap<Integer, Zone>();
+		this.taxiTravelTime = new ConcurrentHashMap<Integer, Float>();
+		this.taxiTravelDistance = new ConcurrentHashMap<Integer, Float>();
+		this.busTravelTime = new ConcurrentHashMap<Integer, Float>();
+		this.busTravelDistance = new ConcurrentHashMap<Integer, Float>();
+		this.nearestZoneWithBus = new ConcurrentHashMap<Integer, Zone>();
 		this.neighboringZones = new ArrayList<Zone>();
 		this.neighboringLinks = new ArrayList<Road>();
 		this.toAddRequestForTaxi = new ConcurrentLinkedQueue<Request>();
@@ -155,7 +160,7 @@ public class Zone {
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();
-		if ((int) RepastEssentials.GetTickCount() == GlobalVariables.SIMULATION_STOP_TIME) {
+		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) {
 			// Skip the last update which is outside of the study period
 			return;
 		}
@@ -170,8 +175,7 @@ public class Zone {
 	
 	// Generate passenger
 	protected void generatePassenger() {
-		int tickcount = (int) RepastEssentials.GetTickCount();
-		this.currentHour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
+		this.currentHour = (int) Math.floor(ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
 		if (this.lastDemandUpdateHour != this.currentHour) {
 			this.futureDemand = 0.0;
 		}
@@ -181,22 +185,31 @@ public class Zone {
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		    
 			if (passRate > 0) {
+				Zone destZone = ContextCreator.getCityContext().findZoneWithIntegerID(destination);
 				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
-						+ (rand_demand.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
+						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
 					for (int i = 0; i < numToGenerate; i++) {
-						Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); // Wait for at most 2 hours
 						if (rand.nextDouble() > threshold) {
-							if (new_pass.isShareable()) {
+							if (rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) { // Sharable requests start from the same loc
+								Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+										this.sampleDestCoord(destZone),true
+										); 
 								this.addSharableTaxiPass(new_pass, destination);
 							} else {
+								Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
+										this.sampleDestCoord(destZone),false
+										); 
 								this.addTaxiPass(new_pass);
 							}
 							this.numberOfGeneratedTaxiRequest += 1;
-						} else {
+						} else { // Bus always start and end at the centroid
+							Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+									ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(), 
+									rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
 							this.addBusPass(new_pass);
 							this.numberOfGeneratedBusRequest += 1;
 						}
@@ -205,15 +218,20 @@ public class Zone {
 						this.futureDemand+= (passRate * threshold);
 					}
 				} else if (GlobalVariables.COLLABORATIVE_EV) {
-					if (this.zoneClass == 0 && this.nearestZoneWithBus.containsKey(destination)) { // normal zone
+					if (this.zoneClass == 0 && this.nearestZoneWithBus.containsKey(destination)) { // Normal zone, first take taxi, then bus
 						// Split between taxi and taxi-bus combined,
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
 							if (rand.nextDouble() > threshold) {
-								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
-								if (new_pass.isShareable()) {
+								if (rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) { // Sharable requests start from the same loc
+									Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+											this.sampleDestCoord(destZone), true
+											); 
 									this.addSharableTaxiPass(new_pass, destination);
 								} else {
+									Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
+											this.sampleDestCoord(destZone), false
+											); 
 									this.addTaxiPass(new_pass);
 								}
 								this.numberOfGeneratedTaxiRequest += 1;
@@ -221,13 +239,13 @@ public class Zone {
 								// First generate its activity plan
 								Queue<Plan> activityPlan = new LinkedList<Plan>();
 								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
-										this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
+										this.nearestZoneWithBus.get(destination).getCoord(), ContextCreator.getNextTick());
 								activityPlan.add(plan);
 								Plan plan2 = new Plan(destination,
 										ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
-										tickcount);
+										ContextCreator.getNextTick());
 								activityPlan.add(plan2);
-								Request new_pass = new Request(this.integerID, activityPlan); 
+								Request new_pass = new Request(this.integerID, this.sampleOriginCoord(), activityPlan); 
 								this.addTaxiPass(new_pass);
 								this.numberOfGeneratedCombinedRequest += 1;
 							}
@@ -235,15 +253,20 @@ public class Zone {
 						if (this.lastDemandUpdateHour != this.currentHour) {
 							this.futureDemand+=(passRate * threshold);
 						}
-					} else if (this.zoneClass == 1 && this.nearestZoneWithBus.containsKey(destination)) { // hub
+					} else if (this.zoneClass == 1 && this.nearestZoneWithBus.containsKey(destination)) { // Hub, first bus then taxi
 						// Split between taxi and taxi-bus combined,
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
 							if (rand.nextDouble() > threshold) {
-								Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
-								if (new_pass.isShareable()) {
+								if (rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) { // Sharable requests start from the same loc
+									Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+											this.sampleDestCoord(destZone),true
+											); 
 									this.addSharableTaxiPass(new_pass, destination);
 								} else {
+									Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
+											this.sampleDestCoord(destZone),false
+											); 
 									this.addTaxiPass(new_pass);
 								}
 								this.numberOfGeneratedTaxiRequest += 1;
@@ -251,13 +274,13 @@ public class Zone {
 								// First generate its activity plan
 								Queue<Plan> activityPlan = new LinkedList<Plan>();
 								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
-										this.nearestZoneWithBus.get(destination).getCoord(), tickcount);
+										this.nearestZoneWithBus.get(destination).getCoord(), ContextCreator.getNextTick());
 								activityPlan.add(plan);
 								Plan plan2 = new Plan(destination,
-										ContextCreator.getCityContext().findZoneWithIntegerID(destination).getCoord(),
-										tickcount);
+										this.sampleDestCoord(destZone),
+										ContextCreator.getNextTick());
 								activityPlan.add(plan2);
-								Request new_pass = new Request(this.integerID, activityPlan); 
+								Request new_pass = new Request(this.integerID, this.getCoord(), activityPlan); 
 								this.addBusPass(new_pass);
 								this.numberOfGeneratedCombinedRequest += 1;
 							}
@@ -269,10 +292,15 @@ public class Zone {
 					else {
 						// Taxi only
 						for (int i = 0; i < numToGenerate; i++) {
-							Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
-							if (new_pass.isShareable()) {
+							if (rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) { // Sharable requests start from the same loc
+								Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+										this.sampleDestCoord(destZone),true
+										); 
 								this.addSharableTaxiPass(new_pass, destination);
 							} else {
+								Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
+										this.sampleDestCoord(destZone),false
+										); 
 								this.addTaxiPass(new_pass);
 							}
 							this.numberOfGeneratedTaxiRequest += 1;
@@ -284,10 +312,15 @@ public class Zone {
 				} else {
 					// Taxi only
 					for (int i = 0; i < numToGenerate; i++) {
-						Request new_pass = new Request(this.integerID, destination,this.rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE); 
-						if (new_pass.isShareable()) {
+						if (rand.nextDouble()<GlobalVariables.PASSENGER_SHARE_PERCENTAGE) { // Sharable requests start from the same loc
+							Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
+									this.sampleDestCoord(destZone),true
+									); 
 							this.addSharableTaxiPass(new_pass, destination);
 						} else {
+							Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
+									this.sampleDestCoord(destZone),false
+									); 
 							this.addTaxiPass(new_pass);
 						}
 						this.numberOfGeneratedTaxiRequest += 1;
@@ -315,7 +348,7 @@ public class Zone {
 			for (Queue<Request> passQueue : this.sharableRequestForTaxi.values()) {
 				if (passQueue.size() > 0) {
 					int pass_num = passQueue.size();
-					int v_num = parkingVehicleStock.get();
+					int v_num = this.getVehicleStock();
 					v_num = (int) Math.min(Math.ceil(pass_num / 4.0), v_num);
 					for (int i = 0; i < v_num; i++) {
 						ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.integerID).poll();
@@ -329,7 +362,7 @@ public class Zone {
 								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
 							ArrayList<Request> tmp_pass = new ArrayList<Request>();
-							for (int j = 0; j < Math.min(4, pass_num); j++) {
+							for (int j = 0; j < Math.min(4 , pass_num); j++) { // Vehicle capacity is 4
 								Request p = passQueue.poll();
 								tmp_pass.add(p);
 								// Record served passengers
@@ -425,7 +458,18 @@ public class Zone {
 			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + H * this.futureDemand
 					- 0.8 * this.futureSupply.get());
 			int numToRelocate = (int) Math.floor(relocateRate)
-					+ (rand.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+					+ (GlobalVariables.RandomGenerator.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+			List<ElectricTaxi> relocateVeh = ContextCreator.getVehicleContext().getRelocationTaxi(this);
+			for (ElectricTaxi v: relocateVeh) {
+				int curr_dest = v.getDestID();
+				if(numToRelocate > 0 && v.modifyPlan(this.getIntegerID(), v.nextJunction().getCoord())){
+					ContextCreator.getZoneContext().findZoneWithIntegerID(curr_dest).futureSupply.addAndGet(-1);
+					v.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
+					ContextCreator.getVehicleContext().removeRelocationTaxi(v);
+					this.addFutureSupply();
+					numToRelocate -= 1;
+				}
+			}
 			for (int i = 0; i < numToRelocate; i++) {
 				boolean systemHasVeh = false;
 				for (Zone z : this.neighboringZones) {
@@ -456,7 +500,16 @@ public class Zone {
 			// Myopic reposition
 			double relocateRate = (nRequestForTaxi - this.parkingVehicleStock.get());
 			int numToRelocate = (int) Math.floor(relocateRate)
-					+ (rand.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+					+ (GlobalVariables.RandomGenerator.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+			List<ElectricTaxi> relocateVeh = ContextCreator.getVehicleContext().getRelocationTaxi(this);
+			for (ElectricTaxi v: relocateVeh) {
+				if(numToRelocate > 0) {
+					ContextCreator.getZoneContext().findZoneWithIntegerID(v.getDestID()).futureSupply.addAndGet(-1);
+					v.modifyPlan(this.getIntegerID(), v.nextJunction().getCoord());
+					this.addFutureSupply();
+					numToRelocate -= 1;
+				}
+			}
 			for (int i = 0; i < numToRelocate; i++) {
 				boolean systemHasVeh = false;
 				for (Zone z : this.neighboringZones) {
@@ -581,57 +634,53 @@ public class Zone {
 	// Update travel time estimation for taxi
 	public void updateTravelTimeEstimation() {
 		// Get current tick
-		int tickcount = (int) RepastEssentials.GetTickCount();
+		int tickcount = ContextCreator.getCurrentTick();
 		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
 		if (this.lastTravelTimeUpdateHour < hour) {
-			Map<Integer, Float> travelDistanceMap = new HashMap<Integer, Float>();
-			Map<Integer, Float> travelTimeMap = new HashMap<Integer, Float>();
-			// is hub
-			if (this.zoneClass == 1) {
-				// shortest path travel time from hubs to all other zones
-				for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
-					if (this.getIntegerID() != z2.getIntegerID()) {
-						double travel_time = 0;
-						double travel_distance = 0;
-						List<Road> path = RouteV.shortestPathRoute(this.getCoord(), z2.getCoord());
-						if (path != null) {
-							for (Road r : path) {
-								travel_distance += r.getLength();
-								travel_time += r.getTravelTime();
+			if(GlobalVariables.NUM_OF_BUS > 0) {
+				this.taxiTravelTime.clear();
+				this.taxiTravelDistance.clear();
+				// is hub
+				if (this.zoneClass == 1) {
+					// shortest path travel time from hubs to all other zones
+					for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
+						if (this.getIntegerID() != z2.getIntegerID()) {
+							double travel_time = 0;
+							double travel_distance = 0;
+							List<Road> path = RouteV.shortestPathRoute(this.getCoord(), z2.getCoord());
+							if (path != null) {
+								for (Road r : path) {
+									travel_distance += r.getLength();
+									travel_time += r.getTravelTime();
+								}
 							}
+							this.taxiTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
+							this.taxiTravelTime.put(z2.getIntegerID(), (float) travel_time);
 						}
-						travelDistanceMap.put(z2.getIntegerID(), (float) travel_distance);
-						travelTimeMap.put(z2.getIntegerID(), (float) travel_time);
+					}
+				} else {
+					// Shortest path to hubs
+					for (int z2_id : GlobalVariables.HUB_INDEXES) {
+						Zone z2 = ContextCreator.getCityContext().findZoneWithIntegerID(z2_id);
+						if (this.getIntegerID() != z2.getIntegerID()) {
+							double travel_time = 0;
+							double travel_distance = 0;
+							List<Road> path = RouteV.shortestPathRoute(this.getCoord(), z2.getCoord());
+							if (path != null) {
+								for (Road r : path) {
+									travel_distance += r.getLength();
+									travel_time += r.getTravelTime();
+								}
+							}
+							this.taxiTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
+							this.taxiTravelTime.put(z2.getIntegerID(), (float) travel_time);
+						}
 					}
 				}
-				this.setTaxiTravelDistanceMap(travelDistanceMap);
-				this.setTaxiTravelTimeMap(travelTimeMap);
-			} else {
-				// Shortest path to hubs
-				for (int z2_id : GlobalVariables.HUB_INDEXES) {
-					Zone z2 = ContextCreator.getCityContext().findZoneWithIntegerID(z2_id);
-					if (this.getIntegerID() != z2.getIntegerID()) {
-						double travel_time = 0;
-						double travel_distance = 0;
-						List<Road> path = RouteV.shortestPathRoute(this.getCoord(), z2.getCoord());
-						if (path != null) {
-							for (Road r : path) {
-								travel_distance += r.getLength();
-								travel_time += r.getTravelTime();
-							}
-						}
-						travelDistanceMap.put(z2.getIntegerID(), (float) travel_distance);
-						travelTimeMap.put(z2.getIntegerID(), (float) travel_time);
-					}
+				if (GlobalVariables.COLLABORATIVE_EV) {
+					this.updateCombinedTravelEstimation();
 				}
-				this.setTaxiTravelDistanceMap(travelDistanceMap);
-				this.setTaxiTravelTimeMap(travelTimeMap);
 			}
-
-			if (GlobalVariables.COLLABORATIVE_EV) {
-				this.updateCombinedTravelEstimation();
-			}
-
 			this.lastTravelTimeUpdateHour = hour;
 		}
 	}
@@ -711,22 +760,6 @@ public class Zone {
 			this.busGap.put(destID, vehicleGap);
 			this.busReachableZone.add(destID);
 		}
-	}
-
-	public void setTaxiTravelTimeMap(Map<Integer, Float> travelTime) {
-		this.taxiTravelTime = travelTime;
-	}
-
-	public void setTaxiTravelDistanceMap(Map<Integer, Float> travelDistance) {
-		this.taxiTravelDistance = travelDistance;
-	}
-
-	public void setBusTravelTimeMap(Map<Integer, Float> travelTime) {
-		this.busTravelTime = travelTime;
-	}
-
-	public void setBusTravelDistanceMap(Map<Integer, Float> travelDistance) {
-		this.busTravelDistance = travelDistance;
 	}
 	
 	// Find the passengers whose bus routes no longer exist
@@ -825,7 +858,7 @@ public class Zone {
 		this.parkingVehicleStock.addAndGet(1);
 	}
 	
-	public void addOneCrusingVehicle() {
+	public void addOneCruisingVehicle() {
 		this.cruisingVehicleStock.addAndGet(1);
 	}
 	
@@ -888,9 +921,33 @@ public class Zone {
 	public int getBusPassengerNum() {
 		return nRequestForBus;
 	}
+	
+	public Coordinate sampleOriginCoord() {
+		if(this.zoneClass == Zone.HUB){
+			return this.getCoord();
+		}else {
+			return this.getNeighboringCoord(rand.nextInt(this.getNeighboringLinkSize()));
+		}
+	}
+	
+	public Coordinate sampleDestCoord(Zone z) {
+		if(z.zoneClass == Zone.HUB){
+			return z.getCoord();
+		}else {
+			return z.getNeighboringCoord(rand.nextInt(z.getNeighboringLinkSize()));
+		}
+	}
+	
+	public Coordinate setCoord(Coordinate coord) {
+		return this.coord = coord;
+	}
 
 	public Coordinate getCoord() {
-		return ContextCreator.getZoneGeography().getGeometry(this).getCentroid().getCoordinate();
+		return this.coord;
+	}
+	
+	public Coordinate getNeighboringCoord(int index) {
+		return this.getNeighboringLink(index).getCoord();
 	}
 
 	public int getIntegerID() {

@@ -86,69 +86,77 @@ public class VehicleRouting {
 
 	/* Perform the routing computation */
 	public List<Road> computeRoute(Road currentRoad, Road destRoad, Junction currJunc, Junction destJunc) {
-		List<Road> roadPath_;
-		List<RepastEdge<Junction>> shortestPath;
-		shortestPath = null;
+		List<Road> roadPath_ = null;
+		List<RepastEdge<Junction>> shortestPath = null;
 
 		// Get the edges that make up the shortest path
 		int K = GlobalVariables.K_VALUE;
 		double theta = GlobalVariables.THETA_LOGIT;
-
-		if (GlobalVariables.K_SHORTEST_PATH) {
-			// Find the k-shortest path
-			KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(
-					transformedNetwork, currJunc, K);
-			List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(destJunc);
-
-			List<Double> pathLength = new ArrayList<Double>();
-			List<Double> pathProb = new ArrayList<Double>();
-			List<Double> cumProb = new ArrayList<Double>();
-			double total = 0.0;
-
-			for (GraphPath<Junction, RepastEdge<Junction>> kpath : kshortestPath) {
-				pathLength.add(kpath.getWeight());
-			}
-			for (int i = 0; i < kshortestPath.size(); i++) {
-				total = total + Math.exp(-theta * pathLength.get(i));
-			}
-
-			// Calculate the probability
-			for (int i = 0; i < kshortestPath.size(); i++) {
-				double prob = Math.exp(-theta * pathLength.get(i)) / total;
-				pathProb.add(prob);
-				if (i == 0)
-					cumProb.add(i, prob);
-				else
-					cumProb.add(i, cumProb.get(i - 1) + prob);
-			}
-
-			// Find the path to go
-			int k = 0;
-			double random = GlobalVariables.RandomGenerator.nextDouble();
-			for (int i = 0; i < kshortestPath.size(); i++) {
-				if (random < cumProb.get(i)) {
-					k = i;
-					break;
+		
+		if (currJunc.getJunctionID() == destJunc.getJunctionID()) { // Origin and destination is the same
+			roadPath_ = new ArrayList<Road>();
+			roadPath_.add(currentRoad);
+		}
+		else {
+			if (GlobalVariables.K_SHORTEST_PATH) {
+				// Find the k-shortest path
+				KShortestPaths<Junction, RepastEdge<Junction>> ksp = new KShortestPaths<Junction, RepastEdge<Junction>>(
+						transformedNetwork, currJunc, K);
+				List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(destJunc);
+	
+				List<Double> pathLength = new ArrayList<Double>();
+				List<Double> pathProb = new ArrayList<Double>();
+				List<Double> cumProb = new ArrayList<Double>();
+				double total = 0.0;
+	
+				for (GraphPath<Junction, RepastEdge<Junction>> kpath : kshortestPath) {
+					pathLength.add(kpath.getWeight());
+				}
+				for (int i = 0; i < kshortestPath.size(); i++) {
+					total = total + Math.exp(-theta * pathLength.get(i));
+				}
+	
+				// Calculate the probability
+				for (int i = 0; i < kshortestPath.size(); i++) {
+					double prob = Math.exp(-theta * pathLength.get(i)) / total;
+					pathProb.add(prob);
+					if (i == 0)
+						cumProb.add(i, prob);
+					else
+						cumProb.add(i, cumProb.get(i - 1) + prob);
+				}
+	
+				// Find the path to go
+				int k = 0;
+				double random = GlobalVariables.RandomGenerator.nextDouble();
+				for (int i = 0; i < kshortestPath.size(); i++) {
+					if (random < cumProb.get(i)) {
+						k = i;
+						break;
+					}
+				}
+				shortestPath = kshortestPath.get(k).getEdgeList();
+	
+			} else { // Single shortest path
+				try {
+					DijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(
+							transformedNetwork, currJunc, destJunc);
+					shortestPath = sp.getPathEdgeList();
+				}
+				catch(Exception e) {
+					ContextCreator.logger.error("Cannot find path between " + currJunc.getJunctionID() + ", " + destJunc.getJunctionID());
 				}
 			}
-			shortestPath = kshortestPath.get(k).getEdgeList();
-
-		} else { // Single shortest path
-			DijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new DijkstraShortestPath<Junction, RepastEdge<Junction>>(
-					transformedNetwork, currJunc, destJunc);
-			shortestPath = sp.getPathEdgeList();
-		}
-
-		// Find the roads which are associated with these edges
-		double shortestPathLength = 0.0f;
-		roadPath_ = new ArrayList<Road>();
-		if (shortestPath != null) { // LZ: found the shortest path
-			roadPath_.add(currentRoad);
-			for (RepastEdge<Junction> edge : shortestPath) {
-				int linkID = cityContext.getLinkIDFromEdge(edge);
-				Road road = cityContext.findRoadWithLinkID(linkID);
-				roadPath_.add(road);
-				shortestPathLength = shortestPathLength + edge.getWeight();
+	
+			// Find the roads which are associated with these edges
+			if (shortestPath != null) { // Found the shortest path
+				roadPath_ = new ArrayList<Road>();
+				roadPath_.add(currentRoad);
+				for (RepastEdge<Junction> edge : shortestPath) {
+					int linkID = cityContext.getLinkIDFromEdge(edge);
+					Road road = cityContext.findRoadWithLinkID(linkID);
+					roadPath_.add(road);
+				}
 			}
 		}
 		return roadPath_;

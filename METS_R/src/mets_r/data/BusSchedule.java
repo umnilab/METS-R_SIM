@@ -8,6 +8,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -16,7 +17,6 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
-import repast.simphony.essentials.RepastEssentials;
 
 class The_Comparator implements Comparator<OneBusSchedule> {
 	public int compare(OneBusSchedule s1, OneBusSchedule s2) {
@@ -34,7 +34,7 @@ public class BusSchedule {
 	public ArrayList<Integer> busGap; // in minute
 
 	// For updating the schedule
-	public HashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
+	public ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
 
 	public int currentHour = 0;
 
@@ -144,7 +144,7 @@ public class BusSchedule {
 
 	// Translate bus route into bus schedules
 	public void processSchedule() {
-		pendingSchedules = new HashMap<Integer, PriorityQueue<OneBusSchedule>>();
+		pendingSchedules = new ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>>();
 		int n = this.busRoute.size();
 		for (int i = 0; i < n; i++) {
 			int startZone = this.busRoute.get(i).get(0);
@@ -161,12 +161,11 @@ public class BusSchedule {
 	}
 
 	public void popSchedule(int startZone, ElectricBus b) {
-		int current_tick = (int) RepastEssentials.GetTickCount();
 		if (this.pendingSchedules != null && this.pendingSchedules.containsKey(startZone)) {
 			// Update bus schedule
 			if (this.pendingSchedules.get(startZone).size() > 0) {
 				if (this.pendingSchedules.get(startZone).peek().departureTime
-						.get(0) < (current_tick + 3600 / GlobalVariables.SIMULATION_STEP_SIZE)) {
+						.get(0) < (ContextCreator.getCurrentTick() + 3600 / GlobalVariables.SIMULATION_STEP_SIZE)) {
 					OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
 					b.updateSchedule(obs.routeID, obs.busRoute, obs.departureTime);
 					return;

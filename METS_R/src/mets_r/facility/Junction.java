@@ -47,12 +47,12 @@ public class Junction {
 		return this.hasControl;
 	}
 
-	public Coordinate getCoordinate() {
+	public Coordinate getCoord() {
 		return this.coord;
 	}
 
 	public boolean equals(Junction j) {
-		if (this.coord.equals(j.getCoordinate()))
+		if (this.coord.equals(j.getCoord()))
 			return true;
 		else
 			return false;

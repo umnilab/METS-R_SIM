@@ -1,4 +1,4 @@
-package mets_r.partition;
+package galois.partition;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -8,10 +8,10 @@ import com.vividsolutions.jts.geom.Coordinate;
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
 import galois.objects.graph.MorphGraph;
+import galois.partition.GrowBisection.SaveNodesToArray;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.*;
-import mets_r.partition.GrowBisection.SaveNodesToArray;
 import edu.uci.ics.jung.graph.Graph;
 import repast.simphony.context.space.graph.ContextJungNetwork;
 import repast.simphony.space.projection.ProjectionEvent;
@@ -102,7 +102,7 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 					Junction j = (Junction) vertex;
 					for (Zone zone : zoneGeography.getAllObjects()) {
 						Coordinate coord = zone.getCoord();
-						if (j.getCoordinate().equals(coord))
+						if (j.getCoord().equals(coord))
 							// For adaptive network partitioning
 							nodeWeight = zone.getTaxiPassengerNum() * this.alpha + 1;
 

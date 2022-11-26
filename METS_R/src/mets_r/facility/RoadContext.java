@@ -4,10 +4,6 @@ import java.io.File;
 import java.net.URI;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Map;
-
-import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.Geometry;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -23,24 +19,18 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 
-/*
- * Inherit from ARESCUE simulation
- */
+/**
+ * Inherit from A-RESCUE
+ **/
 
 public class RoadContext extends DefaultContext<Road> {
 	
 	private HashMap<Integer, Road> roadDictionary;
-	// Cache every coordinate which forms a road so that Route.onRoad() becomes
-	// faster.
-	private static Map<Coordinate, ?> coordCache;
 
 	public RoadContext() {
 		super("RoadContext");
 		ContextCreator.logger.info("RoadContext creation");
 		roadDictionary = new HashMap<Integer, Road>();
-		// Create the cache:
-		coordCache = new HashMap<Coordinate, Object>();
-
 		/*
 		 * GIS projection for spatial information about Roads. This is used to then
 		 * create junctions and finally the road network.
@@ -73,13 +63,6 @@ public class RoadContext extends DefaultContext<Road> {
 				// Update road information
 				road = setAttribute(road, result);
 				roadDictionary.put(road.getLinkid(), road);
-
-				// Create lanes for this road
-				Geometry roadGeom = roadGeography.getGeometry(road);
-				for (Coordinate c : roadGeom.getCoordinates()) {
-					coordCache.put(c, null);
-				}
-
 			}
 			br.close();
 
@@ -94,10 +77,6 @@ public class RoadContext extends DefaultContext<Road> {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-	}
-
-	public static boolean onRoad(Coordinate c) {
-		return coordCache.containsKey(c);
 	}
 
 	public Road setAttribute(Road r, String[] att) {

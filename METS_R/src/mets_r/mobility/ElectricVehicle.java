@@ -11,10 +11,10 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.DataCollector;
 import mets_r.facility.Zone;
-import repast.simphony.essentials.RepastEssentials;
 
 /**
  * Private electric vehicles
+ * 
  * @author Zengxiang Lei
  *
  */
@@ -88,7 +88,7 @@ public class ElectricVehicle extends Vehicle {
 			for (Request p : planList) {
 				this.addPlan(p.getDestination(),
 						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(),
-						(int) RepastEssentials.GetTickCount());
+						ContextCreator.getNextTick());
 				this.setNumPeople(this.getNumPeople() + 1);
 			}
 			this.setNextPlan();
@@ -101,7 +101,7 @@ public class ElectricVehicle extends Vehicle {
 	@Override
 	public void setReachDest() {
 		// Log the trip consume here
-		String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getState()
+		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getState()
 				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 				+ this.getDepTime() + "," + this.getTripConsume() + "," + this.getRouteChoice() + ","
 				+ this.getNumPeople()+ "\r\n";
@@ -178,7 +178,7 @@ public class ElectricVehicle extends Vehicle {
 		return this.onChargingRoute_;
 	}
 
-	// New EV energy consumption model
+	// EV energy consumption model
 	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle
 	// energy consumption model: Model development and validation. Applied Energy,
 	// 168, 257�268.

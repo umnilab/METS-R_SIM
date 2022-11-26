@@ -9,12 +9,13 @@ import mets_r.GlobalVariables;
 import mets_r.mobility.Vehicle;
 
 /**
- * @author Samiul Hasan and Binh Luong
  * 
- *         Inherit from ARESCUE simulation
+ * Inherit from A-RESCUE
+ * 
+ * @author Samiul Hasan and Binh Luong
+ *         
  **/
 
-@SuppressWarnings("unused")
 public class Lane {
 	private int id; // An auto-generated id from ContextCreater
 	private Random rand;
@@ -24,10 +25,10 @@ public class Lane {
 	private int left;
 	private int through;
 	private int right;
-	private float length;
+	private double length;
 
 	private Road road_; // The Road for which this lane belongs to
-	private int nVehicles_; // Number of vehicle in the lane
+	private AtomicInteger nVehicles_; // Number of vehicle in the lane
 
 	/*
 	 * To move to the next road of the path, a vehicle may need to make necessary
@@ -41,12 +42,8 @@ public class Lane {
 
 	private Vehicle firstVehicle_; // The first vehicle on a lane
 	private Vehicle lastVehicle_; // The last vehicle vehicle on a lane
-	private double accumulatedDensity_;
-	private double accumulatedSpeed_;
 	private float speed_;
 	private float maxSpeed_;
-	private int upConnections_; // Number of upstream connections of lane
-	private int downConnections_; // Number of downstream connection of lane
 	private ArrayList<Lane> upLanes_;// Upstream lanes that connect to this
 	private ArrayList<Lane> dnLanes_;// Down stream lanes that connect to
 	private int index;
@@ -55,18 +52,14 @@ public class Lane {
 	public Lane() {
 		this.id = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
-		this.nVehicles_ = 0;
+		this.nVehicles_ = new AtomicInteger(0);
 		this.lastVehicle_ = null;
 		this.upLanes_ = new ArrayList<Lane>();
 		this.dnLanes_ = new ArrayList<Lane>();
 	}
 
-	public void updateLastEnterTick(int current_tick) {
-		this.lastEnterTick.set(current_tick);
-	}
-
-	public int getLastEnterTick() {
-		return this.lastEnterTick.get();
+	public int getAndSetLastEnterTick(int current_tick) {
+		return this.lastEnterTick.getAndSet(current_tick);
 	}
 
 	public int getLaneid() {
@@ -77,11 +70,11 @@ public class Lane {
 		this.laneid = laneid;
 	}
 
-	public void setLength(float length) {
+	public void setLength(double length) {
 		this.length = length;
 	}
 
-	public float getLength() {
+	public double getLength() {
 		return length;
 	}
 
@@ -130,12 +123,6 @@ public class Lane {
 		return this.speed_;
 	}
 
-	// Reset the accumulated speed and accumulated density to recalculate in the
-	// next Sim step
-	public void resetStatistics() {
-		accumulatedSpeed_ = 0;
-		accumulatedDensity_ = 0;
-	}
 
 	public void firstVehicle(Vehicle v) {
 		if (v != null) {
@@ -171,7 +158,7 @@ public class Lane {
 		return this.maxSpeed_;
 	}
 
-	public Road road_() {
+	public Road getRoad() {
 		return this.road_;
 	}
 
@@ -214,14 +201,6 @@ public class Lane {
 		return (last);
 	}
 
-	public void upConnection(int n) {
-		this.upConnections_ = n;
-	}
-
-	public void downConnection(int n) {
-		this.downConnections_ = n;
-	}
-
 	// Get all the downstream lanes that connect to this lane.
 	public ArrayList<Lane> getDnLanes() {
 		return this.dnLanes_;
@@ -250,7 +229,7 @@ public class Lane {
 	public Lane getUpStreamConnection(Road pr) {
 		Lane connectLane = null;
 		for (Lane ul : this.getUpLanes()) {
-			if (ul.road_().equals(pr)) {
+			if (ul.getRoad().equals(pr)) {
 				connectLane = ul;
 				break;
 			}
@@ -264,36 +243,17 @@ public class Lane {
 
 	// Return number of vehicles
 	public int nVehicles() {
-		return nVehicles_;
-	}
-
-	// For diagnosis in the final table
-	public int getNumVehicles() {
-		return nVehicles_;
+		return nVehicles_.get();
 	}
 
 	// This add only the number of vehicle to lane, while addVehicle in road and a
 	// vehicle to arrayList.
 	public void addOneVehicle() {
-		nVehicles_++;
+		nVehicles_.addAndGet(1);
 	}
 
 	public void removeOneVehicle() {
-		this.nVehicles_--;
-	}
-
-	public void printLaneConnection() {
-		System.out
-				.println("Road: " + this.road_.getLinkid() + " lane " + this.laneid + " has downstream connections: ");
-		for (int i = 0; i < this.dnLanes_.size(); i++) {
-			System.out.println(
-					"To Lane: " + this.dnLanes_.get(i).laneid + " of road: " + this.dnLanes_.get(i).road_.getLinkid());
-		}
-		System.out.println("and with upstream connection: ");
-		for (int i = 0; i < this.upLanes_.size(); i++) {
-			System.out.println(
-					"To Lane: " + this.upLanes_.get(i).laneid + " of road: " + this.upLanes_.get(i).road_.getLinkid());
-		}
+		this.nVehicles_.addAndGet(-1);
 	}
 
 	// Following are functions dedicated for discretionary lane changing
@@ -311,9 +271,9 @@ public class Lane {
 	// Find the lane with less vehicles
 	public Lane betterLane(Lane plane) {
 		if (this != null && plane != null) {
-			if (this.nVehicles_ < plane.nVehicles_) {
+			if (this.nVehicles_.get() < plane.nVehicles_.get()) {
 				return this;
-			} else if (this.nVehicles_ > plane.nVehicles_) {
+			} else if (this.nVehicles_.get() > plane.nVehicles_.get()) {
 				return plane;
 			} else {
 				if (rand.nextDouble() > 0.5)
@@ -321,11 +281,9 @@ public class Lane {
 				else
 					return plane;
 			}
-		} else if (this != null)
+		} else {
 			return this;
-		else if (plane != null)
-			return plane;
-		return null;
+		}
 	}
 
 }

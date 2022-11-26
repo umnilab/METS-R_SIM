@@ -21,16 +21,32 @@ import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.routing.RouteV;
-import repast.simphony.essentials.RepastEssentials;
 import util.Pair;
 
 /**
  * Electric buses
+ * 
  * @author Zengxiang Lei, Jiawei Xue
- *
  */
 
 public class ElectricBus extends Vehicle {
+	/* Constants */
+	// Parameters for Fiori (2016) model,
+	// Modified frontal area and draft coefficient according to Bus 2 in the paper
+	// "Aerodynamic Exterior Body Design of Bus"
+	public static double p0 = 1.2256;
+	public static double A = 8; // frontal area of the vehicle
+	public static double cd = 0.68; // draft coefficient
+	public static double cr = 1.75;
+	public static double c1 = 0.0328;
+	public static double c2 = 4.575;
+	public static double etaM = 0.92;
+	public static double etaG = 0.91;
+	public static double Pconst = 5500; // energy consumption by auxiliary accessories
+	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
+	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
+	
+	/* Local variables */
 	private int routeID;
 	private int passNum;
 	private int numSeat; // Capacity of the bus.
@@ -40,15 +56,12 @@ public class ElectricBus extends Vehicle {
 	// Each entry represents a bus stop (zone) along the bus route.
 	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
 	private Dictionary<Integer, Integer> stopBus; // Reverse table for track the zone in the busStop;
-
 	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
-	// The destination distribution of passengers on the bus now.
+	
+	private ArrayList<Integer> destinationDemandOnBus; // The destination distribution of passengers on the bus now.
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
-	private ArrayList<Integer> destinationDemandOnBus;
-	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
-
 	private boolean onChargingRoute_ = false;
 	private double batteryLevel_; // current battery level
 	private double avgPersonMass_; // average mass of a person in lbs
@@ -56,38 +69,27 @@ public class ElectricBus extends Vehicle {
 	private double higherBatteryRechargeLevel_;
 	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calcuation
 	private double mass; // mass of the vehicle in kg
-
+	
+	// Parameters for storing energy consumptions
+	private double tickConsume;
+	private double totalConsume;
+	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to
+								// zero once this ev entering a new road.
+	private double tripConsume; // for UCB testing
+	
+	/* Public variables */
+	// For operational features
+	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
+	
+	// Service metrics
 	public int charging_time = 0; // total time of charging
 	public int served_pass = 0;
 	public int charging_waiting_time = 0;
 	public double initial_charging_state = 0;
-
-	// Parameters for storing energy consumptions
-	private double tickConsume;
-	private double totalConsume;
-
-	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to
-								// zero once this ev entering a new road.
-	private double tripConsume; // for UCB testing
-
-	// Parameters for Fiori (2016) model,
-	// Modified frontal area and draft coefficient according to Bus 2 in
-	// "Aerodynamic Exterior Body Design of Bus"
-	public static double p0 = 1.2256;
-	public static double A = 8; // frontal area of the vehicle // we used 6.93 to run the experiment
-	public static double cd = 0.68; // draft coefficient
-	public static double cr = 1.75;
-	public static double c1 = 0.0328;
-	public static double c2 = 4.575;
-	public static double etaM = 0.92;
-	public static double etaG = 0.91;
-	public static double Pconst = 5500; // energy consumption by auxiliary accessories
-	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-
-	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
-
+	
 	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
+	
 
 	// Function 1: constructors
 	public ElectricBus(int routeID, ArrayList<Integer> route, int nextDepartureTime) {
@@ -152,10 +154,10 @@ public class ElectricBus extends Vehicle {
 		this.onChargingRoute_ = true;
 		
 		ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
-		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) RepastEssentials.GetTickCount()); // instantly go to
+		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) ContextCreator.getNextTick()); // instantly go to
 																								// charging station
 		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_coord, (int) RepastEssentials.GetTickCount()); // Follow the old
+		this.addPlan(current_dest_zone, current_dest_coord, (int) ContextCreator.getNextTick()); // Follow the old
 																									// schedule
 		this.setState(Vehicle.CHARGING_TRIP);
 		this.departure();
@@ -174,14 +176,20 @@ public class ElectricBus extends Vehicle {
 			if (!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
 				Pair<List<Road>, Integer> route_result = RouteV.ecoRouteBus(this.getOriginID(), this.getDestID());
 				this.roadPath = route_result.getFirst();
-				this.setRouteChoice(route_result.getSecond());
+				this.routeChoice = route_result.getSecond();
 			}
 			// Compute new route if eco-routing is not used or the OD pair is uncovered
 			if (this.roadPath == null || this.roadPath.isEmpty()) {
-				this.roadPath = RouteV.vehicleRoute(this, this.getDestCoord()); // K-shortest path or shortest path
+				this.roadPath = RouteV.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
 			}
 			this.setShadowImpact();
-			if (this.roadPath == null || this.roadPath.size() < 2) { // The origin and destination share the same Junction
+			if (this.roadPath == null) {
+				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getLinkid() + ", destination " + this.getDestCoord() + 
+						", destination road " + this.getDestRoadID());
+				this.atOrigin = false;
+				this.nextRoad_ = null;
+			}
+			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
 				this.atOrigin = false;
 				this.nextRoad_ = null;
 			} else {
@@ -200,7 +208,7 @@ public class ElectricBus extends Vehicle {
 	public void setReachDest() {
 		// Case 1: the bus arrives at the charging station
 		if (onChargingRoute_) {
-			String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + "," + this.getRouteID()
+			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getRouteID()
 					+ ",4," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
 			try {
@@ -220,7 +228,7 @@ public class ElectricBus extends Vehicle {
 			// continue to move)
 			// drop off passengers at the stop
 			if (this.getRouteID() > 0) {
-				String formated_msg = RepastEssentials.GetTickCount() + "," + this.getVehicleID() + ","
+				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + ","
 						+ this.getRouteID() + ",3," + this.getOriginID() + "," + this.getDestID() + ","
 						+ this.getAccummulatedDistance() + "," + this.getDepTime() + "," + this.getTripConsume() + ","
 						+ this.routeChoice + "," + this.getPassNum() + "\r\n";
@@ -262,7 +270,7 @@ public class ElectricBus extends Vehicle {
 					super.leaveNetwork();
 					this.addPlan(busStop.get(nextStop),
 							ContextCreator.getCityContext().findZoneWithIntegerID(busStop.get(nextStop)).getCoord(),
-							Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime));
+							Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
 					this.setNextPlan();
 					this.departure();
 				}
@@ -273,7 +281,7 @@ public class ElectricBus extends Vehicle {
 				// Head to the next Stop
 				int destZoneID = busStop.get(nextStop % busStop.size());
 				this.addPlan(destZoneID, ContextCreator.getCityContext().findZoneWithIntegerID(destZoneID).getCoord(),
-						Math.max((int) RepastEssentials.GetTickCount(), nextDepartureTime));
+						Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
 				this.setNextPlan();
 				this.departure();
 			}
@@ -353,10 +361,10 @@ public class ElectricBus extends Vehicle {
 		double Pte = F * velocity;
 		double Pbat;
 		if (acceleration >= 0) {
-			Pbat = (Pte + Pconst) / (etaM * etaG);
+			Pbat = (Pte/etaM + Pconst) / etaG;
 		} else {
 			double nrb = 1 / Math.exp(0.0411 / Math.abs(acceleration));
-			Pbat = (Pte + Pconst) * nrb;
+			Pbat = Pte * nrb + Pconst / etaG;
 		}
 		double energyConsumption = Pbat * dt / (3600 * 1000);
 		return energyConsumption;
@@ -377,7 +385,7 @@ public class ElectricBus extends Vehicle {
 	}
 
 	public void finishCharging(Integer chargerID, String chargerType) {
-		String formated_msg = RepastEssentials.GetTickCount() + "," + chargerID + "," + this.getVehicleID() + ","
+		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getVehicleID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
 				+ this.charging_time + "," + this.initial_charging_state + "\r\n";
 		try {
@@ -389,13 +397,9 @@ public class ElectricBus extends Vehicle {
 		}
 		this.onChargingRoute_ = false;
 		this.setNextPlan();
-		this.setState(Vehicle.RELOCATION_TRIP);
+		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		this.departure();
 		
-	}
-
-	public void setRouteChoice(int i) {
-		this.routeChoice = i;
 	}
 
 	public double getLinkConsume() {
@@ -416,7 +420,7 @@ public class ElectricBus extends Vehicle {
 		if (newID == -1) {
 			this.routeID = -1;
 			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
-			this.nextDepartureTime = (int) (RepastEssentials.GetTickCount()
+			this.nextDepartureTime = (int) (ContextCreator.getCurrentTick()
 					+ 600 / GlobalVariables.SIMULATION_STEP_SIZE); // Wait for 1 min
 		} else {
 			this.routeID = newID;

@@ -13,9 +13,8 @@ import mets_r.GlobalVariables;
 import java.util.*;
 
 /**
- * @author: Wenbo Zhang Read background traffic into treemap with roadid as key
- *          and hourly link speed as arraylist
- *
+ *  Read background traffic mean/std into treemap with roadid as key and hourly link speed as arraylist
+ *  @author: Wenbo Zhang, Zengxiang Lei
  **/
 
 public class BackgroundTraffic {

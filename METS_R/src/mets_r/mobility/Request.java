@@ -3,38 +3,44 @@ package mets_r.mobility;
 import java.util.LinkedList;
 import java.util.Queue;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.GlobalVariables;
 
 /**
- * Request class
+ * Trip request
  * 
  * @author: Zengxiang Lei
- * 
  **/
 
 public class Request {
 	private Integer origin;
 	private Integer destination;
+	private Coordinate originCoord;
+	private Coordinate destCoord;
 	private Integer maxWaitingTime;
 	private Integer currentWaitingTime;
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
 	
-	public Request(Integer origin, Integer destination, Boolean willingToShare){
+	public Request(Integer origin, Integer destination, Coordinate originCoord, Coordinate destCoord, Boolean willingToShare){
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
+		this.originCoord = originCoord;
+		this.destCoord = destCoord;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;	
 		this.willingToShare = willingToShare;
 	}
 	
-	public Request(Integer origin, Queue<Plan> activityPlan){
+	public Request(Integer origin,  Coordinate originCoord, Queue<Plan> activityPlan){
 		this.activityPlan = activityPlan;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
 		this.currentWaitingTime = 0;	
 		this.willingToShare = false;
 		this.origin = origin;
+		this.originCoord = originCoord;
 		this.destination = activityPlan.peek().getDestID();
 	}
 	
@@ -84,14 +90,26 @@ public class Request {
 		return this.destination;
 	}
 	
+	public Coordinate getOriginCoord(){
+		return this.originCoord;
+	}
+	
+	public Coordinate getDestCoord(){
+		return this.destCoord;
+	}
+	
 	public Queue<Plan> getActivityPlan(){
 		return this.activityPlan;
 	}
 	
 	public void moveToNextActivity() {
 		this.currentWaitingTime = 0; // reset the waiting time
-		this.origin = this.activityPlan.poll().getDestID();
-		this.destination = this.activityPlan.peek().getDestID();
+		Plan prevPlan = this.activityPlan.poll();
+		this.origin = prevPlan.getDestID();
+		this.originCoord = prevPlan.getLocation();
+		Plan currPlan = this.activityPlan.peek();
+		this.destination = currPlan.getDestID();
+		this.destCoord = currPlan.getLocation();
 	}
 	
 	public int lenOfActivity(){

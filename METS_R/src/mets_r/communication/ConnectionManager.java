@@ -11,18 +11,15 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 /**
- * METS_R.communication.ConnectionManager
- * 
  * The connection manager is created with the start of the simulation program
  * and monitors the network for any incoming connections to the simulation. It
  * creates an object to handle the interface between the simulation and a remote
  * listener through the use of a WebSocket-based connection and the data
  * collection buffer of the simulation.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @version 1.0
- * @date 17 October 2017
- */
+ * @author Christopher Thompson
+**/
+
 public class ConnectionManager {
 
 	/** This instance is the only connection manager object in the system. */
@@ -34,10 +31,6 @@ public class ConnectionManager {
 	/** The list of connections currently open in the system. */
 	@SuppressWarnings("unused")
 	private Vector<Connection> connections;
-
-	// Pick a permanent port number for the socket to use for listening.
-	// This temporary value (33131) is the zip-code of downtown Miami. Jetty
-	// default (8080) is a common web port which may be in use or blocked.
 
 	/**
 	 * Constructs the connection manager system which performs any steps needed to
@@ -127,7 +120,7 @@ public class ConnectionManager {
 
 		// Create the new server on our listening port
 		this.server = new Server(GlobalVariables.NETWORK_LISTEN_PORT);
-		System.out.println("Server created!");
+		ContextCreator.logger.info("Server created!");
 
 		// Attach a handler for generating sockets to incoming connections
 		int maxMsgSize = GlobalVariables.NETWORK_MAX_MESSAGE_SIZE;

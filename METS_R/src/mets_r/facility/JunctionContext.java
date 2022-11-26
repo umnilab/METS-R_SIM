@@ -15,11 +15,11 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 
 /**
+ * Inherit from A-RESCUE
+ * 
  * Context which holds junction objects and also the RoadNetwork.
  * 
  * @author Nick Malleson
- * 
- *         Inherit from ARESCUE simulation
  */
 
 public class JunctionContext extends DefaultContext<Junction> {
@@ -57,7 +57,7 @@ public class JunctionContext extends DefaultContext<Junction> {
 	public Junction getJunctionWithCoordinates(Coordinate c) {
 		Iterable<Junction> it = this.getObjects(Junction.class);
 		for (Junction junc : it) {
-			if (junc.getCoordinate().equals(c))
+			if (junc.getCoord().equals(c))
 				return junc;
 		}
 		ContextCreator.logger.error("JunctionContext: getJunctionWithCoordinates: error, junction not found. ");

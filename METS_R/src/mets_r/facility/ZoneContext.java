@@ -26,7 +26,7 @@ public class ZoneContext extends DefaultContext<Zone> {
 		GeographyParameters<Zone> geoParams = new GeographyParameters<Zone>();
 		Geography<Zone> zoneGeography = GeographyFactoryFinder.createGeographyFactory(null)
 				.createGeography("ZoneGeography", this, geoParams);
-		/* Read in the data and add to the context and geography */
+		// Read in the data and add to the context and geography
 		File zoneFile = null;
 		ShapefileLoader<Zone> zoneLoader = null;
 		try {
@@ -46,13 +46,12 @@ public class ZoneContext extends DefaultContext<Zone> {
 				Zone zone = zoneLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[2]))); // Using customize parameters
 				this.zoneDictionary.put(int_id, zone);
 				int_id += 1;
-				ContextCreator.logger.debug("int_ID" + zone.getIntegerID() + ","
-						+ zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
+				zone.setCoord(zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
 			br.close();
 			ContextCreator.logger.info("Zone generated, total number: " + int_id);
 		} catch (Exception e) {
-			ContextCreator.logger.error("Malformed URL exception or file not exists when reading housesshapefile.");
+			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone sshapefile.");
 			e.printStackTrace();
 		}
 

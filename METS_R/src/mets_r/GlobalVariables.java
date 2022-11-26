@@ -166,14 +166,6 @@ public class GlobalVariables {
 	public static final boolean DEBUG_DATA_BUFFER = Boolean.valueOf(loadConfig("DEBUG_DATA_BUFFER"));
 	public static final int DATA_CLEANUP_REFRESH = Integer.valueOf(loadConfig("DATA_CLEANUP_REFRESH"));
 
-	// Parameters for the CSV output file writer
-	public static final boolean ENABLE_CSV_WRITE = Boolean.valueOf(loadConfig("ENABLE_CSV_WRITE"));
-	public static final String CSV_DEFAULT_FILENAME = loadConfig("CSV_DEFAULT_FILENAME");
-	public static final String CSV_DEFAULT_EXTENSION = loadConfig("CSV_DEFAULT_EXTENSION");
-	public static final String CSV_DEFAULT_PATH = loadConfig("CSV_DEFAULT_PATH");
-	public static final int CSV_BUFFER_REFRESH = Integer.valueOf(loadConfig("CSV_BUFFER_REFRESH"));
-	public static final int CSV_LINE_LIMIT = Integer.valueOf(loadConfig("CSV_LINE_LIMIT"));
-
 	// Parameters for the JSON output file writer (similar to as the csv parameters
 	// except JSON_TICK_LIMIT_PER_FILE which represents the number of ticks are
 	// written in a json file)
@@ -207,7 +199,9 @@ public class GlobalVariables {
     public static final double TRAVEL_PER_TURN = Double.valueOf(loadConfig("TRAVEL_PER_TURN"));
 	
 	// For searching nearby facilities
-	public static final double XXXX_BUFFER = Double.valueOf(loadConfig("XXXX_BUFFER")); 
+	public static final double SEARCHING_BUFFER = Double.valueOf(loadConfig("SEARCHING_BUFFER")); 
+	// For cruising nearby links
+	public static final double CRUISING_BUFFER = Double.valueOf(loadConfig("CRUISING_BUFFER")); 
     
 	// Car following status
 	public static final int STATUS_REGIME_FREEFLOWING = 0x00000000; // 0

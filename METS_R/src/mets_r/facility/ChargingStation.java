@@ -14,7 +14,8 @@ import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 
 /**
- * @author: Jiawei Xue, Zengxiang Lei Charging facilities for EV cars and buses
+ * Charging facilities for EV cars and buses
+ * @author: Jiawei Xue, Zengxiang Lei 
  **/
 
 public class ChargingStation {
@@ -37,8 +38,7 @@ public class ChargingStation {
 	private static double chargingRateBus = 100.0; // Charging rate for bus: 100.0kWh/hour
 
 	// The average electricity price in the USA is 0.10-0.12 dollar per kWh.
-	// Here, we assume the electricity price in charging station is 0.20 dollar per
-	// kWh.
+	// We assume the electricity price in charging station is 0.20 dollar per kWh.
 	private static double chargingFeeL2 = 2.0; // Charging price: 2.0 dollars/hour
 	private static double chargingFeeL3 = 10.0; // Charging price: 10.0 dollars/hour
 	private static float alpha = 10.0f; // Dollars/hour
@@ -68,9 +68,6 @@ public class ChargingStation {
 		this.numChargedVehicle = 0;
 	}
 
-	/**
-	 * Every charging event, run the step() function
-	 */
 	// Step function
 	public void step() {
 		processToAddEV();
@@ -255,7 +252,7 @@ public class ChargingStation {
 		}
 	}
 
-	// Function: estimate the total time of using L2 charger.
+	// Estimate the total time of using L2 charger.
 	// It consists of two parts: waiting time and charging time.
 	// Waiting time is equal to total charging demand in front of the vehicle
 	// divided by the maximal L2 charging supply.//
@@ -271,14 +268,14 @@ public class ChargingStation {
 		return totalTime;
 	}
 
-	// Function: the charging price of using L2 charger.
+	// The charging price of using L2 charger.
 	public double chargingCostL2(ElectricTaxi ev) {
 		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL2; // unit: hour
 		double price = chargingTime * chargingFeeL2; // unit: dollar
 		return price;
 	}
 
-	// Function: estimate the total time of using L3 charger.
+	// Estimate the total time of using L3 charger.
 	// It consists of two parts: waiting time and charging time.
 	// Waiting time is equal to total charging demand in front of the vehicle
 	// divided by the maximal L2 charging supply.//
@@ -294,24 +291,22 @@ public class ChargingStation {
 		return totalTime;
 	}
 
-	// Function: the charging price of using L2 chager.
+	// The charging price of using L2 chager.
 	public double chargingCostL3(ElectricTaxi ev) {
 		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL3; // unit: hour
 		double price = chargingTime * chargingFeeL3; // unit: dollar
 		return price;
 	}
 
-	// getID
 	public int getIntegerID() {
 		return this.integerID;
 	}
 
-	// get Coordinate
 	public Coordinate getCoord() {
 		return ContextCreator.getChargingStationGeography().getGeometry(this).getCentroid().getCoordinate();
 	}
 
-	// Nonlinear charging model: Juan,Xue, Jan 30, 2020
+	// Nonlinear charging model
 	// SOC_i, SOC_f:State of charge,[0,1]; C: total battery capacity(kWh),
 	// P:charging power(kW),t:actual charging time(hour)
 	public double nonlinearCharging(double SOC_i, double C, double P, double t) {

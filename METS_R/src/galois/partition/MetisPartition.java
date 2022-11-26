@@ -19,7 +19,7 @@ File: AbstractMain.java
 
  */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.graph.IntGraph;
 import mets_r.ContextCreator;

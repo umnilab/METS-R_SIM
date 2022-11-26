@@ -20,6 +20,7 @@ import mets_r.GlobalVariables;
 import mets_r.mobility.Vehicle;
 
 /**
+ * Inherent from A-RESCUE
  * 
  * This data consumer writes the contents of the simulation output buffer to
  * disk in the JSON format. If no file is specified, the output will be written
@@ -32,10 +33,9 @@ import mets_r.mobility.Vehicle;
  * ticksnaphots. Each ticksnapshot starts with the tick and consists of a list
  * of lists to stores entries for different vehicle snapshots.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu) and Hemant Gehlot
- * @version 1.0
- * @date 10 August 2017, 6 June 2019
- */
+ * @author Christopher Thompson, Hemant Gehlot
+  **/
+
 public class JsonOutputWriter implements DataConsumer {
 
 	/** Whether or not existing output files should be appended. */
@@ -612,13 +612,13 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 
-		evIDs = tick.getEVList(Vehicle.RELOCATION_TRIP);
+		evIDs = tick.getEVList(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ArrayList<Object>> relocationArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
-				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.RELOCATION_TRIP);
+				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 				if (ev == null) {
 					continue;
 				}
@@ -814,7 +814,6 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(vehicle.getOriginY());
 		vehicleArray.add(vehicle.getDestX());
 		vehicleArray.add(vehicle.getDestY());
-		vehicleArray.add(vehicle.getNearlyArrived());
 		vehicleArray.add(vehicle.getvehicleClass());
 		vehicleArray.add(vehicle.getRoadID());
 

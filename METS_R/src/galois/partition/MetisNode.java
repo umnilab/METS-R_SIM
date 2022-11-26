@@ -19,7 +19,7 @@ File: MetisNode.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.AbstractNoConflictBaseObject;
 import galois.objects.graph.GNode;

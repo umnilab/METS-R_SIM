@@ -15,6 +15,11 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 
+/**
+ * Initializing charging facilities 
+ * @author: Zengxiang Lei 
+ **/
+
 public class ChargingStationContext extends DefaultContext<ChargingStation> {
 	
 	private HashMap<Integer, ChargingStation> chargingStationDictionary;
@@ -25,15 +30,10 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 
 		ContextCreator.logger.info("ChargingStationContext creation");
 		chargingStationDictionary = new HashMap<Integer, ChargingStation>();
-		/*
-		 * GIS projection for spatial information about Roads. This is used to then
-		 * create junctions and finally the road network.
-		 */
 		GeographyParameters<ChargingStation> geoParams = new GeographyParameters<ChargingStation>();
 		Geography<ChargingStation> chargingStationGeography = GeographyFactoryFinder.createGeographyFactory(null)
 				.createGeography("ChargingStationGeography", this, geoParams);
 
-		/* Read in the data and add to the context and geography */
 		File chargingStationFile = null;
 		ShapefileLoader<ChargingStation> chargingStationLoader = null;
 		try {

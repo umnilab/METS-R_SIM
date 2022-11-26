@@ -19,7 +19,7 @@ File: PMetis.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;

@@ -19,7 +19,7 @@ File: MetisGraph.java
 
  */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.Accumulator;
 import galois.objects.AccumulatorBuilder;

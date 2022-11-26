@@ -12,23 +12,20 @@ import repast.simphony.context.DefaultContext;
 import repast.simphony.engine.environment.RunEnvironment;
 
 /**
- * DataCollectionContext
+ * Inherent from A-RESCUE
  * 
  * This functions as the home for the core of the data collection system within
  * METS_R and the object through which the Repast framework will ensure it is
  * scheduled to receive the signals it needs to operate at key points in the
  * execution of the simulation.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @date 20 sept 2017
- */
+ * @author Christopher Thompson
+ **/
+
 public class DataCollectionContext extends DefaultContext<Object> {
 
 	/** A convenience reference to to the system-wide data collector. */
 	private DataCollector collector;
-
-	/** A consumer of output data from the buffer which saves it to disk. */
-	private CsvOutputWriter outputWriter;
 
 	/** A consumer of output data from the buffer which saves it to disk. */
 	private JsonOutputWriter jsonOutputWriter;
@@ -45,14 +42,6 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		// where we know during startup this was guaranteed to be called
 		// at least once to ensure that it created an instance of itself
 		this.collector = DataCollector.getInstance();
-
-		// Create the output file writer. without specifying a filename,
-		// this will generate a unique value including a current timestamp
-		// and placing it in the current jre working directory.
-		if (GlobalVariables.ENABLE_CSV_WRITE) {
-			this.outputWriter = new CsvOutputWriter();
-			this.collector.registerDataConsumer(this.outputWriter);
-		}
 
 		// Create the JSON output file writer. without specifying a filename,
 		// this will generate a unique value including a current timestamp
@@ -156,7 +145,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			numChargedVehicle += cs.numChargedVehicle;
 		}
 
-		for (ElectricTaxi v : ContextCreator.getVehicleContext().getVehicles()) {
+		for (ElectricTaxi v : ContextCreator.getVehicleContext().getTaxis()) {
 			battery_mean += v.getBatteryLevel();
 			battery_std += v.getBatteryLevel() * v.getBatteryLevel();
 		}

@@ -15,9 +15,8 @@ import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
 /**
- * @author: Zengxiang Lei Read hourly demand into treemap with OD index as key
- *          and hourly from hub and to hub travel demand as arraylists
- * 
+ * Read hourly demand into treemap with origin, destination zone indexes as the keys
+ * @author: Zengxiang Lei 
  **/
 
 public class BackgroundDemand {

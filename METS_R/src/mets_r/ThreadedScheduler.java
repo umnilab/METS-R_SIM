@@ -33,10 +33,9 @@ public class ThreadedScheduler {
 	}
 
 	public void paraRoadStep() {
-		// Load the partitions
+		// Load the partitions, each partition is a subgraph of the road network
 		ArrayList<ArrayList<Road>> partitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
-
-		// Creates an list of tasks
+		// Creates tasks to run road.step() function in each partition 
 		List<PartitionRoadThread> tasks = new ArrayList<PartitionRoadThread>();
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionRoadThread(partitionedInRoads.get(i), i));
@@ -58,10 +57,9 @@ public class ThreadedScheduler {
 	}
 
 	public void paraZoneStep() {
-		// Load the partitions
+		// Load the partitions, each partition is a subset of Zones
 		ArrayList<ArrayList<Zone>> partitionedZones = ContextCreator.partitioner.getpartitionedZones();
-
-		// Creates an list of tasks
+		// Creates tasks to run zone.step() function in each partition
 		List<PartitionZoneThread> tasks = new ArrayList<PartitionZoneThread>();
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionZoneThread(partitionedZones.get(i), i));
@@ -81,11 +79,10 @@ public class ThreadedScheduler {
 	}
 
 	public void paraChargingStationStep() {
-		// Load the partitions
+		// Load the partitions, each partition is a subset of Charging stations
 		ArrayList<ArrayList<ChargingStation>> patitionChargingStations = ContextCreator.partitioner
 				.getpartitionedChargingStations();
-
-		// Creates an list of tasks
+		// Creates tasks to run chargingStation.step() function in each partition
 		List<PartitionChargingStationThread> tasks = new ArrayList<PartitionChargingStationThread>();
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionChargingStationThread(patitionChargingStations.get(i), i));
@@ -150,7 +147,7 @@ public class ThreadedScheduler {
 	}
 }
 
-/* Single thread to call road's step() method */
+/* A thread to call road's step() method */
 class PartitionRoadThread implements Callable<Integer> {
 	private ArrayList<Road> RoadSet;
 	private int threadID;
@@ -177,7 +174,7 @@ class PartitionRoadThread implements Callable<Integer> {
 	}
 }
 
-/* Single thread to call zones's step() method */
+/* A thread to call zones's step() method */
 class PartitionZoneThread implements Callable<Integer> {
 	private ArrayList<Zone> ZoneSet;
 	private int threadID;
@@ -204,7 +201,7 @@ class PartitionZoneThread implements Callable<Integer> {
 	}
 }
 
-/* Single thread to call charging station's step() method */
+/* A thread to call charging station's step() method */
 class PartitionChargingStationThread implements Callable<Integer> {
 	private ArrayList<ChargingStation> ChargingStationSet;
 	private int threadID;

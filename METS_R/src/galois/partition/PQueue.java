@@ -19,7 +19,7 @@ File: PQueue.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.graph.GNode;
 import java.util.Arrays;
@@ -82,8 +82,6 @@ public class PQueue {
 			int id = node.getData().getNodeId();
 			nodes[id] = new ListNode(node);
 			ListNode newNode = nodes[id];
-			// System.out.println(gain+" "+bucketIndex+" "+PLUS_GAINSPAN+"
-			// "+buckets.length+" ");
 			newNode.next = buckets[gain + bucketIndex];
 			if (newNode.next != null)
 				newNode.next.prev = newNode;

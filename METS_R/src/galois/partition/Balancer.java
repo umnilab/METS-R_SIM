@@ -19,7 +19,7 @@ File: Balancer.java
 
 */
 
-package mets_r.partition;
+package galois.partition;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
@@ -29,12 +29,6 @@ import util.fn.LambdaVoid;
 
 public class Balancer {
 
-	/**
-	 * A blancing algorithm for bisection
-	 * 
-	 * @param metisGraph the graph to balance
-	 * @param tpwgts     the lowerbounds of weights for the two partitions
-	 */
 	public static void balanceTwoWay(MetisGraph metisGraph, int[] tpwgts) {
 		int pwgts0 = metisGraph.getPartWeight(0);
 		int pwgts1 = metisGraph.getPartWeight(1);
@@ -296,12 +290,6 @@ public class Balancer {
 						&& higainData.partEd[k] - higainData.getIdegree() < 0)
 					continue;
 
-				/*
-				 * ===================================================================== If we
-				 * got here, we can now move the vertex from 'from' to 'to'
-				 * ======================================================================
-				 */
-
 				metisGraph.setMinCut(metisGraph.getMinCut() - (higainData.partEd[k] - higainData.getIdegree()));
 
 				/* Update where, weight, and ID/ED information of the vertex you moved */
@@ -334,7 +322,7 @@ public class Balancer {
 						if (neighborData.partEd == null) {
 							int numEdges = neighborData.getNumEdges();
 
-							/* ZH: For a simple but may not correct fix for the partition error */
+							/* For a simple but may not correct fix for the partition error */
 							int ndegree = neighborData.getNDegrees();
 							if (ndegree <= numEdges) {
 								neighborData.partIndex = new int[numEdges];
@@ -343,10 +331,6 @@ public class Balancer {
 								neighborData.partIndex = new int[ndegree];
 								neighborData.partEd = new int[ndegree];
 							}
-
-							/* Following two lines are the original implementation */
-//				            neighborData.partIndex = new int[numEdges];
-//				            neighborData.partEd = new int[numEdges];
 						}
 						int edgeWeight = (int) graph.getEdgeData(higain, neighbor);
 						if (neighborData.getPartition() == from) {
@@ -377,10 +361,7 @@ public class Balancer {
 							}
 						}
 
-						/*
-						 * add contribution to the .ed of 'to'
-						 */
-
+						/* add contribution to the .ed of 'to' */
 						if (neighborData.getPartition() != to) {
 							int k;
 							for (k = 0; k < neighborData.getNDegrees(); k++) {

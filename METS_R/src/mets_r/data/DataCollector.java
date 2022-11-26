@@ -16,6 +16,7 @@ import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 
 /**
+  * Inherent from A-RESCUE
  * 
  * This class is a collection system and data buffer for capturing all the data
  * about an METS_R execution that other pieces of code within the program (such
@@ -23,10 +24,9 @@ import repast.simphony.engine.environment.RunEnvironment;
  * form of analysis) can use to easily gather the results of the model without
  * intrusively interrupting or impacting its operation.
  * 
- * @author Christopher Thompson (thompscs@purdue.edu)
- * @version 1.0
- * @date 29 June 2017
- */
+ * @author Christopher Thompson
+ **/
+
 public class DataCollector {
 
 	/** This instance is the only data collector object in the program. */

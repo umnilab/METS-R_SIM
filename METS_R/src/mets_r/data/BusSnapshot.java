@@ -5,7 +5,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.mobility.ElectricBus;
 
 /**
- * 
  * This class is the simple data object for capturing the state of EV buses at a
  * particular point in time.
  * 
@@ -42,10 +41,10 @@ public class BusSnapshot {
 	final public double y;
 
 	/** The current speed of the vehicle with the simulation. */
-	final public float speed;
+	final public double speed;
 
 	/** The current acceleration of the vehicle with the simulation. */
-	final public float acc;
+	final public double acc;
 
 	/** The current battery level of the bus. */
 	final public double batteryLevel;
@@ -89,7 +88,7 @@ public class BusSnapshot {
 	/** final public int arrival; */
 
 	/** The total distance traveled by the vehicle in the simulation. */
-	/** final public float distance; */
+	/** final public double distance; */
 
 	/**
 	 * Construct the vehicle snapshot from the given vehicle and position.
@@ -118,7 +117,7 @@ public class BusSnapshot {
 	 * @param distance  the distance traveled so far for the vehicle's trip.
 	 * @throws Throwable if one of the supplied values is invalid.
 	 */
-	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, float speed, float acc,
+	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, double speed, double acc,
 			double batteryLevel, double energyConsumption, int roadID, int served_pass) throws Throwable {
 		// all values are passed in as primitaves instead of objects,
 		// so the compiler won't allow any to be null, no need to check
@@ -131,11 +130,11 @@ public class BusSnapshot {
 		if (Double.isNaN(y) || Double.isInfinite(y)) {
 			throw new NumberFormatException("Y-axis value is invalid.");
 		}
-		if (Float.isNaN(speed) || Float.isInfinite(speed)) {
+		if (Double.isNaN(speed) || Double.isInfinite(speed)) {
 			throw new NumberFormatException("Speed value is invalid.");
 		}
 
-		if (Float.isNaN(acc) || Float.isInfinite(acc)) {
+		if (Double.isNaN(acc) || Double.isInfinite(acc)) {
 			throw new NumberFormatException("Acc value is invalid.");
 		}
 
@@ -206,11 +205,11 @@ public class BusSnapshot {
 	 * 
 	 * @return the current speed of the vehicle within the simulation.
 	 */
-	public float getSpeed() {
+	public double getSpeed() {
 		return this.speed;
 	}
 
-	public float getAcc() {
+	public double getAcc() {
 		return this.acc;
 	}
 

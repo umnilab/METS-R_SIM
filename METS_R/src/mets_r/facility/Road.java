@@ -6,6 +6,7 @@ import java.util.Iterator;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -14,16 +15,15 @@ import mets_r.data.DataCollector;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
-import repast.simphony.engine.environment.RunEnvironment;
-import repast.simphony.essentials.RepastEssentials;
 
-/* 
- * Inherit from the ARESCUE 2.0 simulation
- */
+/**
+ * Inherit from A-RESCUE
+ **/
 
 public class Road {
 	private int id;
 	private int linkid;
+	private Coordinate coord;
 	private int left;
 	private int right;
 	private int through;
@@ -34,7 +34,7 @@ public class Road {
 	private int curhour; // To find the current hour of the simulation
 	private String identifier; // Can be used to match with shape file roads
 	private String description = ""; // Real world name of the links
-	private int nVehicles_; // Number of vehicles currently in the road
+	private AtomicInteger nVehicles_; // Number of vehicles currently in the road
 	private int nShadowVehicles; // Potential vehicles might be loaded on the road
 	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
 
@@ -48,9 +48,9 @@ public class Road {
 	private ArrayList<Lane> lanes; // Use lanes as objects inside the road
 	private ArrayList<Junction> junctions;
 
-	private TreeMap<Double, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
+	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 																	// the road
-	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so using this as the
+	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so we use this as the
 																// middle layer
 
 	private Vehicle lastVehicle_;
@@ -58,6 +58,9 @@ public class Road {
 
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
 	private double cachedFreeSpeed_; // For caching the speed before certain regulation events
+	
+	public Zone neighboringZone;
+	public double distToZone;
 	
 	// Service metrics
     public double totalEnergy;
@@ -69,17 +72,20 @@ public class Road {
 		this.description = "road " + id;
 		this.junctions = new ArrayList<Junction>();
 		this.lanes = new ArrayList<Lane>();
-		this.nVehicles_ = 0;
+		this.nVehicles_ = new AtomicInteger(0);
 
 		this.freeSpeed_ = GlobalVariables.FREE_SPEED; // m/s
 		this.freeSpeedStd_ = 0; // m/s
 		this.downStreamMovements = new ArrayList<Road>();
 		this.oppositeRoad = null;
-		this.departureVehMap = new TreeMap<Double, ArrayList<Vehicle>>();
+		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.identifier = " ";
 		this.curhour = -1;
-		this.travelTime = (float) this.length / this.freeSpeed_;
+		this.travelTime =  this.length / this.freeSpeed_;
+		
+		this.neighboringZone = null;
+		this.distToZone = Double.MAX_VALUE;
 
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
@@ -120,79 +126,70 @@ public class Road {
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
-		int tickcount = (int) RepastEssentials.GetTickCount();
+		int tickcount = ContextCreator.getCurrentTick();
 		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0) {
 			this.recRoadSnaphot(); // Record vehicle location here!
 		}
-		try {
-			/* Vehicle loading */
-			this.addVehicleToDepartureMap();
+		/* Vehicle loading */
+		this.addVehicleToDepartureMap();
 
-			/* Vehicle departure */
-			int curr_size = this.departureVehMap.size();
-			for (int i = 0; i < curr_size; i++) {
-				Vehicle v = this.departureVehicleQueueHead(); // Change to use the TreeMap
-				if (v.closeToRoad(this) == 1 && tickcount >= v.getDepTime()) {
-					// check whether the origin is the destination
-					if (v.getOriginCoord() == v.getDestCoord()) {
-						this.removeVehicleFromNewQueue(v); // Remove vehicle from the waiting vehicle queue
-						v.setReachDest();
-					} else {
-						if (!v.enterNetwork(this)) {
-							break; // Vehicle entering the network
-						}
-					}
-
+		/* Vehicle departure */
+		int curr_size = this.departureVehMap.size();
+		for (int i = 0; i < curr_size; i++) {
+			Vehicle v = this.departureVehicleQueueHead();
+			int departTime = v.getDepTime();
+			if (v.closeToRoad(this) == 1 && tickcount >= departTime) {
+				// check whether the origin is the destination
+				if (v.getOriginCoord() == v.getDestCoord()) {
+					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
+					v.setReachDest();
+				} else if (v.enterNetwork(this)) {
+					this.removeVehicleFromNewQueue(departTime, v);
 				} else {
-					// Iterate all element in the TreeMap
-					@SuppressWarnings("rawtypes")
-					Set keys = (Set) this.departureVehMap.keySet();
-					for (@SuppressWarnings("rawtypes")
-					Iterator it = (Iterator) keys.iterator(); it.hasNext();) {
-						Double key = (Double) it.next();
-						ArrayList<Vehicle> temList = this.departureVehMap.get(key);
-						for (Vehicle pv : temList) {
-							if (tickcount >= pv.getDepTime()) {
-								pv.primitiveMove();
-							} else {
-								break;
-							}
+					break; // Vehicle cannot enter the network
+				}
+			} else {
+				// Iterate all element in the TreeMap
+				Set<Integer> keys = (Set<Integer>) this.departureVehMap.keySet();
+				for (Iterator<Integer> it = (Iterator<Integer>) keys.iterator(); it.hasNext();) {
+					int key =  it.next();
+					ArrayList<Vehicle> temList = this.departureVehMap.get(key);
+					for (Vehicle pv : temList) {
+						if (tickcount >= pv.getDepTime()) {
+							pv.primitiveMove();
+						} else {
+							break;
 						}
 					}
-					break;
 				}
+				break;
 			}
+		}
 
-			/* Vehicle movement */
-			Vehicle currentVehicle = this.firstVehicle();
-			// happened at time t, deciding acceleration and lane changing
-			while (currentVehicle != null) {
-				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				currentVehicle.calcState();
-				if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0) {
-					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
-																// so we record vehicle location here!
-				}
-				currentVehicle = nextVehicle;
+		/* Vehicle movement */
+		Vehicle currentVehicle = this.firstVehicle();
+		// happened at time t, deciding acceleration and lane changing
+		while (currentVehicle != null) {
+			Vehicle nextVehicle = currentVehicle.macroTrailing();
+			currentVehicle.calcState();
+			if (tickcount % GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ == 0) {
+				currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
+															// so we record vehicle location here!
 			}
+			currentVehicle = nextVehicle;
+		}
 
-			// happened during time t to t + 1, conducting vehicle movements
-			currentVehicle = this.firstVehicle();
-			while (currentVehicle != null) {
-				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (tickcount <= currentVehicle.getLastMoveTick()) {
-					break; // Reached the end of linked list
-				}
-				currentVehicle.updateLastMoveTick(tickcount);
-				currentVehicle.move();
-				currentVehicle.updateBatteryLevel(); // Update the energy for each move
-				currentVehicle.checkAtDestination();
-				currentVehicle = nextVehicle;
+		// happened during time t to t + 1, conducting vehicle movements
+		currentVehicle = this.firstVehicle();
+		while (currentVehicle != null) {
+			Vehicle nextVehicle = currentVehicle.macroTrailing();
+			if (tickcount <= currentVehicle.getAndSetLastMoveTick(tickcount)) {
+				break; // Reached the end of linked list
 			}
-		} catch (Exception e) {
-			ContextCreator.logger.error("Road " + this.linkid + " had an error while moving vehicles");
-			e.printStackTrace();
-			RunEnvironment.getInstance().pauseRun();
+			currentVehicle.move();
+			currentVehicle.updateBatteryLevel(); // Update the energy for each move
+			currentVehicle.checkAtDestination();
+			currentVehicle = nextVehicle;
 		}
 	}
 
@@ -207,6 +204,10 @@ public class Road {
 
 	public int getLinkid() {
 		return linkid;
+	}
+	
+	public Coordinate getCoord() {
+		return this.coord;
 	}
 
 	public void setTlinkid(int tlinkid) {
@@ -319,6 +320,9 @@ public class Road {
 			ContextCreator.logger.error("Road: Error: this Road object already has two Junctions.");
 		}
 		this.junctions.add(j);
+		if (this.junctions.size() == 1) { // Start junction
+			this.coord = j.getCoord();
+		}
 	}
 
 	public ArrayList<Junction> getJunctions() {
@@ -337,8 +341,7 @@ public class Road {
 	}
 
 	public void changeNumberOfVehicles(int nVeh) {
-		this.nVehicles_ += nVeh;
-		if (this.nVehicles_ < 0) {
+		if (this.nVehicles_.addAndGet(nVeh) < 0) {
 			ContextCreator.logger.error("Something went wrong, the vehicle number becomes negative!");
 		}
 	}
@@ -369,7 +372,7 @@ public class Road {
 
 	/* Number of vehicles on the road */
 	public int getVehicleNum() {
-		return this.nVehicles_;
+		return this.nVehicles_.get();
 	}
 
 	/* For adaptive network partitioning */
@@ -412,7 +415,7 @@ public class Road {
 	// This add queue using TreeMap structure
 	public void addVehicleToDepartureMap() {
 		for (Vehicle v = this.toAddDepartureVeh.poll(); v != null; v = this.toAddDepartureVeh.poll()) {
-			double departuretime_ = v.getDepTime();
+			int departuretime_ = v.getDepTime();
 			if (!this.departureVehMap.containsKey(departuretime_)) {
 				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
 				temporalList.add(v);
@@ -433,47 +436,45 @@ public class Road {
 	 * at the departuretime_ of the vehicle if there are more than one vehicle with
 	 * the same departuretime_, it will remove the vehicle match with id of v.
 	 */
-	public void removeVehicleFromNewQueue(Vehicle v) {
-		double departuretime_ = v.getDepTime();
-		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departuretime_);
+	public void removeVehicleFromNewQueue(int departureTime, Vehicle v) {
+		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departureTime);
 		if (temporalList.size() > 1) {
-			this.departureVehMap.get(departuretime_).remove(v);
+			this.departureVehMap.get(departureTime).remove(v);
 		} else {
-			this.departureVehMap.remove(departuretime_);
+			this.departureVehMap.remove(departureTime);
 		}
 	}
 
 	public Vehicle departureVehicleQueueHead() {
-		if (!this.departureVehMap.isEmpty()) {
-			double firstDeparture_;
-			firstDeparture_ = this.departureVehMap.firstKey();
-			return this.departureVehMap.get(firstDeparture_).get(0);
-		}
-		return null;
+		int firstDeparture_ = this.departureVehMap.firstKey();
+		return this.departureVehMap.get(firstDeparture_).get(0);
 	}
 
 	public double getFreeSpeed() {
 		return this.freeSpeed_;
 	}
 	
-	// Assume speed is randomly distributed based on
+	// Assume speed is normally distributed based on
 	// Berry, D. S., & Belmont, D. M. (1951, July). Distribution of vehicle speeds and travel times.
-	public float getRandomFreeSpeed(double coef) {
-		return (float) Math.max(
+	public double getRandomFreeSpeed(double coef) {
+		return  Math.max(
 				this.freeSpeed_ + coef * this.freeSpeedStd_, 0);
 	}
 
-	public float calcSpeed() {
-		int curr_size = this.nVehicles_;
-		if (curr_size <= 0) // No vehicle
-			return (float) freeSpeed_;
-		float sum = 0.0f;
-		Vehicle pv = this.firstVehicle();
-		for (int i = 0; i < curr_size; i++) {
-			sum += pv.currentSpeed();
-			pv = pv.macroTrailing();
+	public double calcSpeed() {
+		if (this.getVehicleNum() <= 0) // No vehicle
+			return  freeSpeed_;
+		else {
+			int curr_num = 0;
+			double sum = 0.0f;
+			Vehicle pv = this.firstVehicle();
+			while (pv != null) {
+				sum += pv.currentSpeed();
+				curr_num += 1;
+				pv = pv.macroTrailing();
+			}
+			return  Math.max(sum / curr_num, 0.0001); // at least 0.001 to avoid divide 0 below
 		}
-		return (float) Math.max(sum / curr_size, 1 * 0.44704); // at least 1 mph
 	}
 
 	/**
@@ -483,31 +484,8 @@ public class Road {
 	 * @author Zhan & Hemant
 	 */
 	public void setTravelTime() {
-		float averageSpeed = 0;
-		int curr_size = this.nVehicles_;
-		if (curr_size == 0) {
-			averageSpeed = (float) this.freeSpeed_;
-		} else {
-			Vehicle pv = this.firstVehicle();
-			for (int i = 0; i < curr_size; i++) {
-				if (pv.currentSpeed() < 0) {
-					ContextCreator.logger.error("Vehicle " + pv.getId() + " has error speed of " + pv.currentSpeed());
-				} else
-					averageSpeed = +pv.currentSpeed();
-				pv = pv.macroTrailing();
-			}
-			if (averageSpeed < 0.001f) {
-				averageSpeed = 0.001f;
-			} else {
-				if (this.nVehicles_ < 0) {
-					ContextCreator.logger.error("Road " + this.getLinkid() + " has " + this.nVehicles_ + " vehicles");
-					averageSpeed = (float) this.freeSpeed_;
-				} else
-					averageSpeed = averageSpeed / this.nVehicles_;
-			}
-		}
 		// outAverageSpeed: For output travel times
-		this.travelTime = (float) this.length / averageSpeed;
+		this.travelTime =  this.length / this.calcSpeed();
 	}
 
 	public double getTravelTime() {
@@ -569,8 +547,8 @@ public class Road {
 
 	public void printRoadCoordinate() {
 		Coordinate start, end;
-		start = this.getJunctions().get(0).getCoordinate();
-		end = this.getJunctions().get(1).getCoordinate();
+		start = this.getJunctions().get(0).getCoord();
+		end = this.getJunctions().get(1).getCoord();
 		ContextCreator.logger.info("Coordinate of road: " + this.getLinkid());
 		ContextCreator.logger.info("Starting point: " + start);
 		ContextCreator.logger.info("Ending point: " + end);
@@ -582,8 +560,7 @@ public class Road {
 	 */
 	public void updateFreeFlowSpeed() {
 		// Get current tick
-		int tickcount = (int) RepastEssentials.GetTickCount();
-		int hour = (int) Math.floor(tickcount / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
+		int hour = (int) Math.floor(ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
 		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.curhour < hour) {
@@ -613,8 +590,7 @@ public class Road {
 	}
 
 	public void printTick() {
-		int tickcount = (int) RepastEssentials.GetTickCount();
-		ContextCreator.logger.info("Tick: " + tickcount);
+		ContextCreator.logger.info("Tick: " + ContextCreator.getCurrentTick());
 	}
 
 	public void recordEnergyConsumption(Vehicle v) {
