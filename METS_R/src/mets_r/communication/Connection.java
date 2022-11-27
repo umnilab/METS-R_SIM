@@ -320,8 +320,7 @@ public class Connection implements DataConsumer {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("MSG_TYPE", "TICK_MSG");
 		ArrayList<HashMap<String, Object>> entries = new ArrayList<HashMap<String, Object>>();
-		int hour = (int) (tick.getTickNumber() / 3600 * GlobalVariables.SIMULATION_STEP_SIZE);
-
+		int hour = (int) (tick.getTickNumber()/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		// Send the latest progress of the simulation
 		if (hour > prevhour) {
 			HashMap<String, Object> entryObj = new HashMap<String, Object>();

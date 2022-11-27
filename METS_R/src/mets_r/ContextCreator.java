@@ -112,13 +112,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 			try {
 				Thread.sleep(1000);
 				logger.info("Simulation pausing for waiting bus schedules");
-				if (num_tried > 10 && connection != null) {
+				if (num_tried > 3 && connection != null) {
 					try {
 						int tick = (int) Math.round((0.0+ContextCreator.getCurrentTick())
 								/ GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
 						logger.info("Send request for the " + tick + "-th schedule.");
-						tick *= GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
-						if (tick == GlobalVariables.SIMULATION_STOP_TIME)
+						tick = tick * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
+						if (tick >= GlobalVariables.SIMULATION_STOP_TIME)
 							break; // The end of the simulation
 						connection.sendTickSnapshot(new TickSnapshot(tick));
 						num_tried = 0;

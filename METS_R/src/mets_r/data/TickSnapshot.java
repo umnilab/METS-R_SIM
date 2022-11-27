@@ -66,7 +66,7 @@ public class TickSnapshot {
 	 */
 	public TickSnapshot(int tickNumber) {
 		// Verify the given tick number is valid and set it
-		if (tickNumber < 0.0) {
+		if (tickNumber < 0) {
 			throw new IllegalArgumentException("Invalid tick number");
 		}
 		this.tickNumber = tickNumber;
