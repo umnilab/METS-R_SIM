@@ -10,7 +10,6 @@ import java.util.Map;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.NetworkEventObject;
-import mets_r.facility.Road;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
@@ -43,7 +42,6 @@ public class TickSnapshot {
 	private HashMap<Integer, EVSnapshot> evs_relocation;
 	private HashMap<Integer, EVSnapshot> evs_charging;
 	private HashMap<Integer, BusSnapshot> buses;
-	private HashMap<Integer, LinkSnapshot> links;
 
 	// Link energy consumptions for UCB
 	private Map<Integer, ArrayList<Double>> link_UCB; // the link energy consumption for taxis
@@ -79,7 +77,6 @@ public class TickSnapshot {
 		this.evs_occupied = new HashMap<Integer, EVSnapshot>();
 		this.evs_relocation = new HashMap<Integer, EVSnapshot>();
 		this.evs_charging = new HashMap<Integer, EVSnapshot>();
-		this.links = new HashMap<Integer, LinkSnapshot>();
 
 		// Setup the map for holding the event data. Two subarraylists (for starting
 		// events and ending events) is created in a large arraylist
@@ -184,21 +181,6 @@ public class TickSnapshot {
 		}
 	}
 
-	// Store the link state
-	public void logLink(Road road) throws Throwable {
-		if (road == null) {
-			return;
-		}
-		int id = road.getLinkid();
-		double speed = road.calcSpeed();
-		int nVehicles = road.getVehicleNum();
-		double energy = road.getTotalEnergy();
-		int flow = road.getTotalFlow();
-
-		LinkSnapshot snapshot = new LinkSnapshot(id, speed, nVehicles, energy, flow);
-		this.links.put(id, snapshot);
-	}
-
 	// Store the current state of the given Bus to the tick snapshot.
 	public void logBus(ElectricBus vehicle, Coordinate coordinate) throws Throwable {
 		if (vehicle == null) {
@@ -291,14 +273,6 @@ public class TickSnapshot {
 		return this.buses.keySet();
 	}
 
-	public Collection<Integer> getLinkList() {
-		if (this.links == null || this.links.isEmpty()) {
-			return null;
-		}
-
-		return this.links.keySet();
-	}
-
 	public ArrayList<ArrayList<NetworkEventObject>> getEventList() {
 		if (this.events == null || this.events.isEmpty()) {
 			return null;
@@ -383,19 +357,6 @@ public class TickSnapshot {
 		BusSnapshot snapshot = this.buses.get(id);
 
 		// return the found vehicle snapshot or null if nothing found
-		return snapshot;
-	}
-
-	public LinkSnapshot getLinkSnapshot(int id) {
-		// Check the map exists and is not empty
-		if (this.links == null || this.links.isEmpty()) {
-			return null;
-		}
-
-		// Attempt to pull out the vehicle from the map with the given id
-		LinkSnapshot snapshot = this.links.get(id);
-
-		// Return the found vehicle snapshot or null if nothing found
 		return snapshot;
 	}
 

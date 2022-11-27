@@ -9,7 +9,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.NetworkEventObject;
-import mets_r.facility.Road;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
@@ -640,17 +639,4 @@ public class DataCollector {
 	public void recordSpeedVehilce(int id, double linkSpeed) {
 		this.currentSnapshot.logSpeedVehicle(id, linkSpeed);
 	}
-
-	public void recordRoadSnapshot(Road road) throws Throwable {
-		if (road == null) {
-			throw new IllegalArgumentException("No road given");
-		}
-		// Make sure a tick is currently being processed
-		if (this.currentSnapshot == null) {
-			throw new RuntimeException("No tick snapshot being processed.");
-		}
-		// Create the snapshot
-		this.currentSnapshot.logLink(road);
-	}
-
 }

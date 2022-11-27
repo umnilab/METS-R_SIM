@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.*;
-import mets_r.data.DataCollector;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
@@ -127,15 +126,15 @@ public class Road {
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
 		int tickcount = ContextCreator.getCurrentTick();
-		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0 && this.getVehicleNum() > 0) {
-			try {
-				this.recRoadSnaphot(); // Record vehicle location here
-			}
-			catch (Throwable t) {
-				// Could not log the vehicle's new position in data buffer!
-				DataCollector.printDebug("ERR" + t.getMessage());
-			}
-		}
+//		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0 && this.getVehicleNum() > 0) {
+//			try {
+//				this.recRoadSnaphot(); // Record vehicle location here
+//			}
+//			catch (Throwable t) {
+//				// Could not log the vehicle's new position in data buffer!
+//				DataCollector.printDebug("ERR" + t.getMessage());
+//			}
+//		}
 		
 		/* Vehicle loading */
 		this.addVehicleToDepartureMap();
@@ -614,14 +613,6 @@ public class Road {
 
 	public int getTotalFlow() {
 		return totalFlow;
-	}
-
-	public void recRoadSnaphot() {
-		try {
-			DataCollector.getInstance().recordRoadSnapshot(this);
-		} catch (Throwable t) {
-			DataCollector.printDebug("ERR" + t.getMessage());
-		}
 	}
 
 }

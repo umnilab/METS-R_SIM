@@ -685,32 +685,27 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 
-		Collection<Integer> linkIDs = tick.getLinkList();
-		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
-		if (!(linkIDs == null || linkIDs.isEmpty())) {
-			for (Integer id : linkIDs) {
-				LinkSnapshot link = tick.getLinkSnapshot(id); // Retrieve the vehicle snapshot from the tick snapshot
-				if (link == null) {
-					continue;
-				}
-				ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(link);
-				if (linkArray == null) {
-					continue;
-				}
-				linkArrayArray.add(linkArray);
-			}
-		}
-		
-		
 		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 			servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
 			leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
 		}
 		
+		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
 		for (Road r: ContextCreator.getRoadGeography().getAllObjects()) {
 			energyConsumption += r.getTotalEnergy();
-			vehNum += r.getVehicleNum();
-			meanSpeed += r.calcSpeed() * r.getVehicleNum();
+			if(r.getVehicleNum()>0) {
+				// Store the link state
+				int id = r.getLinkid();
+				double speed = r.calcSpeed();
+				int nVehicles = r.getVehicleNum();
+				double energy = r.getTotalEnergy();
+				int flow = r.getTotalFlow();
+				meanSpeed += speed * nVehicles;
+				vehNum += nVehicles;
+				LinkSnapshot snapshot = new LinkSnapshot(id, speed, nVehicles, energy, flow);
+				ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
+				linkArrayArray.add(linkArray);
+			}
 		}
 
 		HashMap<String, Object> tickArray = new HashMap<String, Object>();
@@ -724,7 +719,7 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("left", leftPass);
 		tickArray.put("energy", energyConsumption);
 		tickArray.put("num_veh", vehNum);
-		tickArray.put("mean_speed", meanSpeed/vehNum);
+		tickArray.put("mean_speed", meanSpeed/Math.max(vehNum,1));
 		
 		return tickArray;
 	}
