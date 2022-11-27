@@ -670,13 +670,7 @@ public class Vehicle {
 	public void recVehSnaphotForVisInterp() {
 		Coordinate currentCoord = this.getCurrentCoord();
 		try {
-			// The following condition can be put to reduce the data when the output of
-			// interest is the final case when vehicles reach close to destination
-			DataCollector.getInstance().recordSnapshot(this, currentCoord);// HGehlot: I use currentCoord rather than
-																			// the targeted coordinates (as in move()
-																			// function) and this is an approximation
-																			// but anyway if the vehicle moves then it
-																			// will get overriden.
+			DataCollector.getInstance().recordSnapshot(this, currentCoord);
 		} catch (Throwable t) {
 			// Could not log the vehicle's new position in data buffer!
 			DataCollector.printDebug("ERR" + t.getMessage());

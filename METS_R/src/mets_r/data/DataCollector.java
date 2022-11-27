@@ -16,7 +16,7 @@ import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 
 /**
-  * Inherent from A-RESCUE
+ * 
  * 
  * This class is a collection system and data buffer for capturing all the data
  * about an METS_R execution that other pieces of code within the program (such

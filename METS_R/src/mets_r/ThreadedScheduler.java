@@ -90,7 +90,6 @@ public class ThreadedScheduler {
 
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
-			stepBwRoads(); // Process the roads between different partitions
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
 			for (int i = 0; i < N_Partition; i++)
 				time_stat.add(futures.get(i).get());
@@ -104,8 +103,7 @@ public class ThreadedScheduler {
 	}
 
 	public void stepBwRoads() {
-		ArrayList<Road> PartitionedBwRoads = ContextCreator.partitioner.getPartitionedBwRoads();
-		for (Road r : PartitionedBwRoads) {
+		for (Road r : ContextCreator.partitioner.getPartitionedBwRoads()) {
 			r.step();
 		}
 	}

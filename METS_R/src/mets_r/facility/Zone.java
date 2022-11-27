@@ -369,7 +369,6 @@ public class Zone {
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
 								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
-								GlobalVariables.SERVE_PASS += 1; // For Json ouput
 							}
 							v.servePassenger(tmp_pass);
 							// Update future supply of the target zone
@@ -410,7 +409,6 @@ public class Zone {
 				ContextCreator.getCityContext().findZoneWithIntegerID(current_taxi_pass.getDestination()).addFutureSupply();
 				// Record served passenger
 				this.nRequestForTaxi -= 1;
-				GlobalVariables.SERVE_PASS += 1;
 				this.taxiServedPassWaitingTime += current_taxi_pass.getCurrentWaitingTime();
 			} else {
 				break; // no vehicle

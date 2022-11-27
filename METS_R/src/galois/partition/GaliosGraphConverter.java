@@ -126,10 +126,7 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 
 				this.ResolvedRoads.add(road);
 
-				// Number of vehicles + 1 on the road, used as the edge weight
-//				int edgeWeight = road.getVehicleNum() * 10 + 1; // Use plus one to avoid 0
-//				int edgeWeight = road.getVehicleNum() + 1; // Use plus one to avoid 0
-				// For adaptive network partitioning
+				// For adaptive network partitioning. 
 				int edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
 						+ road.getFutureRoutingVehNum() * this.gamma;
 
@@ -143,18 +140,11 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 				n2.getData().addEdgeWeight(edgeWeight);
 				n2.getData().incNumEdges();
 
-//		        // Add edge weight back to both ends
-//		        n1.getData().setWeight(n1.getData().getWeight()+(int)((edgeWeight+1)/2)-1);
-//		        n2.getData().setWeight(n2.getData().getWeight()+(int)((edgeWeight+1)/2)-1);
-
 				/* Weighting scheme by only pushing weights on one end */
 
 				if (edgeWeight > 1) {
 					// Push weights only to downstream nodes
 					n2.getData().setWeight(n2.getData().getWeight() - 1 + edgeWeight);
-
-//		        	// Push weights only to upstream nodes
-//		        	n1.getData().setWeight(n1.getData().getWeight() - 1 + edgeWeight);
 				}
 
 				edgeNum++;

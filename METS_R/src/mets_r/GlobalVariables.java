@@ -192,7 +192,6 @@ public class GlobalVariables {
 	// Displaying useful metrics
 	public static final boolean ENABLE_METRICS_DISPLAY = Boolean.valueOf(loadConfig("ENABLE_METRICS_DISPLAY"));
 	public static final int METRICS_DISPLAY_INTERVAL = Integer.valueOf(loadConfig("METRICS_DISPLAY_INTERVAL"));
-	public static int SERVE_PASS = 0;
 	
 	/* Constants */
 	// For primitive move

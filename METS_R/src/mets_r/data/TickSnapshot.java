@@ -191,7 +191,7 @@ public class TickSnapshot {
 		}
 		int id = road.getLinkid();
 		double speed = road.calcSpeed();
-		int nVehicles = road.getVehicleNum(); // LZ: Oct 19, replaced getNumVehicles with this.
+		int nVehicles = road.getVehicleNum();
 		double energy = road.getTotalEnergy();
 		int flow = road.getTotalFlow();
 

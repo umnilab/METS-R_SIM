@@ -16,7 +16,10 @@ import java.util.Map;
 //import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
+import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.facility.Road;
+import mets_r.facility.Zone;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -579,6 +582,12 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @return the array of array for the given tick snapshot.
 	 */
 	public static HashMap<String, Object> createTickLines(TickSnapshot tick) {
+		int servedPass = 0;
+		int leftPass = 0;
+		int vehNum = 0;
+		float energyConsumption = 0;
+		float meanSpeed = 0;
+		
 		// check the tick snapshot exists
 		if (tick == null) {
 			HashMap<String, Object> tickArray = new HashMap<String, Object>();
@@ -680,25 +689,29 @@ public class JsonOutputWriter implements DataConsumer {
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(linkIDs == null || linkIDs.isEmpty())) {
 			for (Integer id : linkIDs) {
-				// Retrieve the vehicle snapshot from the tick snapshot
-				LinkSnapshot link = tick.getLinkSnapshot(id);
+				LinkSnapshot link = tick.getLinkSnapshot(id); // Retrieve the vehicle snapshot from the tick snapshot
 				if (link == null) {
 					continue;
 				}
-
-				// Get the arraylist representation of this link
 				ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(link);
 				if (linkArray == null) {
 					continue;
 				}
-
-				// Add the vehicle array to the tick arraylist
 				linkArrayArray.add(linkArray);
-
 			}
 		}
-
-		int servedPass = GlobalVariables.SERVE_PASS;
+		
+		
+		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+			servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
+			leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
+		}
+		
+		for (Road r: ContextCreator.getRoadGeography().getAllObjects()) {
+			energyConsumption += r.getTotalEnergy();
+			vehNum += r.getVehicleNum();
+			meanSpeed += r.calcSpeed() * r.getVehicleNum();
+		}
 
 		HashMap<String, Object> tickArray = new HashMap<String, Object>();
 
@@ -707,9 +720,13 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("ev_charging", chargingArrayArray);
 		tickArray.put("bus", busArrayArray);
 		tickArray.put("link", linkArrayArray);
-		tickArray.put("pass", servedPass);
+		tickArray.put("served", servedPass);
+		tickArray.put("left", leftPass);
+		tickArray.put("energy", energyConsumption);
+		tickArray.put("num_veh", vehNum);
+		tickArray.put("mean_speed", meanSpeed/vehNum);
+		
 		return tickArray;
-
 	}
 
 	/**

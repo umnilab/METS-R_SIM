@@ -100,35 +100,7 @@ public class MetisPartition {
 		// Testing retrieving the partitioned results
 		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
 		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
-//		this.partitionWeights = graphConverter.getPartitionWeights();
 		int i;
-//		for (i = 0; i < this.nPartition; i++){
-//			ContextCreator.logger.debug("Partition:\t" + i + "\tNumber of element=\t" + partitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + partitionWeights.get(i));
-//			// Compute number of vehicles currently in the partition
-//			int totNumVeh = 0;
-//			int totShadowVeh = 0;
-//			int totRoutingVeh = 0;
-//			for (Road road : partitionedInRoads.get(i)){
-//				totNumVeh += road.getVehicleNum();
-//				totShadowVeh += road.getShadowVehicleNum();
-//				totRoutingVeh += road.getFutureRoutingVehNum();
-//				
-//			}
-//			ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
-//
-//		}
-//		
-//		ContextCreator.logger.debug("Boundary Roads: " + partitionedBwRoads.size());
-//		// Compute number of vehicles currently in the partition
-//		int totNumVeh = 0;
-//		int totShadowVeh = 0;
-//		int totRoutingVeh = 0;
-//		for (Road road : partitionedBwRoads){
-//			totNumVeh += road.getVehicleNum();
-//			totShadowVeh += road.getShadowVehicleNum();
-//			totRoutingVeh += road.getFutureRoutingVehNum();
-//		}
-//		ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
 
 		// Partition Zone by prospect demand
 		ArrayList<Double> totRequest = new ArrayList<Double>();
@@ -222,36 +194,6 @@ public class MetisPartition {
 		// Testing retrieving the partitioned results
 		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
 		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
-//		this.partitionWeights = graphConverter.getPartitionWeights();
-//		int i;
-//		for (i = 0; i < this.nPartition; i++){
-//			ContextCreator.logger.debug("Partition:\t" + i + "\tNumber of element=\t" + partitionedInRoads.get(i).size() + "\tTotal edge weight=\t" + partitionWeights.get(i));
-//			// Compute number of vehicles currently in the partition
-//			int totNumVeh = 0;
-//			int totShadowVeh = 0;
-//			int totRoutingVeh = 0;
-//			for (Road road : partitionedInRoads.get(i)){
-//				totNumVeh += road.getVehicleNum();
-//				totShadowVeh += road.getShadowVehicleNum();
-//				totRoutingVeh += road.getFutureRoutingVehNum();
-//				
-//			}
-//			ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
-//
-//		}
-//		
-//		ContextCreator.logger.debug("Boundary Roads:" + partitionedBwRoads.size());
-//		// Compute number of vehicles currently in the partition
-//		int totNumVeh = 0;
-//		int totShadowVeh = 0;
-//		int totRoutingVeh = 0;
-//		for (Road road : partitionedBwRoads){
-//			totNumVeh += road.getVehicleNum();
-//			totShadowVeh += road.getShadowVehicleNum();
-//			totRoutingVeh += road.getFutureRoutingVehNum();
-//		}
-//		ContextCreator.logger.debug("\t#vehicles=\t" + totNumVeh+"\t#shadow vehciles=\t"+totShadowVeh+"\t#future routing vehicles\t"+totRoutingVeh);
-
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
 

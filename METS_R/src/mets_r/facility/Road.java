@@ -127,9 +127,16 @@ public class Road {
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
 		int tickcount = ContextCreator.getCurrentTick();
-		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0) {
-			this.recRoadSnaphot(); // Record vehicle location here!
+		if (tickcount % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0 && this.getVehicleNum() > 0) {
+			try {
+				this.recRoadSnaphot(); // Record vehicle location here
+			}
+			catch (Throwable t) {
+				// Could not log the vehicle's new position in data buffer!
+				DataCollector.printDebug("ERR" + t.getMessage());
+			}
 		}
+		
 		/* Vehicle loading */
 		this.addVehicleToDepartureMap();
 
@@ -589,10 +596,6 @@ public class Road {
 		this.freeSpeed_ = newFFSpd * 0.44694; // HG: convert from mph to m/s
 	}
 
-	public void printTick() {
-		ContextCreator.logger.info("Tick: " + ContextCreator.getCurrentTick());
-	}
-
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
 		if (v.getVehicleClass() == 1) { // EV
@@ -617,7 +620,6 @@ public class Road {
 		try {
 			DataCollector.getInstance().recordRoadSnapshot(this);
 		} catch (Throwable t) {
-			// could not log the vehicle's new position in data buffer!
 			DataCollector.printDebug("ERR" + t.getMessage());
 		}
 	}
