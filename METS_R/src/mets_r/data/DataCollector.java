@@ -227,7 +227,7 @@ public class DataCollector {
 	 * 
 	 * @param tickNumber the number of the time step of the simulation tick.
 	 */
-	public void startTickCollection(double tickNumber) {
+	public void startTickCollection(int tickNumber) {
 		GlobalVariables.datacollection_start = System.currentTimeMillis();
 
 //        if ((int)tickNumber % 100 == 0) {
@@ -455,7 +455,7 @@ public class DataCollector {
 	 * @param tickNumber the simulation time step of the snapshot desired.
 	 * @return the tick snapshot from the buffer matching the given number.
 	 */
-	public TickSnapshot getTick(double tickNumber) {
+	public TickSnapshot getTick(int tickNumber) {
 		// Grab the closest tick we can find to the one requested (which
 		// also performs basic sanity & range checks on this request).
 		TickSnapshot foundTick = this.getNextTick(tickNumber);
@@ -483,7 +483,7 @@ public class DataCollector {
 	 * @param tickNumber the lowest tick number to retrieve from the list.
 	 * @return the next tick in the list with at least the given number.
 	 */
-	public TickSnapshot getNextTick(double tickNumber) {
+	public TickSnapshot getNextTick(int tickNumber) {
 		// Make sure the requested tick is even in the current buffer range
 		if (tickNumber > this.lastTickAvailable()) {
 			return null;
@@ -535,13 +535,13 @@ public class DataCollector {
 		// Figure out the minimum tick number to keep in the buffer. we need
 		// to check the current position of each data consumer and keep track
 		// of the slowest one so we know just enough buffer data to retain.
-		Double minimumTick = null;
+		int minimumTick = -1;
 		for (DataConsumer dc : this.registeredConsumers) {
 			if (dc == null) {
 				continue;
 			}
 
-			if ((minimumTick == null) || (minimumTick > dc.getTick())) {
+			if ((minimumTick == -1) || (minimumTick > dc.getTick())) {
 				// This is the first consumer we have checked OR it is
 				// a consumer with a tick smaller than any tick we have
 				// seen yet in a previously checked consumer, so replace
@@ -550,13 +550,13 @@ public class DataCollector {
 			}
 		}
 
-		if (minimumTick == null) {
+		if (minimumTick == -1) {
 			// If this is still null, there were no registered data users.
 			// we can safely discard anything in the buffer as we have the
 			// policy that data consumers newly registered during the model
 			// run will pick-up from the current simulation position, not
 			// the start of the simulation data.
-			minimumTick = RunEnvironment.getInstance().getCurrentSchedule().getTickCount() - 1;
+			minimumTick = (int) (RunEnvironment.getInstance().getCurrentSchedule().getTickCount() - 1);
 		} else if (minimumTick < 0.0) {
 			// At least one of the registered data consumers in the system
 			// has not started yet, so we must keep all the data in the

@@ -54,7 +54,7 @@ public class Connection implements DataConsumer {
 	private Thread sendingThread; // A thread which periodically sends buffer contents over the socket.
 	private boolean consuming; // Whether or not the connection is currently consuming buffer data. 
 	private boolean paused;
-	private double currentTick;
+	private int currentTick;
 	private static int prevhour = -1;
 
 	public Connection() {
@@ -62,7 +62,7 @@ public class Connection implements DataConsumer {
 		this.id = ++Connection.COUNTER;
 
 		// set the current tick to zero.
-		this.currentTick = 0.0;
+		this.currentTick = 0;
 
 		// set the flags to the pre-running state
 		this.consuming = false;
@@ -151,13 +151,13 @@ public class Connection implements DataConsumer {
 
 	// Returns the current tick being processed (or just processed).
 	@Override
-	public double getTick() {
+	public int getTick() {
 		return this.currentTick;
 	}
 
 	// Sets the next tick to process from the data buffer. 
 	@Override
-	public void setTick(double tick) throws Throwable {
+	public void setTick(int tick) throws Throwable {
 		this.currentTick = tick;
 	}
 
@@ -453,7 +453,7 @@ public class Connection implements DataConsumer {
 				}
 
 				// Get the next item from the buffer. 
-				double nextTick = Connection.this.currentTick + GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
+				int nextTick = Connection.this.currentTick + GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
 				TickSnapshot snapshot = collector.getNextTick(nextTick);
 				if (snapshot == null) {
 					// The buffer has no more items for us at this time

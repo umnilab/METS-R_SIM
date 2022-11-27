@@ -33,7 +33,7 @@ import mets_r.mobility.Vehicle;
 public class TickSnapshot {
 
 	/** The number of the time step of this snapshot of the simulation. */
-	private final double tickNumber;
+	private final int tickNumber;
 
 	/** The collection of vehicle data gathered during this time tick. */
 	/** Consider two classes of vehicles: EV and Bus */
@@ -64,7 +64,7 @@ public class TickSnapshot {
 	 * @param tickNumber the tick number within the simulation.
 	 * @throws IllegalArgumentException if the tick number given is invalid.
 	 */
-	public TickSnapshot(double tickNumber) {
+	public TickSnapshot(int tickNumber) {
 		// Verify the given tick number is valid and set it
 		if (tickNumber < 0.0) {
 			throw new IllegalArgumentException("Invalid tick number");
@@ -228,6 +228,33 @@ public class TickSnapshot {
 			this.events.get(1).add(event);
 		} else {// if external event has been added to queue
 			this.events.get(2).add(event);
+		}
+	}
+	
+	public void logLinkUCB(int id, double linkConsume) {
+		synchronized (link_UCB) {
+			if (!this.link_UCB.containsKey(id)) {
+				this.link_UCB.put(id, new ArrayList<Double>());
+			}
+			this.link_UCB.get(id).add(linkConsume);
+		}
+	}
+
+	public void logLinkUCBBus(int id, double linkConsume) {
+		synchronized (link_UCB_BUS) {
+			if (!this.link_UCB_BUS.containsKey(id)) {
+				this.link_UCB_BUS.put(id, new ArrayList<Double>());
+			}
+			this.link_UCB_BUS.get(id).add(linkConsume);
+		}
+	}
+
+	public void logSpeedVehicle(int id, double linkSpeed) {
+		synchronized (speed_vehicle) {
+			if (!this.speed_vehicle.containsKey(id)) {
+				this.speed_vehicle.put(id, new ArrayList<Double>());
+			}
+			this.speed_vehicle.get(id).add(linkSpeed);
 		}
 	}
 
@@ -401,36 +428,10 @@ public class TickSnapshot {
 				&& this.evs_charging.isEmpty() && this.buses.isEmpty());
 	}
 
-	public double getTickNumber() {
+	public int getTickNumber() {
 		return this.tickNumber;
 	}
 
-	public void logLinkUCB(int id, double linkConsume) {
-		synchronized (link_UCB) {
-			if (!this.link_UCB.containsKey(id)) {
-				this.link_UCB.put(id, new ArrayList<Double>());
-			}
-			this.link_UCB.get(id).add(linkConsume);
-		}
-	}
-
-	public void logLinkUCBBus(int id, double linkConsume) {
-		synchronized (link_UCB_BUS) {
-			if (!this.link_UCB_BUS.containsKey(id)) {
-				this.link_UCB_BUS.put(id, new ArrayList<Double>());
-			}
-			this.link_UCB_BUS.get(id).add(linkConsume);
-		}
-	}
-
-	public void logSpeedVehicle(int id, double linkSpeed) {
-		synchronized (speed_vehicle) {
-			if (!this.speed_vehicle.containsKey(id)) {
-				this.speed_vehicle.put(id, new ArrayList<Double>());
-			}
-			this.speed_vehicle.get(id).add(linkSpeed);
-		}
-	}
 
 	public Map<Integer, ArrayList<Double>> getLinkUCB() {
 		return this.link_UCB;

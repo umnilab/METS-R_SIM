@@ -80,7 +80,7 @@ public interface DataConsumer {
 	 * 
 	 * @return the current tick the data consumer is processing.
 	 */
-	public double getTick();
+	public int getTick();
 
 	/**
 	 * Sets the current tick of the consumer to the value specified so that it will
@@ -89,7 +89,7 @@ public interface DataConsumer {
 	 * @param tick the value of the tick in the simulation to read next.
 	 * @throws Throwable if the given position within the buffer is invalid.
 	 */
-	public void setTick(double tick) throws Throwable;
+	public void setTick(int tick) throws Throwable;
 
 	/**
 	 * Returns a collection of all available types of data consumers within the

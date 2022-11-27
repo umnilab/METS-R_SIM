@@ -63,7 +63,7 @@ public class JsonOutputWriter implements DataConsumer {
 	private Thread writingThread;
 
 	/** The simulation tick currently being processed (or just processed). */
-	protected double currentTick;
+	protected int currentTick;
 
 	/** Whether or not the output writer is currently consuming data. */
 	private boolean consuming;
@@ -106,7 +106,7 @@ public class JsonOutputWriter implements DataConsumer {
 		// Set the initial state of the writer
 		this.consuming = false;
 		this.paused = false;
-		this.currentTick = -1.0;
+		this.currentTick = -1;
 		this.writer = null;
 		this.writingThread = null;
 		this.fileSeriesNumber = 1;
@@ -239,8 +239,7 @@ public class JsonOutputWriter implements DataConsumer {
 					}
 
 					// Get the next item from the buffer.
-					double nextTick = JsonOutputWriter.this.currentTick
-							+ GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
+					int nextTick = JsonOutputWriter.this.currentTick + GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
 					TickSnapshot snapshot = collector.getNextTick(nextTick);
 					if (snapshot == null) {
 						// The buffer has no more items for us at this time
@@ -271,7 +270,7 @@ public class JsonOutputWriter implements DataConsumer {
 					JsonOutputWriter.this.currentTick += GlobalVariables.FREQ_RECORD_VEH_SNAPSHOT_FORVIZ;
 					// Process the current item into lines in the output file
 					try {
-						JsonOutputWriter.this.writeTickSnapshot(snapshot);
+						JsonOutputWriter.this.writeTickSnapshot(snapshot, JsonOutputWriter.this.currentTick);
 						totalCount++;
 						writeCount++;
 					} catch (IOException ioe) {
@@ -397,7 +396,7 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @return the current tick being processed (or just processed).
 	 */
 	@Override
-	public double getTick() {
+	public int getTick() {
 		return this.currentTick;
 	}
 
@@ -411,7 +410,7 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param tick the next tick to process from the data buffer.
 	 */
 	@Override
-	public void setTick(double tick) throws Throwable {
+	public void setTick(int tick) throws Throwable {
 		this.currentTick = tick;
 	}
 
@@ -543,8 +542,8 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @throws IOException if any error occurred writing the lines to disk.
 	 */
 	@SuppressWarnings("unchecked")
-	private void writeTickSnapshot(TickSnapshot tick) throws IOException {
-		HashMap<String, Object> tickArray = JsonOutputWriter.createTickLines(tick);
+	private void writeTickSnapshot(TickSnapshot tick, int currentTick) throws IOException {
+		HashMap<String, Object> tickArray = JsonOutputWriter.createTickLines(tick, currentTick);
 		// Check the file has been opened
 		if (this.writer == null) {
 			throw new IOException("The JSON file is not open for writing.");
@@ -581,7 +580,7 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param tick the snapshot of the tick to convert.
 	 * @return the array of array for the given tick snapshot.
 	 */
-	public static HashMap<String, Object> createTickLines(TickSnapshot tick) {
+	public static HashMap<String, Object> createTickLines(TickSnapshot tick, int currentTick) {
 		int servedPass = 0;
 		int leftPass = 0;
 		int vehNum = 0;
@@ -684,29 +683,33 @@ public class JsonOutputWriter implements DataConsumer {
 
 			}
 		}
-
-		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
-			servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
-			leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
-		}
 		
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
-		for (Road r: ContextCreator.getRoadGeography().getAllObjects()) {
-			energyConsumption += r.getTotalEnergy();
-			if(r.getVehicleNum()>0) {
-				// Store the link state
-				int id = r.getLinkid();
-				double speed = r.calcSpeed();
-				int nVehicles = r.getVehicleNum();
-				double energy = r.getTotalEnergy();
-				int flow = r.getTotalFlow();
-				meanSpeed += speed * nVehicles;
-				vehNum += nVehicles;
-				LinkSnapshot snapshot = new LinkSnapshot(id, speed, nVehicles, energy, flow);
-				ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
-				linkArrayArray.add(linkArray);
+        
+		if(currentTick % GlobalVariables.FREQ_RECORD_LINK_SNAPSHOT_FORVIZ == 0) {
+			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+				servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
+				leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
+			}
+			for (Road r: ContextCreator.getRoadGeography().getAllObjects()) {
+				energyConsumption += r.getTotalEnergy();
+				if(r.getVehicleNum()>0) {
+					// Store the link state
+					int id = r.getLinkid();
+					double speed = r.calcSpeed();
+					int nVehicles = r.getVehicleNum();
+					double energy = r.getTotalEnergy();
+					int flow = r.getTotalFlow();
+					meanSpeed += speed * nVehicles;
+					vehNum += nVehicles;
+					LinkSnapshot snapshot = new LinkSnapshot(id, speed, nVehicles, energy, flow);
+					ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
+					linkArrayArray.add(linkArray);
+				}
 			}
 		}
+		
+		
 
 		HashMap<String, Object> tickArray = new HashMap<String, Object>();
 
