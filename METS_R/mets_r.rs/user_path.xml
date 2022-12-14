@@ -1,4 +1,4 @@
-<model name="METS_R" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://repast.org/scenario/user_path">
+<model name="METS_R" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 	<classpath>
 		<agents path="../bin" filter="addsEVs.vehiclecontext.Vehicle" />
 		<entry path="../lib" />
