@@ -7,7 +7,7 @@
 
 from graph_reduction import *
 
-def main(input_folder, output_folder = 'ouptput/', cache_res=True, start_phase = 1):
+def main(input_folder, output_folder = 'ouptput/', cache_res=False, start_phase = 1):
     '''
     This function makes the whole procedure for cleaning the join shape and return a file ready to be 
     cleaned for the simulator, this function requieres a base shape and a folder to put all the output shapes from
@@ -62,7 +62,7 @@ def main(input_folder, output_folder = 'ouptput/', cache_res=True, start_phase =
     # Phase 2: fix the direction and generate intersection nodes
     if(start_phase <= 2):
         if(start_phase <= 2):
-            name1 = input_folder +'NYC_streets_small.gpkg'
+            name1 = input_folder +'NYC_streets.gpkg'
             gdA = gp.read_file(name1)
         name2= input_folder +'NYC_joined_corrected.gpkg'
         df2=correct_reduce(gdA) 
