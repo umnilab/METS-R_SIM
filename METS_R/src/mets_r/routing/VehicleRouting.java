@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.jgrapht.alg.shortestpath.BidirectionalDijkstraShortestPath;
-import org.jgrapht.alg.shortestpath.KShortestSimplePaths;
+import org.jgrapht.alg.shortestpath.YenKShortestPath;
 import org.jgrapht.graph.DefaultDirectedWeightedGraph;
 import org.jgrapht.GraphPath;
 
@@ -42,11 +42,9 @@ public class VehicleRouting {
 	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad, Junction currJunc,
 			Junction destJunc) {
 		List<List<Road>> roadPath_ = new ArrayList<List<Road>>();
-
-		KShortestSimplePaths<Junction, RepastEdge<Junction>> ksp = new KShortestSimplePaths<Junction, RepastEdge<Junction>>(
+		YenKShortestPath<Junction, RepastEdge<Junction>> ksp = new YenKShortestPath<Junction, RepastEdge<Junction>>(
 				transformedNetwork);
 		List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(currJunc, destJunc, K);
-
 		for (int k = 0; k < kshortestPath.size(); k++) {
 			List<RepastEdge<Junction>> shortestPath = kshortestPath.get(k).getEdgeList();
 			// Find the roads which are associated with these edges
@@ -65,7 +63,7 @@ public class VehicleRouting {
 		
 		return roadPath_;
 	}
-
+ 
 	/* Perform the routing computation */
 	public List<Road> computeRoute(Road currentRoad, Road destRoad, Junction currJunc, Junction destJunc) {
 		List<Road> roadPath_ = null;
@@ -82,7 +80,7 @@ public class VehicleRouting {
 		else {
 			if (GlobalVariables.K_SHORTEST_PATH) {
 				// Find the k-shortest path
-				KShortestSimplePaths<Junction, RepastEdge<Junction>> ksp = new KShortestSimplePaths<Junction, RepastEdge<Junction>>(
+				YenKShortestPath<Junction, RepastEdge<Junction>> ksp = new YenKShortestPath<Junction, RepastEdge<Junction>>(
 						transformedNetwork);
 				List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(currJunc, destJunc, K);
 	

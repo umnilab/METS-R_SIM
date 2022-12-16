@@ -45,8 +45,8 @@ public class RouteContext {
 	
 	public static List<Road> shortestPathRoute(Road originRoad, Road destRoad){
 		Junction originDownstreamJunc = originRoad.getJunctions().get(1);
-		Junction destDownstreamJunc = destRoad.getJunctions().get(1);
-		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamJunc, destDownstreamJunc);
+		Junction destUpstreamJunc = destRoad.getJunctions().get(0);
+		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamJunc, destUpstreamJunc);
 		return path;
 	}
 
@@ -70,11 +70,10 @@ public class RouteContext {
 		Road destRoad = cityContext.findRoadAtCoordinates(destCoord);
 
 		Junction originDownstreamJunc = originRoad.getJunctions().get(1);
-		Junction destDownstreamJunc = destRoad.getJunctions().get(1);
-
+		Junction destUpstreamJunc = destRoad.getJunctions().get(0);
+		
 		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad,
-				originDownstreamJunc, destDownstreamJunc);
-
+				originDownstreamJunc, destUpstreamJunc);
 		// Transform the paths into a list of link_ids
 		List<List<Integer>> result = new ArrayList<List<Integer>>();
 		for (List<Road> path : paths) {

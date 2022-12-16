@@ -334,11 +334,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 						try {
 							List<List<Integer>> candidate_routes = RouteContext.UCBRoute(origin.getCoord(),
 									destination.getCoord());
-							for (int k = 0; k < candidate_routes.size(); k++) {
-								for (int j = 0; j < candidate_routes.get(k).size(); j++) {
-									logger.info(candidate_routes.get(k).get(j));
-								}
-							}
 							ContextCreator.route_UCB.put(
 									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
 									candidate_routes);

@@ -222,10 +222,10 @@ public class CityContext extends DefaultContext<Object> {
 			}
 			Collections.sort(roadTypes);
 			
-			if(j.getIncomingRoads().size()>=3) {
+			if(j.getIncomingRoads().size()>=2) {
 				if((roadTypes.get(0) == Road.Street) && 
 						(roadTypes.get(j.getIncomingRoads().size()-1) <=  Road.Highway)) {
-					if(j.getIncomingRoads().size() > 3) {
+					if(j.getIncomingRoads().size() >= 3) {
 						int delay = (int) Math.ceil(30/GlobalVariables.SIMULATION_STEP_SIZE);
 						Road firstRoad = j.getIncomingRoads().get(0);
 						firstRoad.setDelay(delay, true, 0, 2);
