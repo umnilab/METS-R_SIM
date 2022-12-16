@@ -328,10 +328,6 @@ public class Road {
 		return toNode;
 	}
 
-	public void setLength(double length) {
-		this.length = length;
-	}
-
 	public double getLength() {
 		return length;
 	}

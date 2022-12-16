@@ -145,8 +145,8 @@ def main(input_folder, output_folder = 'ouptput/', cache_res=False, start_phase 
         df8=get_road_shape(df7)
         name8=output_folder+'road_fileNYC.shp'
         df8=graph_togpk(df8,name8)
-        df8_=df8[['linkID','nLane','Type','tLinkID','FN','TN','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9']].copy()
-        df8_.columns = ['LinkID','LaneNum','RoadType','TLinkID','FnJunction','TnJunction','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9']
+        df8_=df8[['linkID','nLane','Type','tLinkID','FN','TN','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9','length']].copy()
+        df8_.columns = ['LinkID','LaneNum','RoadType','TLinkID','FnJunction','TnJunction','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9','Length']
         df8_.to_csv(output_folder+'/'+'road_fileNYC.csv', index = None)
         print('phase 8 completed=createing road shape')
     

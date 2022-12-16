@@ -77,11 +77,7 @@ public class Lane {
 	public double getLength() {
 		return length;
 	}
-
-	/*
-	 * public int getId() { return Id; } public void setId(long Id) { this.Id = Id;
-	 * }
-	 */
+	
 	public int getLink() {
 		return link;
 	}
