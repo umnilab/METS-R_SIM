@@ -73,14 +73,16 @@ public class BusSchedule {
 			for (ArrayList<Long> route : (ArrayList<ArrayList<Long>>) jsonObject.get("routes")) {
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
 				for (Long station : route) {
-					oneRoute.add(locationIDMap.get(station.intValue()));
+					if(locationIDMap.containsKey(station.intValue())){
+						oneRoute.add(locationIDMap.get(station.intValue()));
+					}
 				}
 				busRoute.add(oneRoute);
 			}
-			for (Long num : (ArrayList<Long>) jsonObject.get("nums")) {
+			for (Double num : (ArrayList<Double>) jsonObject.get("nums")) {
 				busNum.add(num.intValue());
 			}
-			for (Long gap : (ArrayList<Long>) jsonObject.get("gaps")) {
+			for (Double gap : (ArrayList<Double>) jsonObject.get("gaps")) {
 				busGap.add(gap.intValue());
 			}
 		} catch (FileNotFoundException e) {

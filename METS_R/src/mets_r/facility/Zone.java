@@ -226,17 +226,18 @@ public class Zone {
 							if (rand.nextDouble() > threshold) {
 								if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.integerID, destination, this.getCoord(), 
-											this.sampleDestCoord(destZone), true
+											this.sampleDestCoord(destZone),true
 											); 
 									this.addSharableTaxiPass(new_pass, destination);
 								} else {
 									Request new_pass = new Request(this.integerID, destination, this.sampleOriginCoord(), 
-											this.sampleDestCoord(destZone), false
+											this.sampleDestCoord(destZone),false
 											); 
 									this.addTaxiPass(new_pass);
 								}
 								this.numberOfGeneratedTaxiRequest += 1;
-							} else {
+							} 
+							else {
 								// First generate its activity plan
 								Queue<Plan> activityPlan = new LinkedList<Plan>();
 								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),
@@ -271,7 +272,8 @@ public class Zone {
 									this.addTaxiPass(new_pass);
 								}
 								this.numberOfGeneratedTaxiRequest += 1;
-							} else {
+							} 
+							else {
 								// First generate its activity plan
 								Queue<Plan> activityPlan = new LinkedList<Plan>();
 								Plan plan = new Plan(this.nearestZoneWithBus.get(destination).getIntegerID(),

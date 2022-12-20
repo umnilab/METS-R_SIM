@@ -489,7 +489,7 @@ public class Road {
 	}
 
 	public double calcSpeed() {
-		return  Math.max((this.length/(this.travelTime*GlobalVariables.SIMULATION_STEP_SIZE)), 0.0001); // at least 0.001 to avoid divide 0 below
+		return  Math.max((this.length/((this.travelTime+1)*GlobalVariables.SIMULATION_STEP_SIZE)), 0.0001); // at least 0.001 to avoid divide 0 below
 	}
 
 	/**

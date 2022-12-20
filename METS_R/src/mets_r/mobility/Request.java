@@ -42,6 +42,7 @@ public class Request {
 		this.origin = origin;
 		this.originCoord = originCoord;
 		this.destination = activityPlan.peek().getDestID();
+		this.destCoord = activityPlan.peek().getLocation();
 	}
 	
 	public void waitNextTime(Integer waitingTime){
