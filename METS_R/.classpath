@@ -17,8 +17,8 @@
 	<classpathentry kind="con" path="REPAST_SIMPHONY_SUPPORT"/>
 	<classpathentry kind="lib" path="lib/java-json.jar"/>
 	<classpathentry kind="lib" path="lib/json-simple-1.1.jar"/>
-	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jre1.8.0_351"/>
-	<classpathentry kind="lib" path="C:/Users/User/git/METS-R_SIM/METS_R/lib/jgrapht-bundle-1.4.0.jar"/>
-	<classpathentry kind="lib" path="C:/Users/User/git/METS-R_SIM/METS_R/lib/jgrapht-core-1.4.0.jar"/>
+	<classpathentry kind="lib" path="lib/jgrapht-bundle-1.4.0.jar"/>
+	<classpathentry kind="lib" path="lib/jgrapht-core-1.4.0.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/JavaSE-1.8"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>
