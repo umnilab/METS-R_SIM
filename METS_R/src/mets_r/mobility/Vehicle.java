@@ -452,7 +452,14 @@ public class Vehicle {
 	}
 
 	public void calcState() {
-		this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand.nextGaussian()); //re-sample the target speed
+		if(ContextCreator.getCurrentTick() % 10 == 0) {
+			// re-sample the target speed every 3 seconds to mimic the behavior of 
+			// following background traffic (i.e., human-drive vehicles)
+			// add this randomness will not change the travel time significantly, but
+			// will increase the energy consumption, which creates 
+			// more conservative metrics for planning/design
+			this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand.nextGaussian());
+		}
 		this.makeAcceleratingDecision();
 		if (this.road.getnLanes() > 1 && this.isOnLane() && this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH) {
 			this.makeLaneChangingDecision();
@@ -524,10 +531,8 @@ public class Vehicle {
 		// normal cases
 		if (this.currentSpeed_ < this.desiredSpeed_) { // accelerate to reach the desired speed
 			return Math.min(this.maxAcceleration(), (this.desiredSpeed_ - this.currentSpeed_)/GlobalVariables.SIMULATION_STEP_SIZE);
-		} else if (this.currentSpeed_ == this.desiredSpeed_) {
-			return 0f;
 		} else { // decelerate if it exceeds the desired speed
-			return this.normalDeceleration_;
+			return Math.max(this.normalDeceleration_, (this.desiredSpeed_ - this.currentSpeed_)/GlobalVariables.SIMULATION_STEP_SIZE);
 		}
 	}
 
