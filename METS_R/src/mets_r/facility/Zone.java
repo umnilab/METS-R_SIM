@@ -625,6 +625,7 @@ public class Zone {
 				double busUtil = (float) (GlobalVariables.MS_ALPHA * GlobalVariables.BUS_TICKET_PRICE
 						+ GlobalVariables.MS_BETA * (busTravelTime.get(destID) / 60 + this.busGap.get(destID) / 2)
 						+ GlobalVariables.BUS_BASE);
+				
 				return (float) (Math.exp(1) / (Math.exp(taxiUtil - busUtil) + Math.exp(1)));
 			} else {
 				return 0;
@@ -652,6 +653,7 @@ public class Zone {
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
+									System.out.println(r.getLength());
 									travel_time += r.getTravelTime();
 								}
 							}
@@ -670,6 +672,7 @@ public class Zone {
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
+									System.out.println(r.getLength());
 									travel_time += r.getTravelTime();
 								}
 							}

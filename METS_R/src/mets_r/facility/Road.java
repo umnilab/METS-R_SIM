@@ -327,6 +327,10 @@ public class Road {
 	public int getTn() {
 		return toNode;
 	}
+	
+	public void setLength(double length) {
+		this.length = length;
+	}
 
 	public double getLength() {
 		return length;
@@ -489,7 +493,7 @@ public class Road {
 	}
 
 	public double calcSpeed() {
-		return  Math.max((this.length/((this.travelTime+1)*GlobalVariables.SIMULATION_STEP_SIZE)), 0.0001); // at least 0.001 to avoid divide 0 below
+		return  Math.max((this.length/(this.travelTime + 1)), 0.0001); // +1s to avoid divide 0
 	}
 
 	/**
@@ -508,15 +512,15 @@ public class Road {
 				num++;
 			}
 			if(num>0) {
-				newTravelTime = sum/num;
+				newTravelTime = GlobalVariables.SIMULATION_STEP_SIZE * sum / num;
 			}
 			else {
-				newTravelTime =  this.length / this.calcSpeed() + (this.hasControl?(this.delay*(numPhases-1)*(numPhases-1)/(2*numPhases)):this.delay);
+				newTravelTime = this.length / this.calcSpeed() +  GlobalVariables.SIMULATION_STEP_SIZE * (this.hasControl?(this.delay*(numPhases-1)*(numPhases-1)/(2*numPhases)):this.delay);
 			}
 			travelTimeHistory_.clear();
 		}
 		else {
-			newTravelTime =  this.length / this.freeSpeed_ + (this.hasControl?(this.delay*(numPhases-1)*(numPhases-1)/(2*numPhases)):this.delay);
+			newTravelTime =  this.length / this.freeSpeed_ + GlobalVariables.SIMULATION_STEP_SIZE * (this.hasControl?(this.delay*(numPhases-1)*(numPhases-1)/(2*numPhases)):this.delay);
 		}
 		
 		if(this.travelTime == newTravelTime) return false;

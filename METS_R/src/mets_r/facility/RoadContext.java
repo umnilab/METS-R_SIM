@@ -53,8 +53,8 @@ public class RoadContext extends DefaultContext<Road> {
 			BufferedReader br = new BufferedReader(new FileReader(fileName));
 			String line = br.readLine();
 			String[] result = line.split(",");
-			if(result.length < 8) {
-				ContextCreator.logger.error("Missing fields in Road configuration, a proper one should contain (LinkID, (unused) LaneNum, TLinkID, FnJunction, TNJunction, Left, Through, Right, (optional) Lane1 - Lane 9)");
+			if(result.length < 19) {
+				ContextCreator.logger.error("Missing fields in Road configuration, a proper one should contain (LinkID, (unused) LaneNum, TLinkID, FnJunction, TNJunction, Left, Through, Right, (optional) Lane1 - Lane 9), length");
 			}
 			while (roadLoader.hasNext()) {
 				Road road = roadLoader.next();
@@ -87,6 +87,7 @@ public class RoadContext extends DefaultContext<Road> {
 		r.setTlinkid(Integer.parseInt(att[3]));
 		r.setFn(Integer.parseInt(att[4]));
 		r.setTn(Integer.parseInt(att[5]));
+		r.setLength(Double.parseDouble(att[18]));
 		return r;
 	}
 	
