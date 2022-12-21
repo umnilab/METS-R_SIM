@@ -62,7 +62,7 @@ def main(input_folder, output_folder = 'ouptput/', cache_res=False, start_phase 
     # Phase 2: fix the direction and generate intersection nodes
     if(start_phase <= 2):
         if(start_phase <= 2):
-            name1 = input_folder +'NYC_streets.gpkg'
+            name1 = input_folder +'NYC_streets_small.gpkg'
             gdA = gp.read_file(name1)
         name2= input_folder +'NYC_joined_corrected.gpkg'
         df2=correct_reduce(gdA) 
