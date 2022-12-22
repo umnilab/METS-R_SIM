@@ -493,7 +493,7 @@ public class ElectricTaxi extends Vehicle {
 		}
 		double energyConsumption = Pbat * dt / (3600 * 1000); // wh to kw
 		if(Math.abs(energyConsumption)>5) {
-			System.out.println("Abnormal energy " + this.getId() + ", " + this.getState() + ", dist: "+ this.getDistance() + ", v: " + this.currentSpeed() + ", a: " + this.currentAcc());
+			ContextCreator.logger.warn("Abnormal energy " + this.getId() + ", " + this.getState() + ", dist: "+ this.getDistance() + ", v: " + this.currentSpeed() + ", a: " + this.currentAcc());
 		}
 		
 		return energyConsumption;

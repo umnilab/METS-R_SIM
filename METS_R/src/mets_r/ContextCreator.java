@@ -639,6 +639,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 			zone_logger.close();
 			charger_logger.close();
 			traj_logger.close();
+			
+			// Close the user interface
+			System.exit(0);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

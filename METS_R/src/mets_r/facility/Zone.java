@@ -653,7 +653,6 @@ public class Zone {
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
-									System.out.println(r.getLength());
 									travel_time += r.getTravelTime();
 								}
 							}
@@ -672,7 +671,6 @@ public class Zone {
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
-									System.out.println(r.getLength());
 									travel_time += r.getTravelTime();
 								}
 							}
