@@ -14,10 +14,9 @@ import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
 
 /**
- * Charging facilities for EV cars and buses
+ * This class defines charging facilities for EV cars and buses
  * @author: Jiawei Xue, Zengxiang Lei 
- **/
-
+ */
 public class ChargingStation {
 	private int id;
 	private int integerID;
@@ -49,7 +48,14 @@ public class ChargingStation {
 	private ConcurrentLinkedQueue<ElectricTaxi> toAddChargingL2; // Pending Car queue waiting for L2 charging
 	private ConcurrentLinkedQueue<ElectricTaxi> toAddChargingL3; // Pending Car queue waiting for L3 charging
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
-
+	
+	
+	/**
+	 * This function construct a charging station
+	 * @param integerID charging station ID
+	 * @param numL2 number of L2 chargers
+	 * @param numL3 number of L3 chargers
+	 */
 	public ChargingStation(int integerID, int numL2, int numL3) {
 		this.setId(ContextCreator.generateAgentID());
 		this.integerID = integerID;
@@ -76,7 +82,11 @@ public class ChargingStation {
 		chargeL3(); // Function 4.
 		chargeBus(); // Function 5.
 	}
-
+	
+	/**
+	 * Calculate the current capacity of the charging station for electric taxis 
+	 * @return Number of electric taxis
+	 */
 	public int capacity() {
 		return this.num2 + this.num3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
 	}
