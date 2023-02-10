@@ -17,7 +17,8 @@ import mets_r.mobility.Vehicle;
 
 /**
  * Inherit from A-RESCUE
- **/
+ * Modified by: Zengxiang Lei
+ */
 
 public class Road {
 	public final static int Street = 1;
