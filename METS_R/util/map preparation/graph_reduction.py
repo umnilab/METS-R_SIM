@@ -1090,21 +1090,19 @@ def match_lanes(own_lanes,lanes):
     Parameters
     ----------
     own_lanes : list of lane ID 
-    lanes : Disctionary of lanes belonging to each road ID
+    lanes : Disctionary of lanes belonging to each target road 
 
     Returns
     -------
     unions : list of tuples with the pairs of joins beetween lane IDS
 
     '''
-    initial_lanes=own_lanes[:]
+    initial_lanes=copy.copy(own_lanes)
     dic_neigh=copy.copy(lanes)
     lens=[len(i) for i in dic_neigh.values()]
     l_m=initial_lanes[0]
     r_m=initial_lanes[-1]
-    if len(initial_lanes)==1:
-        central=initial_lanes
-    elif len(initial_lanes)==2:
+    if len(initial_lanes)<=2:
         central=initial_lanes
     else: 
         central=Diff_l1l2(initial_lanes, [l_m])
@@ -1112,8 +1110,6 @@ def match_lanes(own_lanes,lanes):
     unions={}
     for i in dic_neigh.keys():
         if i[1]=='Right':
-            
-         
             if r_m in unions:
                 unions[r_m].append([dic_neigh[i][-1],'Right'])
             else:
@@ -1126,16 +1122,16 @@ def match_lanes(own_lanes,lanes):
         else:
             m=min([len(central),len(dic_neigh[i])])
             for n in range(m):
-                
                 if central[n] in unions.keys():
                     unions[central[n]].append([dic_neigh[i][n],'Through'])
                 else:
                     unions[central[n]]=[[dic_neigh[i][n],'Through']]
 
-                               
+
+
     return unions
 
-def create_lane_shape(road,val=0.00004):
+def create_lane_shape(road,val=0.00003):
     '''
     This function adds lanes to a road shape and the  connectivity info of them
     This lane shape has the fields ['ID','Link','Left','Through','Right','laneID','length','geometry']
@@ -1145,7 +1141,7 @@ def create_lane_shape(road,val=0.00004):
     Parameters
     ----------
     road : road shape as geopandas dataframe
-    val : distance, in this casde the value correponds to approximate 5 meters ( in wgs 84 coords)
+    val : distance, in this casde the value correponds to approximate 3.4 meters ( in wgs 84 coords)
 
     Returns
     -------
@@ -1163,8 +1159,8 @@ def create_lane_shape(road,val=0.00004):
     df_f['nod_f']=df_f['TN']
 
     df_f=df_f.set_index(linkid)
-    edgs=list(df_f.index)
-    lane_count=1
+    edgs=list(df_f.index) # list of link IDs
+    lane_count=1 # counter of lanes
     result=[]
     adv=-1
 
@@ -1172,24 +1168,25 @@ def create_lane_shape(road,val=0.00004):
     for i in edgs:
         adv+=1
         pbar.update(1)
-        edge=df_f.loc[i,:]
+        edge=df_f.loc[i,:] # get the i-th edge
 
-        cols=['Lane'+str(k) for k in range(1,int(edge[number_lanes])+1)]
-        own_lanes=edge[cols].to_list()
+        cols=['Lane'+str(k) for k in range(1,int(edge[number_lanes])+1)] # get the cols of the lanes
+        own_lanes=edge[cols].to_list() # get the lanes of the edge
         lanes={}
-        for m in [r,t,l]:
+        for m in [r,t,l]: # get the road ids of the neighbors
             neig=df_f.loc[i,m]
-            if neig!=0:
-                edge2=df_f.loc[neig,:]
-                cols=['Lane'+str(k) for k in range(1,int(edge2[number_lanes])+1)]
-                lanes[(neig,m)]=edge2[cols].to_list()
+            if neig!=0: # if the neighbor is not empty
+                edge2=df_f.loc[neig,:] # get the neighbor edge
+                cols=['Lane'+str(k) for k in range(1,int(edge2[number_lanes])+1)] # get the cols of the lanes
+                lanes[(neig,m)]=edge2[cols].to_list() # get the lanes of the neighbor edge
         unions=match_lanes(own_lanes,lanes)
         for k in own_lanes:
             if not k in unions:
                 unions[k]=[]
         count=-1
-        offset=np.arange(val,val*(len(unions)+1),val)
-        for ll in unions:
+        offset=np.arange(val/2,val*(len(unions)+1/2),val)
+        
+        for ll in sorted(unions): # need the key to be sorted, which is default for Python 3.7+
             count+=1
             lane_count+=1
             dic_p={t:0,r:0,l:0}
@@ -1198,7 +1195,7 @@ def create_lane_shape(road,val=0.00004):
             geom_i=edge['geometry']
             geo2=LineString(paralel_off(geom_i,offset[count]))
             dis=distance(geo2)
-            if(dis>20000):
+            if(dis>20000): # for debugging
                 print("Something went wrong")
                 print(distance(geom_i))
                 print(dis)

@@ -155,7 +155,7 @@ def main(input_folder, output_folder = 'ouptput/', cache_res=False, start_phase 
         if(start_phase == 9):
             name8=output_folder+'road_fileNYC.shp'
             df8 = gp.read_file(name8)
-        df9=create_lane_shape(df8,val=0.00005)
+        df9=create_lane_shape(df8,val=0.00003)
         name9=output_folder+'lane_fileNYC.shp'
         df9=graph_togpk(df9,name9) 
         df9.drop(['geometry'], axis = 1).to_csv(output_folder+'/'+'lane_fileNYC.csv', index = None)

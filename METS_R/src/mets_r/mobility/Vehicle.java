@@ -703,7 +703,7 @@ public class Vehicle {
 	/**
 	 * The Lane-Changing model for calculating the lane changing decisions
 	 */
-	public void makeLaneChangingDecision() {
+	public boolean makeLaneChangingDecision() {
 		if (this.distFraction() < 0.5) {
 			// Halfway to the downstream intersection, only mantatory LC allowed, check the
 			// correct lane
@@ -712,30 +712,33 @@ public class Vehicle {
 				Lane tarLane = this.tempLane();
 				if (tarLane != null)
 					this.mandatoryLC(tarLane);
+				    return true;
 			}
 		} else {
 			if (this.distFraction() > 0.75) {
-				// First 25% in the road, do discretionary LC with 100% chance
+				// First 25% in the road, do discretionary LC
 				double laneChangeProb1 = rand.nextDouble();
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterLane();
 				if (tarLane != null) {
 					if (laneChangeProb1 < GlobalVariables.LANE_CHANGING_PROB_PART1)
 						this.discretionaryLC(tarLane);
+					    return true;
 				}
 			} else {
 				// First 25%-50% in the road, we do discretionary LC but only to correct lanes
-				// with 100% chance
 				double laneChangeProb2 = rand.nextDouble();
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterCorrectLane();
 				if (tarLane != null) {
 					if (laneChangeProb2 < GlobalVariables.LANE_CHANGING_PROB_PART2)
 						this.discretionaryLC(tarLane);
+					    return true;
 				}
 
 			}
 		}
+		return false;
 	}
 
 	/**
