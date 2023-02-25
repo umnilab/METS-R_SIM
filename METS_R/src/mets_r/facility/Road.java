@@ -163,7 +163,7 @@ public class Road {
 				// check whether the origin is the destination
 				if (v.getOriginCoord() == v.getDestCoord()) {
 					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
-					v.setReachDest();
+					v.reachDest();
 				} else if (v.enterNetwork(this)) {
 					this.removeVehicleFromNewQueue(departTime, v);
 				} else {

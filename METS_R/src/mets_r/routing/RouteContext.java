@@ -86,7 +86,7 @@ public class RouteContext {
 	}
 
 	// Use ecoRoute to decide route
-	public static Pair<List<Road>, Integer> ecoRoute(int origin, int destination) {
+	public static Pair<List<Road>, Integer> ecoRoute(Road originRoad, int origin, int destination) {
 		String key = Integer.toString(origin) + ',' + destination;
 		if (!ContextCreator.routeResult_received.containsKey(key)) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
@@ -106,7 +106,7 @@ public class RouteContext {
 	}
 
 	// Use ecoRoute to decide route, uncommented this if you want to test eco-routing for buses
-	public static Pair<List<Road>, Integer> ecoRouteBus(int origin, int destination) {
+	public static Pair<List<Road>, Integer> ecoRouteBus(Road originRoad, int origin, int destination) {
 		String key = Integer.toString(origin) + ',' + destination;
 		if (!ContextCreator.routeResult_received_bus.containsKey(key)) {
 			return new Pair<>(new ArrayList<Road>(), -1); // Empty route

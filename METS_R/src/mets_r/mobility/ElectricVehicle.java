@@ -94,7 +94,7 @@ public class ElectricVehicle extends Vehicle {
 	}
 
 	@Override
-	public void setReachDest() {
+	public void reachDest() {
 		// Log the trip consume here
 		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getState()
 				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
@@ -109,7 +109,7 @@ public class ElectricVehicle extends Vehicle {
 
 		Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
 		
-		super.setReachDest(); // Update the vehicle status
+		super.reachDest(); // Update the vehicle status
 			
 		// Decide the next step
 		if (this.getState() == Vehicle.OCCUPIED_TRIP) {

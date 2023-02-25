@@ -925,7 +925,7 @@ public class Zone {
 	}
 	
 	public Coordinate sampleOriginCoord() {
-		if(this.zoneClass == Zone.HUB){
+		if(this.zoneClass == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
 			return this.getCoord();
 		}else {
 			return this.getNeighboringCoord(rand.nextInt(this.getNeighboringLinkSize()));
@@ -933,7 +933,7 @@ public class Zone {
 	}
 	
 	public Coordinate sampleDestCoord(Zone z) {
-		if(z.zoneClass == Zone.HUB){
+		if(z.zoneClass == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
 			return z.getCoord();
 		}else {
 			return z.getNeighboringCoord(rand.nextInt(z.getNeighboringLinkSize()));

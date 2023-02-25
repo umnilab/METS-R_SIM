@@ -228,21 +228,21 @@ public class ElectricTaxi extends Vehicle {
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
 			if (!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-				Pair<List<Road>, Integer> route_result = RouteContext.ecoRoute(this.getOriginID(), this.getDestID());
+				Pair<List<Road>, Integer> route_result = RouteContext.ecoRoute(this.getRoad(), this.getOriginID(), this.getDestID());
 				this.roadPath = route_result.getFirst();
 				this.routeChoice = route_result.getSecond();
 			}
 			
 			// Compute new route if eco-routing is not used
 			if (this.roadPath == null || this.roadPath.isEmpty()) {
+				this.routeChoice = -1;
 				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
 			}
 			
 			// Fix the inconsistency of the start link 
-			if (this.roadPath.get(0) != this.getRoad()) {
-				List<Road> tmpPath = RouteContext.shortestPathRoute(this.getRoad(), this.roadPath.get(0));
-				tmpPath.addAll(this.roadPath);
-				this.roadPath = tmpPath;
+			if (this.getRoad()!=this.roadPath.get(0)) {
+				this.routeChoice = -1;
+				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
 			}
 			
 			this.setShadowImpact();
@@ -272,7 +272,7 @@ public class ElectricTaxi extends Vehicle {
 	}
 
 	@Override
-	public void setReachDest() {
+	public void reachDest() {
 		// Check if the vehicle was on a charging route
 		if (this.onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + ",4,"
@@ -283,7 +283,7 @@ public class ElectricTaxi extends Vehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.setReachDest(); 
+			super.reachDest(); 
 			super.leaveNetwork(); // remove from the network
 			// Add to the charging station
 			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getId());
@@ -307,7 +307,7 @@ public class ElectricTaxi extends Vehicle {
 
 			Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
 			
-			super.setReachDest(); // Update the vehicle status
+			super.reachDest(); // Update the vehicle status
 			
 			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {

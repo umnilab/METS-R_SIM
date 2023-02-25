@@ -267,8 +267,7 @@ public class Connection implements DataConsumer {
 							if (route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
 								newBusNum.add(bus_num_int);
 								Double gap = (Double) list_gap.get(index);
-								int gap_int = gap.intValue();
-								// multiply by 60 for seconds
+								int gap_int = gap.intValue(); // in minutes
 								newBusGap.add(gap_int);
 								Long routename = (Long) list_routename.get(index);
 								int list_routename_int = routename.intValue();
@@ -277,7 +276,7 @@ public class Connection implements DataConsumer {
 								ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
 								for (int index_route = 0; index_route < route_size; index_route++) {
 									int route_int_i = route.get(index_route).intValue();
-									route_int.add(route_int_i - 1);
+									route_int.add(route_int_i);
 								}
 								newRoutes.add(route_int);
 							}

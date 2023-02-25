@@ -87,6 +87,7 @@ public class GlobalVariables {
 	public static final String DM_WAITING_TIME = loadConfig("DM_WAITING_TIME");
 	public static final String DM_SHARE_PERCENTAGE = loadConfig("DM_SHARE_PERCENTAGE");
 	public static final boolean DEMAND_SHARABLE = Boolean.valueOf(loadConfig("DEMAND_SHARABLE"));
+	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	public static final double PASSENGER_DEMAND_FACTOR = Double.valueOf(loadConfig("DEMAND_FACTOR"));
 	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
 	
@@ -121,6 +122,8 @@ public class GlobalVariables {
 	public static final boolean PROACTIVE_CHARGING = Boolean.valueOf(loadConfig("PROACTIVE_CHARGING"));
 	public static final double RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("RECHARGE_LEVEL_LOW"));
 	public static final double RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("RECHARGE_LEVEL_HIGH"));
+	public static final double BUS_RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_LOW"));
+	public static final double BUS_RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_HIGH"));
 	
 	// Addressing the gridlock in the parallel mode
 	public static final int MAX_STUCK_TIME = Integer.valueOf(loadConfig("MAX_STUCK_TIME"));

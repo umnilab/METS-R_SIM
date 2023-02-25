@@ -37,7 +37,7 @@ public class BusSchedule {
 	// For updating the schedule
 	public ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
 
-	public int currentHour = 0;
+	public int currentHour = -1;
 
 	public BusSchedule() {
 		routeName = new ArrayList<Integer>();
@@ -55,7 +55,7 @@ public class BusSchedule {
 		try {
 			locationIDMap = new HashMap<Integer, Integer>();
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
-			br.readLine();
+			br.readLine(); // Skip the first row
 			int integerID = 0;
 			String line;
 			while ((line = br.readLine()) != null) {
@@ -64,6 +64,7 @@ public class BusSchedule {
 				integerID += 1;
 			}
 			br.close();
+			
 			Object obj = parser.parse(new FileReader(GlobalVariables.BUS_SCHEDULE));
 			JSONObject jsonObject = (JSONObject) obj;
 			for (Long name : (ArrayList<Long>) jsonObject.get("names")) {
@@ -95,10 +96,10 @@ public class BusSchedule {
 	}
 
 	// For changing bus route schedule
-	public void updateEvent(int newhour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes,
+	public void updateEvent(int newHour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes,
 			ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap) {
-		if (currentHour < newhour) {
-			currentHour = newhour;
+		if (currentHour < newHour) {
+			currentHour = newHour;
 			routeName = newRouteName;
 			busNum = newBusNum;
 			busGap = newBusGap;
@@ -107,9 +108,8 @@ public class BusSchedule {
 				z.busReachableZone.clear(); // clear the bus info
 				z.busGap.clear();
 			}
-			
 			busRoute.clear();
-
+			
 			for (ArrayList<Integer> route : newRoutes) {
 				int i = 0;
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
@@ -120,17 +120,20 @@ public class BusSchedule {
 							Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(locationIDMap.get(zoneID));
 							if (zone.getZoneClass() == 0) { // normal zone, the destination should be hub
 								for (int destinationID : route) {
-									if (GlobalVariables.HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
-										zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
+									if(locationIDMap.containsKey(destinationID)) {
+										if (GlobalVariables.HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
+											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
+										}
 									}
 								}
 							} else if (zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be
 																	// another hub)
 								for (int destinationID : route) {
-									if (zone.getIntegerID() != locationIDMap.get(destinationID)) {
-										zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
-									}
-	
+									if(locationIDMap.containsKey(destinationID)) {
+										if (zone.getIntegerID() != locationIDMap.get(destinationID)) {
+											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
+										}
+									}	
 								}
 							}
 						}
@@ -139,7 +142,7 @@ public class BusSchedule {
 				busRoute.add(oneRoute);
 				i += 1;
 			}
-
+			ContextCreator.logger.info(busRoute);
 			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
 				// Deal with the remaining passengers for buses in each zone
 				z.reSplitPassengerDueToBusRescheduled();

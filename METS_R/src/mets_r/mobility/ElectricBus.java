@@ -114,15 +114,15 @@ public class ElectricBus extends Vehicle {
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
 		this.numSeat = 40;
-		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY
-				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh,
+		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY
+				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh,
 																											// times a
 																											// large
 																											// number to
 																											// disable
 																											// charging
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.BUS_BATTERY;
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_HIGH * GlobalVariables.BUS_BATTERY;
 		this.mass = 18000.0; // the weight of bus is 18t.
 		this.mass_ = mass * 1.05;
 		this.avgPersonMass_ = 180.0;
@@ -174,7 +174,7 @@ public class ElectricBus extends Vehicle {
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
 			if (!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-				Pair<List<Road>, Integer> route_result = RouteContext.ecoRouteBus(this.getOriginID(), this.getDestID());
+				Pair<List<Road>, Integer> route_result = RouteContext.ecoRouteBus(this.getRoad(), this.getOriginID(), this.getDestID());
 				this.roadPath = route_result.getFirst();
 				this.routeChoice = route_result.getSecond();
 			}
@@ -205,7 +205,7 @@ public class ElectricBus extends Vehicle {
 	// Case 3: (arrive at the other bus stop), or (arrive at the start bus stop and
 	// continue to move)
 	@Override
-	public void setReachDest() {
+	public void reachDest() {
 		// Case 1: the bus arrives at the charging station
 		if (onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getRouteID()
@@ -216,7 +216,7 @@ public class ElectricBus extends Vehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.setReachDest(); 
+			super.reachDest(); 
 			super.leaveNetwork(); // remove the bus from the network
 			ContextCreator.logger.debug("Bus arriving at charging station:" + this.getId());
 			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
@@ -257,9 +257,10 @@ public class ElectricBus extends Vehicle {
 				}
 			}
 			
-			super.setReachDest(); // Update the vehicle status
+			super.reachDest(); // Update the vehicle status
 			// Decide the next step
 			if (nextStop == busStop.size() || this.routeID == -1) { // arrive at the last stop
+				this.routeID = -1; // Clear the previous route ID
 				if (batteryLevel_ <= lowerBatteryRechargeLevel_) {
 					this.goCharging();
 				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_

@@ -1007,7 +1007,7 @@ public class Vehicle {
 	 */
 	public void checkAtDestination() {
 		if (this.nextRoad_ == null && !this.atOrigin) {
-			this.setReachDest();
+			this.reachDest();
 		}
 	}
 	
@@ -1283,7 +1283,7 @@ public class Vehicle {
 	/**
 	 *  Call when arriving the destination
 	 */
-	public void setReachDest() {
+	public void reachDest() {
 		this.reachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive
