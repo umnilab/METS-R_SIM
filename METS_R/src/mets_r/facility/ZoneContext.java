@@ -49,7 +49,7 @@ public class ZoneContext extends DefaultContext<Zone> {
 				zone.setCoord(zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
 			br.close();
-			ContextCreator.logger.info("Zone generated, total number: " + int_id);
+			ContextCreator.logger.info("Zone generated, total number: " + (int_id + 1));
 		} catch (Exception e) {
 			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone sshapefile.");
 			e.printStackTrace();

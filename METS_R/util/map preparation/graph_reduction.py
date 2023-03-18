@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-@author: Jesua, Zengxiang Lei
+@author: Juan Esteban Suarez Lopez, Zengxiang Lei
 
 """
 
@@ -433,6 +433,7 @@ def reduc_shp_direc(df3):
     df3=nx.to_pandas_edgelist(graphs3.copy())
     df3['geometry']=df3['cords'].apply(cords_geo)
     df3['length(m)']=df3['geometry'].apply(distance)
+    df3 = df3[df3['length(m)']>5.5].reset_index(drop=True)
     if 'Shape_Leng(m)' in df3.columns:
         df3=df3.drop(columns=['Shape_Leng(m)'])
     gdf=gp.GeoDataFrame(df3)
@@ -467,7 +468,6 @@ def get_connectivity(df5):
         groups=list(nx.strongly_connected_components(G))
         # print('# groups='+str(len(groups)))
         edges=list(G.edges)
-        nedg=G.number_of_edges()
         c=0
         nod_group={}
         for i in range(len(groups)):
@@ -832,11 +832,8 @@ def transform_directed_to_lane(shape):
     
     gd3['source']=gd3['nod_i']
     gd3['target']=gd3['nod_f']
-    gd3['length(m)']=gd3['geometry'].apply(distance)
-    dicr={'length(m)':'LENGTH(m)'}
     
-    gd3=gd3.rename(columns=dicr)
-    cols=['source','target','Opposite','rw_type','LENGTH(m)','NUMBEROFLA','elevation_i(ft)','elevation_f(ft)','geometry','or_fid','snow_pri']
+    cols=['source','target','Opposite','rw_type','NUMBEROFLA','elevation_i(ft)','elevation_f(ft)','geometry','or_fid','snow_pri']
     gdf=gd3.loc[:,cols]
     gdf['LENGTH(m)']= gdf['geometry'].apply(distance)
 
@@ -923,10 +920,24 @@ def remove_5legs(df,importance='nLane',dis_t='wgs',offset=15):
                 inter_link['Opposite'] = None
                 # adjust the distance
                 scale = offset/havesine(inter_link['cords'][0],inter_link['cords'][1])
-                inter_link['cords'][1] = ([inter_link['cords'][0][0] + scale * (inter_link['cords'][1][0] - inter_link['cords'][0][0])
-                                                ,inter_link['cords'][0][1] + scale * (inter_link['cords'][1][1] - inter_link['cords'][0][1])])
+
+                flag = True
+                while flag:
+                    flag = False
+                    inter_link['cords'][1] = ([inter_link['cords'][0][0] + scale * (inter_link['cords'][1][0] - inter_link['cords'][0][0])
+                                                    ,inter_link['cords'][0][1] + scale * (inter_link['cords'][1][1] - inter_link['cords'][0][1])])
+                    for j in range(2, len(lanes_ind)):
+                        new_link = edges[lanes_ind[j]].copy()
+                        new_link['cords'] = [inter_link['cords'][1]] + new_link['cords'][1:]
+                        new_link['geometry']=LineString(new_link['cords']) 
+                        if(length_geometry(new_link['geometry'])<5.5):
+                            flag = True
+                            scale += 0.1
 
                 inter_link['geometry']=LineString(inter_link['cords']) 
+                if(length_geometry(inter_link['geometry'])<5.5):
+                        print("The inter link is less than the minimum link length")
+                        print(inter_link)
                 G2.add_edge(i, new_node, **inter_link)
 
                 for j in range(2,len(lanes_ind)):
@@ -935,6 +946,9 @@ def remove_5legs(df,importance='nLane',dis_t='wgs',offset=15):
                     new_link['cords'] = [inter_link['cords'][1]] + new_link['cords'][1:]
                     new_link['nod_i'] = new_node
                     new_link['geometry']=LineString(new_link['cords']) 
+                    if(length_geometry(new_link['geometry'])<5.5):
+                        print("The new link is less than the minimum link length")
+                        print(new_link)
                     G2.add_edge(new_node, inds_or[ind_selected], **new_link)
                     G2.remove_edge(i,inds_or[ind_selected]) # remove edge from graph
           
@@ -1141,7 +1155,7 @@ def create_lane_shape(road,val=0.00003):
     Parameters
     ----------
     road : road shape as geopandas dataframe
-    val : distance, in this casde the value correponds to approximate 3.4 meters ( in wgs 84 coords)
+    val : distance, in this case the value corresponds to approximate 3.4 meters ( in wgs 84 coords)
 
     Returns
     -------
@@ -1193,7 +1207,8 @@ def create_lane_shape(road,val=0.00003):
             for c in unions[ll]:
                 dic_p[c[1]]=c[0]
             geom_i=edge['geometry']
-            geo2=LineString(paralel_off(geom_i,offset[count]))
+            points = paralel_off(geom_i,offset[count])
+            geo2=LineString(points)
             dis=distance(geo2)
             if(dis>20000): # for debugging
                 print("Something went wrong")

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-@author: Jesua
+@author: Juan Esteban Suarez Lopez, Zengxiang Lei
 
 """
 
@@ -65,6 +65,10 @@ def paralel_off(geo1,off):
             dire_n=np.array([dire[1],-dire[0]])
             seg_norm=seg+off*dire_n
             new_segs.append(seg_norm)
+        else:
+            print("the length of link segement is 0")
+            print(seg)
+            print(cords)
     s=len(new_segs)
     new_points=[new_segs[0][0]]
     for i in range(s-1):
