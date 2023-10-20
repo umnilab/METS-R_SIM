@@ -4,12 +4,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.net.URI;
-import java.util.Collection;
-import java.util.HashMap;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import repast.simphony.context.DefaultContext;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
@@ -20,16 +16,13 @@ import repast.simphony.space.gis.ShapefileLoader;
  * @author: Zengxiang Lei 
  **/
 
-public class ChargingStationContext extends DefaultContext<ChargingStation> {
-	
-	private HashMap<Integer, ChargingStation> chargingStationDictionary;
+public class ChargingStationContext extends FacilityContext<ChargingStation> {
 	
 	public ChargingStationContext() {
 
 		super("ChargingStationContext");
 
 		ContextCreator.logger.info("ChargingStationContext creation");
-		chargingStationDictionary = new HashMap<Integer, ChargingStation>();
 		GeographyParameters<ChargingStation> geoParams = new GeographyParameters<ChargingStation>();
 		Geography<ChargingStation> chargingStationGeography = GeographyFactoryFinder.createGeographyFactory(null)
 				.createGeography("ChargingStationGeography", this, geoParams);
@@ -44,7 +37,7 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 			// Read the charging station's attributes CSV file
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.CHARGER_CSV));
 			br.readLine(); // Skip the head line
-			int int_id = -1; // Use negative integers as charging station IDs
+			int int_id = -1; // Use negative integers as charging station IDs, start with ID = -1
 			while (chargingStationLoader.hasNext()) {
 				String line = br.readLine();
 				String[] result = line.split(",");
@@ -60,7 +53,7 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 					ContextCreator.logger.error(
 							"Incorrect format for charging station plan. Is there anything wrong in data/NYC/charging_station?");
 				}
-				this.chargingStationDictionary.put(int_id, cs);
+				this.put(int_id, cs);
 				int_id -= 1;
 			}
 			br.close();
@@ -69,17 +62,5 @@ public class ChargingStationContext extends DefaultContext<ChargingStation> {
 			ContextCreator.logger.error("Malformed URL exception when reading housesshapefile.");
 			e.printStackTrace();
 		}
-	}
-	
-	public ChargingStation findChargingStationWithIntegerID(int integerID) {
-		if (this.chargingStationDictionary.containsKey(integerID)) {
-			return this.chargingStationDictionary.get(integerID);
-		} else {
-			return null;
-		}
-	}
-	
-	public Collection<ChargingStation> getAllObjects() {
-		return chargingStationDictionary.values();
 	}
 }

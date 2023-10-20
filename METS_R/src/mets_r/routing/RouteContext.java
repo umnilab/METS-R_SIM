@@ -9,15 +9,9 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.*;
-import repast.simphony.space.gis.Geography;
-import repast.simphony.space.graph.Network;
 import util.Pair;
 
 public class RouteContext {
-	public static Geography<Junction> junctionGeography;
-	public static Network<Junction> roadNetwork;
-	public static Geography<Road> roadGeography;
-	public static CityContext cityContext;
 	public static GeometryFactory geomFac; // Used for creating Geometries
 	public static VehicleRouting vbr;
 
@@ -28,36 +22,32 @@ public class RouteContext {
 
 	/* Initialize route object */
 	public static void createRoute(){
-		junctionGeography = ContextCreator.getJunctionGeography();
-		roadNetwork = ContextCreator.getRoadNetwork();
-		roadGeography = ContextCreator.getRoadGeography();
-		cityContext = ContextCreator.getCityContext();
 		geomFac = new GeometryFactory();
-		vbr = new VehicleRouting(roadNetwork);
+		vbr = new VehicleRouting(ContextCreator.getRoadNetwork());
 		little_buffer_distance = 0.0001;
 		big_buffer_distance = 100;
 	}
 
 	/* Update the node based routing object, update the next nearest node matrix */
-	public static void setEdgeWeight(Junction junc1, Junction junc2, double weight) {
-		vbr.setEdgeWeight(junc1, junc2, weight);
+	public static void setEdgeWeight(Node node1, Node node2, double weight) {
+		vbr.setEdgeWeight(node1, node2, weight);
 	}
 	
 	public static List<Road> shortestPathRoute(Road originRoad, Road destRoad){
-		Junction originDownstreamJunc = originRoad.getJunctions().get(1);
-		Junction destUpstreamJunc = destRoad.getJunctions().get(0);
-		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamJunc, destUpstreamJunc);
+		Node originDownstreamNode = originRoad.getDownStreamNode();
+		Node destUpstreamNode = destRoad.getUpStreamNode();
+		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode);
 		return path;
 	}
 
 	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination) {
-		Road originRoad = cityContext.findRoadAtCoordinates(origin);
-		Road destRoad = cityContext.findRoadAtCoordinates(destination);
+		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
 		return shortestPathRoute(originRoad, destRoad);
 	}
 
 	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination){
-		Road destRoad = cityContext.findRoadAtCoordinates(destination);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
 		return shortestPathRoute(originRoad, destRoad);
 	}
 	
@@ -66,20 +56,20 @@ public class RouteContext {
 		Coordinate originCoord = origin;
 		Coordinate destCoord = destination;
 
-		Road originRoad = cityContext.findRoadAtCoordinates(originCoord);
-		Road destRoad = cityContext.findRoadAtCoordinates(destCoord);
+		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(originCoord);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destCoord);
 
-		Junction originDownstreamJunc = originRoad.getJunctions().get(1);
-		Junction destUpstreamJunc = destRoad.getJunctions().get(0);
+		Node originDownstreamNode = originRoad.getDownStreamNode();
+		Node destUpstreamNode = destRoad.getUpStreamNode();
 		
 		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad,
-				originDownstreamJunc, destUpstreamJunc);
+				originDownstreamNode, destUpstreamNode);
 		// Transform the paths into a list of link_ids
 		List<List<Integer>> result = new ArrayList<List<Integer>>();
 		for (List<Road> path : paths) {
 			result.add(new ArrayList<Integer>());
 			for (Road road : path) {	
-				result.get(result.size() - 1).add(road.getLinkid());
+				result.get(result.size() - 1).add(road.getID());
 			}
 		}
 		return result;
@@ -99,7 +89,7 @@ public class RouteContext {
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
-			result.add(cityContext.findRoadWithLinkID(link_id));
+			result.add(ContextCreator.getRoadContext().get(link_id));
 		}
 		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
@@ -120,7 +110,7 @@ public class RouteContext {
 		// Return a list of link
 		List<Road> result = new ArrayList<Road>();
 		for (int link_id : path) {
-			result.add(cityContext.findRoadWithLinkID(link_id));
+			result.add(ContextCreator.getRoadContext().get(link_id));
 		}
 		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
 		return final_result;
@@ -129,7 +119,7 @@ public class RouteContext {
 	public static void printRoute(List<Road> path) {
 		ContextCreator.logger.info("Route:");
 		for (Road r : path) {
-			ContextCreator.logger.info(" " + r.getLinkid());
+			ContextCreator.logger.info(" " + r.getID());
 		}
 	}
 }

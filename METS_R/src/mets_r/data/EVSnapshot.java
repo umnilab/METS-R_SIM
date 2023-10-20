@@ -30,7 +30,7 @@ public class EVSnapshot {
 	final public int served_pass;
 
 	public EVSnapshot(ElectricTaxi vehicle, Coordinate coordinate) throws Throwable {
-		this(vehicle.getVehicleID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
+		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
 				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.served_pass);

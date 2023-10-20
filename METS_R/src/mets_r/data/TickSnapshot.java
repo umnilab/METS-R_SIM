@@ -111,7 +111,7 @@ public class TickSnapshot {
 		}
 
 		// Pull out values from the vehicle & coord we need to capture
-		int id = vehicle.getVehicleID();
+		int id = vehicle.getID();
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
@@ -122,7 +122,7 @@ public class TickSnapshot {
 		double destX = vehicle.getDestCoord().x;
 		double destY = vehicle.getDestCoord().y;
 		int vehicleClass = vehicle.getVehicleClass();
-		int roadID = vehicle.getRoad().getLinkid();
+		int roadID = vehicle.getRoad().getID();
 
 		// Check if there is already a vehicleSnapshot in this tick due to visualization
 		// If so, then use the previous coordinates from the recorded snapshot 
@@ -147,7 +147,7 @@ public class TickSnapshot {
 			return;
 		}
 		// Pull out values from the vehicle & coord we need to capture
-		int id = vehicle.getVehicleID();
+		int id = vehicle.getID();
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
@@ -157,7 +157,7 @@ public class TickSnapshot {
 		int destID = vehicle.getDestID();
 		int nearlyArrived = vehicle.nearlyArrived();
 		int vehicleClass = vehicle.getVehicleClass();
-		int roadID = vehicle.getRoad().getLinkid();
+		int roadID = vehicle.getRoad().getID();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass = vehicle.served_pass;
@@ -201,7 +201,7 @@ public class TickSnapshot {
 		}
 
 		// Pull out values from the vehicle & coord we need to capture
-		int id = vehicle.getVehicleID();
+		int id = vehicle.getID();
 		int routeID = vehicle.getRouteID();
 		double prev_x = vehicle.getpreviousEpochCoord().x;
 		double prev_y = vehicle.getpreviousEpochCoord().y;
@@ -212,7 +212,7 @@ public class TickSnapshot {
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass = vehicle.served_pass;
-		int roadID = vehicle.getRoad().getLinkid();
+		int roadID = vehicle.getRoad().getID();
 
 		if (this.getBusSnapshot(id) != null) {
 			prev_x = this.getBusSnapshot(id).prev_x;

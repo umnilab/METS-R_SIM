@@ -161,7 +161,7 @@ public class ElectricBus extends Vehicle {
 																									// schedule
 		this.setState(Vehicle.CHARGING_TRIP);
 		this.departure();
-		ContextCreator.logger.debug("Bus " + this.getId() + " is on route to charging station");
+		ContextCreator.logger.debug("Bus " + this.getID() + " is on route to charging station");
 	}
 	
 	@Override
@@ -184,7 +184,7 @@ public class ElectricBus extends Vehicle {
 			}
 			this.setShadowImpact();
 			if (this.roadPath == null) {
-				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getLinkid() + ", destination " + this.getDestCoord() + 
+				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
 						", destination road " + this.getDestRoadID());
 				this.atOrigin = false;
 				this.nextRoad_ = null;
@@ -195,6 +195,7 @@ public class ElectricBus extends Vehicle {
 			} else {
 				this.atOrigin = false;
 				this.nextRoad_ = roadPath.get(1);
+				this.assignNextLane();
 			}
 		}
 	}
@@ -208,18 +209,18 @@ public class ElectricBus extends Vehicle {
 	public void reachDest() {
 		// Case 1: the bus arrives at the charging station
 		if (onChargingRoute_) {
-			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getRouteID()
+			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getRouteID()
 					+ ",4," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
 			try {
-				ContextCreator.bus_logger.write(formated_msg);
+				ContextCreator.agg_logger.bus_logger.write(formated_msg);
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 			super.reachDest(); 
 			super.leaveNetwork(); // remove the bus from the network
-			ContextCreator.logger.debug("Bus arriving at charging station:" + this.getId());
-			ChargingStation cs = ContextCreator.getCityContext().findChargingStationWithID(this.getDestID());
+			ContextCreator.logger.debug("Bus arriving at charging station:" + this.getID());
+			ChargingStation cs = ContextCreator.getChargingStationContext().get(this.getDestID());
 			cs.receiveBus(this);
 			this.tripConsume = 0;
 			// Case 2: the bus arrives at the start bus stop
@@ -228,12 +229,12 @@ public class ElectricBus extends Vehicle {
 			// continue to move)
 			// drop off passengers at the stop
 			if (this.getRouteID() > 0) {
-				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + ","
+				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ","
 						+ this.getRouteID() + ",3," + this.getOriginID() + "," + this.getDestID() + ","
 						+ this.getAccummulatedDistance() + "," + this.getDepTime() + "," + this.getTripConsume() + ","
 						+ this.routeChoice + "," + this.getPassNum() + "\r\n";
 				try {
-					ContextCreator.bus_logger.write(formated_msg);
+					ContextCreator.agg_logger.bus_logger.write(formated_msg);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
@@ -243,7 +244,7 @@ public class ElectricBus extends Vehicle {
 
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
 			this.setPassNum(this.getPassNum() - this.destinationDemandOnBus.get(nextStop % busStop.size()));
-			ContextCreator.getCityContext().findZoneWithIntegerID(
+			ContextCreator.getZoneContext().get(
 					this.getDestID()).busServedRequest += this.destinationDemandOnBus.get(nextStop % busStop.size());
 			this.destinationDemandOnBus.set(nextStop % busStop.size(), 0);
 
@@ -253,7 +254,7 @@ public class ElectricBus extends Vehicle {
 								.isEmpty(); p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size())
 										.poll()) {
 					p.moveToNextActivity();
-					ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()).insertTaxiPass(p);
+					ContextCreator.getZoneContext().get(this.getDestID()).insertTaxiPass(p);
 				}
 			}
 			
@@ -270,7 +271,7 @@ public class ElectricBus extends Vehicle {
 					ContextCreator.busSchedule.popSchedule(this.busStop.get(0), this);
 					super.leaveNetwork();
 					this.addPlan(busStop.get(nextStop),
-							ContextCreator.getCityContext().findZoneWithIntegerID(busStop.get(nextStop)).getCoord(),
+							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getCoord(),
 							Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
 					this.setNextPlan();
 					this.departure();
@@ -281,18 +282,18 @@ public class ElectricBus extends Vehicle {
 				this.nextStop = nextStop + 1;
 				// Head to the next Stop
 				int destZoneID = busStop.get(nextStop % busStop.size());
-				this.addPlan(destZoneID, ContextCreator.getCityContext().findZoneWithIntegerID(destZoneID).getCoord(),
+				this.addPlan(destZoneID, ContextCreator.getZoneContext().get(destZoneID).getCoord(),
 						Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
 				this.setNextPlan();
 				this.departure();
 			}
-			ContextCreator.logger.debug("Bus " + this.id + " has arrive the next station: " + nextStop);
+			ContextCreator.logger.debug("Bus " + this.ID + " has arrive the next station: " + nextStop);
 		}
 	}
 
 	private void servePassenger() {
 		// ServePassengerByBus
-		Zone arrivedZone = ContextCreator.getCityContext().findZoneWithIntegerID(this.getNextStopZoneID());
+		Zone arrivedZone = ContextCreator.getZoneContext().get(this.getNextStopZoneID());
 		ArrayList<Request> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat - this.passNum, busStop);
 		for (Request p : passOnBoard) {
 			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestination()),
@@ -386,11 +387,11 @@ public class ElectricBus extends Vehicle {
 	}
 
 	public void finishCharging(Integer chargerID, String chargerType) {
-		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getVehicleID() + ","
+		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
 				+ this.charging_time + "," + this.initial_charging_state + "\r\n";
 		try {
-			ContextCreator.charger_logger.write(formated_msg);
+			ContextCreator.agg_logger.charger_logger.write(formated_msg);
 			this.charging_waiting_time = 0;
 			this.charging_time = 0;
 		} catch (IOException e) {
@@ -413,7 +414,7 @@ public class ElectricBus extends Vehicle {
 	}
 
 	public void recLinkSnaphotForUCBBus() {
-		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getLinkid(), this.getLinkConsume());
+		DataCollector.getInstance().recordLinkSnapshotBus(this.getRoad().getID(), this.getLinkConsume());
 		this.resetLinkConsume(); // Reset link consumption to 0
 	}
 

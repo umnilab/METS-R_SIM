@@ -93,7 +93,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 
 		int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
 
-		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
 			numGeneratedBusPass += z.numberOfGeneratedBusRequest;
 			numGeneratedCombinedPass += z.numberOfGeneratedCombinedRequest;
@@ -115,33 +115,33 @@ public class DataCollectionContext extends DefaultContext<Object> {
 					+ z.taxiPickupRequest + "," + z.busPickupRequest + "," + z.combinePickupPart1 + ","
 					+ z.combinePickupPart2 + "," + z.taxiServedRequest + "," + z.busServedRequest + ","
 					+ z.taxiServedPassWaitingTime + "," + z.busServedPassWaitingTime + "," + z.numberOfLeavedTaxiRequest + ","
-					+ z.numberOfLeavedBusRequest + "," + z.taxiParkingTime + "," + z.taxiLeavedPassWaitingTime + "," + z.busLeavedPassWaitingTime + ","
+					+ z.numberOfLeavedBusRequest + "," + z.taxiLeavedPassWaitingTime + "," + z.busLeavedPassWaitingTime + "," + z.taxiParkingTime + ","
 					+ z.taxiCruisingTime + "," + z.getFutureDemand() + ","
 					+ z.getFutureSupply();
 			try {
-				ContextCreator.zone_logger.write(formatted_msg2);
-				ContextCreator.zone_logger.newLine();
-				ContextCreator.zone_logger.flush();
+				ContextCreator.agg_logger.zone_logger.write(formatted_msg2);
+				ContextCreator.agg_logger.zone_logger.newLine();
+				ContextCreator.agg_logger.zone_logger.flush();
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
 		}
 
-		for (Road r : ContextCreator.getRoadContext().getAllObjects()) {
+		for (Road r : ContextCreator.getRoadContext().getAll()) {
 			vehicleOnRoad += r.getVehicleNum();
 			if (r.getTotalEnergy() > 0) {
-				String formated_msg = currentTick + "," + r.getLinkid() + "," + r.getTotalFlow() + ","
+				String formated_msg = currentTick + "," + r.getID() + "," + r.getTotalFlow() + ","
 						+ r.getTotalEnergy();
 				try {
-					ContextCreator.link_logger.write(formated_msg);
-					ContextCreator.link_logger.newLine();
+					ContextCreator.agg_logger.link_logger.write(formated_msg);
+					ContextCreator.agg_logger.link_logger.newLine();
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
 			}
 		}
 
-		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAllObjects()) {
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			numChargedVehicle += cs.numChargedVehicle;
 		}
 
@@ -160,14 +160,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
 				+ numWaitingTaxiPass + "," + numWaitingBusPass + "," + battery_mean + "," + battery_std + ","
 				+ System.currentTimeMillis();
 		try {
-			ContextCreator.network_logger.write(formated_msg);
-			ContextCreator.network_logger.newLine();
-			ContextCreator.network_logger.flush();
-			ContextCreator.link_logger.flush();
-			ContextCreator.charger_logger.flush();
-			ContextCreator.bus_logger.flush();
-			ContextCreator.ev_logger.flush();
-			ContextCreator.traj_logger.flush();
+			ContextCreator.agg_logger.network_logger.write(formated_msg);
+			ContextCreator.agg_logger.network_logger.newLine();
+			ContextCreator.agg_logger.flush();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

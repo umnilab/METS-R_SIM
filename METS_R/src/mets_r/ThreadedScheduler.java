@@ -5,6 +5,7 @@ import java.util.concurrent.*;
 import mets_r.ContextCreator;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
+import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 
 import java.util.*;
@@ -86,6 +87,30 @@ public class ThreadedScheduler {
 		List<PartitionChargingStationThread> tasks = new ArrayList<PartitionChargingStationThread>();
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionChargingStationThread(patitionChargingStations.get(i), i));
+		}
+
+		try {
+			List<Future<Integer>> futures = executor.invokeAll(tasks);
+			ArrayList<Integer> time_stat = new ArrayList<Integer>();
+			for (int i = 0; i < N_Partition; i++)
+				time_stat.add(futures.get(i).get());
+			ArrayList<Integer> time_result = minMaxAvg(time_stat);
+			min_para_time = min_para_time + time_result.get(0);
+			max_para_time = max_para_time + time_result.get(1);
+			avg_para_time = avg_para_time + time_result.get(2);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
+	
+	public void paraSignalStep() {
+		// Load the partitions, each partition is a subset of Charging stations
+		ArrayList<ArrayList<Signal>> patitionSignals = ContextCreator.partitioner
+				.getpartitionedSignals();
+		// Creates tasks to run chargingStation.step() function in each partition
+		List<PartitionSignalThread> tasks = new ArrayList<PartitionSignalThread>();
+		for (int i = 0; i < this.N_Partition; i++) {
+			tasks.add(new PartitionSignalThread(patitionSignals.get(i), i));
 		}
 
 		try {
@@ -218,6 +243,33 @@ class PartitionChargingStationThread implements Callable<Integer> {
 		try {
 			for (ChargingStation cs : this.ChargingStationSet) {
 				cs.step();
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		return (int) (System.currentTimeMillis() - start_t);
+	}
+}
+
+/* A thread to call charging station's step() method */
+class PartitionSignalThread implements Callable<Integer> {
+	private ArrayList<Signal> signalSet;
+	private int threadID;
+
+	public PartitionSignalThread(ArrayList<Signal> signalPartition, int ID) {
+		this.signalSet = signalPartition;
+		this.threadID = ID;
+	}
+
+	public int getThreadID() {
+		return this.threadID;
+	}
+
+	public Integer call() {
+		double start_t = System.currentTimeMillis();
+		try {
+			for (Signal s : this.signalSet) {
+				s.step2();
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();

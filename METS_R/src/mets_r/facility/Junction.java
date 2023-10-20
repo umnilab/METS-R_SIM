@@ -1,26 +1,41 @@
 package mets_r.facility;
 
 import java.util.ArrayList;
-//import java.util.HashMap;
-//import java.util.Map;
-
+import java.util.HashMap;
+import java.util.Map;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 
 public class Junction {
-	private int ID;
-	private int junctionID; // From shape file
+	/* Constants */
+	public final static int NoControl = 0;
+	public final static int Yield = 1;
+	public final static int StopSign = 2;
+	public final static int StaticSignal = 3;
+	public final static int DynamicSignal = 4;
+	public final static int CustomizedSignal = 5;
+	
+	/* Private variables */
+	private int ID; // From shape file
 	private Coordinate coord;
-	protected int hasControl;
-	private ArrayList<Road> inComingRoads = new ArrayList<Road>();
-	private ArrayList<Road> exitingRoads = new ArrayList<Road>();
-
-	public Junction(Coordinate coord, int id) {
-		this.ID = ContextCreator.generateAgentID();
-		this.coord = coord;
-		this.junctionID = id;
-
+	private ArrayList<Integer> upStreamRoads;
+	private ArrayList<Integer> downStreamRoads;
+	
+	// Key1: Map<Road1_ID, Key 2: Road2_ID>; 
+	// Value: Seconds for vehicle to wait before the junction 
+	private Map<Integer, Map<Integer, Integer>> delay;
+	// Value: Signal
+	private Map<Integer, Map<Integer, Signal>> signals;
+	private int controlType;
+	
+	public Junction(int id) {
+		this.ID = id;
+		this.upStreamRoads = new ArrayList<Integer>();
+		this.downStreamRoads = new ArrayList<Integer>();
+		this.delay = new HashMap<Integer, Map<Integer, Integer>>();
+		this.signals = new HashMap<Integer, Map<Integer, Signal>>();
+		this.controlType = Junction.NoControl; // no control by default
 	}
 
 	@Override
@@ -32,47 +47,98 @@ public class Junction {
 		return ID;
 	}
 
-	public int getJunctionID() {
-		return junctionID;
-	}
-
 	public void setID(int id) {
 		this.ID = id;
 	}
-
-	public void setHasControl(int _cntrl) {
-		this.hasControl = _cntrl;
+	
+	public int getControlType() {
+		return this.controlType;
 	}
 
-	public int getHasControl() {
-		return this.hasControl;
+	public void setControlType(int control) {
+		this.controlType = control;
 	}
 
 	public Coordinate getCoord() {
 		return this.coord;
 	}
-
-	public boolean equals(Junction j) {
-		if (this.coord.equals(j.getCoord()))
-			return true;
-		else
-			return false;
+	
+	public void setCoord(Coordinate coord) {
+		this.coord = coord;
 	}
 
-	public ArrayList<Road> getIncomingRoads() {
-		return this.inComingRoads;
+	public ArrayList<Integer> getUpStreamRoads() {
+		return this.upStreamRoads;
 	}
 	
-	public ArrayList<Road> getExitingRoads() {
-		return this.exitingRoads;
+	public ArrayList<Integer> getDownStreamRoads() {
+		return this.downStreamRoads;
 	}
 
-	public void addIncomingRoad(Road road) {
-		this.inComingRoads.add(road);
+	public void addUpStreamRoad(int road) {
+		if(ContextCreator.getRoadContext().contains(road)) {
+			this.upStreamRoads.add(road);
+		}
+		else {
+			ContextCreator.logger.error("The to-add upstream road does not exist.");
+		}
+		
 	}
 	
-	public void addExitingRoad(Road road) {
-		this.exitingRoads.add(road);
+	public void addDownStreamRoad(int road) {
+		if(ContextCreator.getRoadContext().contains(road)) {
+			this.downStreamRoads.add(road);
+		}
+		else {
+			ContextCreator.logger.error("The to-add downstream road does not exist.");
+		}
 	}
-
+	
+	public int getDelay(int upStreamRoadID, int downStreamRoadID) {
+	    if(this.delay.containsKey(upStreamRoadID)) {
+	    	if(this.delay.get(upStreamRoadID).containsKey(downStreamRoadID)) {
+	    		return this.delay.get(upStreamRoadID).get(downStreamRoadID);
+	    	}
+	    }
+    	ContextCreator.logger.warn("No link found in junction: "+ this.getID() +
+    			" between road: "+ upStreamRoadID + "," + downStreamRoadID);
+    	return 0;
+	}
+	
+	public Map<Integer, Map<Integer, Integer>> getDelay(){
+		return this.delay;
+	}
+	
+	public void setDelay(int upStreamRoadID, int downStreamRoadID, int delay) {
+		if(this.delay.containsKey(upStreamRoadID)) {
+	    	this.delay.get(upStreamRoadID).put(downStreamRoadID, delay);
+	    }
+		else {
+			Map<Integer, Integer> tmpDelay = new HashMap<Integer,Integer>();
+			tmpDelay.put(downStreamRoadID, delay);
+			this.delay.put(upStreamRoadID, tmpDelay);
+		}
+	}
+	
+	public int getSignal(int upStreamRoadID, int downStreamRoadID) {
+		if(this.signals.containsKey(upStreamRoadID)) {
+	    	if(this.signals.get(upStreamRoadID).containsKey(downStreamRoadID)) {
+	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID).getState();
+	    	}
+	    }
+    	ContextCreator.logger.warn("No signal found in junction: "+ this.getID() +
+    			"between road: "+ upStreamRoadID + "," + downStreamRoadID);
+    	return 0;
+	}
+	
+	public void setSignal(int upStreamRoadID, int downStreamRoadID, Signal signal) {
+		if(this.signals.containsKey(upStreamRoadID)) {
+	    	this.signals.get(upStreamRoadID).put(downStreamRoadID, signal);
+	    }
+		else {
+			Map<Integer, Signal> tmpSignal = new HashMap<Integer,Signal>();
+			tmpSignal.put(downStreamRoadID, signal);
+			this.signals.put(upStreamRoadID, tmpSignal);
+		}
+	}
 }

@@ -19,14 +19,14 @@ import org.json.simple.parser.JSONParser;
  * @author: Zengxiang Lei 
  **/
 
-public class BackgroundDemand {
-	public TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> travelDemand; // The outer key is the origin and the
+public class TravelDemand {
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> travelDemand; // The outer key is the origin and the
 																				// inner key is the destination
-	public List<Integer> waitingThreshold;
-	public TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> sharePercentage;
+	private List<Integer> waitingThreshold;
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> sharePercentage;
 	
 
-	public BackgroundDemand() {
+	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
 		travelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
@@ -121,5 +121,45 @@ public class BackgroundDemand {
 		} catch (Exception e) {
 			e.printStackTrace();
 	}
+	}
+	
+	public double getTravelDemand(int originID, int destID, int hour) {
+		if (travelDemand.containsKey(originID)) {
+			if (travelDemand.get(originID).containsKey(destID)) {
+				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
+					return travelDemand.get(originID).get(destID).get(hour);
+				}
+
+			}
+		}
+		return 0d;
+	}
+	
+	public ArrayList<Double> getTravelDemand(int originID, int destID) {
+		if (travelDemand.containsKey(originID)) {
+			if (travelDemand.get(originID).containsKey(destID)) {
+				return travelDemand.get(originID).get(destID);
+			}
+		}
+		return new ArrayList<Double>(Collections.nCopies(GlobalVariables.HOUR_OF_DEMAND, 0.0d));
+	}
+	
+	public double getSharableRate(int originID, int destID, int hour) {
+		if (sharePercentage.containsKey(originID)) {
+			if (sharePercentage.get(originID).containsKey(destID)) {
+				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
+					return sharePercentage.get(originID).get(destID).get(hour);
+				}
+
+			}
+		}
+		return 0d;
+	}
+	
+	public int getWaitingThreshold(int hour) {
+		if (waitingThreshold.size() > hour) {
+			return waitingThreshold.get(hour);
+		}
+		return 600;
 	}
 }

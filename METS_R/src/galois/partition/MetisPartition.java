@@ -26,6 +26,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
+import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 
 import java.util.ArrayList;
@@ -40,6 +41,7 @@ public class MetisPartition {
 	private ArrayList<Road> partitionedBwRoads;
 	private ArrayList<ArrayList<Zone>> partitionedZones;
 	private ArrayList<ArrayList<ChargingStation>> partitionedChargingStation;
+	private ArrayList<ArrayList<Signal>> partitionedSignals;
 	private int partitionDuration; // how old is the current partition when next partitioning occurs
 
 	public MetisPartition(int nparts) {
@@ -48,9 +50,11 @@ public class MetisPartition {
 		this.partitionedBwRoads = new ArrayList<Road>();
 		this.partitionedZones = new ArrayList<ArrayList<Zone>>();
 		this.partitionedChargingStation = new ArrayList<ArrayList<ChargingStation>>();
+		this.partitionedSignals = new ArrayList<ArrayList<Signal>>();
 		for (int i = 0; i < nparts; i++) {
 			partitionedZones.add(new ArrayList<Zone>());
 			partitionedChargingStation.add(new ArrayList<ChargingStation>());
+			partitionedSignals.add(new ArrayList<Signal>());
 		}
 		this.partitionDuration = 0;
 	}
@@ -69,6 +73,10 @@ public class MetisPartition {
 
 	public ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations() {
 		return this.partitionedChargingStation;
+	}
+	
+	public ArrayList<ArrayList<Signal>> getpartitionedSignals(){
+		return this.partitionedSignals;
 	}
 
 	public void first_run() throws NumberFormatException, ExecutionException {
@@ -103,7 +111,7 @@ public class MetisPartition {
 		for (i = 0; i < this.nPartition; i++) {
 			totRequest.add(0.0);
 		}
-		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
@@ -118,7 +126,7 @@ public class MetisPartition {
 			// Update the weight of the partition, heuristic to send the hubs to different
 			// partitions
 			totRequest.set(targetInd, totRequest.get(targetInd)
-					+ ContextCreator.demand_per_zone.get(z.getIntegerID()) * (z.getZoneClass() == 1 ? 10.0 : 1.0));
+					+ ContextCreator.demand_per_zone.get(z.getIntegerID()) * (z.getZoneType() == 1 ? 10.0 : 1.0));
 		}
 		ContextCreator.logger.info(totRequest);
 
@@ -127,7 +135,7 @@ public class MetisPartition {
 		for (i = 0; i < this.nPartition; i++) {
 			totCharger.add(0);
 		}
-		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAllObjects()) {
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
@@ -142,6 +150,29 @@ public class MetisPartition {
 			// Update the weight of the partition
 			totCharger.set(targetInd, totCharger.get(targetInd) + cs.capacity());
 		}
+		
+		// Partition Signals by num of signals
+		ArrayList<Integer> totSignal = new ArrayList<Integer>();
+		for (i = 0; i< this.nPartition; i++) {
+			totSignal.add(0);
+		}
+		
+		for (Signal s : ContextCreator.getSignalContext().getAll()) {
+			// Find the partition with the lowest weight
+			double minWeight = GlobalVariables.FLT_INF;
+			int targetInd = 0;
+			for (i = 0; i < this.nPartition; i++) {
+				if (minWeight > totSignal.get(i)) {
+					minWeight = totSignal.get(i);
+					targetInd = i;
+				}
+			}
+			// Add the zone to the target partition
+			this.partitionedSignals.get(targetInd).add(s);
+			// Update the weight of the partition
+			totSignal.set(targetInd, totSignal.get(targetInd) + 1);
+		}
+		
 
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
@@ -150,7 +181,7 @@ public class MetisPartition {
 		if (this.partitionDuration <= GlobalVariables.SIMULATION_MAX_PARTITION_REFRESH_INTERVAL) {
 			/* Get the total number of vehicles in the network */
 			int TotVehNum = 0;
-			for (Road road : ContextCreator.getRoadContext().getAllObjects()) {
+			for (Road road : ContextCreator.getRoadContext().getAll()) {
 				TotVehNum += road.getVehicleNum();
 			}
 

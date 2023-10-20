@@ -18,8 +18,7 @@ import mets_r.mobility.Vehicle;
  * @author: Jiawei Xue, Zengxiang Lei 
  */
 public class ChargingStation {
-	private int id;
-	private int integerID;
+	private int ID;
 	private Random rand;
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
 	// capacity for the taxi is 50.0 kWh.
@@ -57,8 +56,7 @@ public class ChargingStation {
 	 * @param numL3 number of L3 chargers
 	 */
 	public ChargingStation(int integerID, int numL2, int numL3) {
-		this.setId(ContextCreator.generateAgentID());
-		this.integerID = integerID;
+		this.ID = integerID;
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.num2 = numL2; // Number of level 2 charger
 		this.num3 = numL3; // Number of level 3 charger
@@ -309,7 +307,7 @@ public class ChargingStation {
 	}
 
 	public int getIntegerID() {
-		return this.integerID;
+		return this.ID;
 	}
 
 	public Coordinate getCoord() {
@@ -331,13 +329,5 @@ public class ChargingStation {
 		ContextCreator.logger
 				.debug("Charging test2!" + Math.cbrt(A + B) + " " + Math.cbrt(A - B) + " " + 4 * y / (3 * beta));
 		return SOC_f;
-	}
-
-	public int getId() {
-		return id;
-	}
-
-	public void setId(int id) {
-		this.id = id;
 	}
 }

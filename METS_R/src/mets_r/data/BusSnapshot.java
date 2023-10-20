@@ -98,10 +98,10 @@ public class BusSnapshot {
 	 * @throws Throwable if the supplied vehicle object is not valid.
 	 */
 	public BusSnapshot(ElectricBus vehicle, Coordinate coordinate) throws Throwable {
-		this(vehicle.getVehicleID(), vehicle.getRouteID(), vehicle.getpreviousEpochCoord().x,
+		this(vehicle.getID(), vehicle.getRouteID(), vehicle.getpreviousEpochCoord().x,
 				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y, vehicle.currentSpeed(),
 				vehicle.currentAcc(), vehicle.getBatteryLevel(), vehicle.getTotalConsume(),
-				vehicle.getRoad().getLinkid(), vehicle.served_pass);
+				vehicle.getRoad().getID(), vehicle.served_pass);
 	}
 
 	/**

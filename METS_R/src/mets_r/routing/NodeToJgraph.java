@@ -9,7 +9,7 @@ import repast.simphony.space.graph.RepastEdge;
  * @author Samiul Hasan, Zengxiang Lei
  **/
 
-public class JungToJgraph<T> {
+public class NodeToJgraph<T> {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public SimWeightedGraph<T, RepastEdge<T>> convertToJgraph(Graph<T, RepastEdge<T>> jungGraph) {
 		SimWeightedGraph<T, RepastEdge<T>> jGraph = new SimWeightedGraph<T, RepastEdge<T>>(

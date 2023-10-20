@@ -3,8 +3,6 @@ package galois.partition;
 import java.util.ArrayList;
 import java.util.HashMap;
 
-import com.vividsolutions.jts.geom.Coordinate;
-
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
 import galois.objects.graph.MorphGraph;
@@ -16,24 +14,17 @@ import edu.uci.ics.jung.graph.Graph;
 import repast.simphony.context.space.graph.ContextJungNetwork;
 import repast.simphony.space.projection.ProjectionEvent;
 import repast.simphony.space.projection.ProjectionListener;
-import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.JungNetwork;
-import repast.simphony.space.graph.Network;
 import repast.simphony.space.graph.RepastEdge;
 
 public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 	public Graph<T, RepastEdge<T>> RepastGraph; // Repast graph
-	public static Network<Junction> roadNetwork; // Repast network projection
 	public IntGraph<MetisNode> GaliosGraph;
-	private Geography<Zone> zoneGeography;
 	public MetisGraph metisGraph;
-	public static CityContext cityContext;
 	private HashMap<T, Integer> Node2GaliosID;
 	private HashMap<Integer, T> GaliosID2Node;
 	public ArrayList<ArrayList<Road>> PartitionedInRoads; // 2D array list for roads that lie entirely in each partition
 	public ArrayList<Road> PartitionedBwRoads; // Array list for roads that lie in the boundary of two partitions
-	public ArrayList<ArrayList<Integer>> BwRoadMembership; // N_bw * 2 dimension array that holds the membership of each
-															// boundary road
 	public ArrayList<GNode<MetisNode>> nodes;
 	public ArrayList<Integer> PartitionWeights;
 	public ArrayList<Road> ResolvedRoads; // Roads that can be resolved from the graph transformation
@@ -47,7 +38,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 	private int gamma; // Weight to future routing roads
 
 	public GaliosGraphConverter() {
-		cityContext = ContextCreator.getCityContext();
 		RepastGraph = null;
 		GaliosGraph = new MorphGraph.IntGraphBuilder().backedByVector(true).directed(true).create();
 		metisGraph = new MetisGraph();
@@ -56,7 +46,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 		this.GaliosID2Node = new HashMap<Integer, T>();
 		nodeNum = 0;
 		edgeNum = 0;
-		zoneGeography = ContextCreator.getZoneGeography();
 		ResolvedRoads = new ArrayList<Road>();
 		LeftOverRoads = new ArrayList<Road>();
 
@@ -76,14 +65,13 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 		int i = 0;
 
 		try {
-			roadNetwork = ContextCreator.getRoadNetwork();
 			// Load Repast network
 			RepastGraph = null;
 
-			if (roadNetwork instanceof JungNetwork)
-				RepastGraph = ((JungNetwork) roadNetwork).getGraph();
-			else if (roadNetwork instanceof ContextJungNetwork)
-				RepastGraph = ((ContextJungNetwork) roadNetwork).getGraph();
+			if (ContextCreator.getRoadNetwork() instanceof JungNetwork)
+				RepastGraph = ((JungNetwork) ContextCreator.getRoadNetwork()).getGraph();
+			else if (ContextCreator.getRoadNetwork() instanceof ContextJungNetwork)
+				RepastGraph = ((ContextJungNetwork) ContextCreator.getRoadNetwork()).getGraph();
 
 			// Create the MetisNode list
 			nodes = new ArrayList<GNode<MetisNode>>();
@@ -95,19 +83,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 			for (T vertex : RepastGraph.getVertices()) {
 				Node2GaliosID.put(vertex, i);
 				GaliosID2Node.put(i, vertex);
-
-				if (mode) {
-					/* Retrieve the vertex weight */
-					Junction j = (Junction) vertex;
-					for (Zone zone : zoneGeography.getAllObjects()) {
-						Coordinate coord = zone.getCoord();
-						if (j.getCoord().equals(coord))
-							// For adaptive network partitioning
-							nodeWeight = zone.getTaxiPassengerNum() * this.alpha + 1;
-
-					}
-				}
-
 				GNode<MetisNode> n = GaliosGraph.createNode(new MetisNode(i, nodeWeight));
 				nodes.add(n);
 				GaliosGraph.add(n);
@@ -118,16 +93,18 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 				T source = RepastGraph.getSource(edge);
 				T dest = RepastGraph.getDest(edge);
 
-				Junction j1 = (Junction) source;
-				Junction j2 = (Junction) dest;
+				Node node1 = (Node) source;
+				Node node2 = (Node) dest;
 
-				Road road = cityContext.findRoadBetweenJunctionIDs(j1.getJunctionID(), j2.getJunctionID());
-
-				this.ResolvedRoads.add(road);
-
-				// For adaptive network partitioning. 
-				int edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
-						+ road.getFutureRoutingVehNum() * this.gamma;
+				Road road = ContextCreator.getCityContext().findRoadBetweenNodeIDs(node1.getID(), node2.getID());
+				
+				int edgeWeight = 1;
+				if(road != null) { // edge for road
+					this.ResolvedRoads.add(road);
+					// For adaptive network partitioning. 
+					edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
+							+ road.getFutureRoutingVehNum() * this.gamma;
+				}
 
 				GNode<MetisNode> n1 = nodes.get(Node2GaliosID.get(source));
 				GNode<MetisNode> n2 = nodes.get(Node2GaliosID.get(dest));
@@ -140,12 +117,8 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 				n2.getData().incNumEdges();
 
 				/* Weighting scheme by only pushing weights on one end */
-
-				if (edgeWeight > 1) {
-					// Push weights only to downstream nodes
-					n2.getData().setWeight(n2.getData().getWeight() - 1 + edgeWeight);
-				}
-
+				// Push weights only to downstream nodes
+				n2.getData().setWeight(n2.getData().getWeight() - 1 + edgeWeight);
 				edgeNum++;
 			}
 			metisGraph.setNumEdges(edgeNum);
@@ -186,7 +159,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 
 			// Initialize the arraylist to store the edges that lie in between partitions
 			PartitionedBwRoads = new ArrayList<Road>();
-			BwRoadMembership = new ArrayList<ArrayList<Integer>>(); // Corresponding membership of the boundary roads
 
 			i = 0;
 			for (RepastEdge<T> edge : RepastGraph.getEdges()) { // loop over all the edges to categorize them into the
@@ -194,32 +166,30 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 				T source = RepastGraph.getSource(edge);
 				T dest = RepastGraph.getDest(edge);
 
-				Junction j1 = (Junction) source;
-				Junction j2 = (Junction) dest;
+				Node node1 = (Node) source;
+				Node node2 = (Node) dest;
 
-				Road road = cityContext.findRoadBetweenJunctionIDs(j1.getJunctionID(), j2.getJunctionID());
+				Road road = ContextCreator.getCityContext().findRoadBetweenNodeIDs(node1.getID(), node2.getID());
+				
+				if(road !=null) {
+					// Get the two nodes of an edge in galois form
+					GNode<MetisNode> n1 = nodes[Node2GaliosID.get(source)];
+					GNode<MetisNode> n2 = nodes[Node2GaliosID.get(dest)];
 
-				// Get the two nodes of an edge in galois form
-				GNode<MetisNode> n1 = nodes[Node2GaliosID.get(source)];
-				GNode<MetisNode> n2 = nodes[Node2GaliosID.get(dest)];
+					// Compute the edge weight of the link
+					int edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
+							+ road.getFutureRoutingVehNum() * this.gamma;
 
-				// Compute the edge weight of the link
-				int edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
-						+ road.getFutureRoutingVehNum() * this.gamma;
+					if (n1.getData().getPartition() == n2.getData().getPartition()) { // if road lie within a partition then
+																						// add the road corresponding to
+																						// that partition
+						PartitionedInRoads.get(n1.getData().getPartition()).add(road);
+						PartitionWeights.set(n1.getData().getPartition(),
+								PartitionWeights.get(n1.getData().getPartition()) + edgeWeight);
 
-				if (n1.getData().getPartition() == n2.getData().getPartition()) { // if road lie within a partition then
-																					// add the road corresponding to
-																					// that partition
-					PartitionedInRoads.get(n1.getData().getPartition()).add(road);
-					PartitionWeights.set(n1.getData().getPartition(),
-							PartitionWeights.get(n1.getData().getPartition()) + edgeWeight);
-
-				} else { // If road lies between partitions then store the road along with its partition IDs
-					PartitionedBwRoads.add(road);
-					ArrayList<Integer> tempList = new ArrayList<Integer>();
-					tempList.add(n1.getData().getPartition());
-					tempList.add(n2.getData().getPartition());
-					BwRoadMembership.add(tempList);
+					} else { // If road lies between partitions then store the road along with its partition IDs
+						PartitionedBwRoads.add(road);
+					}
 				}
 			}
 
@@ -250,11 +220,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 	public ArrayList<Road> getPartitionedBwRoads() {
 		// Add the leftover roads into the boundary roads
 		return this.PartitionedBwRoads;
-	}
-
-	/* Get partition membership for the two end of the boundary roads */
-	public ArrayList<ArrayList<Integer>> getBwRoadMembership() {
-		return this.BwRoadMembership;
 	}
 
 	/* Get the total edge weight for each partition */

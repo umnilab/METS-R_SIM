@@ -17,7 +17,7 @@ import repast.simphony.space.gis.Geography;
 public class VehicleContext extends DefaultContext<Vehicle> {
 	// For operation
 	private HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
-	private ConcurrentHashMap<ElectricTaxi, Zone> relocationTaxiMap; 
+	private ConcurrentHashMap<ElectricTaxi, Integer> relocationTaxiMap; 
 	
 	// For data collection
 	private ArrayList<ElectricTaxi> taxiList; 
@@ -30,7 +30,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		zoneGeography = ContextCreator.getZoneGeography();
 
 		this.availableTaxiMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>>();
-		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Zone>();
+		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Integer>();
 		this.taxiList = new ArrayList<ElectricTaxi>();
 		this.busList = new ArrayList<ElectricBus>();
 		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
@@ -51,7 +51,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
-		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
 			if(z.getCapacity()>0) {
 				Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
@@ -86,7 +86,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 		
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
-			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAll()) {
 				if(z.getCapacity()>0) {
 					Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
 					int vehicle_num_to_generate = num_total <= z.getCapacity()? num_total: z.getCapacity();
@@ -134,7 +134,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				// Decide the next departure time
 				int next_departure_time = 0;
 				// Generate vehicle_num buses for the corresponding route
-				Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(route.get(0));
+				Zone z = ContextCreator.getZoneContext().get(route.get(0));
 				for (int j = 0; j < num_per_hub; j++) {
 					ElectricBus b;
 					b = new ElectricBus(-1, route, next_departure_time);
@@ -176,7 +176,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.availableTaxiMap.get(integerID).add(v);
 	}
 	
-	public void addRelocationTaxi(ElectricTaxi v, Zone z) {
+	public void addRelocationTaxi(ElectricTaxi v, int z) {
 		this.relocationTaxiMap.put(v, z);
 	}
 	
@@ -184,10 +184,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.relocationTaxiMap.remove(v);
 	}
 	
-	public List<ElectricTaxi> getRelocationTaxi(Zone z){
+	public List<ElectricTaxi> getRelocationTaxi(int z){
 		List<ElectricTaxi> result = new ArrayList<ElectricTaxi>();
 		if(this.relocationTaxiMap.containsValue(z)) {
-			for (Entry<ElectricTaxi, Zone> entry : this.relocationTaxiMap.entrySet()) {
+			for (Entry<ElectricTaxi, Integer> entry : this.relocationTaxiMap.entrySet()) {
 	              if (entry.getValue() == z) {
 	                  result.add(entry.getKey());
 	              }

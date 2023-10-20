@@ -28,16 +28,16 @@ class The_Comparator implements Comparator<OneBusSchedule> {
 
 public class BusSchedule {
 	// For storing the schedule
-	public ArrayList<Integer> routeName;
-	public ArrayList<ArrayList<Integer>> busRoute;
-	public ArrayList<Integer> busNum;
-	public ArrayList<Integer> busGap; // in minute
-	public Map<Integer, Integer> locationIDMap;
+	private ArrayList<Integer> routeName;
+	private ArrayList<ArrayList<Integer>> busRoute;
+	private ArrayList<Integer> busNum;
+	private ArrayList<Integer> busGap; // in minute
+	private Map<Integer, Integer> locationIDMap;
 
 	// For updating the schedule
-	public ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
+	private ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
 
-	public int currentHour = -1;
+	private int currentHour = -1;
 
 	public BusSchedule() {
 		routeName = new ArrayList<Integer>();
@@ -104,7 +104,7 @@ public class BusSchedule {
 			busNum = newBusNum;
 			busGap = newBusGap;
 
-			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAll()) {
 				z.busReachableZone.clear(); // clear the bus info
 				z.busGap.clear();
 			}
@@ -117,8 +117,8 @@ public class BusSchedule {
 					for (int zoneID : route) {
 						if(locationIDMap.containsKey(zoneID)){
 							oneRoute.add(locationIDMap.get(zoneID));
-							Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(locationIDMap.get(zoneID));
-							if (zone.getZoneClass() == 0) { // normal zone, the destination should be hub
+							Zone zone = ContextCreator.getZoneContext().get(locationIDMap.get(zoneID));
+							if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
 								for (int destinationID : route) {
 									if(locationIDMap.containsKey(destinationID)) {
 										if (GlobalVariables.HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
@@ -126,7 +126,7 @@ public class BusSchedule {
 										}
 									}
 								}
-							} else if (zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be
+							} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be
 																	// another hub)
 								for (int destinationID : route) {
 									if(locationIDMap.containsKey(destinationID)) {
@@ -143,7 +143,7 @@ public class BusSchedule {
 				i += 1;
 			}
 			ContextCreator.logger.info(busRoute);
-			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAll()) {
 				// Deal with the remaining passengers for buses in each zone
 				z.reSplitPassengerDueToBusRescheduled();
 			}
@@ -191,5 +191,18 @@ public class BusSchedule {
 			return ContextCreator.busSchedule.pendingSchedules.get(stop).size() > 0;
 		}
 		return false;
+	}
+	
+
+	public ArrayList<ArrayList<Integer>> getBusSchedule() {
+		return busRoute;
+	}
+
+	public ArrayList<Integer> getBusNum() {
+		return busNum;
+	}
+
+	public ArrayList<Integer> getBusGap() {
+		return busGap;
 	}
 }

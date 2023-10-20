@@ -687,7 +687,7 @@ public class JsonOutputWriter implements DataConsumer {
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
         
 		if(currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
-			for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+			for (Zone z : ContextCreator.getZoneContext().getAll()) {
 				servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
 				leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
 			}
@@ -695,7 +695,7 @@ public class JsonOutputWriter implements DataConsumer {
 				energyConsumption += r.getTotalEnergy();
 				if(r.getVehicleNum()>0) {
 					// Store the link state
-					int id = r.getLinkid();
+					int id = r.getID();
 					double speed = r.calcSpeed();
 					int nVehicles = r.getVehicleNum();
 					double energy = r.getTotalEnergy();

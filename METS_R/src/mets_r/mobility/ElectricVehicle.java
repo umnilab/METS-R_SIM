@@ -82,7 +82,7 @@ public class ElectricVehicle extends Vehicle {
 			
 			for (Request p : planList) {
 				this.addPlan(p.getDestination(),
-						ContextCreator.getCityContext().findZoneWithIntegerID(p.getDestination()).getCoord(),
+						ContextCreator.getZoneContext().get(p.getDestination()).getCoord(),
 						ContextCreator.getNextTick());
 				this.setNumPeople(this.getNumPeople() + 1);
 			}
@@ -96,18 +96,18 @@ public class ElectricVehicle extends Vehicle {
 	@Override
 	public void reachDest() {
 		// Log the trip consume here
-		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getVehicleID() + "," + this.getState()
+		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 				+ this.getDepTime() + "," + this.getTripConsume() + "," + this.getRouteChoice() + ","
 				+ this.getNumPeople()+ "\r\n";
 		try {
-			ContextCreator.ev_logger.write(formated_msg);
+			ContextCreator.agg_logger.ev_logger.write(formated_msg);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		this.tripConsume = 0;
 
-		Zone z = ContextCreator.getCityContext().findZoneWithIntegerID(this.getDestID()); // get destination zone info
+		Zone z = ContextCreator.getZoneContext().get(this.getDestID()); // get destination zone info
 		
 		super.reachDest(); // Update the vehicle status
 			
@@ -232,11 +232,11 @@ public class ElectricVehicle extends Vehicle {
 	}
 	
 	public void recLinkSnaphotForUCB() {
-		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getLinkid(), this.getLinkConsume());
+		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getID(), this.getLinkConsume());
 	}
 
 	public void recSpeedVehicle() {
-		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getLinkid(), this.currentSpeed());
+		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getID(), this.currentSpeed());
 	}
 
 	public double getTripConsume() {

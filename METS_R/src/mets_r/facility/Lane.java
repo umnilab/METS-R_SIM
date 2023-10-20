@@ -4,70 +4,70 @@ import java.util.ArrayList;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.mobility.Vehicle;
 
 /**
  * 
- * Inherit from A-RESCUE
+ * Inherit from A-RESCUE with modification
  * 
- * @author Samiul Hasan and Binh Luong
- *         
+ * @author Samiul Hasan, Binh Luong, and Zengxiang Lei
+ * 
  **/
 
 public class Lane {
-	private int id; // An auto-generated id from ContextCreater
-	private Random rand;
-	
-	private int laneid; // From shape file
-	private int link; // From shape file
-	private int left;
-	private int through;
-	private int right;
+	/* Private variables */
+	private int ID; // From shape file
+	private int index;
+	private ArrayList<Coordinate> coords;
 	private double length;
-
-	private Road road_; // The Road for which this lane belongs to
+	
+	// Connection with other facilities
+	private ArrayList<Integer> upStreamLanes;// Upstream lanes that connect to this
+	private ArrayList<Integer> downStreamLanes;// Down stream lanes that connect to
+	private int road; // ID of the road who contains this lane
+	
+	// For vehicle movement
 	private AtomicInteger nVehicles_; // Number of vehicle in the lane
-
-	/*
-	 * To move to the next road of the path, a vehicle may need to make necessary
-	 * lane changes. The variable nChanges_ indicates the number of lane changes
-	 * required before getting on the downstream link. nChanges_ is an array, and
-	 * each element corresponds to one out going arc at the downstream node. Its
-	 * value is defined as followings:
-	 * 
-	 * positive = change to left zero = no need to change negative = change to right
-	 */
-
 	private Vehicle firstVehicle_; // The first vehicle on a lane
 	private Vehicle lastVehicle_; // The last vehicle vehicle on a lane
 	private float speed_;
 	private float maxSpeed_;
-	private ArrayList<Lane> upLanes_;// Upstream lanes that connect to this
-	private ArrayList<Lane> dnLanes_;// Down stream lanes that connect to
-	private int index;
-	private AtomicInteger lastEnterTick = new AtomicInteger(-1); // Store the latest enter time of vehicles
+	private AtomicInteger lastEnterTick; // Store the latest enter time of vehicles
+	private Random rand; // Random seed for lane changing
 
-	public Lane() {
-		this.id = ContextCreator.generateAgentID();
+	public Lane(int id) {
+		this.ID = id;
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.nVehicles_ = new AtomicInteger(0);
 		this.lastVehicle_ = null;
-		this.upLanes_ = new ArrayList<Lane>();
-		this.dnLanes_ = new ArrayList<Lane>();
+		this.upStreamLanes = new ArrayList<Integer>();
+		this.downStreamLanes = new ArrayList<Integer>();
+		this.lastEnterTick = new AtomicInteger(-1);
 	}
 
 	public int getAndSetLastEnterTick(int current_tick) {
 		return this.lastEnterTick.getAndSet(current_tick);
 	}
 
-	public int getLaneid() {
-		return laneid;
+	public int getID() {
+		return ID;
 	}
+	
 
-	public void setLaneid(int laneid) {
-		this.laneid = laneid;
+	public Coordinate getStartCoord() {
+		return this.coords.get(0);
+	}
+	
+	public Coordinate getEndCoord() {
+		return this.coords.get(this.coords.size()-1);
+	}
+	
+	public void setCoords(ArrayList<Coordinate> coords) {
+		this.coords = coords;
 	}
 
 	public void setLength(double length) {
@@ -78,41 +78,12 @@ public class Lane {
 		return length;
 	}
 	
-	public int getLink() {
-		return link;
+	public int getRoad() {
+		return road;
 	}
 
-	public void setLink(int link) {
-		this.link = link;
-	}
-
-	public void setLeft(int left) {
-		this.left = left;
-	}
-
-	public int getLeft() {
-		return left;
-	}
-
-	public void setThrough(int through) {
-		this.through = through;
-	}
-
-	public int getThrough() {
-		return through;
-	}
-
-	public void setRight(int right) {
-		this.right = right;
-	}
-
-	public int getRight() {
-		return right;
-	}
-
-	public void setRoad(Road road) {
-		this.road_ = road;
-		road.addLane(this);
+	public void setRoad(int roadID) {
+		this.road = roadID;
 	}
 
 	public float speed() {
@@ -149,25 +120,12 @@ public class Lane {
 		return lastVehicle_;
 	}
 
-	// Calculate max speed of the lane
-	public float calcMaxSpeed() {
-		return this.maxSpeed_;
-	}
-
-	public Road getRoad() {
-		return this.road_;
-	}
-
-	public int getID() {
-		return this.id;
-	}
-
 	public int getIndex() {
 		return this.index;
 	}
 
 	public void setIndex() {
-		this.index = this.road_.getLaneIndex(this);
+		this.index = ContextCreator.getRoadContext().get(road).getLaneIndex(this);
 	}
 
 	/*
@@ -183,8 +141,8 @@ public class Lane {
 		double dis;
 		Lane dlane;
 		int i;
-		for (i = 0; i < dnLanes_.size(); i++) {
-			dlane = dnLanes_.get(i);
+		for (i = 0; i < downStreamLanes.size(); i++) {
+			dlane = ContextCreator.getLaneContext().get(downStreamLanes.get(i));
 			pv = dlane.lastVehicle_;
 			if (pv != null) {
 				dis = dlane.getLength() - (pv.getDistance() + pv.length());
@@ -196,37 +154,36 @@ public class Lane {
 		}
 		return (last);
 	}
-
-	// Get all the downstream lanes that connect to this lane.
-	public ArrayList<Lane> getDnLanes() {
-		return this.dnLanes_;
+	
+	public ArrayList<Integer> getDownStreamLanes() {
+		return this.downStreamLanes;
+	}
+	
+	public void addDownStreamLane(int l) {
+		if (l > 0) {
+			if (!this.downStreamLanes.contains(l))
+				this.downStreamLanes.add(l);
+			else
+				ContextCreator.logger.error("Cannot register the down stream lane since it is already added");
+		}
+	}
+	
+	public ArrayList<Integer> getUpStreamLanes() {
+		return upStreamLanes;
+	}
+	
+	public void addUpStreamLane(int l) {
+		if(!this.upStreamLanes.contains(l))
+			this.upStreamLanes.add(l);
+		else
+			ContextCreator.logger.error("Cannot register the up stream lane since it is already added");
 	}
 
-	public ArrayList<Lane> getUpLanes() {
-		return this.upLanes_;
-	}
-
-	public void addDnLane(Lane l) {
-		this.dnLanes_.add(l);
-	}
-
-	public Lane getDnLane(int i) {
-		return dnLanes_.get(i);
-	}
-
-	public void addUpLane(Lane l) {
-		this.upLanes_.add(l);
-	}
-
-	public Lane getUpLane(int i) {
-		return upLanes_.get(i);
-	}
-
-	public Lane getUpStreamConnection(Road pr) {
+	public Lane getUpStreamLaneInRoad(Road pr) {
 		Lane connectLane = null;
-		for (Lane ul : this.getUpLanes()) {
-			if (ul.getRoad().equals(pr)) {
-				connectLane = ul;
+		for (int lane : this.getUpStreamLanes()) {
+			if (ContextCreator.getLaneContext().get(lane).getRoad() == pr.getID()) {
+				connectLane = ContextCreator.getLaneContext().get(lane);
 				break;
 			}
 		}
@@ -256,8 +213,8 @@ public class Lane {
 	public boolean isConnectToLane(Lane pl) {
 		boolean connectFlag = false;
 		if (pl != null) {
-			for (Lane ul : pl.getUpLanes()) {
-				if (ul.equals(this))
+			for (int ul : pl.getUpStreamLanes()) {
+				if (ul == this.getID())
 					connectFlag = true;
 			}
 		}

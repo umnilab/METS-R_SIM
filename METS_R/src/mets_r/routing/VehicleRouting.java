@@ -15,46 +15,45 @@ import repast.simphony.space.graph.RepastEdge;
 import edu.uci.ics.jung.graph.Graph;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.facility.CityContext;
-import mets_r.facility.Junction;
+import mets_r.facility.Node;
 import mets_r.facility.Road;
 
 public class VehicleRouting {
-	public DefaultDirectedWeightedGraph<Junction, RepastEdge<Junction>> transformedNetwork = null;
-	public CityContext cityContext;
+	public DefaultDirectedWeightedGraph<Node, RepastEdge<Node>> transformedNetwork = null;
 
 	@SuppressWarnings({"unchecked", "rawtypes"})
-	public VehicleRouting(Network<Junction> network) {
-		this.cityContext = ContextCreator.getCityContext();
-		Graph<Junction, RepastEdge<Junction>> graphA = null;
-		if (network instanceof JungNetwork)
-			graphA = ((JungNetwork) network).getGraph();
-		else if (network instanceof ContextJungNetwork)
-			graphA = ((ContextJungNetwork) network).getGraph();
-		JungToJgraph<Junction> converter = new JungToJgraph<Junction>();
+	public VehicleRouting(Network<Node> roadNetwork) {
+		Graph<Node, RepastEdge<Node>> graphA = null;
+		if (roadNetwork instanceof JungNetwork)
+			graphA = ((JungNetwork) roadNetwork).getGraph();
+		else if (roadNetwork instanceof ContextJungNetwork)
+			graphA = ((ContextJungNetwork) roadNetwork).getGraph();
+		NodeToJgraph<Node> converter = new NodeToJgraph<Node>();
 		this.transformedNetwork = converter.convertToJgraph(graphA);
 	}
 
-	public void setEdgeWeight(Junction junc1, Junction junc2, double weight) {
-		transformedNetwork.setEdgeWeight(transformedNetwork.getEdge(junc1, junc2), weight);
+	public void setEdgeWeight(Node node1, Node node2, double weight) {
+		transformedNetwork.setEdgeWeight(transformedNetwork.getEdge(node1, node2), weight);
 	}
 
-	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad, Junction currJunc,
-			Junction destJunc) {
+	public List<List<Road>> computeKRoute(int K, Road currentRoad, Road destRoad, Node currNode,
+			Node destNode) {
 		List<List<Road>> roadPath_ = new ArrayList<List<Road>>();
-		YenKShortestPath<Junction, RepastEdge<Junction>> ksp = new YenKShortestPath<Junction, RepastEdge<Junction>>(
+		YenKShortestPath<Node, RepastEdge<Node>> ksp = new YenKShortestPath<Node, RepastEdge<Node>>(
 				transformedNetwork);
-		List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(currJunc, destJunc, K);
+		List<GraphPath<Node, RepastEdge<Node>>> kshortestPath = ksp.getPaths(currNode, destNode, K);
 		for (int k = 0; k < kshortestPath.size(); k++) {
-			List<RepastEdge<Junction>> shortestPath = kshortestPath.get(k).getEdgeList();
+			List<RepastEdge<Node>> shortestPath = kshortestPath.get(k).getEdgeList();
 			// Find the roads which are associated with these edges
 			if (shortestPath != null) { // Found the shortest path
 				List<Road> oneRoadPath_ = new ArrayList<Road>(); // Save this path as a list of road and store it in
 																	// oneRoadPath_
 				oneRoadPath_.add(currentRoad);
-				for (RepastEdge<Junction> edge : shortestPath) {
-					Road road = cityContext.getRoadFromEdge(edge);
-					oneRoadPath_.add(road);
+				for (RepastEdge<Node> edge : shortestPath) {
+					int roadID = ContextCreator.getCityContext().getRoadIDFromEdge(edge);
+					if(roadID > 0) {
+						oneRoadPath_.add(ContextCreator.getRoadContext().get(roadID));
+					}
 				}
 				// Add the whole path into roadPaths
 				roadPath_.add(oneRoadPath_);
@@ -65,31 +64,31 @@ public class VehicleRouting {
 	}
  
 	/* Perform the routing computation */
-	public List<Road> computeRoute(Road currentRoad, Road destRoad, Junction currJunc, Junction destJunc) {
+	public List<Road> computeRoute(Road currentRoad, Road destRoad, Node currNode, Node destNode) {
 		List<Road> roadPath_ = null;
-		List<RepastEdge<Junction>> shortestPath = null;
+		List<RepastEdge<Node>> shortestPath = null;
 
 		// Get the edges that make up the shortest path
 		int K = GlobalVariables.K_VALUE;
 		double theta = GlobalVariables.THETA_LOGIT;
 		
-		if (currJunc == destJunc) { // Origin and destination is the same
+		if (currNode == destNode) { // Origin and destination is the same
 			roadPath_ = new ArrayList<Road>();
 			roadPath_.add(currentRoad);
 		}
 		else {
 			if (GlobalVariables.K_SHORTEST_PATH) {
 				// Find the k-shortest path
-				YenKShortestPath<Junction, RepastEdge<Junction>> ksp = new YenKShortestPath<Junction, RepastEdge<Junction>>(
+				YenKShortestPath<Node, RepastEdge<Node>> ksp = new YenKShortestPath<Node, RepastEdge<Node>>(
 						transformedNetwork);
-				List<GraphPath<Junction, RepastEdge<Junction>>> kshortestPath = ksp.getPaths(currJunc, destJunc, K);
+				List<GraphPath<Node, RepastEdge<Node>>> kshortestPath = ksp.getPaths(currNode, destNode, K);
 	
 				List<Double> pathLength = new ArrayList<Double>();
 				List<Double> pathProb = new ArrayList<Double>();
 				List<Double> cumProb = new ArrayList<Double>();
 				double total = 0.0;
 	
-				for (GraphPath<Junction, RepastEdge<Junction>> kpath : kshortestPath) {
+				for (GraphPath<Node, RepastEdge<Node>> kpath : kshortestPath) {
 					pathLength.add(kpath.getWeight());
 				}
 				for (int i = 0; i < kshortestPath.size(); i++) {
@@ -119,12 +118,12 @@ public class VehicleRouting {
 	
 			} else { // Single shortest path
 				try {
-					BidirectionalDijkstraShortestPath<Junction, RepastEdge<Junction>> sp = new BidirectionalDijkstraShortestPath<Junction, RepastEdge<Junction>>(
+					BidirectionalDijkstraShortestPath<Node, RepastEdge<Node>> sp = new BidirectionalDijkstraShortestPath<Node, RepastEdge<Node>>(
 							transformedNetwork);
-					shortestPath = sp.getPath(currJunc, destJunc).getEdgeList();
+					shortestPath = sp.getPath(currNode, destNode).getEdgeList();
 				}
 				catch(Exception e) {
-					ContextCreator.logger.error("Cannot find path between " + currJunc.getJunctionID() + ", " + destJunc.getJunctionID());
+					ContextCreator.logger.error("Cannot find path between " + currNode.getID() + ", " + destNode.getID());
 				}
 			}
 	
@@ -132,9 +131,11 @@ public class VehicleRouting {
 			if (shortestPath != null) { // Found the shortest path
 				roadPath_ = new ArrayList<Road>();
 				roadPath_.add(currentRoad);
-				for (RepastEdge<Junction> edge : shortestPath) {
-					Road road = cityContext.getRoadFromEdge(edge);
-					roadPath_.add(road);
+				for (RepastEdge<Node> edge : shortestPath) {
+					int roadID = ContextCreator.getCityContext().getRoadIDFromEdge(edge);
+					if(roadID > 0) {
+						roadPath_.add(ContextCreator.getRoadContext().get(roadID));
+					}
 				}
 			}
 		}

@@ -2,9 +2,9 @@ package mets_r.mobility;
 
 import java.util.LinkedList;
 import java.util.Queue;
-
 import com.vividsolutions.jts.geom.Coordinate;
 
+import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 /**
@@ -14,16 +14,18 @@ import mets_r.GlobalVariables;
  **/
 
 public class Request {
-	private Integer origin;
-	private Integer destination;
+	private int ID;
+	private int origin;
+	private int destination;
 	private Coordinate originCoord;
 	private Coordinate destCoord;
-	private Integer maxWaitingTime;
-	private Integer currentWaitingTime;
+	private int maxWaitingTime;
+	private int currentWaitingTime;
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
 	
-	public Request(Integer origin, Integer destination, Coordinate originCoord, Coordinate destCoord, Boolean willingToShare){
+	public Request(int origin, int destination, Coordinate originCoord, Coordinate destCoord, Boolean willingToShare){
+		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
@@ -34,7 +36,8 @@ public class Request {
 		this.willingToShare = willingToShare;
 	}
 	
-	public Request(Integer origin,  Coordinate originCoord, Queue<Plan> activityPlan){
+	public Request(int origin,  Coordinate originCoord, Queue<Plan> activityPlan){
+		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = activityPlan;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
 		this.currentWaitingTime = 0;	
@@ -45,7 +48,7 @@ public class Request {
 		this.destCoord = activityPlan.peek().getLocation();
 	}
 	
-	public void waitNextTime(Integer waitingTime){
+	public void waitNextTime(int waitingTime){
 		this.currentWaitingTime+=waitingTime;
 	}
 	
@@ -63,10 +66,6 @@ public class Request {
 		return this.currentWaitingTime;
 	}
 	
-	public void setCurrentWaitingTime(int waiting_time) {
-		this.currentWaitingTime = waiting_time;
-	}
-	
 	public int getMaxWaitingTime() {
 		return this.maxWaitingTime;
 	}
@@ -75,11 +74,11 @@ public class Request {
 		this.maxWaitingTime = waiting_time;
 	}
 	
-	public void setOrigin(Integer origin){
+	public void setOrigin(int origin){
 		this.origin = origin;
 	}
 	
-	public void setDestination(Integer destination){
+	public void setDestination(int destination){
 		this.destination = destination;
 	}
 	
@@ -128,5 +127,9 @@ public class Request {
 	
 	public void clearActivityPlan() {
 		this.activityPlan.clear();
+	}
+
+	public int getID() {
+		return ID;
 	}
 }

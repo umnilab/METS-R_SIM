@@ -4,25 +4,17 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.net.URI;
-import java.util.Collection;
-import java.util.HashMap;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import repast.simphony.context.DefaultContext;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 
-public class ZoneContext extends DefaultContext<Zone> {
-
-	private HashMap<Integer, Zone> zoneDictionary;
-
+public class ZoneContext extends FacilityContext<Zone> {
 	public ZoneContext() {
 		super("ZoneContext");
 		ContextCreator.logger.info("ZoneContext creation");
-		this.zoneDictionary = new HashMap<Integer, Zone>();
 		GeographyParameters<Zone> geoParams = new GeographyParameters<Zone>();
 		Geography<Zone> zoneGeography = GeographyFactoryFinder.createGeographyFactory(null)
 				.createGeography("ZoneGeography", this, geoParams);
@@ -39,12 +31,12 @@ public class ZoneContext extends DefaultContext<Zone> {
 			if(result.length < 3) {
 				ContextCreator.logger.error("Missing fields in Zone configuration, a proper one should contain (Name, externalID, Capacity)");
 			}
-			int int_id = 0;
+			int int_id = 0; // Start with ID = 0
 			while (zoneLoader.hasNext()) {
 				line = br.readLine();
 				result = line.split(",");
 				Zone zone = zoneLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[2]))); // Using customize parameters
-				this.zoneDictionary.put(int_id, zone);
+				this.put(int_id, zone);
 				int_id += 1;
 				zone.setCoord(zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
@@ -55,17 +47,5 @@ public class ZoneContext extends DefaultContext<Zone> {
 			e.printStackTrace();
 		}
 
-	}
-
-	public Zone findZoneWithIntegerID(int integerID) {
-		if (this.zoneDictionary.containsKey(integerID)) {
-			return this.zoneDictionary.get(integerID);
-		} else {
-			return null;
-		}
-	}
-	
-	public Collection<Zone> getAllObjects() {
-		return zoneDictionary.values();
 	}
 }

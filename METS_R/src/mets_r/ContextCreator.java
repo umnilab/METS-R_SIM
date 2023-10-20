@@ -1,25 +1,16 @@
 package mets_r;
 
-import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
 import java.util.Set;
-import java.util.TreeMap;
 import javax.measure.unit.NonSI;
 import javax.measure.unit.SI;
 
@@ -55,13 +46,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	/* Loggers */
 	// Loggers for aggregated metrics
-	public static BufferedWriter ev_logger; // Vehicle Trip logger
-	public static BufferedWriter bus_logger; // Vehicle Trip logger
-	public static BufferedWriter link_logger; // Link energy logger
-	public static BufferedWriter network_logger; // Road network vehicle logger
-	public static BufferedWriter zone_logger; // Zone logger
-	public static BufferedWriter charger_logger; // Charger logger
-	public static BufferedWriter traj_logger; // Trajectory logger
+	public static AggregatedLogger agg_logger = new AggregatedLogger();
 	// Logger for console outputs
 	public static Logger logger = Logger.getLogger(ContextCreator.class);
 
@@ -69,13 +54,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static int agentID = 0; // Used to generate unique agent id
 	public static double startTime; // Start time of the simulation
 	public static HashMap<Integer, Double> demand_per_zone = new HashMap<Integer, Double>();
-
-	/* Simulation objects */
-	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition); 
 	public static NetworkEventHandler eventHandler = new NetworkEventHandler(); 
 	public static BackgroundTraffic backgroundTraffic = new BackgroundTraffic();
-	public static BackgroundDemand backgroundDemand = new BackgroundDemand();
+	public static TravelDemand travelDemand = new TravelDemand();
 	public static BusSchedule busSchedule = new BusSchedule();
+	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition); 
+	
+	/* Simulation objects */
 	CityContext cityContext;
 	VehicleContext vehicleContext;
 	DataCollectionContext dataContext;
@@ -141,6 +126,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Initialize facilities
 		this.cityContext = new CityContext();
 		mainContext.addSubContext(cityContext);
+		
 		this.cityContext.createSubContexts();
 		this.cityContext.buildRoadNetwork();
 		this.cityContext.setNeighboringGraph();
@@ -148,11 +134,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Calculate the demand of each zone
 		double demand_total = 0;
 
-		for (Zone z : getZoneContext().getAllObjects()) {
+		for (Zone z : getZoneContext().getAll()) {
 			double demand_from_zone = 0;
 			int i = z.getIntegerID();
 			for (int j = 0; j < GlobalVariables.NUM_OF_ZONE; j++) {
-				demand_from_zone += sumOfArray(ContextCreator.getTravelDemand(i, j),
+				demand_from_zone += sumOfArray(travelDemand.getTravelDemand(i, j),
 						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
@@ -171,21 +157,21 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		// Initialize operational parameters 
 		// Set the bus info in each zone
-		for (ArrayList<Integer> route : busSchedule.busRoute) {
+		for (ArrayList<Integer> route : busSchedule.getBusSchedule()) {
 			int i = 0;
 			for (int zoneID : route) {
-				Zone zone = ContextCreator.getCityContext().findZoneWithIntegerID(zoneID);
-				if (zone.getZoneClass() == 0) { // normal zone, the destination should be hub
+				Zone zone = ContextCreator.getZoneContext().get(zoneID);
+				if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
 					for (int destinationID : route) {
 						if (GlobalVariables.HUB_INDEXES.contains(destinationID)) {
-							zone.setBusInfo(destinationID, busSchedule.busGap.get(i));
+							zone.setBusInfo(destinationID, busSchedule.getBusGap().get(i));
 						}
 					}
-				} else if (zone.getZoneClass() == 1) { // hub, the destination should be other zones (can be another
+				} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be another
 														// hub)
 					for (int destinationID : route) {
 						if (zone.getIntegerID() != destinationID) {
-							zone.setBusInfo(destinationID, busSchedule.busGap.get(i));
+							zone.setBusInfo(destinationID, busSchedule.getBusGap().get(i));
 						}
 
 					}
@@ -207,108 +193,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		else {
 			ContextCreator.isRouteUCBBusPopulated = true;
 		}
-		
-		
-		
-		// Create output files
-		String outDir = GlobalVariables.AGG_DEFAULT_PATH;
-		String timestamp = new SimpleDateFormat("YYYY-MM-dd-hh-mm-ss").format(new Date()); 
-		String outpath = outDir + File.separatorChar + GlobalVariables.NUM_OF_EV + "_" + GlobalVariables.NUM_OF_BUS; 
-		try {
-			Files.createDirectories(Paths.get(outpath));
-		} catch (IOException e1) {
-			e1.printStackTrace();
-		}
-		logger.info("Creating aggregate loggers...");
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
-			ev_logger = new BufferedWriter(fw);
-			ev_logger.write("tick,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
-			ev_logger.newLine();
-			ev_logger.flush();
-			logger.info("EV logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("EV logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "BusLog-" + timestamp + ".csv", false);
-			bus_logger = new BufferedWriter(fw);
-			bus_logger.write(
-					"tick,vehicleID,routeID,tripType,originID,destID,distance,departureTime,cost,choice,passOnBoard");
-			bus_logger.newLine();
-			bus_logger.flush();
-			logger.info("Bus logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Bus logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "LinkLog-" + timestamp + ".csv", false);
-			link_logger = new BufferedWriter(fw);
-			link_logger.write("tick,linkID,flow,consumption");
-			link_logger.newLine();
-			link_logger.flush();
-			logger.info("Link energy logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Link energy logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
-			network_logger = new BufferedWriter(fw);
-			network_logger.write(
-					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
-							+ "taxiServedPass,busServedPass," + "taxiLeavedPass,busLeavedPass,"
-							+ "numWaitingTaxiPass,numWaitingBusPass," + "batteryMean,batteryStd,timeStamp");
-			network_logger.newLine();
-			network_logger.flush();
-			logger.info("Network logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Network logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
-			zone_logger = new BufferedWriter(fw);
-			zone_logger.write(
-					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
-							+ "taxiServedPass,busServedPass,taxiServedPassWaitingTime,busServedPassWaitingTime,"
-							+ "taxiLeavedPass,busLeavedPass,taxiLeavedPassWaitingTime,busLeavedPassWaitingTime,"
-							+ "taxiParkingTime,taxiCruisingTime,futureDemand,futureSupply");
-			zone_logger.newLine();
-			zone_logger.flush();
-			logger.info("Zone logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Zone logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ChargerLog-" + timestamp + ".csv", false);
-			charger_logger = new BufferedWriter(fw);
-			charger_logger
-					.write("tick,chargerID,vehID,vehType,chargerType,waitingTime,chargingTime,initialBatteryLevel");
-			charger_logger.newLine();
-			charger_logger.flush();
-			logger.info("Charger logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Charger logger failed.");
-		}
-		try {
-			FileWriter fw = new FileWriter(outpath + File.separatorChar + "TrajLog-" + timestamp + ".csv", false);
-			traj_logger = new BufferedWriter(fw);
-			traj_logger
-					.write("tick,vehicleID,vehicleState,linkID,distToJunction,speed,acc,battery_level,tick_consume,passNum");
-			traj_logger.newLine();
-			traj_logger.flush();
-			logger.info("Trajectory logger created!");
-		} catch (IOException e) {
-			e.printStackTrace();
-			logger.error("Trajectory logger failed.");
-		}
 	}
 
 	// Create eco-routing candidate path set
@@ -325,8 +209,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		} catch (FileNotFoundException i) {
 			logger.info("Candidate routes initialization ...");
 			// Loop over all OD pairs, will take several hours
-			for (Zone origin : getZoneContext().getAllObjects()) {
-				for (Zone destination : getZoneContext().getAllObjects()) {
+			for (Zone origin : getZoneContext().getAll()) {
+				for (Zone destination : getZoneContext().getAll()) {
 					if (origin.getIntegerID() != destination.getIntegerID()
 							&& (GlobalVariables.HUB_INDEXES.contains(origin.getIntegerID())
 									|| GlobalVariables.HUB_INDEXES.contains(destination.getIntegerID()))) {
@@ -376,8 +260,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			fileIn.close();
 		} catch (FileNotFoundException i) { 
 			logger.info("Candidate routes initialization ...");
-			for (Zone origin : getZoneContext().getAllObjects()) {
-				for (Zone destination : getZoneContext().getAllObjects()) {
+			for (Zone origin : getZoneContext().getAll()) {
+				for (Zone destination : getZoneContext().getAll()) {
 					if (origin.getIntegerID() != destination.getIntegerID()) {
 						logger.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
 						try {
@@ -487,7 +371,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public void scheduleSequentialRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParams = ScheduleParameters.createRepeating(1, 1, 0);
-		for (Road r : getRoadContext().getObjects(Road.class)) {
+		for (Road r : getRoadContext().getAll()) {
 			schedule.schedule(agentParams, r, "step");
 		}
 	}
@@ -513,7 +397,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule the passenger serving events
 		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
-		for (Zone z : getZoneContext().getObjects(Zone.class)) {
+		for (Zone z : getZoneContext().getAll()) {
 			schedule.schedule(demandServeParams, z, "step");
 		}
 	}
@@ -536,15 +420,36 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters chargingServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
-		for (ChargingStation cs : getChargingStationContext().getObjects(ChargingStation.class)) {
+		for (ChargingStation cs : getChargingStationContext().getAll()) {
 			schedule.schedule(chargingServeParams, cs, "step");
+		}
+	}
+	
+	// Schedule the event for signal updates (multi-thread)
+	public void scheduleMultiThreadedSignalStep() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
+				GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1);
+		schedule.schedule(agentParaParams, s, "paraSignalStep");
+		
+		// Schedule shutting down the parallel thread pool
+		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
+		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+	}
+
+	// Schedule the event for  charging station updates (single-thread)
+	public void scheduleSequentialSignalStep() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		for (Signal s : getSignalContext().getAll()) {
+			ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(s.getNextUpdateTime(), 1);
+			schedule.schedule(signalUpdateParams, s, "step");
 		}
 	}
 
 	// Schedule the event for data collection
 	public void scheduleDataCollection() {
 		int tickDuration = 1;
-
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 			ScheduleParameters dataStartParams = ScheduleParameters.createOneTime(0,
@@ -592,10 +497,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (GlobalVariables.MULTI_THREADING) {
 			scheduleMultiThreadedRoadStep();
 			scheduleMultiThreadedZoneStep();
+			scheduleMultiThreadedSignalStep();
 			scheduleMultiThreadedChargingStationStep();
 		} else {
 			scheduleSequentialRoadStep();
 			scheduleSequentialZoneStep();
+			scheduleSequentialSignalStep();
 			scheduleSequentialChargingStationStep();
 		}
 		
@@ -624,27 +531,16 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Called by sched.executeEndActions()
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - startTime));
-		try {
-			ev_logger.flush();
-			bus_logger.flush();
-			link_logger.flush();
-			network_logger.flush();
-			zone_logger.flush();
-			charger_logger.flush();
-			traj_logger.flush();
-			ev_logger.close();
-			bus_logger.close();
-			link_logger.close();
-			network_logger.close();
-			zone_logger.close();
-			charger_logger.close();
-			traj_logger.close();
-			
-			// Close the user interface
-			System.exit(0);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
+		agg_logger.close();
+		// Close the user interface
+		System.exit(0);
+	}
+	
+	// For traffic signal controls
+	public static void scheduleNextEvent(Signal s, int startTime) {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(startTime, 1);
+		schedule.schedule(signalUpdateParams, s, "step");
 	}
 
 	public static int generateAgentID() {
@@ -700,48 +596,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static boolean isRouteUCBBusMapPopulated() {
 		return ContextCreator.isRouteUCBPopulated;
 	}
+	
 	public static VehicleContext getVehicleContext() {
 		return (VehicleContext) mainContext.findContext("VehicleContext");
 	}
-
-	@SuppressWarnings("unchecked")
-	public static Geography<Vehicle> getVehicleGeography() {
-		return (Geography<Vehicle>) ContextCreator.getVehicleContext().getProjection(Geography.class,
-				"VehicleGeography");
-	}
-
-	public static JunctionContext getJunctionContext() {
-		return (JunctionContext) mainContext.findContext("JunctionContext");
-	}
-
-	@SuppressWarnings("unchecked")
-	public static Geography<Junction> getJunctionGeography() {
-		return ContextCreator.getJunctionContext().getProjection(Geography.class, "JunctionGeography");
-	}
-
-	@SuppressWarnings("unchecked")
-	public static Network<Junction> getRoadNetwork() {
-		return ContextCreator.getJunctionContext().getProjection(Network.class, "RoadNetwork");
-	}
-
-	public static RoadContext getRoadContext() {
-		return (RoadContext) mainContext.findContext("RoadContext");
-	}
-
-	@SuppressWarnings("unchecked")
-	public static Geography<Road> getRoadGeography() {
-		return (Geography<Road>) ContextCreator.getRoadContext().getProjection("RoadGeography");
-	}
-
-	public static LaneContext getLaneContext() {
-		return (LaneContext) mainContext.findContext("LaneContext");
-	}
-
-	@SuppressWarnings("unchecked")
-	public static Geography<Lane> getLaneGeography() {
-		return (Geography<Lane>) ContextCreator.getLaneContext().getProjection("LaneGeography");
-	}
-
+	
+	
 	public static CityContext getCityContext() {
 		return (CityContext) mainContext.findContext("CityContext");
 	}
@@ -749,14 +609,46 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static ZoneContext getZoneContext() {
 		return (ZoneContext) mainContext.findContext("ZoneContext");
 	}
+	
+	public static ChargingStationContext getChargingStationContext() {
+		return (ChargingStationContext) mainContext.findContext("ChargingStationContext");
+	}
+
+	
+	public static RoadContext getRoadContext() {
+		return (RoadContext) mainContext.findContext("RoadContext");
+	}
+	
+	public static LaneContext getLaneContext() {
+		return (LaneContext) mainContext.findContext("LaneContext");
+	}
+	
+	public static JunctionContext getJunctionContext() {
+		return (JunctionContext) mainContext.findContext("JunctionContext");
+	}
+	
+	public static NodeContext getNodeContext() {
+		return (NodeContext) mainContext.findContext("NodeContext");
+	}
+	
+	public static SignalContext getSignalContext() {
+		return (SignalContext) mainContext.findContext("SignalContext");
+	}
+	
+	@SuppressWarnings("unchecked")
+	public static Geography<Vehicle> getVehicleGeography() {
+		return (Geography<Vehicle>) ContextCreator.getVehicleContext().getProjection(Geography.class,
+				"VehicleGeography");
+	}
+
+	@SuppressWarnings("unchecked")
+	public static Network<Node> getRoadNetwork() {
+		return ContextCreator.getCityContext().getProjection(Network.class, "RoadNetwork");
+	}
 
 	@SuppressWarnings("unchecked")
 	public static Geography<Zone> getZoneGeography() {
 		return (Geography<Zone>) ContextCreator.getZoneContext().getProjection("ZoneGeography");
-	}
-
-	public static ChargingStationContext getChargingStationContext() {
-		return (ChargingStationContext) mainContext.findContext("ChargingStationContext");
 	}
 
 	@SuppressWarnings("unchecked")
@@ -764,62 +656,24 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return (Geography<ChargingStation>) ContextCreator.getChargingStationContext()
 				.getProjection("ChargingStationGeography");
 	}
+	
+	@SuppressWarnings("unchecked")
+	public static Geography<Road> getRoadGeography() {
+		return (Geography<Road>) ContextCreator.getRoadContext().getProjection("RoadGeography");
+	}
 
+	@SuppressWarnings("unchecked")
+	public static Geography<Lane> getLaneGeography() {
+		return (Geography<Lane>) ContextCreator.getLaneContext().getProjection("LaneGeography");
+	}
+	
+	@SuppressWarnings("unchecked")
+	public static Geography<Junction> getJunctionGeography() {
+		return ContextCreator.getJunctionContext().getProjection(Geography.class, "JunctionGeography");
+	}
+	
 	public static DataCollectionContext getDataCollectionContext() {
 		return (DataCollectionContext) mainContext.findContext("DataCollectionContext");
-	}
-	
-	public static TreeMap<Integer, ArrayList<Double>> getBackgroundTraffic() {
-		return backgroundTraffic.backgroundTraffic;
-	}
-
-	public static TreeMap<Integer, ArrayList<Double>> getBackgroundTrafficStd() {
-		return backgroundTraffic.backgroundStd;
-	}
-
-	public static ArrayList<Double> getTravelDemand(int originID, int destID) {
-		if (backgroundDemand.travelDemand.containsKey(originID)) {
-			if (backgroundDemand.travelDemand.get(originID).containsKey(destID)) {
-				return backgroundDemand.travelDemand.get(originID).get(destID);
-			}
-		}
-		return new ArrayList<Double>(Collections.nCopies(GlobalVariables.HOUR_OF_DEMAND, 0.0d));
-	}
-
-	public static Double getTravelDemand(int originID, int destID, int hour) {
-		if (backgroundDemand.travelDemand.containsKey(originID)) {
-			if (backgroundDemand.travelDemand.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return backgroundDemand.travelDemand.get(originID).get(destID).get(hour);
-				}
-
-			}
-		}
-		return 0d;
-	}
-	
-	public static Double getSharableRate(int originID, int destID, int hour) {
-		if (backgroundDemand.sharePercentage.containsKey(originID)) {
-			if (backgroundDemand.sharePercentage.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return backgroundDemand.sharePercentage.get(originID).get(destID).get(hour);
-				}
-
-			}
-		}
-		return 0d;
-	}
-
-	public static ArrayList<ArrayList<Integer>> getBusSchedule() {
-		return busSchedule.busRoute;
-	}
-
-	public static ArrayList<Integer> getBusNum() {
-		return busSchedule.busNum;
-	}
-
-	public static ArrayList<Integer> getBusGap() {
-		return busSchedule.busGap;
 	}
 	
 	public static int getCurrentTick() {

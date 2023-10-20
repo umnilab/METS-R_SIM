@@ -68,13 +68,16 @@ public class GlobalVariables {
 
 	// Road Network
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");
+	public static final String ROADS_CSV = loadConfig("ROADS_CSV");
 	public static final String LANES_SHAPEFILE = loadConfig("LANES_SHAPEFILE");
+	public static final String LANES_CSV = loadConfig("LANES_CSV");
+	public static final String NETWORK_FILE = loadConfig("NETWORK_FILE");
+	
 	public static final String ZONES_SHAPEFILE = loadConfig("ZONES_SHAPEFILE");
+	public static final String ZONE_CSV = loadConfig("ZONE_CSV");
 	public static final String CHARGER_SHAPEFILE = loadConfig("CHARGER_SHAPEFILE");
 	public static final String CHARGER_CSV = loadConfig("CHARGER_CSV");
-	public static final String ROADS_CSV = loadConfig("ROADS_CSV");
-	public static final String LANES_CSV = loadConfig("LANES_CSV");
-	public static final String ZONE_CSV = loadConfig("ZONE_CSV");
+
 	public static int NUM_OF_ZONE = Integer.valueOf(loadConfig("NUM_OF_ZONE"));
 
 	// Background traffic
@@ -135,6 +138,8 @@ public class GlobalVariables {
 	public static final float SIMULATION_STEP_SIZE = Float.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
 	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"));
+	public static final int SIMULATION_SIGNAL_REFRESH_INTERVAL = Integer
+			.valueOf(loadConfig("SIMULATION_SIGNAL_REFRESH_INTERVAL"));
 	public static final int SIMULATION_DEMAND_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"));
 	public static final int SIMULATION_SPEED_REFRESH_INTERVAL = Integer
@@ -236,13 +241,14 @@ public class GlobalVariables {
 																		// files for batch runs, else we run single
 	// Number of future road segments to be considered in counting shadow vehicles
 	public static final int N_SHADOW = Integer.valueOf(loadConfig("N_SHADOW"));
-	public static final double minLead = 3.0; // (m/sec)
-	public static final double minLag = 5.0; // (m/sec)
+	
+	// For microscopic vehicle movement
+	public static final double MIN_LEAD = Float.valueOf(loadConfig("MIN_LEAD"));; // (m/sec)
+	public static final double MIN_LAG = Float.valueOf(loadConfig("MIN_LAG"));; // (m/sec)
 	public static final float FREE_SPEED = Float.valueOf(loadConfig("FREE_SPEED"));
 	public static final float DEFAULT_VEHICLE_WIDTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_WIDTH")); // meters
 	public static final float DEFAULT_VEHICLE_LENGTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_LENGTH")); // meters
 	public static final float NO_LANECHANGING_LENGTH = Float.valueOf(loadConfig("NO_LANECHANGING_LENGTH")); // meters
-	public static final float MIN_UTURN_LENGTH = Float.valueOf(loadConfig("MIN_UTURN_LENGTH")); // meters
 	public static final float LANE_WIDTH = Float.valueOf(loadConfig("LANE_WIDTH"));
 	public static final float LANE_CHANGING_PROB_PART1 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
 	public static final float LANE_CHANGING_PROB_PART2 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));

@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.TreeMap;
 
 import au.com.bytecode.opencsv.CSVReader;
+import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 import java.util.*;
@@ -18,12 +19,12 @@ import java.util.*;
  **/
 
 public class BackgroundTraffic {
-	public TreeMap<Integer, ArrayList<Double>> backgroundTraffic;
-	public TreeMap<Integer, ArrayList<Double>> backgroundStd;
+	private TreeMap<Integer, ArrayList<Double>> backgroundSpeed;
+	private TreeMap<Integer, ArrayList<Double>> backgroundSpeedStd;
 
 	public BackgroundTraffic() {
-		backgroundTraffic = new TreeMap<Integer, ArrayList<Double>>();
-		backgroundStd = new TreeMap<Integer, ArrayList<Double>>();
+		backgroundSpeed = new TreeMap<Integer, ArrayList<Double>>();
+		backgroundSpeedStd = new TreeMap<Integer, ArrayList<Double>>();
 		readEventFile();
 		readStdFile();
 	}
@@ -52,7 +53,7 @@ public class BackgroundTraffic {
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
-					this.backgroundTraffic.put(roadID, value);
+					this.backgroundSpeed.put(roadID, value);
 				}
 			}
 		} catch (FileNotFoundException e) {
@@ -84,7 +85,7 @@ public class BackgroundTraffic {
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
-					this.backgroundStd.put(roadID, value);
+					this.backgroundSpeedStd.put(roadID, value);
 				}
 			}
 		} catch (FileNotFoundException e) {
@@ -92,5 +93,25 @@ public class BackgroundTraffic {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public double getBackgroundTraffic(int ID, int hour) {
+		if(backgroundSpeed.containsKey(ID)) {
+			if(backgroundSpeed.get(ID).size()>hour)
+				return backgroundSpeed.get(ID).get(hour); 
+		}
+		ContextCreator.logger.error("Could not find the background speed for link " +
+		ID + " at hour " + hour + ", using the default value (30).");
+		return 30;
+	}
+
+	public double getBackgroundTrafficStd(int ID, int hour) {
+		if(backgroundSpeedStd.containsKey(ID)) {
+			if(backgroundSpeedStd.get(ID).size()>hour)
+				return backgroundSpeedStd.get(ID).get(hour); 
+		}
+		ContextCreator.logger.error("Could not find the background speed std for link " +
+		ID + " at hour " + hour + ", using the default value (30).");
+		return 30;
 	}
 }

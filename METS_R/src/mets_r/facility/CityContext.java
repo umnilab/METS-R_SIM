@@ -1,6 +1,7 @@
 package mets_r.facility;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -10,9 +11,14 @@ import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.Point;
+
 import mets_r.*;
+import mets_r.data.OpenDriveMap;
 import mets_r.routing.RouteContext;
+
 import repast.simphony.context.DefaultContext;
+import repast.simphony.context.space.graph.NetworkFactory;
+import repast.simphony.context.space.graph.NetworkFactoryFinder;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 import repast.simphony.space.graph.RepastEdge;
@@ -23,34 +29,32 @@ import repast.simphony.space.graph.RepastEdge;
  * Initialize and maintain facility agents
  **/
 public class CityContext extends DefaultContext<Object> {
-	private HashMap<RepastEdge<?>, Road> edgeRoad_KeyEdge; // Store the linkIDs of Repast edges (Edge as key)
-	private HashMap<RepastEdge<?>, Integer> edgeIdNum_KeyEdge; // Store the TOIDs of edges (Edge as key)
-	private HashMap<Integer, RepastEdge<?>> edgeIDs_KeyIDNum; // Store the TOIDs of edges (TOID as key)
-	private HashMap<Integer, Lane> lane_KeyLaneID;
-	private HashMap<Integer, Road> road_KeyLinkID;
-	private HashMap<Integer, Junction> junction_KeyJunctionID;
-	private HashMap<Coordinate, Road> road_KeyCoord; // Cache the closest road
-	private HashMap<Integer, HashMap<Integer, Road>> road_KeyJunctionID;
+	private HashMap<RepastEdge<?>, Integer> edgeRoadID_KeyEdge; // Store the TOIDs of edges (Edge as key)
+	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
+	private HashMap<Coordinate, Road> coordRoad_KeyCoord; // Cache the closest road
+	private HashMap<Integer, HashMap<Integer, Road>> nodeIDRoad_KeyNodeID;
           
 	public CityContext() {
 		super("CityContext"); // Very important otherwise repast complains
-		this.edgeRoad_KeyEdge = new HashMap<RepastEdge<?>, Road>();
-		this.edgeIdNum_KeyEdge = new HashMap<RepastEdge<?>, Integer>();
-		this.edgeIDs_KeyIDNum = new HashMap<Integer, RepastEdge<?>>();
-		this.lane_KeyLaneID = new HashMap<Integer, Lane>();
-		this.junction_KeyJunctionID = new HashMap<Integer, Junction>();
-		this.road_KeyLinkID = new HashMap<Integer, Road>();
-		this.road_KeyCoord = new HashMap<Coordinate, Road>();
-		this.road_KeyJunctionID = new HashMap<Integer, HashMap<Integer, Road>>();
+		this.edgeRoadID_KeyEdge = new HashMap<RepastEdge<?>, Integer>();
+		this.edgeIDEdge_KeyID = new HashMap<Integer, RepastEdge<?>>();
+		this.coordRoad_KeyCoord = new HashMap<Coordinate, Road>();
+		this.nodeIDRoad_KeyNodeID = new HashMap<Integer, HashMap<Integer, Road>>();
+		
+		/* Create a Network projection for the road network--->Network Projection */
+		NetworkFactory netFac = NetworkFactoryFinder.createNetworkFactory(new HashMap<String, Object>());
+		netFac.createNetwork("RoadNetwork", this, true);
 	}
 
 	public void createSubContexts() {
-		this.addSubContext(new RoadContext());
 		this.addSubContext(new JunctionContext());
+		this.addSubContext(new NodeContext());
+		this.addSubContext(new SignalContext());
+		this.addSubContext(new RoadContext());
 		this.addSubContext(new LaneContext());
-		this.initializeLaneDistance();
 		this.addSubContext(new ZoneContext());
 		this.addSubContext(new ChargingStationContext());
+		this.initializeLaneDistance();
 	}
 	
 	// Calculate the length of each length based on their geometries
@@ -68,13 +72,13 @@ public class CityContext extends DefaultContext<Object> {
 	// Set the neighboring links/zones
 	public void setNeighboringGraph() {
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		for (Zone z1 : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z1 : ContextCreator.getZoneContext().getAll()) {
 			int threshold = 1000; // initial threshold as 1 km
 			boolean flag = true;
 			while (flag) {
-				for (Zone z2 : ContextCreator.getZoneContext().getAllObjects()) {
+				for (Zone z2 : ContextCreator.getZoneContext().getAll()) {
 					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2) {
-						z1.addNeighboringZone(z2);
+						z1.addNeighboringZone(z2.getID());
 					}
 				}
 				if (z1.getNeighboringZoneSize() < ContextCreator.getZoneGeography().size() - 1) {
@@ -87,29 +91,29 @@ public class CityContext extends DefaultContext<Object> {
 			Point point = geomFac.createPoint(z1.getCoord());
 			Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
 			for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				double dist = this.getDistance(z1.getCoord(), r.getCoord());
-				if(dist < r.distToZone) {
-					r.neighboringZone = z1;
-					r.distToZone = dist;
+				double dist = this.getDistance(z1.getCoord(), r.getStartCoord());
+				if(dist < r.getDistToZone()) {
+					r.setNeighboringZone(z1.getID());
+					r.setDistToZone(dist);
 				}
-			}
+			} 
 		}
 		
 		for (Road r: roadGeography.getAllObjects()) {
-			if(r.neighboringZone != null) {
-				r.neighboringZone.addNeighboringLink(r);
+			if(r.getNeighboringZone() > 0) {
+				ContextCreator.getZoneContext().get(r.getNeighboringZone()).addNeighboringLink(r.getID());
 			}
 		}
 		
-		for (Zone z: ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z: ContextCreator.getZoneContext().getAll()) {
 			int i = 1;
 			while (z.getNeighboringLinkSize() < 10) { // Take at least neighboring 10 links
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
 				Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					if(this.getDistance(z.getCoord(), r.getCoord()) < i * GlobalVariables.CRUISING_BUFFER) {
-						z.addNeighboringLink(r);
+					if(this.getDistance(z.getCoord(), r.getStartCoord()) < i * GlobalVariables.CRUISING_BUFFER) {
+						z.addNeighboringLink(r.getID());
 					}
 				}
 				i++;
@@ -127,201 +131,280 @@ public class CityContext extends DefaultContext<Object> {
 	}
 	
 	public void buildRoadNetwork() {
+		
+		System.out.println("Start builing road network");
 		// Get lane geography
-		Geography<Lane> laneGeography = ContextCreator.getLaneGeography();
-		Iterable<Lane> laneIt = laneGeography.getAllObjects();
-
-		// Get road geography
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		Iterable<Road> roadIt = roadGeography.getAllObjects();
 		Geography<Junction> junctionGeography = ContextCreator.getJunctionGeography();
 		JunctionContext junctionContext = ContextCreator.getJunctionContext();
-		Network<Junction> roadNetwork = ContextCreator.getRoadNetwork();
-
+		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
 		GeometryFactory geomFac = new GeometryFactory();
 		
-		for (Road road : roadIt) {
-			this.road_KeyLinkID.put(road.getLinkid(), road);
-			Geometry roadGeom = roadGeography.getGeometry(road);
-			Coordinate c1 = roadGeom.getCoordinates()[0];
-			Coordinate c2 = roadGeom.getCoordinates()[roadGeom.getNumPoints() - 1];
-			// Create Junctions from these coordinates and add them to the
-			// JunctionGeography (if they haven't been created already)
-			Junction junc1, junc2;
-			if (!junction_KeyJunctionID.containsKey(road.getFn())) {
-				junc1 = new Junction(c1, road.getFn());
-				this.junction_KeyJunctionID.put(road.getFn(), junc1);
-				junctionContext.add(junc1);
-				Point p1 = geomFac.createPoint(c1);
-				junctionGeography.move(junc1, p1);
-			} else
-				junc1 = junction_KeyJunctionID.get(road.getFn());
+		// Create a repast network for routing
+		if (GlobalVariables.NETWORK_FILE.length() == 0) {// Case 1: junction is not provided so we infer it from roads and lanes
+			for (Road road : ContextCreator.getRoadContext().getAll()) {
+				Geometry roadGeom = roadGeography.getGeometry(road);
+				Coordinate c1 = roadGeom.getCoordinates()[0];
+				Coordinate c2 = roadGeom.getCoordinates()[roadGeom.getNumPoints() - 1];
+				// Create Junctions from road coordinates and add them to the
+				// JunctionGeography (if they haven't been created already)
+				Junction junc1, junc2;
+				if (!ContextCreator.getJunctionContext().contains(road.getUpStreamJunction())) {
+					junc1 = new Junction(road.getUpStreamJunction());
+					junc1.setCoord(c1);
+					ContextCreator.getJunctionContext().put(road.getUpStreamJunction(), junc1);
+					Point p1 = geomFac.createPoint(c1);
+					junctionGeography.move(junc1, p1);
+				} else
+					junc1 = ContextCreator.getJunctionContext().get(road.getUpStreamJunction());
 
-			if (!junction_KeyJunctionID.containsKey(road.getTn())) {
-				junc2 = new Junction(c2, road.getTn());
-				this.junction_KeyJunctionID.put(road.getTn(), junc2);
-				junctionContext.add(junc2);
-				Point p2 = geomFac.createPoint(c2);
-				junctionGeography.move(junc2, p2);
-			} else
-				junc2 = junction_KeyJunctionID.get(road.getTn());
-
-			// Tell the road object who its junctions are
-			road.addJunction(junc1);
-			road.addJunction(junc2);
-
-			// Tell the junctions about their road
-			junc1.addExitingRoad(road);
-			junc2.addIncomingRoad(road);
-
-			RepastEdge<Junction> edge = new RepastEdge<Junction>(junc1, junc2, true, road.getLength()); 
-
-			// Store the road's TOID in a dictionary (one with edges as keys,
-			try {
-				this.road_KeyCoord.put(junc1.getCoord(), road);
-				this.edgeRoad_KeyEdge.put(edge, road);
-				this.edgeIdNum_KeyEdge.put(edge, road.getID());
-				this.edgeIDs_KeyIDNum.put(road.getID(), edge);
-
-				if (road_KeyJunctionID.containsKey(junc1.getJunctionID())) {
-					this.road_KeyJunctionID.get(junc1.getJunctionID()).put(junc2.getJunctionID(), road);
+				if (!ContextCreator.getJunctionContext().contains(road.getDownStreamJunction())) {
+					junc2 = new Junction(road.getDownStreamJunction());
+					junc2.setCoord(c2);
+					ContextCreator.getJunctionContext().put(road.getDownStreamJunction(), junc2);
+					Point p2 = geomFac.createPoint(c2);
+					junctionGeography.move(junc2, p2);
+				} else
+					junc2 = ContextCreator.getJunctionContext().get(road.getDownStreamJunction());
+				
+				// Tell the road object who its junctions are
+				road.setUpStreamJunction(junc1.getID());
+				road.setDownStreamJunction(junc2.getID());
+				this.coordRoad_KeyCoord.put(junc1.getCoord(), road);
+				
+				// Tell the junctions about their road
+				junc1.addDownStreamRoad(road.getID());
+				junc2.addUpStreamRoad(road.getID());
+				
+				Node node1, node2;
+				node1 = new Node(100*road.getID()+1);
+				node2 = new Node(100*road.getID()+2);
+				ContextCreator.getNodeContext().put(node1.getID(), node1);
+				ContextCreator.getNodeContext().put(node2.getID(), node2);
+				// Tell the node about their junction
+				node1.setJunction(junc1);
+				node2.setJunction(junc2);
+				
+				// Tell the node about their road
+				node1.setRoad(road);
+				node2.setRoad(road);
+				
+				road.setUpStreamNode(node1);
+				road.setDownStreamNode(node2);
+				
+				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, road.getLength()/road.getFreeSpeed()); 
+				
+				if (!roadNetwork.containsEdge(edge)) {
+					roadNetwork.addEdge(edge);
+					this.edgeRoadID_KeyEdge.put(edge, road.getID());
+					this.edgeIDEdge_KeyID.put(road.getID(), edge);
+					if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
+						this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
+					} else {
+						HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
+						tmp.put(node2.getID(), road);
+						this.nodeIDRoad_KeyNodeID.put(node1.getID(), tmp);
+					}
 				} else {
-					HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
-					tmp.put(junc2.getJunctionID(), road);
-					this.road_KeyJunctionID.put(junc1.getJunctionID(), tmp);
+					ContextCreator.logger
+					.error("buildRoadNetwork1: this edge that has just been created "
+							+ "already exists in the RoadNetwork!");
 				}
-			} catch (Exception e) {
-				ContextCreator.logger.error(e.getMessage());
 			}
-			if (!roadNetwork.containsEdge(edge)) {
-				roadNetwork.addEdge(edge);
-			} else {
-				ContextCreator.logger
-						.error("CityContext: buildRoadNetwork: for some reason this edge that has just been created "
-								+ "already exists in the RoadNetwork!");
+		} 
+		else {// Case 2: junction is provided, xodr or SumoXML case
+			OpenDriveMap odm = new OpenDriveMap(GlobalVariables.NETWORK_FILE);
+			for (Junction j : odm.getJunction().values()) {
+				ContextCreator.getJunctionContext().put(j.getID(), j);
 			}
-
-		}
-		roadIt = roadGeography.getAllObjects();
-		ContextCreator.logger.info("Junction initialized!");
-		// Assign the lanes to each road
-		for (Lane lane : laneIt) {
-			this.lane_KeyLaneID.put(lane.getLaneid(), lane);
-			Road road = this.findRoadWithLinkID(lane.getLink());
-			lane.setRoad(road);
-		}
-		for (Road r : roadIt) {
-			r.sortLanes();
-			roadMovementFromShapeFile(r);
-			laneConnectionsFromShapeFile(r);
-		}
-		for (Junction j: junctionGeography.getAllObjects()) {
-			ArrayList<Integer> roadTypes = new ArrayList<Integer>();
-			for(Road r: j.getIncomingRoads()) {
-				roadTypes.add(r.getRoadType());
+			for (Road r: ContextCreator.getRoadContext().getAll()) {
+				Node node1, node2;
+				node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
+				node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
+				ContextCreator.getNodeContext().put(node1.getID(), node1);
+				ContextCreator.getNodeContext().put(node2.getID(), node2);
+				// Tell the node about their road
+				node1.setRoad(r);
+				node2.setRoad(r);
+				// Tell road about their node
+				r.setUpStreamNode(node1);
+				r.setDownStreamNode(node2);
 			}
-			Collections.sort(roadTypes);
+			for (int jid: odm.getRoadConnection().keySet()) {
+				Junction j = ContextCreator.getJunctionContext().get(jid);
+				int jx = 0;
+				int jy = 0;
+				for (List<Integer> rc: odm.getRoadConnection(jid)) {
+					Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
+					Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
+					r1.setDownStreamJunction(jid);
+					r2.setUpStreamJunction(jid);
+					// set coordinates of the junction
+					Geometry roadGeom1 = roadGeography.getGeometry(r1);
+					Geometry roadGeom2 = roadGeography.getGeometry(r2);
+					jx += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].x; 
+					jy += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].y;
+					jx += roadGeom2.getCoordinates()[0].x;
+					jy += roadGeom2.getCoordinates()[0].y;
+					// Tell the node about their junction
+					Node node1 = r1.getDownStreamNode();
+					Node node2 = r2.getUpStreamNode();
+					node1.setJunction(j);
+					node2.setJunction(j);
+				}
+				// set coordinates of the junction
+				Coordinate jcoord = new Coordinate();
+				jcoord.x = jx/odm.getRoadConnection(jid).size()/2;
+				jcoord.y = jy/odm.getRoadConnection(jid).size()/2;
+				ContextCreator.getJunctionContext().get(jid).setCoord(jcoord);
+			}
 			
-			if(j.getIncomingRoads().size()>=2) {
-				if((roadTypes.get(0) == Road.Street) && 
-						(roadTypes.get(j.getIncomingRoads().size()-1) <=  Road.Highway)) {
-					if(j.getIncomingRoads().size() >= 3) {
-						int delay = (int) Math.ceil(30/GlobalVariables.SIMULATION_STEP_SIZE);
-						Road firstRoad = j.getIncomingRoads().get(0);
-						firstRoad.setDelay(delay, true, 0, 2);
-						Road secondRoad = firstRoad.getConnectedRoads().get(0).getOppositeRoad();
-						if(secondRoad != null) {
-							secondRoad.setDelay(delay, true, 0, 2);
+			for(Road road: ContextCreator.getRoadContext().getAll()) {
+				Node node1 = road.getUpStreamNode();
+				Node node2 = road.getDownStreamNode();
+				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,
+						road.getLength() / road.getFreeSpeed());
+
+				if (!roadNetwork.containsEdge(edge)) {
+					roadNetwork.addEdge(edge);
+					this.edgeRoadID_KeyEdge.put(edge, road.getID());
+					this.edgeIDEdge_KeyID.put(road.getID(), edge);
+					if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
+						this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
+					} else {
+						HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
+						tmp.put(node2.getID(), road);
+						this.nodeIDRoad_KeyNodeID.put(node1.getID(), tmp);
+					}
+				} else {
+					ContextCreator.logger.error("buildRoadNetwork1: this edge that has just been created "
+							+ "already exists in the RoadNetwork!");
+				}
+			}
+		}
+		ContextCreator.logger.info("Junction initialized!");
+		
+		// Assign the lanes to each road
+		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
+			Road road = ContextCreator.getRoadContext().get(lane.getRoad());
+			road.addLane(lane);
+		}
+		for (Road r : ContextCreator.getRoadContext().getAll()) {
+			r.sortLanes();
+		}
+		// Complete the lane connection
+		// 1. handle the case when road is connected but there is no lane connection (U turn)
+		// 2. handle upStreamLanes
+		for (Road r1: ContextCreator.getRoadContext().getAll()) {
+			for (int r2ID: r1.getDownStreamRoads()) {
+				Road r2 = ContextCreator.getRoadContext().get(r2ID);
+				boolean flag = true;
+				for (Lane lane1: r1.getLanes()) {
+					for (int lane2ID: lane1.getDownStreamLanes()) {
+						Lane lane2 =  ContextCreator.getLaneContext().get(lane2ID);
+						if(lane2.getRoad() == r2.getID()) {
+							flag = false;
+							break;
 						}
-						for(Road r: j.getIncomingRoads()) {
-							if(r!= firstRoad && r!=secondRoad) {
-								r.setDelay(delay, true, 1, 2);
+					}
+					if(!flag) break;
+				}
+				if(flag) {
+					r1.getLane(0).addDownStreamLane(r2.getLane(0).getID());
+				}
+			}
+		}
+		for (Lane lane1 : ContextCreator.getLaneContext().getAll()) {
+			for (int lane2ID: lane1.getDownStreamLanes()) {
+				Lane lane2 = ContextCreator.getLaneContext().get(lane2ID);
+				if(!lane2.getUpStreamLanes().contains(lane1.getID()))
+					lane2.addUpStreamLane(lane1.getID());
+			}
+		}
+		
+		// TODO: check whether the traffic light info is provided, if so, process that given info.
+		for (Junction j: ContextCreator.getJunctionContext().getAll()) {
+			// Deduce the traffic light from road types, used when no traffic light info provided
+			ArrayList<Integer> roadTypes = new ArrayList<Integer>();
+			for(int r: j.getUpStreamRoads()) 
+				roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+			for(int r: j.getDownStreamRoads()) 
+				roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+			Collections.sort(roadTypes);
+			// Establish control & signal & delay
+			if (roadTypes.size() >= 2) {
+				if ((roadTypes.get(0) == Road.Street)
+						&& (roadTypes.get(j.getUpStreamRoads().size() - 1) <= Road.Highway)) {
+					if (j.getUpStreamRoads().size() > 2) {
+						j.setControlType(Junction.StaticSignal);
+						int signalIndex=0;
+						int signalNumber=j.getUpStreamRoads().size();
+						for(int r1: j.getUpStreamRoads()) {
+							for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+								j.setDelay(r1, r2, 
+										(int) Math.ceil((signalNumber-1)/signalNumber*
+												(signalNumber-1)/signalNumber*
+												15/GlobalVariables.SIMULATION_STEP_SIZE));
+								Signal signal = new Signal(ContextCreator.generateAgentID(), 
+										new ArrayList<Integer>(Arrays.asList(27,3,30*signalNumber)), 
+												signalIndex*30);
+								ContextCreator.getSignalContext().put(signal.getID(), signal);
+								j.setSignal(r1, r2, signal);
+							}
+							signalIndex++;
+						}
+					}
+					else {
+						for(int r1: j.getUpStreamRoads()) {
+							for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+								j.setDelay(r1, r2, 0);
 							}
 						}
 					}
+				} else if ((roadTypes.get(0) == Road.Street)
+						&& (roadTypes.get(j.getUpStreamRoads().size() - 1) == Road.Driveway)) {
+					j.setControlType(Junction.StopSign);
+					for(int r1: j.getUpStreamRoads()) {
+						for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+							j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
+						}
+					}
 				}
-				else if((roadTypes.get(0) == Road.Street) && 
-				(roadTypes.get(j.getIncomingRoads().size()-1) ==  Road.Driveway)){
-					for(Road r: j.getIncomingRoads()) {
-						if(r.getRoadType() == Road.Driveway) {
-							int delay = (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE);
-							r.setDelay(delay, false, 0, 0);
+				else {
+					for(int r1: j.getUpStreamRoads()) {
+						for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+							j.setDelay(r1, r2, 0);
 						}
 					}
 				}
 			}
-			
-		}
-	}
-
-	// Get road movement from shapefile and put in an array list
-	public void roadMovementFromShapeFile(Road road) {
-		ArrayList<Integer> dsLinkIds = new ArrayList<Integer>();
-		dsLinkIds.add(road.getLeft());
-		dsLinkIds.add(road.getThrough());
-		dsLinkIds.add(road.getRight());
-		dsLinkIds.add(road.getTlinkid());
-		Road opRoad = this.road_KeyLinkID.get(road.getTlinkid());
-		road.setOppositeRoad(opRoad);
-
-		for (int dsRoadId : dsLinkIds) {
-			if (dsRoadId != 0) {
-				Road dsRoad = this.road_KeyLinkID.get(dsRoadId);
-				road.addDownStreamMovement(dsRoad);
-			}
-		}
-	}
-
-	public Lane getLanefromID(int laneID) {
-		// Lane lane = null;
-		Geography<Lane> laneGeography = ContextCreator.getLaneGeography();
-		Iterable<Lane> laneIt = laneGeography.getAllObjects();
-		for (Lane lane : laneIt) {
-			if (lane.getLaneid() == laneID) {
-				return lane;
-			}
-		}
-		return null;
-	}
-
-	public void laneConnectionsFromShapeFile(Road road) {
-		ArrayList<Integer> dsLaneIds = new ArrayList<Integer>();
-		int nLanes = road.getnLanes(); // number of lanes in current road
-		Lane curLane, dsLane;
-		for (int i = 0; i < nLanes; i++) {
-			curLane = road.getLanes().get(i);
-			dsLaneIds.clear();
-			dsLaneIds.add(curLane.getLeft());
-			dsLaneIds.add(curLane.getThrough());
-			dsLaneIds.add(curLane.getRight());
-			ContextCreator.logger.debug("Lane: " + curLane.getLaneid() + " from road " + curLane.getRoad().getIdentifier()
-					+ " has downstream connections: ");
-			for (double dsLaneId : dsLaneIds) {
-				if (dsLaneId != 0) {
-					dsLane = this.lane_KeyLaneID.get((int) dsLaneId);
-					curLane.addDnLane(dsLane);
-					dsLane.addUpLane(curLane);
+			// Establish edges
+			for(Integer r1: j.getDelay().keySet()) {
+				for(Integer r2: j.getDelay().get(r1).keySet()) {
+					Node node1 = ContextCreator.getRoadContext().get(r1).getDownStreamNode();
+					Node node2 = ContextCreator.getRoadContext().get(r2).getUpStreamNode();
+					RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,j.getDelay(r1, r2));
+					if (!roadNetwork.containsEdge(edge)) {
+						roadNetwork.addEdge(edge);
+						this.edgeRoadID_KeyEdge.put(edge, -1); // negative value to signal this is not a road
+					} else {
+						ContextCreator.logger
+								.error("buildRoadNetwork2: this edge that has just been created "
+										+ "already exists in the RoadNetwork!");
+					}
 				}
 			}
 		}
-		// Add u-connected lanes
-		if (road.getOppositeRoad() != null) {
-			curLane = road.getLanes().get(0);
-			if (curLane.getLength() > GlobalVariables.MIN_UTURN_LENGTH) {
-				dsLane = road.getOppositeRoad().getLanes().get(0);
-				curLane.addDnLane(dsLane);
-				dsLane.addUpLane(curLane);
-			}
-		}
+		System.out.println("End builing road network");
 	}
 
 	// Update node based routing
 	public void modifyRoadNetwork() {
-		for (Road road : ContextCreator.getRoadContext().getAllObjects()) {
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
 			if(road.setTravelTime()) {
-				Junction junc1 = road.getJunctions().get(0);
-				Junction junc2 = road.getJunctions().get(1);
-				ContextCreator.getRoadNetwork().getEdge(junc1, junc2).setWeight(road.getTravelTime());
+				Node node1 = road.getUpStreamNode();
+				Node node2 = road.getDownStreamNode();
+				ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(road.getTravelTime());
 			}
 		}
 
@@ -335,18 +418,13 @@ public class CityContext extends DefaultContext<Object> {
 		}
 	}
 
-	// Gets the ID String associated with a given edge. 
-	public Road getRoadFromEdge(RepastEdge<Junction> edge) {
-		return this.edgeRoad_KeyEdge.get(edge);
-	}
-
-	public int getIdNumFromEdge(RepastEdge<Junction> edge) {
-		int id = this.edgeIdNum_KeyEdge.get(edge);
+	public int getRoadIDFromEdge(RepastEdge<Node> edge) {
+		int id = this.edgeRoadID_KeyEdge.get(edge);
 		return id;
 	}
 
 	public RepastEdge<?> getEdgeFromIDNum(int id) {
-		RepastEdge<?> edge = this.edgeIDs_KeyIDNum.get(id);
+		RepastEdge<?> edge = this.edgeIDEdge_KeyID.get(id);
 		return edge;
 	}
 
@@ -430,8 +508,8 @@ public class CityContext extends DefaultContext<Object> {
 			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
 		
-		if(this.road_KeyCoord.containsKey(coord)) {
-			return this.road_KeyCoord.get(coord);
+		if(this.coordRoad_KeyCoord.containsKey(coord)) {
+			return this.coordRoad_KeyCoord.get(coord);
 		}
 		else {
 			GeometryFactory geomFac = new GeometryFactory();
@@ -444,7 +522,7 @@ public class CityContext extends DefaultContext<Object> {
 	
 			// New code when nearest road was found based on distance from junction
 			for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				double thisDist = this.getDistance(coord, road.getCoord());
+				double thisDist = this.getDistance(coord, road.getStartCoord());
 				if (thisDist < minDist) { 
 					minDist = thisDist;
 					nearestRoad = road;
@@ -456,36 +534,19 @@ public class CityContext extends DefaultContext<Object> {
 								+ coord.toString());
 			}
 			else {
-				this.road_KeyCoord.put(coord, nearestRoad);
+				this.coordRoad_KeyCoord.put(coord, nearestRoad);
 			}
 			return nearestRoad;
 		}
 	}
 
-	public Road findRoadBetweenJunctionIDs(int junc1, int junc2) {
-		if(this.road_KeyJunctionID.containsKey(junc1)) {
-			if(this.road_KeyJunctionID.get(junc1).containsKey(junc2)) {
-				return this.road_KeyJunctionID.get(junc1).get(junc2);
+	public Road findRoadBetweenNodeIDs(int node1, int node2) {
+		if(this.nodeIDRoad_KeyNodeID.containsKey(node1)) {
+			if(this.nodeIDRoad_KeyNodeID.get(node1).containsKey(node2)) {
+				return this.nodeIDRoad_KeyNodeID.get(node1).get(node2);
 			}
 		}
-		ContextCreator.logger.error("CityContext: findRoadBetweenJunctionIDs: Error, couldn't find a road with id: "
-				+ junc1 + " to id: " + junc2);
 		return null;
-	}
-
-	public Road findRoadWithLinkID(int linkID) {
-		if(road_KeyLinkID.containsKey(linkID))
-			return road_KeyLinkID.get(linkID);
-		else
-			return null;
-	}
-
-	public Zone findZoneWithIntegerID(int integerID) {
-		return ContextCreator.getZoneContext().findZoneWithIntegerID(integerID);
-	}
-
-	public ChargingStation findChargingStationWithID(int destid) {
-		return ContextCreator.getChargingStationContext().findChargingStationWithIntegerID(destid);
 	}
 
 	public static double angle(Coordinate p0, Coordinate p1) {
@@ -507,7 +568,7 @@ public class CityContext extends DefaultContext<Object> {
 		// Use a buffer for efficiency
 		double minDist = Double.MAX_VALUE;
 		Zone nearestZone = null;
-		for (Zone z : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			if (z.busReachableZone.contains(destID)) {
 				double thisDist = this.getDistance(coord, z.getCoord());
 				if (thisDist < minDist) {
@@ -522,12 +583,12 @@ public class CityContext extends DefaultContext<Object> {
 	public void refreshTravelTime() {
 		ContextCreator.logger.info("Update the estimation of travel time...");
 		// Reset the travel time and travel distance estimation
-		for (Zone z1 : ContextCreator.getZoneContext().getAllObjects()) {
+		for (Zone z1 : ContextCreator.getZoneContext().getAll()) {
 			z1.busTravelTime.clear();
 			z1.busTravelDistance.clear();
 			z1.nearestZoneWithBus.clear();
 		}
-		for (List<Integer> route : ContextCreator.busSchedule.busRoute) {
+		for (List<Integer> route : ContextCreator.busSchedule.getBusSchedule()) {
 			ContextCreator.logger.info(route);
 			// Retrieve stations in order, from hub to other places
 			double travel_distance = 0;
@@ -535,13 +596,13 @@ public class CityContext extends DefaultContext<Object> {
 
 			for (int shift = 0; shift < route.size(); shift++) {
 				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
-					Zone hub = this.findZoneWithIntegerID(route.get(shift));
+					Zone hub = ContextCreator.getZoneContext().get(route.get(shift));
 					Zone z1 = hub;
 					Zone z2;
 
 					for (int i = 1; i < route.size(); i++) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z2 = this.findZoneWithIntegerID(route.get(j));
+						z2 = ContextCreator.getZoneContext().get(route.get(j));
 						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord());
 						if (path != null) {
 							for (Road r : path) {
@@ -568,7 +629,7 @@ public class CityContext extends DefaultContext<Object> {
 					z2 = hub;
 					for (int i = route.size() - 1; i > 0; i--) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z1 = this.findZoneWithIntegerID(route.get(j));
+						z1 = ContextCreator.getZoneContext().get(route.get(j));
 						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord());
 						if (path != null) {
 							for (Road r : path) {

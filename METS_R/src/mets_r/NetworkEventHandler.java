@@ -162,9 +162,9 @@ public class NetworkEventHandler {
 		if (event == null)
 			return null;
 		// Iterate over the roads to identify the correct road object
-		Iterable<Road> roadIt = ContextCreator.getRoadContext().getAllObjects();
+		Iterable<Road> roadIt = ContextCreator.getRoadContext().getAll();
 		for (Road road : roadIt) {
-			if (road.getLinkid() == event.roadID) {
+			if (road.getID() == event.roadID) {
 				// Found the road, and we do the change
 				if (mode) {
 					// Set the event
