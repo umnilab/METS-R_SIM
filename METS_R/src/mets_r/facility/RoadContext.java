@@ -2,6 +2,10 @@ package mets_r.facility;
 
 import java.io.File;
 import java.net.URI;
+
+import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.GeometryFactory;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.OpenDriveMap;
@@ -80,14 +84,18 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 		else if(fileName.endsWith("xodr")) { // xodr file
 			OpenDriveMap odm = new OpenDriveMap(fileName);
+			GeometryFactory geomFac = new GeometryFactory();
 			for (Road r : odm.getRoad().values()) {
 				this.put(r.getID(), r);
+				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(Coordinate[]::new)));
 			}
 		}
 		else {
 			SumoXML sxml = new SumoXML(fileName);
+			GeometryFactory geomFac = new GeometryFactory();
 			for (Road r : sxml.getRoad().values()) {
 				this.put(r.getID(), r);
+				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(Coordinate[]::new)));
 			}
 		}
 	}

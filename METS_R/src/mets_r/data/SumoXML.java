@@ -9,14 +9,27 @@ import mets_r.facility.Signal;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 
-import org.apache.poi.util.SystemOutLogger;
+import org.geotools.geometry.jts.JTS;
+import org.geotools.referencing.CRS;
+import org.geotools.referencing.ReferencingFactoryFinder;
+import org.geotools.referencing.factory.ReferencingFactoryContainer;
+import org.opengis.parameter.ParameterValueGroup;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
+import org.opengis.referencing.crs.GeographicCRS;
+import org.opengis.referencing.crs.ProjectedCRS;
+import org.opengis.referencing.cs.CartesianCS;
+import org.opengis.referencing.operation.MathTransform;
+import org.opengis.referencing.operation.MathTransformFactory;
+import org.opengis.referencing.operation.TransformException;
 import org.w3c.dom.Document;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
@@ -32,7 +45,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 
 public class SumoXML {
-	private String proj4 = "";
 	public double x_offs = 0;
 	public double y_offs = 0;
 	public ArrayList<Double> boundary;
@@ -41,11 +53,9 @@ public class SumoXML {
 	
 	public SumoXMLHandler handler;
 	
-
 	public SumoXML(String xml_file) {
 		this.xml_file = xml_file;
 		
-
 		SAXParserFactory factory = SAXParserFactory.newInstance();
 
 		try {
@@ -88,12 +98,10 @@ public class SumoXML {
 		return this.handler.getRoadConnection(junction_id);
 	}
 	
-	// TODO: coordinate system transform
-	// TODO: ignore connecting roads
 	private class SumoXMLHandler extends DefaultHandler{
 		double x_offs = 0;
 		double y_offs = 0;
-		String proj4 = "";
+		MathTransform transform;
 		ArrayList<Double> boundary = new ArrayList<Double>();
 		
 		HashMap<Integer, Road> roads;
@@ -120,10 +128,14 @@ public class SumoXML {
 		String currentSignal; // only use the id of the tlLogic
 		
 		boolean inRoad = false;
-		boolean inJunction = false;
 		boolean inSignal = false;
 		
 		ArrayList<Coordinate> coords;
+		double startX = 0;
+		double startY = 0;
+		double endX = 0;
+		double endY = 0;
+		int nLane = 0;
 		
 		HashMap<String,Double> roadType = new HashMap<String,Double>();
 		int roadNum = 0;
@@ -178,6 +190,7 @@ public class SumoXML {
 			laneJunctionMap = new HashMap<String, Integer>();
 		}
 		
+		@SuppressWarnings("deprecation")
 		@Override
 		public void startElement(
 	            String uri,
@@ -193,7 +206,35 @@ public class SumoXML {
 				for(String one_bound: boundstr.split(",")) {
 					boundary.add(Double.parseDouble(one_bound));
 				}
-				proj4 = attributes.getValue("projParameter"); // TODO: figure out how to transform
+				String proj4 = attributes.getValue("projParameter");
+				if(proj4.contains("utm")) {
+					try {
+						int zone_number = 0;
+						for(String substr: proj4.split(" ")) {
+							if(substr.contains("zone")) {
+								zone_number = Integer.parseInt(substr.substring(substr.indexOf("=")+1));
+							}
+						}
+						MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
+						ReferencingFactoryContainer factories = new ReferencingFactoryContainer(null);
+						GeographicCRS geoCRS = org.geotools.referencing.crs.DefaultGeographicCRS.WGS84;
+						CartesianCS cartCS = org.geotools.referencing.cs.DefaultCartesianCS.GENERIC_2D;
+						ParameterValueGroup parameters = mtFactory.getDefaultParameters("Transverse_Mercator");
+						parameters.parameter("central_meridian").setValue(zone_number*6-183);
+						parameters.parameter("latitude_of_origin").setValue(0.0);
+						parameters.parameter("scale_factor").setValue(0.9996);
+						parameters.parameter("false_easting").setValue(500000.0);
+						parameters.parameter("false_northing").setValue(0.0);
+							
+						Map<String, String> properties = Collections.singletonMap("name", "WGS 84 / UTM Zone " + zone_number);
+						ProjectedCRS sourceutm = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
+					    CoordinateReferenceSystem targetlatlong = CRS.decode("EPSG:4326", true);
+					    transform = CRS.findMathTransform(sourceutm, targetlatlong, false);
+					}
+					catch(Exception e){
+				         throw new RuntimeException(e);
+				   }    
+				}
 			}
 			
 			// Handle the road type info
@@ -208,6 +249,11 @@ public class SumoXML {
 				ArrayList<Integer> oneRoadLane = new ArrayList<Integer>();
 				roadLane.put(road_id, oneRoadLane);
 				roads.put(road_id, currentRoad);
+				startX = 0;
+				startY = 0;
+				endX = 0;
+				endY = 0;
+				nLane = 0;
 				inRoad = true;
 			}
 			
@@ -223,13 +269,24 @@ public class SumoXML {
 				    
 				    // get coords
 				    coords = new ArrayList<Coordinate>();
-				    for(String one_coord: attributes.getValue("shape").split("_")) {
+				    for(String one_coord: attributes.getValue("shape").split(" ")) {
 				    	Coordinate coord = new Coordinate();
-				    	coord.x = Double.parseDouble(one_coord.split(",")[0]);
-				    	coord.y = Double.parseDouble(one_coord.split(",")[0]);
+				    	coord.x = Double.parseDouble(one_coord.split(",")[0]) - x_offs;
+				    	coord.y = Double.parseDouble(one_coord.split(",")[1]) - y_offs;
+				    	try {
+							JTS.transform(coord, coord, transform);
+						} catch (TransformException e) {
+							e.printStackTrace();
+						} 
 				    	coords.add(coord);
 				    }
 				    currentLane.setCoords(coords);
+				    
+				    startX += coords.get(0).x;
+				    startY += coords.get(0).y;
+				    endX += coords.get(coords.size()-1).x;
+				    endY += coords.get(coords.size()-1).y;
+				    nLane++;
 				    lanes.put(currentLane.getID(), currentLane);
 				}
 			}
@@ -247,11 +304,15 @@ public class SumoXML {
 				}
 				
 				Coordinate coord = new Coordinate();
-		    	coord.x = Double.parseDouble(attributes.getValue("x"));
-		    	coord.y = Double.parseDouble(attributes.getValue("y"));
+		    	coord.x = Double.parseDouble(attributes.getValue("x")) - x_offs;
+		    	coord.y = Double.parseDouble(attributes.getValue("y")) - y_offs;
+		    	try {
+					JTS.transform(coord, coord, transform);
+				} catch (TransformException e) {
+					e.printStackTrace();
+				} 
 				currentJunction.setCoord(coord);
 				junctions.put(junction_id, currentJunction);
-				inJunction = true;
 			}
 			
 			// Handle the request
@@ -277,33 +338,34 @@ public class SumoXML {
 				}
 			}
 			
-			// handle the connection
+			// handle the connection, note SUMO can include repetitive road connection to encode lane connection
 			if (qName.equalsIgnoreCase("connection")) {
 				int from = roadIDMap.get(attributes.getValue("from"));
 				int to = roadIDMap.get(attributes.getValue("to"));
-				int via = 0; //edge case, connection is for minor link
-				if(attributes.getValue("via") != null) {
-					via = laneJunctionMap.get(attributes.getValue("via"));
-				}
-				
+				int via = 0; //the edge case: connection is for minor link
+				if(attributes.getValue("via") != null) via = laneJunctionMap.get(attributes.getValue("via"));
 				int from_lane = roadLane.get(from).get(Integer.parseInt(attributes.getValue("fromLane")));
 				int to_lane = roadLane.get(to).get(Integer.parseInt(attributes.getValue("toLane")));
-				
 				if (!roadConnections.containsKey(via)) {
 					roadConnections.put(via, new ArrayList<List<Integer>>());
 					laneConnections.put(via, new ArrayList<List<Integer>>());
 				}
-				roadConnections.get(via).add(Arrays.asList(from,to));
-				laneConnections.get(via).add(Arrays.asList(from_lane, to_lane));
-				if (attributes.getValue("tl") != null) {
-					// has signal control
-					if(!signals.containsKey(from)) {
-						signals.put(from, new HashMap<Integer, Signal>());
-					}
-					signals.get(from).put(to, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
+				if(roadConnections.get(via).contains(Arrays.asList(from,to))) {
+					laneConnections.get(via).add(Arrays.asList(from_lane, to_lane));
 				}
 				else {
-					// no signal control, add delay
+					roadConnections.get(via).add(Arrays.asList(from,to));
+					laneConnections.get(via).add(Arrays.asList(from_lane, to_lane));
+					if (attributes.getValue("tl") != null) {
+						// has signal control
+						if(!signals.containsKey(from)) {
+							signals.put(from, new HashMap<Integer, Signal>());
+						}
+						signals.get(from).put(to, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
+					}
+					else {
+						// no signal control, add delay
+					}
 				}
 			}
 			
@@ -313,11 +375,18 @@ public class SumoXML {
                 String localName,
                 String qName)  {
 			if (qName.equalsIgnoreCase("edge")) {
+				coords = new ArrayList<Coordinate>();
+		    	Coordinate coord1 = new Coordinate();
+		    	coord1.x = startX/nLane;
+		    	coord1.y = startY/nLane;
+		    	coords.add(coord1);
+		    	Coordinate coord2 = new Coordinate();
+		    	coord2.x = endX/nLane;
+		    	coord2.y = endY/nLane;
+		    	coords.add(coord2);
+				currentRoad.setCoords(coords);
 			    currentRoad = null;
 			    inRoad = false;
-			}
-			if (qName.equalsIgnoreCase("junction")) {
-				inJunction = false;
 			}
 			
 			if (qName.equalsIgnoreCase("tlLogic")) {

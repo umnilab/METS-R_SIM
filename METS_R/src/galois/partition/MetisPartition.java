@@ -82,24 +82,15 @@ public class MetisPartition {
 	public void first_run() throws NumberFormatException, ExecutionException {
 		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
 		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(true);
-		ContextCreator.logger.debug("Metis Running...");
+		ContextCreator.logger.info("Metis Running...");
+		System.gc(); // For garbage collection
 
-		if (Launcher.getLauncher().isFirstRun()) {
-			ContextCreator.logger.debug("Configuration");
-			ContextCreator.logger.debug("-------------");
-			ContextCreator.logger.debug(" Num of partitions: " + this.nPartition);
-			ContextCreator.logger.debug("Graph size: " + metisGraph.getGraph().size() + " nodes and "
-					+ metisGraph.getNumEdges() + " edges");
-		}
-
-		System.gc(); // For gabage collection
-
-		Launcher.getLauncher().startTiming();
 		IntGraph<MetisNode> resultGraph = partition(metisGraph, nPartition);
-		Launcher.getLauncher().stopTiming();
 
 		// Calling GaliosToRepastGraph method for testing
 		graphConverter.GaliosToRepastGraph(resultGraph, nPartition);
+		
+		ContextCreator.logger.info("Partition finished!");
 
 		// Testing retrieving the partitioned results
 		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
@@ -173,7 +164,6 @@ public class MetisPartition {
 			totSignal.set(targetInd, totSignal.get(targetInd) + 1);
 		}
 		
-
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
 
@@ -227,11 +217,9 @@ public class MetisPartition {
 		pmetis.mlevelRecursiveBisection(mcg, nparts, totalPartitionWeights, 0, 0);
 		MetisGraph.nparts = nparts;
 //		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
-		
 		// We can just run KWayRefiner for future steps
 		KWayRefiner refiner = new KWayRefiner();
 		refiner.refineKWay(mcg, metisGraph, totalPartitionWeights, (float) 1.03, nparts);
-
 		return metisGraph.getGraph();
 	}
 

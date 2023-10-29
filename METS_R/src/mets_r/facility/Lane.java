@@ -69,6 +69,10 @@ public class Lane {
 	public void setCoords(ArrayList<Coordinate> coords) {
 		this.coords = coords;
 	}
+	
+	public ArrayList<Coordinate> getCoords() {
+		return this.coords;
+	}
 
 	public void setLength(double length) {
 		this.length = length;

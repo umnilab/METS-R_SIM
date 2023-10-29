@@ -28,7 +28,7 @@ import mets_r.facility.Road;
  */
 
 public class OpenDriveMap {
-	public String proj4 = "";
+	public String proj4 = "plane";
 	public double x_offs = 0;
 	public double y_offs = 0;
 	public String xodr_file = "";
@@ -482,7 +482,10 @@ public class OpenDriveMap {
 						lanes.get(lc.get(1)).addUpStreamLane(lc.get(0));
 					}
 				}
-				
+				// geometry of all lanes
+				for (Lane l: lanes.values()) {
+					l.setCoords(roads.get(l.getRoad()).getCoords());
+				}
 				// junction connection
 				// we deal with the road connection (together with the signal in cityContext
 			}

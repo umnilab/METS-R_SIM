@@ -24,7 +24,9 @@ package galois.partition;
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.Random;
 
 import util.Launcher;
@@ -49,7 +51,7 @@ public class GrowBisection {
 		@SuppressWarnings("unchecked")
 		GNode<MetisNode>[] nodes = new GNode[numNodes];
 		graph.map(new SaveNodesToArray(nodes));
-
+		
 		int nbfs = (numNodes <= coarsenTo ? SMALL_NUM_ITER_PARTITION : LARGE_NUM_ITER_PARTITION);
 
 		int maxWgtPart1 = (int) PMetis.UB_FACTOR * tpwgts[1];
@@ -67,7 +69,6 @@ public class GrowBisection {
 			for (int i = 0; i < numNodes; i++) {
 				nodes[i].getData().setPartition(1);
 			}
-
 			bisection(graph, nodes, minWgtPart1, maxWgtPart1, pwgts);
 			/* Check to see if we hit any bad limiting cases */
 			if (pwgts[1] == 0) {
@@ -100,8 +101,15 @@ public class GrowBisection {
 		int numNodes = nodes.length;
 		int[] visited = new int[numNodes];
 		int[] queue = new int[numNodes];
+		ArrayList<Integer> to_visit = new ArrayList<Integer>();
+		for(int i = 0; i< numNodes; i++) {
+			to_visit.add(i);
+		}
+		java.util.Collections.shuffle(to_visit);
+		Iterator<Integer> next_to_visit = to_visit.iterator();
+		
 		Arrays.fill(visited, 0);
-		queue[0] = random.nextInt(numNodes);
+		queue[0] = next_to_visit.next();
 		visited[queue[0]] = 1;
 		int first = 0;
 		int last = 1;
@@ -113,17 +121,24 @@ public class GrowBisection {
 					break;
 				}
 
-				int k = random.nextInt(nleft);
+//				int k = random.nextInt(nleft); // k draw from 0 to nleft
+//				int i = 0;
+//				for (; i < numNodes; i++) { // This is not efficient, we should track the left index
+//					if (visited[i] == 0) { // find the k-th unvisited node, what is the point of this?
+//						if (k == 0) {
+//							break;
+//						} else {
+//							k--;
+//						}
+//					}
+//				}
 				int i = 0;
-				for (; i < numNodes; i++) {
-					if (visited[i] == 0) {
-						if (k == 0) {
-							break;
-						} else {
-							k--;
-						}
-					}
+				
+				for(;;) {
+					i = next_to_visit.next();
+					if (visited[i] == 0) break;
 				}
+				
 				queue[0] = i;
 				visited[i] = 1;
 				first = 0;
@@ -147,7 +162,6 @@ public class GrowBisection {
 			}
 
 			drain = false;
-
 			AccessNeighborClosure closure = new AccessNeighborClosure(last, nleft, visited, queue);
 			nodes[i].map(closure, nodes[i]);
 			last = closure.last;

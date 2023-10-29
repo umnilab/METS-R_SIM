@@ -14,6 +14,7 @@ import com.vividsolutions.jts.geom.Point;
 
 import mets_r.*;
 import mets_r.data.OpenDriveMap;
+import mets_r.data.SumoXML;
 import mets_r.routing.RouteContext;
 
 import repast.simphony.context.DefaultContext;
@@ -125,14 +126,12 @@ public class CityContext extends DefaultContext<Object> {
 	public double getDistance(Coordinate c1, Coordinate c2) {
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(c1.x, c1.y);
-		calculator.setDestinationGeographicPoint(c2.x, c2.y);
+		calculator.setDestinationGeographicPoint(c2.x, c2.y); 
 		double distance = calculator.getOrthodromicDistance();
 		return distance;
 	}
 	
 	public void buildRoadNetwork() {
-		
-		System.out.println("Start builing road network");
 		// Get lane geography
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
 		Geography<Junction> junctionGeography = ContextCreator.getJunctionGeography();
@@ -149,23 +148,23 @@ public class CityContext extends DefaultContext<Object> {
 				// Create Junctions from road coordinates and add them to the
 				// JunctionGeography (if they haven't been created already)
 				Junction junc1, junc2;
-				if (!ContextCreator.getJunctionContext().contains(road.getUpStreamJunction())) {
+				if (!junctionContext.contains(road.getUpStreamJunction())) {
 					junc1 = new Junction(road.getUpStreamJunction());
 					junc1.setCoord(c1);
-					ContextCreator.getJunctionContext().put(road.getUpStreamJunction(), junc1);
+					junctionContext.put(road.getUpStreamJunction(), junc1);
 					Point p1 = geomFac.createPoint(c1);
 					junctionGeography.move(junc1, p1);
 				} else
-					junc1 = ContextCreator.getJunctionContext().get(road.getUpStreamJunction());
+					junc1 = junctionContext.get(road.getUpStreamJunction());
 
-				if (!ContextCreator.getJunctionContext().contains(road.getDownStreamJunction())) {
+				if (!junctionContext.contains(road.getDownStreamJunction())) {
 					junc2 = new Junction(road.getDownStreamJunction());
 					junc2.setCoord(c2);
-					ContextCreator.getJunctionContext().put(road.getDownStreamJunction(), junc2);
+					junctionContext.put(road.getDownStreamJunction(), junc2);
 					Point p2 = geomFac.createPoint(c2);
 					junctionGeography.move(junc2, p2);
 				} else
-					junc2 = ContextCreator.getJunctionContext().get(road.getDownStreamJunction());
+					junc2 = junctionContext.get(road.getDownStreamJunction());
 				
 				// Tell the road object who its junctions are
 				road.setUpStreamJunction(junc1.getID());
@@ -212,74 +211,118 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 		} 
-		else {// Case 2: junction is provided, xodr or SumoXML case
-			OpenDriveMap odm = new OpenDriveMap(GlobalVariables.NETWORK_FILE);
-			for (Junction j : odm.getJunction().values()) {
-				ContextCreator.getJunctionContext().put(j.getID(), j);
-			}
-			for (Road r: ContextCreator.getRoadContext().getAll()) {
-				Node node1, node2;
-				node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
-				node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
-				ContextCreator.getNodeContext().put(node1.getID(), node1);
-				ContextCreator.getNodeContext().put(node2.getID(), node2);
-				// Tell the node about their road
-				node1.setRoad(r);
-				node2.setRoad(r);
-				// Tell road about their node
-				r.setUpStreamNode(node1);
-				r.setDownStreamNode(node2);
-			}
-			for (int jid: odm.getRoadConnection().keySet()) {
-				Junction j = ContextCreator.getJunctionContext().get(jid);
-				int jx = 0;
-				int jy = 0;
-				for (List<Integer> rc: odm.getRoadConnection(jid)) {
-					Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
-					Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
-					r1.setDownStreamJunction(jid);
-					r2.setUpStreamJunction(jid);
-					// set coordinates of the junction
-					Geometry roadGeom1 = roadGeography.getGeometry(r1);
-					Geometry roadGeom2 = roadGeography.getGeometry(r2);
-					jx += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].x; 
-					jy += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].y;
-					jx += roadGeom2.getCoordinates()[0].x;
-					jy += roadGeom2.getCoordinates()[0].y;
-					// Tell the node about their junction
-					Node node1 = r1.getDownStreamNode();
-					Node node2 = r2.getUpStreamNode();
-					node1.setJunction(j);
-					node2.setJunction(j);
+		else {
+			// Case 2: junction is provided, xodr or SumoXML case
+			if(GlobalVariables.NETWORK_FILE.contains("xodr")) {
+				OpenDriveMap odm = new OpenDriveMap(GlobalVariables.NETWORK_FILE);
+				for (Junction j : odm.getJunction().values()) {
+					junctionContext.put(j.getID(), j);
 				}
-				// set coordinates of the junction
-				Coordinate jcoord = new Coordinate();
-				jcoord.x = jx/odm.getRoadConnection(jid).size()/2;
-				jcoord.y = jy/odm.getRoadConnection(jid).size()/2;
-				ContextCreator.getJunctionContext().get(jid).setCoord(jcoord);
-			}
-			
-			for(Road road: ContextCreator.getRoadContext().getAll()) {
-				Node node1 = road.getUpStreamNode();
-				Node node2 = road.getDownStreamNode();
-				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,
-						road.getLength() / road.getFreeSpeed());
-
-				if (!roadNetwork.containsEdge(edge)) {
-					roadNetwork.addEdge(edge);
-					this.edgeRoadID_KeyEdge.put(edge, road.getID());
-					this.edgeIDEdge_KeyID.put(road.getID(), edge);
-					if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
-						this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
-					} else {
-						HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
-						tmp.put(node2.getID(), road);
-						this.nodeIDRoad_KeyNodeID.put(node1.getID(), tmp);
+				for (Road r: ContextCreator.getRoadContext().getAll()) {
+					Node node1, node2;
+					node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
+					node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
+					ContextCreator.getNodeContext().put(node1.getID(), node1);
+					ContextCreator.getNodeContext().put(node2.getID(), node2);
+					// Tell the node about their road
+					node1.setRoad(r);
+					node2.setRoad(r);
+					// Tell road about their node
+					r.setUpStreamNode(node1);
+					r.setDownStreamNode(node2);
+				}
+				for (int jid: odm.getRoadConnection().keySet()) {
+					Junction j = junctionContext.get(jid);
+					int jx = 0;
+					int jy = 0;
+					for (List<Integer> rc: odm.getRoadConnection(jid)) {
+						Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
+						Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
+						r1.setDownStreamJunction(jid);
+						r2.setUpStreamJunction(jid);
+						// set coordinates of the junction
+						Geometry roadGeom1 = roadGeography.getGeometry(r1);
+						Geometry roadGeom2 = roadGeography.getGeometry(r2);
+						jx += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].x; 
+						jy += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].y;
+						jx += roadGeom2.getCoordinates()[0].x;
+						jy += roadGeom2.getCoordinates()[0].y;
+						// Tell the node about their junction
+						Node node1 = r1.getDownStreamNode();
+						Node node2 = r2.getUpStreamNode();
+						node1.setJunction(j);
+						node2.setJunction(j);
 					}
-				} else {
-					ContextCreator.logger.error("buildRoadNetwork1: this edge that has just been created "
-							+ "already exists in the RoadNetwork!");
+					// set coordinates of the junction
+					Coordinate jcoord = new Coordinate();
+					jcoord.x = jx/odm.getRoadConnection(jid).size()/2;
+					jcoord.y = jy/odm.getRoadConnection(jid).size()/2;
+					junctionContext.get(jid).setCoord(jcoord);
+			    }
+			}
+			else {
+				SumoXML sxml = new SumoXML(GlobalVariables.NETWORK_FILE);
+				for (Junction j : sxml.getJunction().values()) {
+					junctionContext.put(j.getID(), j);
 				}
+				for (Road r: ContextCreator.getRoadContext().getAll()) {
+					Node node1, node2;
+					node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
+					node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
+					ContextCreator.getNodeContext().put(node1.getID(), node1);
+					ContextCreator.getNodeContext().put(node2.getID(), node2);
+					// Tell the node about their road
+					node1.setRoad(r);
+					node2.setRoad(r);
+					// Tell road about their node
+					r.setUpStreamNode(node1);
+					r.setDownStreamNode(node2);
+				}
+				for (int jid: sxml.getRoadConnection().keySet()) {
+					Junction j = junctionContext.get(jid);
+					for (List<Integer> rc: sxml.getRoadConnection(jid)) {
+						Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
+						Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
+						r1.setDownStreamJunction(jid);
+						r2.setUpStreamJunction(jid);
+						// Tell the node about their junction
+						Node node1 = r1.getDownStreamNode();
+						Node node2 = r2.getUpStreamNode();
+						node1.setJunction(j);
+						node2.setJunction(j); 
+						// Set the signal
+						if(sxml.getSignal().containsKey(r1.getID())) {
+							if(sxml.getSignal().get(r1.getID()).containsKey(r2.getID())) {
+								j.setSignal(r1.getID(), r2.getID(), sxml.getSignal().get(r1.getID()).get(r2.getID()));
+								j.setControlType(Junction.StaticSignal);
+							}
+						}
+					}
+			    }
+				
+			}
+		}
+			
+		for(Road road: ContextCreator.getRoadContext().getAll()) {
+			Node node1 = road.getUpStreamNode();
+			Node node2 = road.getDownStreamNode();
+			RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,
+					road.getLength() / road.getFreeSpeed());
+
+			if (!roadNetwork.containsEdge(edge)) {
+				roadNetwork.addEdge(edge);
+				this.edgeRoadID_KeyEdge.put(edge, road.getID());
+				this.edgeIDEdge_KeyID.put(road.getID(), edge);
+				if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
+					this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
+				} else {
+					HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
+					tmp.put(node2.getID(), road);
+					this.nodeIDRoad_KeyNodeID.put(node1.getID(), tmp);
+				}
+			} else {
+				ContextCreator.logger.error("buildRoadNetwork1: this edge that has just been created "
+						+ "already exists in the RoadNetwork!");
 			}
 		}
 		ContextCreator.logger.info("Junction initialized!");
@@ -322,36 +365,94 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 		
-		// TODO: check whether the traffic light info is provided, if so, process that given info.
-		for (Junction j: ContextCreator.getJunctionContext().getAll()) {
-			// Deduce the traffic light from road types, used when no traffic light info provided
-			ArrayList<Integer> roadTypes = new ArrayList<Integer>();
-			for(int r: j.getUpStreamRoads()) 
-				roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
-			for(int r: j.getDownStreamRoads()) 
-				roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
-			Collections.sort(roadTypes);
-			// Establish control & signal & delay
-			if (roadTypes.size() >= 2) {
-				if ((roadTypes.get(0) == Road.Street)
-						&& (roadTypes.get(j.getUpStreamRoads().size() - 1) <= Road.Highway)) {
-					if (j.getUpStreamRoads().size() > 2) {
-						j.setControlType(Junction.StaticSignal);
-						int signalIndex=0;
-						int signalNumber=j.getUpStreamRoads().size();
+		if(GlobalVariables.NETWORK_FILE.contains("xml")) {
+			// SUMO XML
+			for (Junction j: junctionContext.getAll()) {
+				if(j.getControlType()!=Junction.StaticSignal) {
+					// Deduce the stop sign, yield and delay
+					ArrayList<Integer> roadTypes = new ArrayList<Integer>();
+					for(int r: j.getUpStreamRoads()) 
+						roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+					for(int r: j.getDownStreamRoads()) 
+						roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+					Collections.sort(roadTypes);
+					
+					if (roadTypes.size() >= 2) {
+						if ((roadTypes.get(0) == Road.Street)
+								&& (roadTypes.get(j.getUpStreamRoads().size() - 1) <= Road.Highway)) {
+							for(int r1: j.getUpStreamRoads()) {
+								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+									j.setDelay(r1, r2, 0);
+								}
+							}
+						} else if ((roadTypes.get(0) == Road.Street)
+								&& (roadTypes.get(j.getUpStreamRoads().size() - 1) == Road.Driveway)) {
+							j.setControlType(Junction.StopSign);
+							for(int r1: j.getUpStreamRoads()) {
+								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+									j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
+								}
+							}
+						}
+						else {
+							for(int r1: j.getUpStreamRoads()) {
+								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+									j.setDelay(r1, r2, 0);
+								}
+							}
+						}
+					}
+					
+				}
+			}			
+		}
+		else {
+			for (Junction j: junctionContext.getAll()) {
+				// Deduce the traffic light from road types, used when no traffic light info provided
+				ArrayList<Integer> roadTypes = new ArrayList<Integer>();
+				for(int r: j.getUpStreamRoads()) 
+					roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+				for(int r: j.getDownStreamRoads()) 
+					roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
+				Collections.sort(roadTypes);
+				
+				// Establish control & signal & delay (delay for travel time estimation)
+				if (roadTypes.size() >= 2) {
+					if ((roadTypes.get(0) == Road.Street)
+							&& (roadTypes.get(j.getUpStreamRoads().size() - 1) <= Road.Highway)) {
+						if (j.getUpStreamRoads().size() > 2) {
+							j.setControlType(Junction.StaticSignal);
+							int signalIndex=0;
+							int signalNumber=j.getUpStreamRoads().size();
+							for(int r1: j.getUpStreamRoads()) {
+								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+									j.setDelay(r1, r2, 
+											(int) Math.ceil((signalNumber-1)/signalNumber*
+													(signalNumber-1)/signalNumber*
+													15/GlobalVariables.SIMULATION_STEP_SIZE));
+									Signal signal = new Signal(ContextCreator.generateAgentID(), 
+											new ArrayList<Integer>(Arrays.asList(27,3,30*signalNumber)), 
+													signalIndex*30);
+									ContextCreator.getSignalContext().put(signal.getID(), signal);
+									j.setSignal(r1, r2, signal);
+								}
+								signalIndex++;
+							}
+						}
+						else {
+							for(int r1: j.getUpStreamRoads()) {
+								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
+									j.setDelay(r1, r2, 0);
+								}
+							}
+						}
+					} else if ((roadTypes.get(0) == Road.Street)
+							&& (roadTypes.get(j.getUpStreamRoads().size() - 1) == Road.Driveway)) {
+						j.setControlType(Junction.StopSign);
 						for(int r1: j.getUpStreamRoads()) {
 							for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-								j.setDelay(r1, r2, 
-										(int) Math.ceil((signalNumber-1)/signalNumber*
-												(signalNumber-1)/signalNumber*
-												15/GlobalVariables.SIMULATION_STEP_SIZE));
-								Signal signal = new Signal(ContextCreator.generateAgentID(), 
-										new ArrayList<Integer>(Arrays.asList(27,3,30*signalNumber)), 
-												signalIndex*30);
-								ContextCreator.getSignalContext().put(signal.getID(), signal);
-								j.setSignal(r1, r2, signal);
+								j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
 							}
-							signalIndex++;
 						}
 					}
 					else {
@@ -361,24 +462,13 @@ public class CityContext extends DefaultContext<Object> {
 							}
 						}
 					}
-				} else if ((roadTypes.get(0) == Road.Street)
-						&& (roadTypes.get(j.getUpStreamRoads().size() - 1) == Road.Driveway)) {
-					j.setControlType(Junction.StopSign);
-					for(int r1: j.getUpStreamRoads()) {
-						for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-							j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
-						}
-					}
 				}
-				else {
-					for(int r1: j.getUpStreamRoads()) {
-						for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-							j.setDelay(r1, r2, 0);
-						}
-					}
-				}
+				
 			}
-			// Establish edges
+		}
+		
+		// Establish edges
+		for (Junction j: junctionContext.getAll()) {
 			for(Integer r1: j.getDelay().keySet()) {
 				for(Integer r2: j.getDelay().get(r1).keySet()) {
 					Node node1 = ContextCreator.getRoadContext().get(r1).getDownStreamNode();
@@ -395,7 +485,6 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 		}
-		System.out.println("End builing road network");
 	}
 
 	// Update node based routing

@@ -58,23 +58,26 @@ public class PMetis {
 	 */
 	protected void mlevelRecursiveBisection(MetisGraph metisGraph, int nparts, float[] totalPartWeights, int tpindex,
 			final int partStartIndex) throws ExecutionException {
-
+		
 		IntGraph<MetisNode> graph = metisGraph.getGraph();
 		TotalWeightClosure totalWeightClosure = new TotalWeightClosure();
 		graph.map(totalWeightClosure);
 		int totalVertexWeight = totalWeightClosure.totalVertexWeight;
-
 		float vertexWeightRatio = 0;
 		for (int i = 0; i < nparts / 2; i++) {
 			vertexWeightRatio += totalPartWeights[tpindex + i];
 		}
+
 		int[] bisectionWeights = new int[2];
 		bisectionWeights[0] = (int) (totalVertexWeight * vertexWeightRatio);
 		bisectionWeights[1] = totalVertexWeight - bisectionWeights[0];
 
 		MetisGraph mcg = coarsener.coarsen(metisGraph);
+
 		GrowBisection.bisection(mcg, bisectionWeights, coarsener.getCoarsenTo());
+
 		Refiner.refineTwoWay(mcg, metisGraph, bisectionWeights);
+
 
 		if (nparts <= 2) {
 			graph.map(new LambdaVoid<GNode<MetisNode>>() {
