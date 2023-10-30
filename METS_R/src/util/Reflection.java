@@ -55,7 +55,6 @@ public class Reflection {
     } catch (ClassNotFoundException e) {
       throw new RuntimeException(e);
     }
-    @SuppressWarnings("deprecation")
 	Package classPackage = Package.getPackage(classClass.getPackage().getName());
     return classPackage.getAnnotation(annotationClass);
   }
@@ -80,7 +79,6 @@ public class Reflection {
    * @param className the fully qualified name of the class
    * @return          an instance of the class
    */
-  @SuppressWarnings("deprecation")
 public static Object createObject(String className) {
     Object object = null;
     try {

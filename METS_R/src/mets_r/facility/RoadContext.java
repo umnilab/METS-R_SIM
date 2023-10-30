@@ -87,7 +87,7 @@ public class RoadContext extends FacilityContext<Road> {
 			GeometryFactory geomFac = new GeometryFactory();
 			for (Road r : odm.getRoad().values()) {
 				this.put(r.getID(), r);
-				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(Coordinate[]::new)));
+				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(new Coordinate[r.getCoords().size()])));
 			}
 		}
 		else {
@@ -95,7 +95,7 @@ public class RoadContext extends FacilityContext<Road> {
 			GeometryFactory geomFac = new GeometryFactory();
 			for (Road r : sxml.getRoad().values()) {
 				this.put(r.getID(), r);
-				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(Coordinate[]::new)));
+				roadGeography.move(r, geomFac.createLineString(r.getCoords().toArray(new Coordinate[r.getCoords().size()])));
 			}
 		}
 	}

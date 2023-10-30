@@ -81,7 +81,7 @@ public class LaneContext extends FacilityContext<Lane> {
 			GeometryFactory geomFac = new GeometryFactory();
 			for (Lane l : odm.getLane().values()) {
 				this.put(l.getID(), l);
-				laneGeography.move(l, geomFac.createLineString(l.getCoords().toArray(Coordinate[]::new)));
+				laneGeography.move(l, geomFac.createLineString(l.getCoords().toArray(new Coordinate[l.getCoords().size()])));
 			}
 		}
 		else {
@@ -89,7 +89,7 @@ public class LaneContext extends FacilityContext<Lane> {
 			GeometryFactory geomFac = new GeometryFactory();
 			for (Lane l : sxml.getLane().values()) {
 				this.put(l.getID(), l);
-				laneGeography.move(l, geomFac.createLineString(l.getCoords().toArray(Coordinate[]::new)));
+				laneGeography.move(l, geomFac.createLineString(l.getCoords().toArray(new Coordinate[l.getCoords().size()])));
 			}
 		}
 	}
