@@ -2,6 +2,7 @@ package mets_r.routing;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -33,22 +34,22 @@ public class RouteContext {
 		vbr.setEdgeWeight(node1, node2, weight);
 	}
 	
-	public static List<Road> shortestPathRoute(Road originRoad, Road destRoad){
+	public static List<Road> shortestPathRoute(Road originRoad, Road destRoad, Random rand){
 		Node originDownstreamNode = originRoad.getDownStreamNode();
 		Node destUpstreamNode = destRoad.getUpStreamNode();
-		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode);
+		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode, rand);
 		return path;
 	}
 
-	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination) {
+	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination, Random rand) {
 		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin);
 		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
-		return shortestPathRoute(originRoad, destRoad);
+		return shortestPathRoute(originRoad, destRoad, rand);
 	}
 
-	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination){
+	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination, Random rand){
 		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
-		return shortestPathRoute(originRoad, destRoad);
+		return shortestPathRoute(originRoad, destRoad, rand);
 	}
 	
 	public static List<List<Integer>> UCBRoute(Coordinate origin, Coordinate destination) throws Exception {

@@ -49,6 +49,8 @@ public class Zone {
 	private int lastDemandUpdateHour = -1; // the last time for updating the demand generation rate
 	private double futureDemand; // demand in the near future
 	private AtomicInteger futureSupply; // supply in the near future
+	private double vehicleSurplus;
+	private double vehicleDeficiency;
 	
 	// For multi-thread mode
 	private ConcurrentLinkedQueue<Request> toAddRequestForTaxi; // demand from integrated services
@@ -58,6 +60,10 @@ public class Zone {
 	protected Coordinate coord;
 	protected Random rand; // Random seed for things other than demand generation
 	protected Random rand_demand_only; // Random seed only for demand generation
+	protected Random rand_diffusion_only; // Random seed only for demand generation
+	protected Random rand_mode_only; // Random seed only for demand generation
+	protected Random rand_share_only; // Random seed only for demand generation
+	protected Random rand_relocate_only; // Random seed only for demand generation
 	protected int ID;
 	protected Queue<Request> requestInQueueForTaxi; // Nonsharable passenger queue for taxis
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
@@ -99,7 +105,11 @@ public class Zone {
     // Constructor
 	public Zone(int ID, int capacity) {
 		rand = new Random(GlobalVariables.RandomGenerator.nextInt());
-		rand_demand_only = new Random(GlobalVariables.RandomGenerator.nextInt());
+		rand_demand_only = new Random(rand.nextInt());
+		rand_mode_only = new Random(rand.nextInt());
+		rand_share_only = new Random(rand.nextInt());
+		rand_diffusion_only = new Random(rand.nextInt());
+		rand_relocate_only = new Random(rand.nextInt());
 		this.ID = ID;
 		if(capacity < 0) { // By default, infinite capacity
 			this.capacity = GlobalVariables.NUM_OF_EV;
@@ -149,7 +159,8 @@ public class Zone {
 		this.cruisingVehicleStock = new AtomicInteger(0); 
 		this.futureDemand = 0.0;
 		this.futureSupply = new AtomicInteger(0);
-		
+		this.vehicleSurplus = 0.0;
+		this.vehicleDeficiency = 0.0;
 	}
     
 	public int getID() {
@@ -168,12 +179,23 @@ public class Zone {
 		this.coord = coord;
 	}
 	
+	public double getVehicleSurplus() {
+		return this.vehicleSurplus;
+	}
+	
+	public double getVehicleDeficiency() {
+		return this.vehicleDeficiency;
+	}
+	
 	// Main logic goes here
 	public void step() {
 		this.processToAddPassengers();
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();
+	}
+	
+	public void step2() {
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) {
 			// Skip the last update which is outside of the study period
 			return;
@@ -208,8 +230,8 @@ public class Zone {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
 					for (int i = 0; i < numToGenerate; i++) {
-						if (rand.nextDouble() > threshold) {
-							if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+						if (rand_mode_only.nextDouble() > threshold) {
+							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 										this.sampleDestCoord(destZone),true
 										); 
@@ -237,8 +259,8 @@ public class Zone {
 						// Split between taxi and taxi-bus combined,
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
-							if (rand.nextDouble() > threshold) {
-								if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+							if (rand_mode_only.nextDouble() > threshold) {
+								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 											this.sampleDestCoord(destZone),true
 											); 
@@ -273,8 +295,8 @@ public class Zone {
 						// Split between taxi and taxi-bus combined,
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
-							if (rand.nextDouble() > threshold) {
-								if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+							if (rand_mode_only.nextDouble() > threshold) {
+								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 											this.sampleDestCoord(destZone),true
 											); 
@@ -309,7 +331,7 @@ public class Zone {
 					else {
 						// Taxi only
 						for (int i = 0; i < numToGenerate; i++) {
-							if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 										this.sampleDestCoord(destZone),true
 										); 
@@ -329,7 +351,7 @@ public class Zone {
 				} else {
 					// Taxi only
 					for (int i = 0; i < numToGenerate; i++) {
-						if (rand.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+						if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
 							Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 									this.sampleDestCoord(destZone),true
 									); 
@@ -348,6 +370,12 @@ public class Zone {
 				}
 			}
 		}
+		
+		this.vehicleSurplus = this.getVehicleStock() - this.nRequestForTaxi + 0.8 * this.futureSupply.get();
+		this.vehicleSurplus = this.vehicleSurplus>0?this.vehicleSurplus:0;
+		this.vehicleDeficiency = this.nRequestForTaxi - this.getVehicleStock() - ContextCreator.getVehicleContext().getRelocationTaxi(this.getID()).size();
+		this.vehicleDeficiency = this.vehicleDeficiency>0?this.vehicleDeficiency:0;
+		
 		ContextCreator.logger.debug("current buss pass is" + this.numberOfGeneratedBusRequest);
 		ContextCreator.logger.debug("current taxi pass is" + this.numberOfGeneratedTaxiRequest);
 
@@ -460,20 +488,71 @@ public class Zone {
 	// Relocate when the vehicleStock is negative
 	// There are two implementations: 1. Using myopic info; 2. Using future estimation (PROACTIVE_RELOCATION).
 	protected void relocateTaxi() {
+		double H; // H means the time steps (horizon) of looking ahead, heuristically, using the cruising time
+		// 0.8 is the probability of vehicle with low battery level under the charging threshold
 		if (GlobalVariables.PROACTIVE_RELOCATION) {
-			// Decide the number of relocated vehicle with the precaution on potential
-			// future vehicle shortage/overflow
-			if (this.getFutureSupply() < 0) {
-				ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
+			H = (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
+		}
+		else {
+			H = 0;
+		}
+		// Decide the number of relocated vehicle with the precaution on potential
+		// future vehicle shortage/overflow
+		if (this.getFutureSupply() < 0) {
+			ContextCreator.logger.error("Something went wrong, the futureSupply becomes negative!");
+		}
+		
+		if (this.hasEnoughTaxi(H)) {
+			boolean systemHasVeh = false;
+			
+			// Figure out demand in neighboring zones
+			double tot_demand = 0;
+			for(Integer z: this.neighboringZones) {
+				if(!ContextCreator.getZoneContext().get(z).hasEnoughTaxi(H)) {
+					tot_demand += ContextCreator.getZoneContext().get(z).getVehicleDeficiency();
+				}
 			}
-			// H means the time steps (horizon) of looking ahead, heuristically, using the cruising time
-			// 0.8 is the probability of vehicle with low battery level under the charging threshold
-			double H = (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
-			double relocateRate = 0;
-			relocateRate = 1.25 * (nRequestForTaxi - this.getVehicleStock() + H * this.futureDemand
-					- 0.8 * this.futureSupply.get());
+			
+			for(Integer z: this.neighboringZones) {
+				if(!ContextCreator.getZoneContext().get(z).hasEnoughTaxi(H)) {
+					double vehicle_deficiency = ContextCreator.getZoneContext().get(z).getVehicleDeficiency();
+					double tot_supply = 0;
+					for(Integer z2: ContextCreator.getZoneContext().get(z).neighboringZones) {
+						if(ContextCreator.getZoneContext().get(z2).hasEnoughTaxi(H)) {
+							tot_supply += ContextCreator.getZoneContext().get(z2).getVehicleSurplus() - H * ContextCreator.getZoneContext().get(z2).getFutureDemand(); 
+						}
+					}
+				
+					double relocateRate = 1.25 *  Math.min(1, tot_supply/tot_demand) * vehicle_deficiency * (this.vehicleSurplus - H*this.getFutureDemand()) / tot_supply; // relocate more vehicles in case it did not made to the destination.
+					int numToRelocate = (int) Math.floor(relocateRate)
+							+ (this.rand_relocate_only.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+					for (int i = 0; i < numToRelocate; i++) {
+						systemHasVeh = false;
+						// Relocate from zones with sufficient supply
+						ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.getID())
+									.poll();
+						if (v != null) {
+							ContextCreator.getZoneContext().get(z).numberOfRelocatedVehicles += 1;
+							if(v.getState() == Vehicle.PARKING) {
+								this.removeOneParkingVehicle();
+							}else {
+								this.removeOneCruisingVehicle();
+							}
+							v.relocation(this.ID, z);
+							ContextCreator.getZoneContext().get(z).addFutureSupply();
+							systemHasVeh = true;
+						}
+					}
+					if (!systemHasVeh) {
+						break;
+					}
+				}
+			}
+		}
+		else {
+			double relocateRate = this.vehicleDeficiency; 
 			int numToRelocate = (int) Math.floor(relocateRate)
-					+ (GlobalVariables.RandomGenerator.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
+					+ (this.rand_relocate_only.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
 			List<ElectricTaxi> relocateVeh = ContextCreator.getVehicleContext().getRelocationTaxi(this.getID());
 			for (ElectricTaxi v: relocateVeh) {
 				int curr_dest = v.getDestID();
@@ -484,69 +563,6 @@ public class Zone {
 					this.addFutureSupply();
 					numToRelocate -= 1;
 				}
-			}
-			for (int i = 0; i < numToRelocate; i++) {
-				boolean systemHasVeh = false;
-				for (Integer z : this.neighboringZones) {
-					// Relocate from zones with sufficient supply
-					if (ContextCreator.getZoneContext().get(z).hasEnoughTaxi(H)) { 
-						ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(z)
-								.poll();
-						if (v != null) {
-							this.numberOfRelocatedVehicles += 1;
-							if(v.getState() == Vehicle.PARKING) {
-								ContextCreator.getZoneContext().get(z).removeOneParkingVehicle();
-							}else {
-								ContextCreator.getZoneContext().get(z).removeOneCruisingVehicle();
-							}
-							v.relocation(z, this.ID);
-							this.addFutureSupply();
-							systemHasVeh = true;
-							break;
-						}
-					}
-				}
-				if (!systemHasVeh) {
-					break;
-				}
-
-			}
-		} else {
-			// Myopic reposition
-			double relocateRate = (nRequestForTaxi - this.parkingVehicleStock.get());
-			int numToRelocate = (int) Math.floor(relocateRate)
-					+ (GlobalVariables.RandomGenerator.nextDouble() < (relocateRate - Math.floor(relocateRate)) ? 1 : 0);
-			List<ElectricTaxi> relocateVeh = ContextCreator.getVehicleContext().getRelocationTaxi(this.getID());
-			for (ElectricTaxi v: relocateVeh) {
-				if(numToRelocate > 0) {
-					ContextCreator.getZoneContext().get(v.getDestID()).futureSupply.addAndGet(-1);
-					v.modifyPlan(this.getIntegerID(), v.nextJunction().getCoord());
-					this.addFutureSupply();
-					numToRelocate -= 1;
-				}
-			}
-			for (int i = 0; i < numToRelocate; i++) {
-				boolean systemHasVeh = false;
-				for (Integer z : this.neighboringZones) {
-					// Relocate from zones with sufficient supply
-					ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(z).poll();
-					if (v != null) {
-						v.relocation(z, this.ID);
-						this.numberOfRelocatedVehicles += 1;
-						if(v.getState() == Vehicle.PARKING) {
-							ContextCreator.getZoneContext().get(z).removeOneParkingVehicle();
-						}else {
-							ContextCreator.getZoneContext().get(z).removeOneCruisingVehicle();
-						}
-						this.futureSupply.addAndGet(1);
-						systemHasVeh = true;
-						break;
-					}
-				}
-				if (!systemHasVeh) {
-					break;
-				}
-
 			}
 		}
 	}
@@ -663,7 +679,7 @@ public class Zone {
 						if (this.getIntegerID() != z2.getIntegerID()) {
 							double travel_time = 0;
 							double travel_distance = 0;
-							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord());
+							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
@@ -681,7 +697,7 @@ public class Zone {
 						if (this.getIntegerID() != z2.getIntegerID()) {
 							double travel_time = 0;
 							double travel_distance = 0;
-							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord());
+							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), this.rand);
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
@@ -716,7 +732,7 @@ public class Zone {
 					double travel_time2 = 0;
 					double travel_distance2 = 0;
 					List<Road> path2 = RouteContext.shortestPathRoute(
-							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2.getIntegerID())).getCoord(), z2.getCoord());
+							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2.getIntegerID())).getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
 					if (path2 != null) {
 						for (Road r : path2) {
 							travel_distance2 += r.getLength();
@@ -746,7 +762,7 @@ public class Zone {
 					double travel_time2 = 0;
 					double travel_distance2 = 0;
 					List<Road> path2 = RouteContext.shortestPathRoute(this.getCoord(),
-							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2_id)).getCoord());
+							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2_id)).getCoord(), this.rand);
 					if (path2 != null) {
 						for (Road r : path2) {
 							travel_distance2 += r.getLength();
@@ -899,7 +915,7 @@ public class Zone {
 	}
 	
 	public boolean hasEnoughTaxi(double H) { // H represents future steps (horizon) to consider
-		return this.getVehicleStock() - this.nRequestForTaxi - H * getFutureDemand() > 0;
+		return (this.vehicleSurplus - H * getFutureDemand()) > 0 && this.vehicleDeficiency == 0;
 	}
 
 	public void insertTaxiPass(Request new_pass) {
@@ -938,7 +954,7 @@ public class Zone {
 		if(this.zoneType == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
 			return this.getCoord();
 		}else {
-			return this.getNeighboringCoord(rand.nextInt(this.getNeighboringLinkSize()));
+			return this.getNeighboringCoord(rand_diffusion_only.nextInt(this.getNeighboringLinkSize()));
 		}
 	}
 	
@@ -946,7 +962,7 @@ public class Zone {
 		if(z.zoneType == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
 			return z.getCoord();
 		}else {
-			return z.getNeighboringCoord(rand.nextInt(z.getNeighboringLinkSize()));
+			return z.getNeighboringCoord(rand_diffusion_only.nextInt(z.getNeighboringLinkSize()));
 		}
 	}
 	

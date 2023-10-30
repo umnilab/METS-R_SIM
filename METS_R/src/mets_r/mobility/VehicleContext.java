@@ -93,7 +93,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					num_total -= vehicle_num_to_generate;
 					for (int i = 0; i < vehicle_num_to_generate; i++) {
 						// GeometryFactory fac = new GeometryFactory();
-						ElectricTaxi v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
+						ElectricTaxi v;
+						if(vehicle_num>10000) v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.001);
+						else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
 						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick()); // Initialize the
 																											// first plan
 						this.add(v);

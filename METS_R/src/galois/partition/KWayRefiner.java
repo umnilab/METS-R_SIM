@@ -57,7 +57,6 @@ public class KWayRefiner {
 				Balancer.greedyKWayEdgeBalance(metisGraph, nparts, tpwgts, ubfactor, 8);
 				metisGraph.computeKWayBoundary();
 			}
-
 			rkRefiner.refine(metisGraph);
 			projectKWayPartition(metisGraph, nparts);
 			metisGraph = metisGraph.getFinerGraph();

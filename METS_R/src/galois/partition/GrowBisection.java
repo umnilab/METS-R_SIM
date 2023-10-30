@@ -23,6 +23,7 @@ package galois.partition;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
+import mets_r.GlobalVariables;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -70,6 +71,7 @@ public class GrowBisection {
 				nodes[i].getData().setPartition(1);
 			}
 			bisection(graph, nodes, minWgtPart1, maxWgtPart1, pwgts);
+			
 			/* Check to see if we hit any bad limiting cases */
 			if (pwgts[1] == 0) {
 				int i = random.nextInt(numNodes);
@@ -81,7 +83,7 @@ public class GrowBisection {
 
 			metisGraph.computeTwoWayPartitionParams();
 			Balancer.balanceTwoWay(metisGraph, tpwgts);
-			FMTwoWayRefiner.fmTwoWayEdgeRefine(metisGraph, tpwgts, 4);
+			FMTwoWayRefiner.fmTwoWayEdgeRefine(metisGraph, tpwgts, 8);
 
 			if (bestMinCut > metisGraph.getMinCut()) {
 				bestMinCut = metisGraph.getMinCut();
@@ -105,7 +107,7 @@ public class GrowBisection {
 		for(int i = 0; i< numNodes; i++) {
 			to_visit.add(i);
 		}
-		java.util.Collections.shuffle(to_visit);
+		java.util.Collections.shuffle(to_visit, GlobalVariables.RandomGenerator);
 		Iterator<Integer> next_to_visit = to_visit.iterator();
 		
 		Arrays.fill(visited, 0);
@@ -120,25 +122,12 @@ public class GrowBisection {
 				if (nleft == 0 || drain) {
 					break;
 				}
-
-//				int k = random.nextInt(nleft); // k draw from 0 to nleft
-//				int i = 0;
-//				for (; i < numNodes; i++) { // This is not efficient, we should track the left index
-//					if (visited[i] == 0) { // find the k-th unvisited node, what is the point of this?
-//						if (k == 0) {
-//							break;
-//						} else {
-//							k--;
-//						}
-//					}
-//				}
 				int i = 0;
 				
 				for(;;) {
 					i = next_to_visit.next();
 					if (visited[i] == 0) break;
 				}
-				
 				queue[0] = i;
 				visited[i] = 1;
 				first = 0;
@@ -148,7 +137,8 @@ public class GrowBisection {
 
 			int i = queue[first++];
 			int nodeWeight = nodes[i].getData().getWeight();
-
+			
+			
 			if (pwgts[0] > 0 && (pwgts[1] - nodeWeight) < minWgtPart1) {
 				drain = true;
 				continue;

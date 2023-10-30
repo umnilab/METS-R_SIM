@@ -132,7 +132,7 @@ public class ElectricVehicle extends Vehicle {
 	public void setInitialParams() {
 		this.numPeople_ = 0;
 		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
-				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
+				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
 																											// times a
 																											// large
 																											// number to

@@ -33,8 +33,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.concurrent.ExecutionException;
 
-import util.Launcher;
-
 public class MetisPartition {
 	private int nPartition;
 	private ArrayList<ArrayList<Road>> partitionedInRoads;
@@ -42,6 +40,7 @@ public class MetisPartition {
 	private ArrayList<ArrayList<Zone>> partitionedZones;
 	private ArrayList<ArrayList<ChargingStation>> partitionedChargingStation;
 	private ArrayList<ArrayList<Signal>> partitionedSignals;
+	private ArrayList<Integer> backgroundLoads;
 	private int partitionDuration; // how old is the current partition when next partitioning occurs
 
 	public MetisPartition(int nparts) {
@@ -57,6 +56,7 @@ public class MetisPartition {
 			partitionedSignals.add(new ArrayList<Signal>());
 		}
 		this.partitionDuration = 0;
+		this.backgroundLoads = new ArrayList<Integer>();
 	}
 
 	public ArrayList<ArrayList<Road>> getPartitionedInRoads() {
@@ -80,21 +80,6 @@ public class MetisPartition {
 	}
 
 	public void first_run() throws NumberFormatException, ExecutionException {
-		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
-		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(true);
-		ContextCreator.logger.info("Metis Running...");
-		System.gc(); // For garbage collection
-
-		IntGraph<MetisNode> resultGraph = partition(metisGraph, nPartition);
-
-		// Calling GaliosToRepastGraph method for testing
-		graphConverter.GaliosToRepastGraph(resultGraph, nPartition);
-		
-		ContextCreator.logger.info("Partition finished!");
-
-		// Testing retrieving the partitioned results
-		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
-		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
 		int i;
 
 		// Partition Zone by prospect demand
@@ -114,12 +99,10 @@ public class MetisPartition {
 			}
 			// Add the zone to the target partition
 			this.partitionedZones.get(targetInd).add(z);
-			// Update the weight of the partition, heuristic to send the hubs to different
-			// partitions
-			totRequest.set(targetInd, totRequest.get(targetInd)
-					+ ContextCreator.demand_per_zone.get(z.getIntegerID()) * (z.getZoneType() == 1 ? 10.0 : 1.0));
+			// Update the weight of the partition
+			totRequest.set(targetInd, (totRequest.get(targetInd)
+					+ ContextCreator.demand_per_zone.get(z.getIntegerID())/GlobalVariables.HOUR_OF_DEMAND));
 		}
-		ContextCreator.logger.info(totRequest);
 
 		// Partition Charging stations by num of chargers
 		ArrayList<Integer> totCharger = new ArrayList<Integer>();
@@ -164,6 +147,22 @@ public class MetisPartition {
 			totSignal.set(targetInd, totSignal.get(targetInd) + 1);
 		}
 		
+		for (i = 0; i < this.nPartition; i++) {
+			backgroundLoads.add(totRequest.get(i).intValue() + totCharger.get(i) + totSignal.get(i));
+		}
+		
+		GaliosGraphConverter<?> graphConverter = new GaliosGraphConverter<Object>();
+		MetisGraph metisGraph = graphConverter.RepastToGaliosGraph(true);
+		System.gc(); // For garbage collection
+		IntGraph<MetisNode> resultGraph = partition(metisGraph, nPartition);
+		
+		// Calling GaliosToRepastGraph method for testing
+		graphConverter.GaliosToRepastGraph(resultGraph, nPartition);
+
+		// Testing retrieving the partitioned results
+		this.partitionedInRoads = graphConverter.getPartitionedInRoads();
+		this.partitionedBwRoads = graphConverter.getPartitionedBwRoads();
+		
 		this.partitionDuration = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
 	}
 
@@ -204,22 +203,35 @@ public class MetisPartition {
 	 */
 	public IntGraph<MetisNode> partition(MetisGraph metisGraph, int nparts)
 			throws ExecutionException, ArrayIndexOutOfBoundsException {
-		IntGraph<MetisNode> graph = metisGraph.getGraph();
-		int coarsenTo = (int) Math.max(graph.size() / (40 * Math.log(nparts)), 20 * (nparts)); // Number of coarsen nodes
-		int maxVertexWeight = (int) (1.5 * ((graph.size()) / (double) coarsenTo));
+		int coarsenTo =  (int) Math.max(metisGraph.getGraph().size() / (40 * Math.log(nparts)), 20 * (nparts)); // Number of coarsen nodes
+		int maxVertexWeight = (int) (1.5 * ((metisGraph.getGraph().size()) / (double) coarsenTo));
 		Coarsener coarsener = new Coarsener(false, coarsenTo, maxVertexWeight);
 		MetisGraph mcg = coarsener.coarsen(metisGraph);
-		MetisGraph.nparts = 2;
+		MetisGraph.nparts = nparts;
 		float[] totalPartitionWeights = new float[nparts];
 		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
 		maxVertexWeight = (int) (1.5 * ((mcg.getGraph().size()) / Coarsener.COARSEN_FRACTION));
 		PMetis pmetis = new PMetis(20, maxVertexWeight);
 		pmetis.mlevelRecursiveBisection(mcg, nparts, totalPartitionWeights, 0, 0);
-		MetisGraph.nparts = nparts;
-//		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
+		
+//		mcg.getGraph().map(new LambdaVoid<GNode<MetisNode>>() {
+//			@Override
+//			public void call(GNode<MetisNode> node) {
+//				System.out.println(node.getData().getNodeId() +","+ node.getData().getPartition());
+//			}
+//		});
+		
 		// We can just run KWayRefiner for future steps
 		KWayRefiner refiner = new KWayRefiner();
+		Arrays.fill(totalPartitionWeights, 1 / (float) nparts);
 		refiner.refineKWay(mcg, metisGraph, totalPartitionWeights, (float) 1.03, nparts);
+		
+//		metisGraph.getGraph().map(new LambdaVoid<GNode<MetisNode>>() {
+//			@Override
+//			public void call(GNode<MetisNode> node) {
+//				System.out.println(node.getData().getNodeId() +","+ node.getData().getPartition());
+//			}
+//		});
 		return metisGraph.getGraph();
 	}
 
@@ -228,5 +240,9 @@ public class MetisPartition {
 			ContextCreator.logger.error("KMetis verify not passed!");
 		}
 		ContextCreator.logger.debug("KMetis okay");
+	}
+	
+	public int getBackgroundLoad(int i) {
+		return this.backgroundLoads.get(i);
 	}
 }

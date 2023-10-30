@@ -2,6 +2,7 @@ package mets_r.routing;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 
 import org.jgrapht.alg.shortestpath.BidirectionalDijkstraShortestPath;
 import org.jgrapht.alg.shortestpath.YenKShortestPath;
@@ -64,7 +65,7 @@ public class VehicleRouting {
 	}
  
 	/* Perform the routing computation */
-	public List<Road> computeRoute(Road currentRoad, Road destRoad, Node currNode, Node destNode) {
+	public List<Road> computeRoute(Road currentRoad, Road destRoad, Node currNode, Node destNode, Random rand) {
 		List<Road> roadPath_ = null;
 		List<RepastEdge<Node>> shortestPath = null;
 
@@ -107,7 +108,7 @@ public class VehicleRouting {
 	
 				// Find the path to go
 				int k = 0;
-				double random = GlobalVariables.RandomGenerator.nextDouble();
+				double random = rand.nextDouble();
 				for (int i = 0; i < kshortestPath.size(); i++) {
 					if (random < cumProb.get(i)) {
 						k = i;

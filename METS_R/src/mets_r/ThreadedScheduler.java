@@ -217,6 +217,9 @@ class PartitionZoneThread implements Callable<Integer> {
 			for (Zone z : this.ZoneSet) {
 				z.step();
 			}
+			for (Zone z : this.ZoneSet) {
+				z.step2();
+			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
 		}

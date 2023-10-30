@@ -400,6 +400,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (Zone z : getZoneContext().getAll()) {
 			schedule.schedule(demandServeParams, z, "step");
 		}
+		for (Zone z : getZoneContext().getAll()) {
+			schedule.schedule(demandServeParams, z, "step2");
+		}
 	}
 
 	// Schedule the event for charging station updates (multi-thread)

@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+
 import org.geotools.referencing.GeodeticCalculator;
 
 import com.vividsolutions.jts.geom.Coordinate;
@@ -692,7 +693,7 @@ public class CityContext extends DefaultContext<Object> {
 					for (int i = 1; i < route.size(); i++) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
 						z2 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
 						if (path != null) {
 							for (Road r : path) {
 								travel_distance += r.getLength();
@@ -719,7 +720,7 @@ public class CityContext extends DefaultContext<Object> {
 					for (int i = route.size() - 1; i > 0; i--) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
 						z1 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord());
+						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
 						if (path != null) {
 							for (Road r : path) {
 								travel_distance += r.getLength();

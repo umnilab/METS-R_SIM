@@ -172,10 +172,12 @@ public class Road {
 		// happened at time t, deciding acceleration and lane changing
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			currentVehicle.calcState();
-			if (tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0) {
-				currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
-															// so we record vehicle location here!
+			if (tickcount> currentVehicle.getAndSetLastVisitTick(tickcount)) {
+				currentVehicle.calcState();
+				if (tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0) {
+					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
+																// so we record vehicle location here!
+				}
 			}
 			currentVehicle = nextVehicle;
 		}
@@ -184,12 +186,11 @@ public class Road {
 		currentVehicle = this.firstVehicle();
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			if (tickcount <= currentVehicle.getAndSetLastMoveTick(tickcount)) {
-				break; // Reached the end of linked list
+			if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been visited yet
+				currentVehicle.move();
+				currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				currentVehicle.checkAtDestination();
 			}
-			currentVehicle.move();
-			currentVehicle.updateBatteryLevel(); // Update the energy for each move
-			currentVehicle.checkAtDestination();
 			currentVehicle = nextVehicle;
 		}
 	}

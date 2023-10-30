@@ -102,11 +102,15 @@ public class Vehicle {
 	
 	// For solving the grid-lock issue in the multi-thread mode
 	private AtomicInteger lastMoveTick = new AtomicInteger(-1);
+	private AtomicInteger lastVisitTick = new AtomicInteger(-1);
 	private int stuckTime = 0;
 
 	/* Protected variables that can be accessed through descendant classes */
 	protected int ID;
 	protected Random rand; // Random seeds for making lane changing, cruising decisions
+	protected Random rand_route_only; // Random seeds for making lane changing, cruising decisions
+	protected Random rand_relocate_only; // Random seeds for making lane changing, cruising decisions
+	protected Random rand_car_follow_only; // Random seeds for making lane changing, cruising decisions
 	protected double accummulatedDistance_; // Accumulated travel distance in the current trip
 	protected boolean movingFlag = false; // Whether this vehicle is moving
 	protected boolean atOrigin;
@@ -123,6 +127,9 @@ public class Vehicle {
 	public Vehicle(int vClass) {
 		this.ID = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
+		this.rand_route_only = new Random(rand.nextInt());
+		this.rand_relocate_only = new Random(rand.nextInt());
+		this.rand_car_follow_only = new Random(rand.nextInt());
 		this.currentCoord_ = new Coordinate();
 		this.activityplan = new ArrayList<Plan>(); // Empty plan
 
@@ -208,7 +215,7 @@ public class Vehicle {
 			this.destinationID = dest_id;
 			this.destCoord = location;
 			// Reroute it
-			List<Road> tempPath = RouteContext.shortestPathRoute(this.getRoad(),location); // Recalculate the route
+			List<Road> tempPath = RouteContext.shortestPathRoute(this.getRoad(),location,this.rand_route_only); // Recalculate the route
 			this.clearShadowImpact();
 			// Set new route
 			this.roadPath = tempPath;
@@ -388,7 +395,7 @@ public class Vehicle {
 			// Clear legacy impact
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
-			this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destCoord); // K-shortest path or shortest path
+			this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destCoord, this.rand_route_only); // K-shortest path or shortest path
 			this.setShadowImpact();
 			if (this.roadPath == null) {
 				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
@@ -501,7 +508,7 @@ public class Vehicle {
 			// add this randomness will not change the travel time significantly, but
 			// will increase the energy consumption, which creates 
 			// more conservative metrics for planning/design
-			this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand.nextGaussian());
+			this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
 		}
 		this.makeAcceleratingDecision();
 		if (this.road.getNumberOfLanes() > 1 && this.isOnLane() && this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH) {
@@ -557,6 +564,12 @@ public class Vehicle {
 	public double calcFreeFlowRate() {
 		if (this.nextRoad_ != null) {
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
+			if(this.road.getID() == this.nextRoad_.getID()) {
+				System.out.println("WOW");
+				System.out.println(this.nextRoad_.getID());
+				System.out.println(this.roadPath);
+			}
+			
 			if (nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID())>0) { // edge case 1: brake for the red light
 				double decTime = this.currentSpeed_ / this.normalDeceleration_;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
@@ -677,7 +690,7 @@ public class Vehicle {
 	 */
 	public double gapDistance(Vehicle front) {
 		double headwayDistance;
-		if (front != null) { /* vehicle ahead */
+		if (front != null && front.getLane() != null) { /* vehicle ahead */
 			if (this.lane.getID() == front.getLane().getID()) { /* same lane */
 				if (front.isOnLane()) {
 					headwayDistance = this.distance_ - front.getDistance() - front.length();
@@ -716,7 +729,7 @@ public class Vehicle {
 		} else {
 			if (this.distFraction() > 0.75) {
 				// First 25% in the road, do discretionary LC
-				double laneChangeProb1 = rand.nextDouble();
+				double laneChangeProb1 = rand_car_follow_only.nextDouble();
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterLane();
 				if (tarLane != null) {
@@ -726,7 +739,7 @@ public class Vehicle {
 				}
 			} else {
 				// First 25%-50% in the road, we do discretionary LC but only to correct lanes
-				double laneChangeProb2 = rand.nextDouble();
+				double laneChangeProb2 = rand_car_follow_only.nextDouble();
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterCorrectLane();
 				if (tarLane != null) {
@@ -935,16 +948,16 @@ public class Vehicle {
 	 */
 	public boolean changeRoad() {
 		// Check if the vehicle has reached the destination or not
-		if (this.reachDest) {
+		if (this.reachDest || this.roadPath.size()<2) {
 			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
-			return false; // Only one will reach destination once
+			return false; // Only reach destination once
 		} else if (this.nextRoad_ != null) {
 			// Check if there is enough space in the next road to change to
 			int tickcount = ContextCreator.getCurrentTick();
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			boolean movable = false;
-			
-			switch(nextJunction.getControlType()) {
+			if(this.nextRoad_.getID() == this.roadPath.get(1).getID()) { // nextRoad data is consistent
+				switch(nextJunction.getControlType()) {
 				case Junction.NoControl:
 					movable = true;
 					break;
@@ -966,10 +979,13 @@ public class Vehicle {
 					break;
 				case Junction.Yield:
 					movable = true;
+					break;
 				default:
 					movable = true;
 					break;
+				}
 			}
+			
 			if(movable) {
 				// Check if the target long road has space
 				if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
@@ -980,11 +996,11 @@ public class Vehicle {
 					this.setNextRoad();
 					return true;
 				}
-				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // addressing grid lock
+				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // addressing gridlock
 					for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
 						Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
 						List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
-								ContextCreator.getRoadContext().get(this.getDestRoadID())); // Recalculate the route
+								ContextCreator.getRoadContext().get(this.getDestRoadID()), this.rand_route_only); // Recalculate the route
 						if (tempPath != null && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
 							this.removeFromLane();
 							this.removeFromMacroList();
@@ -1170,7 +1186,7 @@ public class Vehicle {
 	 * Get distance fraction to go in the current link
 	 */
 	public double distFraction() {
-		if (distance_ > 0)
+		if (distance_ > 0 && this.lane != null)
 			return distance_ /  this.lane.getLength();
 		else
 			return 0;
@@ -1381,7 +1397,15 @@ public class Vehicle {
 	public int getAndSetLastMoveTick(int current_tick) {
 		return this.lastMoveTick.getAndSet(current_tick);
 	}
-
+	
+	public int getAndSetLastVisitTick(int current_tick) {
+		return this.lastVisitTick.getAndSet(current_tick);
+	}
+	
+	public int getLastVisitTick() {
+		return this.lastVisitTick.get();
+	}
+	
 	/**
 	 *  Remove a vehicle from the macro vehicle list in the current road segment.
 	 */

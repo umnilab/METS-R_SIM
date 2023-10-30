@@ -100,9 +100,9 @@ public class ElectricTaxi extends Vehicle {
 	// Randomly select a neighboring link and update the activity plan
 	public void goCruising(Zone z) {
 		// Add a cruising activity
-		Coordinate dest = z.getNeighboringCoord(rand.nextInt(z.getNeighboringLinkSize()));
+		Coordinate dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize()));
 		while(dest == this.getDestCoord()) { // Sample again
-			dest = z.getNeighboringCoord(rand.nextInt(z.getNeighboringLinkSize()));
+			dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize()));
 		}
 		this.addPlan(z.getIntegerID(), dest, ContextCreator.getNextTick());
 		this.setNextPlan();
@@ -236,13 +236,13 @@ public class ElectricTaxi extends Vehicle {
 			// Compute new route if eco-routing is not used
 			if (this.roadPath == null || this.roadPath.isEmpty()) {
 				this.routeChoice = -1;
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
+				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
 			}
 			
 			// Fix the inconsistency of the start link 
 			if (this.getRoad()!=this.roadPath.get(0)) {
 				this.routeChoice = -1;
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
+				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
 			}
 			
 			this.setShadowImpact();
@@ -418,7 +418,7 @@ public class ElectricTaxi extends Vehicle {
 		this.numPeople_ = 0;
 		this.cruisingTime_ = 0;
 		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
-				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
+				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
 																											// times a
 																											// large
 																											// number to

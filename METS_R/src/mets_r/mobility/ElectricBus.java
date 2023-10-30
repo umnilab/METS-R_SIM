@@ -115,7 +115,7 @@ public class ElectricBus extends Vehicle {
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
 		this.numSeat = 40;
 		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY
-				+ GlobalVariables.RandomGenerator.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh,
+				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh,
 																											// times a
 																											// large
 																											// number to
@@ -180,7 +180,7 @@ public class ElectricBus extends Vehicle {
 			}
 			// Compute new route if eco-routing is not used or the OD pair is uncovered
 			if (this.roadPath == null || this.roadPath.isEmpty()) {
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord()); // K-shortest path or shortest path
+				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
 			}
 			this.setShadowImpact();
 			if (this.roadPath == null) {
