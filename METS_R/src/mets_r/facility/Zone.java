@@ -679,7 +679,7 @@ public class Zone {
 						if (this.getIntegerID() != z2.getIntegerID()) {
 							double travel_time = 0;
 							double travel_distance = 0;
-							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
+							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), null);
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
@@ -697,7 +697,7 @@ public class Zone {
 						if (this.getIntegerID() != z2.getIntegerID()) {
 							double travel_time = 0;
 							double travel_distance = 0;
-							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), this.rand);
+							List<Road> path = RouteContext.shortestPathRoute(this.getCoord(), z2.getCoord(), null);
 							if (path != null) {
 								for (Road r : path) {
 									travel_distance += r.getLength();
@@ -732,7 +732,7 @@ public class Zone {
 					double travel_time2 = 0;
 					double travel_distance2 = 0;
 					List<Road> path2 = RouteContext.shortestPathRoute(
-							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2.getIntegerID())).getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
+							ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(z2.getIntegerID())).getCoord(), z2.getCoord(), null);
 					if (path2 != null) {
 						for (Road r : path2) {
 							travel_distance2 += r.getLength();

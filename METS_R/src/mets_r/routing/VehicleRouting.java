@@ -78,7 +78,7 @@ public class VehicleRouting {
 			roadPath_.add(currentRoad);
 		}
 		else {
-			if (GlobalVariables.K_SHORTEST_PATH) {
+			if (GlobalVariables.K_SHORTEST_PATH && rand != null) { // rand is null when used merely for travel time estimation
 				// Find the k-shortest path
 				YenKShortestPath<Node, RepastEdge<Node>> ksp = new YenKShortestPath<Node, RepastEdge<Node>>(
 						transformedNetwork);

@@ -135,7 +135,6 @@ public class GlobalVariables {
 	public static final int RANDOM_SEED = Integer
 			.valueOf(loadConfig("RANDOM_SEED"));
 	public static final Random RandomGenerator = new Random(RANDOM_SEED);
-	public static final Random RandomGenerator2 = new Random(RandomGenerator.nextInt());
 	public static final float SIMULATION_STEP_SIZE = Float.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
 	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"));

@@ -693,7 +693,7 @@ public class CityContext extends DefaultContext<Object> {
 					for (int i = 1; i < route.size(); i++) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
 						z2 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
+						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), null);
 						if (path != null) {
 							for (Road r : path) {
 								travel_distance += r.getLength();
@@ -720,7 +720,7 @@ public class CityContext extends DefaultContext<Object> {
 					for (int i = route.size() - 1; i > 0; i--) {
 						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
 						z1 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), GlobalVariables.RandomGenerator2);
+						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), null);
 						if (path != null) {
 							for (Road r : path) {
 								travel_distance += r.getLength();
