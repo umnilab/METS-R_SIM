@@ -562,13 +562,9 @@ public class Vehicle {
 	 * @return acc Vehicle acceleration
 	 */
 	public double calcFreeFlowRate() {
-		if (this.nextRoad_ != null) {
+		// car following and road ends
+		if (this.nextRoad_ != null && this.road.getID() != this.nextRoad_.getID()) {
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
-			if(this.road.getID() == this.nextRoad_.getID()) {
-				System.out.println("WOW");
-				System.out.println(this.nextRoad_.getID());
-				System.out.println(this.roadPath);
-			}
 			
 			if (nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID())>0) { // edge case 1: brake for the red light
 				double decTime = this.currentSpeed_ / this.normalDeceleration_;
@@ -587,7 +583,7 @@ public class Vehicle {
 			}
 		}
 		
-		// normal cases
+		// free flow
 		if (this.currentSpeed_ < this.desiredSpeed_) { // accelerate to reach the desired speed
 			return Math.min(this.maxAcceleration(), (this.desiredSpeed_ - this.currentSpeed_)/GlobalVariables.SIMULATION_STEP_SIZE);
 		} else { // decelerate if it exceeds the desired speed
@@ -1001,7 +997,7 @@ public class Vehicle {
 						Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
 						List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
 								ContextCreator.getRoadContext().get(this.getDestRoadID()), this.rand_route_only); // Recalculate the route
-						if (tempPath != null && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
+						if (tempPath != null && tempPath.size()>=2 && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
 							this.removeFromLane();
 							this.removeFromMacroList();
 							this.appendToLane(dnlane);
