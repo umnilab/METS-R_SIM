@@ -139,7 +139,9 @@ public class BusSchedule {
 						}
 					}
 				}
-				busRoute.add(oneRoute);
+				if(oneRoute.size()>1) { // at least two stops
+					busRoute.add(oneRoute);
+				}
 				i += 1;
 			}
 			ContextCreator.logger.info(busRoute);
