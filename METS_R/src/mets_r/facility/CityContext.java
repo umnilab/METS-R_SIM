@@ -14,8 +14,8 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.Point;
 
 import mets_r.*;
-import mets_r.data.OpenDriveMap;
-import mets_r.data.SumoXML;
+import mets_r.data.input.OpenDriveMap;
+import mets_r.data.input.SumoXML;
 import mets_r.routing.RouteContext;
 
 import repast.simphony.context.DefaultContext;
@@ -89,6 +89,22 @@ public class CityContext extends DefaultContext<Object> {
 					flag = false;
 				}
 			}
+			
+			// Add the nearest hub if not shown in the neighboring list
+			double dist_to_hub = Double.MAX_VALUE;
+			int to_add = -1;
+			for(Zone z2: ContextCreator.getZoneContext().getAll()) {
+				if(z2.getZoneType() == Zone.HUB) {
+					if (this.getDistance(z1.getCoord(), z2.getCoord()) < dist_to_hub){
+						dist_to_hub = this.getDistance(z1.getCoord(), z2.getCoord());
+						to_add = z2.getID();
+					}
+				}
+			}
+			if(to_add != -1) { // Zone ID is always nonnegative
+				z1.addNeighboringZone(to_add);
+			}
+			
 			GeometryFactory geomFac = new GeometryFactory();
 			Point point = geomFac.createPoint(z1.getCoord());
 			Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
@@ -109,7 +125,7 @@ public class CityContext extends DefaultContext<Object> {
 		
 		for (Zone z: ContextCreator.getZoneContext().getAll()) {
 			int i = 1;
-			while (z.getNeighboringLinkSize() < 10) { // Take at least neighboring 10 links
+			while (z.getNeighboringLinkSize() < 10) { // Take at least 10 neighboring links
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
 				Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 

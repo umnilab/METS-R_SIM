@@ -1,5 +1,5 @@
 License for:
-src
+src/mets_r
 data
 
 The MIT License (MIT)

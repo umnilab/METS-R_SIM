@@ -2,6 +2,8 @@ package mets_r;
 
 import java.util.Random;
 
+import mets_r.data.input.NetworkEventObject;
+
 /**
  * Central location for any useful variables (e.g. filenames).
  * 
@@ -86,13 +88,14 @@ public class GlobalVariables {
 	public static int HOUR_OF_SPEED = Integer.valueOf(loadConfig("HOUR_OF_SPEED"));
 
 	// Travel demand
-	public static final String DM_EVENT_FILE = loadConfig("DM_EVENT_FILE");
-	public static final String DM_WAITING_TIME = loadConfig("DM_WAITING_TIME");
-	public static final String DM_SHARE_PERCENTAGE = loadConfig("DM_SHARE_PERCENTAGE");
-	public static final boolean DEMAND_SHARABLE = Boolean.valueOf(loadConfig("DEMAND_SHARABLE"));
-	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
-	public static final double PASSENGER_DEMAND_FACTOR = Double.valueOf(loadConfig("DEMAND_FACTOR"));
+	public static final String RH_DEMAND_FILE = loadConfig("RH_DEMAND_FILE");
+	public static final String RH_WAITING_TIME = loadConfig("RH_WAITING_TIME");
+	public static final String RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");
+	public static final boolean RH_DEMAND_SHARABLE = Boolean.valueOf(loadConfig("RH_DEMAND_SHARABLE"));
+	public static final double RH_DEMAND_FACTOR = Double.valueOf(loadConfig("RH_DEMAND_FACTOR"));
+	
 	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
+	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	
 	// Default bus schedule
 	public static final String BUS_SCHEDULE = loadConfig("BUS_SCHEDULE");

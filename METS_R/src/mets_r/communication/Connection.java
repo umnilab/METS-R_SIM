@@ -15,11 +15,11 @@ import org.json.simple.parser.ParseException;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.NetworkEventObject;
-import mets_r.data.DataCollector;
-import mets_r.data.DataConsumer;
-import mets_r.data.TickSnapshot;
-import mets_r.data.VehicleSnapshot;
+import mets_r.data.input.NetworkEventObject;
+import mets_r.data.output.DataCollector;
+import mets_r.data.output.DataConsumer;
+import mets_r.data.output.TickSnapshot;
+import mets_r.data.output.VehicleSnapshot;
 
 /**
  * When a request from a remote program for a network connection is received,

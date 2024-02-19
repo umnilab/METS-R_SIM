@@ -28,7 +28,11 @@ import org.json.simple.JSONObject;
 import galois.partition.*;
 import mets_r.GlobalVariables;
 import mets_r.communication.Connection;
-import mets_r.data.*;
+import mets_r.data.input.BackgroundTraffic;
+import mets_r.data.input.BusSchedule;
+import mets_r.data.input.NetworkEventHandler;
+import mets_r.data.input.TravelDemand;
+import mets_r.data.output.*;
 import mets_r.facility.*;
 import mets_r.mobility.*;
 import mets_r.routing.RouteContext;
@@ -145,7 +149,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
 		}
 		ContextCreator.logger
-				.info("Vehicle Generation: total demand " + demand_total * GlobalVariables.PASSENGER_DEMAND_FACTOR);
+				.info("Vehicle Generation: total demand " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
 
 		// Initialize vehicles
 		this.vehicleContext = new VehicleContext();

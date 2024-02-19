@@ -51,6 +51,7 @@ public class Zone {
 	private AtomicInteger futureSupply; // supply in the near future
 	private double vehicleSurplus;
 	private double vehicleDeficiency;
+	private int H = 0; // horizon for considering feature demand
 	
 	// For multi-thread mode
 	private ConcurrentLinkedQueue<Request> toAddRequestForTaxi; // demand from integrated services
@@ -161,6 +162,9 @@ public class Zone {
 		this.futureSupply = new AtomicInteger(0);
 		this.vehicleSurplus = 0.0;
 		this.vehicleDeficiency = 0.0;
+		if (GlobalVariables.PROACTIVE_RELOCATION) {
+			H = (int) (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
+		}
 	}
     
 	public int getID() {
@@ -222,7 +226,7 @@ public class Zone {
 		    
 			if (passRate > 0) {
 				Zone destZone = ContextCreator.getZoneContext().get(destination);
-				passRate *= GlobalVariables.PASSENGER_DEMAND_FACTOR;
+				passRate *= GlobalVariables.RH_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
 				double sharableRate = ContextCreator.travelDemand.getTravelDemand(this.getIntegerID(), destination, this.currentHour);
@@ -231,7 +235,7 @@ public class Zone {
 					float threshold = getSplitRatio(destination, false);
 					for (int i = 0; i < numToGenerate; i++) {
 						if (rand_mode_only.nextDouble() > threshold) {
-							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 										this.sampleDestCoord(destZone),true
 										); 
@@ -260,7 +264,7 @@ public class Zone {
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
 							if (rand_mode_only.nextDouble() > threshold) {
-								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 											this.sampleDestCoord(destZone),true
 											); 
@@ -296,7 +300,7 @@ public class Zone {
 						float threshold = getSplitRatio(destination, true);
 						for (int i = 0; i < numToGenerate; i++) {
 							if (rand_mode_only.nextDouble() > threshold) {
-								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 											this.sampleDestCoord(destZone),true
 											); 
@@ -331,7 +335,7 @@ public class Zone {
 					else {
 						// Taxi only
 						for (int i = 0; i < numToGenerate; i++) {
-							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 										this.sampleDestCoord(destZone),true
 										); 
@@ -351,7 +355,7 @@ public class Zone {
 				} else {
 					// Taxi only
 					for (int i = 0; i < numToGenerate; i++) {
-						if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.DEMAND_SHARABLE) { // Sharable requests start from the same loc
+						if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 							Request new_pass = new Request(this.ID, destination, this.getCoord(), 
 									this.sampleDestCoord(destZone),true
 									); 
@@ -488,14 +492,6 @@ public class Zone {
 	// Relocate when the vehicleStock is negative
 	// There are two implementations: 1. Using myopic info; 2. Using future estimation (PROACTIVE_RELOCATION).
 	protected void relocateTaxi() {
-		double H; // H means the time steps (horizon) of looking ahead, heuristically, using the cruising time
-		// 0.8 is the probability of vehicle with low battery level under the charging threshold
-		if (GlobalVariables.PROACTIVE_RELOCATION) {
-			H = (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
-		}
-		else {
-			H = 0;
-		}
 		// Decide the number of relocated vehicle with the precaution on potential
 		// future vehicle shortage/overflow
 		if (this.getFutureSupply() < 0) {

@@ -100,8 +100,8 @@ public class Junction {
 	    		return this.delay.get(upStreamRoadID).get(downStreamRoadID);
 	    	}
 	    }
-    	ContextCreator.logger.warn("No link found in junction: "+ this.getID() +
-    			" between road: "+ upStreamRoadID + "," + downStreamRoadID);
+//    	ContextCreator.logger.warn("No link found in junction: "+ this.getID() +
+//    			" between road: "+ upStreamRoadID + "," + downStreamRoadID);
     	return 0;
 	}
 	
@@ -126,8 +126,8 @@ public class Junction {
 	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID).getState();
 	    	}
 	    }
-    	ContextCreator.logger.warn("No signal found in junction: "+ this.getID() +
-    			"between road: "+ upStreamRoadID + "," + downStreamRoadID);
+//    	ContextCreator.logger.warn("No signal found in junction: "+ this.getID() +
+//    			"between road: "+ upStreamRoadID + "," + downStreamRoadID);
     	return 0;
 	}
 	

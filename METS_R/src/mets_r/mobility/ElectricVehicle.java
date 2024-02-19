@@ -6,10 +6,9 @@ import java.util.List;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.data.DataCollector;
+import mets_r.data.output.DataCollector;
 import mets_r.facility.Zone;
 
 /**

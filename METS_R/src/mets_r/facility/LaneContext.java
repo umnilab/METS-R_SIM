@@ -8,8 +8,8 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.data.OpenDriveMap;
-import mets_r.data.SumoXML;
+import mets_r.data.input.OpenDriveMap;
+import mets_r.data.input.SumoXML;
 
 //import java.util.HashMap;
 //import java.util.Map;
