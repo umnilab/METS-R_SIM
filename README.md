@@ -55,7 +55,7 @@ The following steps only run the traffic simulator (built-in Java) without the H
     cd METSR_HPC
     ```
 
-3. Set up a *Python* (version >= 3.7) environment and install the packages in &requirements.txt&.
+3. Set up a *Python* (version >= 3.7) environment and install the packages in *requirements.txt*.
 2. View the HPC configuration JSON file. Currently, you need the  `run.config.scenario.json` file with the configurations:
     - `java_path` - set the absolute path of your Java installation.
     - `java_options` - change the JVM memory limits depending on your machine specs.
