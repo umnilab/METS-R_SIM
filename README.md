@@ -132,7 +132,8 @@ All the required inputs for running the simulation are listed and described in t
 ### 3.2 Output data
 
 1. The aggregated output data generated in the folder `agg_output/`  records the number of served requests by taxis and EVs, the trip numbers, the passenger waiting time, and the energy consumption. Such output files are stored under the agg_output file folder, including `Buslog.csv`,`Chargerlog.csv`,`EVlog.csv`, `Linklog.csv`, `Networklog.csv`, and `Zonelog.csv`. 
-    a.`Networklog.csv` summarizes the overall operational information of the entire system, the fields of `Networklog.csv` file are:
+
+   a.`Networklog.csv` summarizes the overall operational information of the entire system, the fields of `Networklog.csv` file are:
     - `tick` is the simulation time tick.
     - `vehOnRoad` is the current number of on-road EV taxis.
     - `emptyTrip` is the cumulative number of empty trips performed by EV taxis.
@@ -209,7 +210,7 @@ All the required inputs for running the simulation are listed and described in t
     - `chargingTime` is the time between the start of charging and the time of full charge.
     - `initialBatteryLevel` is the initial battery level (kWh) of the charging vehicles.
     
-2. One can toggle the `ENABLE_JSON_WRITE` to enable the collection of vehicle trajectory files, which are stored in `trajectory_output/`and are the necessary inputs for the visualization module. Each JSON object within each file stores the following information for each snapshot period:
+3. One can toggle the `ENABLE_JSON_WRITE` to enable the collection of vehicle trajectory files, which are stored in `trajectory_output/`and are the necessary inputs for the visualization module. Each JSON object within each file stores the following information for each snapshot period:
     1. ev:  the trajectory of EV taxis, including its coordinates, speed, battery level, origin, destination, current link, and number of requests
     2. bus: the trajectory of EV buses, including its coordinates, speed, battery level, current link, and number of onboard requests
     3. pass: number of newly served requests.
