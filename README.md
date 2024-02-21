@@ -9,11 +9,11 @@ The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulat
 
 The METS-R simulator consists of a traffic simulator module for EV services (including taxis and buses) and a remote data client manager (i.e., [control center](https://github.com/umnilab/METS-R_HPC)), multiple instances are connected under a single remote data client manager. The benefits of this framework are three-fold:
 
-1. For testing some operational algorithms (e.g., reinforcement learning algorithms) that require large amount of simulation trajectories, this framework has better data collection efficiency; 
+1. For testing some operational algorithms (e.g., reinforcement learning algorithms) that require large amounts of simulation trajectories, this framework has better data collection efficiency; 
 
 2. For some operational algorithms that need to solve an optimization (e.g., ILP), this framework allows caching the solutions so one can reuse them in multiple simulation instances.
 
-3. It mimics the real world platform company scenario in which a cloud service is provided to coordinate riders/drivers.
+3. It mimics the real-world platform company scenario in which a cloud service is provided to coordinate riders/drivers.
 
 ![Simulation framework](res/framework.jpg)
 
@@ -21,14 +21,14 @@ The METS-R simulator consists of a traffic simulator module for EV services (inc
 
 ## 2.1 Quick start
 1. Download the installer (the latest is `mets_r_v0.9.0.jar`) from the [the METS-R repository](https://github.com/umnilab/METS-R_SIM/releases/tag/0.9.0).
-2. Double click the installer and follow the instruction to decompress the METS-R SIM into a proper folder.
-3. Go to that folder, and double click `start_model.bat` (in linux use "start_model.command")
-4. Click Run and you should see the below *Repast Symphony* simulation window (After specified in the first time, you can also use *Run* button in the Eclipse toolbar).
+2. Double-click the installer and follow the instructions to decompress the METS-R SIM into a proper folder.
+3. Go to that folder, and double click `start_model.bat` (in Linux use "start_model.command")
+4. Click Run and you should see the below *Repast Symphony* simulation window (After specifying the first time, you can also use the *Run* button in the Eclipse toolbar).
     
     ![Example of METS-R](res/addsevs_interface.png)
     
 5. Click on the *Start Run* button in the pop-up window to begin the simulation.
-6. The simulation outputs can be found in the agg_output folder, the vehicle trajectories is in the sim_output folder.
+6. The simulation outputs can be found in the agg_output folder, and the vehicle trajectories are in the sim_output folder.
 7. If required, you can modify the inputs of the simulation run scenario according to your needs in the configuration file (`METS_R/data/Data.properties`)
 
 ## 2.2 Load METS-R in an IDE
@@ -37,7 +37,7 @@ The METS-R simulator consists of a traffic simulator module for EV services (inc
     ```
     git clone https://github.com/umnilab/METS-R_SIM.git
     ```
-The following steps only run the traffic simulator (built-in Java) without the HPC module. In order to run the HPC module, please follow the steps in *[Running HPC module]*.
+The following steps only run the traffic simulator (built-in Java) without the HPC module. To run the HPC module, please follow the steps in *[Running HPC module]*.
 1. Open Eclipse and go to File -> *Open Projects from File System…*
 2. In the *Import Projects from File System or Archive* window click on *Directory* and open the *METS_R* directory you cloned in step 3.
 3. Check *METS_R* and click *Finish*. This should open the METS-R SIM project in Eclipse as shown in the following figure.   
@@ -46,7 +46,7 @@ The following steps only run the traffic simulator (built-in Java) without the H
     
 4. Go to the *laucher* folder in the project explorer, then right click `METS_R Model.launch` and select Run as -> *METS-R Model* to start the simulation.
 
-## 2.3 Running in a HPC environment (recommended)
+## 2.3 Running in an HPC environment (recommended)
 
 1. Download the *METSR_HPC* code to run the HPC module.
     
@@ -56,25 +56,25 @@ The following steps only run the traffic simulator (built-in Java) without the H
     ```
 
 3. Set up a *Python* (version >= 3.7) environment and install the packages in &requirements.txt&.
-2. View the HPC configuration json file. Currently, you need to the  `run.config.scenario.json` file with the configurations:
-    - `java_path` - set the absolute path of your java installation.
-    - `java_options` - change the jvm memory limits depending on your machine specs.
+2. View the HPC configuration JSON file. Currently, you need the  `run.config.scenario.json` file with the configurations:
+    - `java_path` - set the absolute path of your Java installation.
+    - `java_options` - change the JVM memory limits depending on your machine specs.
     - `sim_dir` - the absolute path of METS_R directory.
-    - `repast_plugin_dir` - absolute path pf your repast plugin installation.
+    - `repast_plugin_dir` - the absolute path of your repast plugin installation.
     - `charger_plan` - the charging station plan.
-    - `num_sim_instances` - number of parallel simulation instances you need to run.
+    - `num_sim_instances` - the number of parallel simulation instances you need to run.
 4. Finally, run
     ```
     python3 run_hpc.py -s 0 -c 0 -tf 2000 -bf 100
     ```
    More options can be found in the run_hpc.py.
     
-5. This will start the simulation instances and run a RDCM (remote data client manager). All the files related to each simulation run will be created in a separate directory in the `output` folder.
+5. This will start the simulation instances and run an RDCM (remote data client manager). All the files related to each simulation run will be created in a separate directory in the `output` folder.
 
 ## 2.4 Customize your inputs
-### 2.4.1 Use your own demand files
+### 2.4.1 Use your demand files
 
-1. The demand prediction module is hosted in METRS_HPC repo. Clone it if you have not done that.
+1. The demand prediction module is hosted in the METRS_HPC repo. Clone it if you have not done that.
 2. Download and process the data required to train the models.
     
     ```
@@ -84,7 +84,7 @@ The following steps only run the traffic simulator (built-in Java) without the H
     python 2.Process_NY_Taxi_Raw_data.py
     ```
     
-3. You can change the `hub` variable in `2.Process_NY_Taxi_Raw_data.py` in order to get the prediction for different hubs (i.e. `PENN`, `JFK`, `LGA`).
+3. You can change the `hub` variable in `2.Process_NY_Taxi_Raw_data.py` to get the prediction for different hubs (i.e. `PENN`, `JFK`, `LGA`).
 4. Train the model and generate the prediction `.csv` file.
     
     ```
@@ -125,14 +125,14 @@ All the required inputs for running the simulation are listed and described in t
 
 4. `Lane shapefile (Polyline)`: map of the lanes, generated from road shapefile. This shapefile should contain lane connection information. 
 
-5. `Demand profiles (CSV/JSON)`: OD flow for different hours of the day, which is a matrix (stored as a json file) with m rows and n columns, m corresponds to the number of OD pairs, and n corresponds to the number of hours to simulate.
+5. `Demand profiles (CSV/JSON)`: OD flow for different hours of the day, which is a matrix (stored as a JSON file) with m rows and n columns, m corresponds to the number of OD pairs, and n corresponds to the number of hours to simulate.
 
-6. `Background traffic speed (CSV)`: the background traffic speed (in miles/h) of each link in different hour of the day. This is for compensating the impact of the traffic that is not simulated.
+6. `Background traffic speed (CSV)`: the background traffic speed (in miles/h) of each link in different hours of the day. This is for compensating the impact of the traffic that is not simulated.
 
 ### 3.2 Output data
 
 1. The aggregated output data generated in the folder `agg_output/`  records the number of served requests by taxis and EVs, the trip numbers, the passenger waiting time, and the energy consumption. Such output files are stored under the agg_output file folder, including `Buslog.csv`,`Chargerlog.csv`,`EVlog.csv`, `Linklog.csv`, `Networklog.csv`, and `Zonelog.csv`. 
-    1.`Networklog.csv` summarizes the overall operational information of the entire system, the fields of `Networklog.csv` file are:
+    a.`Networklog.csv` summarizes the overall operational information of the entire system, the fields of `Networklog.csv` file are:
     - `tick` is the simulation time tick.
     - `vehOnRoad` is the current number of on-road EV taxis.
     - `emptyTrip` is the cumulative number of empty trips performed by EV taxis.
@@ -140,17 +140,17 @@ All the required inputs for running the simulation are listed and described in t
     - `generatedTaxiPass` is the total number of generated taxi requests.
     - `generatedBusPass` is the total number of generated bus requests.
     - `generatedCombinedPass` is the total number of generated bus-taxi integrated requests.
-    - `taxiPickupPass` is the total number of taxi requests got onborad.
-    - `busPickupPass` is the total number of bus requests got onborad.
-    - `combinePickupPart1` is the total number of combined requests got onborad in the first trip.
-    - `combinePickupPart2` is the total number of combined requests got onborad in the second trip.
+    - `taxiPickupPass` is the total number of taxi requests got onboard.
+    - `busPickupPass` is the total number of bus requests that got onboard.
+    - `combinePickupPart1` is the total number of combined requests that got onboard in the first trip.
+    - `combinePickupPart2` is the total number of combined requests that got onboard in the second trip.
     - `taxiServedPass` is the total number of taxi requests served (arrived).
     - `busServedPass` is the total number of bus requests served (arrived).
     - `taxiLeavedPass` is the total number of taxi requests that left the system unserved.
     - `busLeavedPass` is the total number of bus requests that left the system unserved.
     - `numWaitingTaxiPass` shows the current number of requests who are waiting for EV taxis.
     - `numWaitingBusPass` shows the current number of requests who are waiting for EV buses.
-    - `timeStamp` shows the time of the record (in milisecond).
+    - `timeStamp` shows the time of the record (in milliseconds).
     
     b. The attributes of `Zonelog.csv` file are:
     - `tick` is the simulation time tick.
@@ -172,48 +172,48 @@ All the required inputs for running the simulation are listed and described in t
     c. The attributes of `Linklog.csv` file are:
     - `tick` is the simulation time tick.
     - `linkID` is the index of the road.
-    - `flow` is the cumulative times of EV travelling across the link.
+    - `flow` is the cumulative times of EV traveling across the link.
     - `consumption` is the cumulative energy EV consumed on that link.
     
-    c. The attributes of `EVlog.csv` file are:
+    d. The attributes of `EVlog.csv` file are:
     - `tick` is the simulation time tick.
     - `vehicleID` is the index of the EV taxi.
     - `tripType`, 1 stands for occupied trip, 2 for repositioning trip, 4 for charging trip.
     - `originID` is the index of the original zone.
     - `destID` is the index of the target zone.
-    - `distance` is the distance (m) travelled.
+    - `distance` is the distance (m) traveled.
     - `departure time` is the departure time of the trip.
     - `cost` is the energy consumed by the trip
-    - `choice` is the choice of rountes among the candidates if eco-routing is enabled.
+    - `choice` is the choice of routes among the candidates if eco-routing is enabled.
     - `passNum` is the number of requests.
     
-    c. The attributes of `Buslog.csv` file are:
+    e. The attributes of `Buslog.csv` file are:
     - `tick` is the simulation time tick.
     - `vehicleID` is the index of the EV bus.
     - `routeID` is the index of the transit route that the EV bus is following.
-    - `tripType`, 3 for regular trip, 4 for charging trip.
+    - `tripType`, 3 for regular trips, 4 for charging trips.
     - `originID` is the index of the original zone.
     - `destID` is the index of the target zone.
-    - `distance` is the distance (m) travelled.
+    - `distance` is the distance (m) traveled.
     - `departure time` is the departure time of the trip.
     - `cost` is the energy consumed by the trip
-    - `choice` is the choice of rountes among the candidates if eco-routing is enabled.
+    - `choice` is the choice of routes among the candidates if eco-routing is enabled.
     - `passOnBoard` is the number of requests on the EV bus.
     
-    c. The attributes of `Chargerlog.csv` file are:
+    f. The attributes of `Chargerlog.csv` file are:
     - `tick` is the simulation time tick.
     - `chargerID` is the index of the EV chargers.
     - `vehID` is the index of the charging vehicles.
     - `chargerType` shows the type of the chargers, can be L2, L3, or Bus.
     - `waitingTime` is the time that the charging vehicles spent in the charging queue.
-    - `chargingTime` is the time between the start of charging and the time of full charged.
+    - `chargingTime` is the time between the start of charging and the time of full charge.
     - `initialBatteryLevel` is the initial battery level (kWh) of the charging vehicles.
     
 2. One can toggle the `ENABLE_JSON_WRITE` to enable the collection of vehicle trajectory files, which are stored in `trajectory_output/`and are the necessary inputs for the visualization module. Each JSON object within each file stores the following information for each snapshot period:
-    1. ev:  trajectory of EV taxis, including its coordinates, speed, battery level, origin, destination, current link, and number of requests
-    2. bus: trajectory of EV buses, including its coordinates, speed, battery level, current link, and number of on-board requests
+    1. ev:  the trajectory of EV taxis, including its coordinates, speed, battery level, origin, destination, current link, and number of requests
+    2. bus: the trajectory of EV buses, including its coordinates, speed, battery level, current link, and number of onboard requests
     3. pass: number of newly served requests.
-    4. link: linkID, cumulative flow, averge speed, cumulative energy consumption aggregated by link
+    4. link: linkID, cumulative flow, average speed, cumulative energy consumption aggregated by link
 
 ## 3.3 Preparation of road shapefile and lane shapefile
 
@@ -222,19 +222,19 @@ The data preparation is fulfilled by scripts located in `METS_R/data/data_prepar
 The way of using it is by opening the `METS_R/util/map preparation/run.py` file and changing the name of the files to use as inputs. These files should have the information requirements: road shape should be composed of polylines and must have the following fields included: 
 
 - `SPEED(number)`: speed limit in mph
-- `OneWay(String)`: direction field. if FT: means that draw direction equals real direction of the road, if TF: means that drawing direction is contrary to real road direction if none means bidirectional
+- `OneWay(String)`: direction field. if FT: means that the draw direction equals the real direction of the road, if TF: means that the drawing direction is contrary to the real road direction if none means bidirectional
 - `FromZlev(number)`: a number indicating the initial level (z) of the initial point of the road in this case an integer
 - `ToZlev(number)`: a number indicating the final level (z) of the initial point of the road in this case an integer
 - `Shape_Leng(number)`: length of road in m
 - `st_width(number)`: width of the road (including all lanes) in feet
-- `snow_pri(string)`: a letter indicating the priority of road can be any letter
+- `snow_pri(string)`: a letter indicating the priority of the road can be any letter
 - `bike_lane(number)`: field indicating if a road has a bike lane
 
 The elevation file should be a point shape with the following fields: 
 
 - `fid(number)`: identity number ‘elevation’(number): Height of point in feet
 
-As a response to this code, a new folder or an indicated folder will be created with 10 new shapes, each shape has different. The whole process consists of a set of steps to identify the presence of bridges, remove 5 legs intersections, assure strong connectivity, and add information such as elevation.
+As a response to this code, a new folder or an indicated folder will be created with 10 new shapes, each shape is different. The whole process consists of a set of steps to identify the presence of bridges, remove 5-leg intersections, assure strong connectivity, and add information such as elevation.
 
 ## 3.4 Visualization module
 
