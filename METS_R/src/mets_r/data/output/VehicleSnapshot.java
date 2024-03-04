@@ -22,6 +22,7 @@ public class VehicleSnapshot {
 	final public double prev_y; //The Y-axis (latitude) position of the vehicle in the previous epoch
 	final public double x;
 	final public double y;
+	final public double bearing;
 	final public double speed;
 	final public double originX;
 	final public double originY;
@@ -32,12 +33,12 @@ public class VehicleSnapshot {
 
 	public VehicleSnapshot(Vehicle vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
-				coordinate.y, vehicle.currentSpeed(), vehicle.getOriginCoord().x, vehicle.getOriginCoord().y,
+				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginCoord().x, vehicle.getOriginCoord().y,
 				vehicle.getDestCoord().x, vehicle.getDestCoord().y, vehicle.getVehicleClass(),
 				vehicle.getRoad().getID());
 	}
 
-	public VehicleSnapshot(int id, double prev_x, double prev_y, double x, double y, double speed, double originX,
+	public VehicleSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, double originX,
 			double originY, double destX, double destY, int vehicleClass, int roadID)
 			throws Throwable {
 		if (roadID < 0) throw new Exception("Road ID cannot be negative.");
@@ -55,6 +56,7 @@ public class VehicleSnapshot {
 		this.prev_y = prev_y;
 		this.x = x;
 		this.y = y;
+		this.bearing = bearing;
 		this.speed = speed;
 		this.originX = originX; /** @author Jiawei Xue */
 		this.originY = originY;
@@ -82,6 +84,10 @@ public class VehicleSnapshot {
 
 	public double getY() {
 		return this.y;
+	}
+	
+	public double getBearing() {
+		return this.bearing;
 	}
 
 	public double getSpeed() {

@@ -39,8 +39,11 @@ public class BusSnapshot {
 
 	/** The Y position of the vehicle within the simulation. */
 	final public double y;
+	
+	/** The bearing of the vehicle within the simulation. */
+	final public double bearing;
 
-	/** The current speed of the vehicle with the simulation. */
+	/** The current speed of the vehicle within the simulation. */
 	final public double speed;
 
 	/** The current acceleration of the vehicle with the simulation. */
@@ -99,7 +102,7 @@ public class BusSnapshot {
 	 */
 	public BusSnapshot(ElectricBus vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getRouteID(), vehicle.getpreviousEpochCoord().x,
-				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y, vehicle.currentSpeed(),
+				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(),
 				vehicle.currentAcc(), vehicle.getBatteryLevel(), vehicle.getTotalConsume(),
 				vehicle.getRoad().getID(), vehicle.served_pass);
 	}
@@ -117,7 +120,7 @@ public class BusSnapshot {
 	 * @param distance  the distance traveled so far for the vehicle's trip.
 	 * @throws Throwable if one of the supplied values is invalid.
 	 */
-	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, double speed, double acc,
+	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, double bearing, double speed, double acc,
 			double batteryLevel, double energyConsumption, int roadID, int served_pass) throws Throwable {
 		// all values are passed in as primitaves instead of objects,
 		// so the compiler won't allow any to be null, no need to check
@@ -145,6 +148,7 @@ public class BusSnapshot {
 		this.prev_y = prev_y;
 		this.x = x;
 		this.y = y;
+		this.bearing = bearing;
 		this.acc = acc;
 		this.speed = speed;
 		this.batteryLevel = batteryLevel;
@@ -198,6 +202,10 @@ public class BusSnapshot {
 	 */
 	public double getY() {
 		return this.y;
+	}
+	
+	public double getBearing() {
+		return this.bearing;
 	}
 
 	/**

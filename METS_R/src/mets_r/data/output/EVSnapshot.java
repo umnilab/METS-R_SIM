@@ -21,6 +21,7 @@ public class EVSnapshot {
 	final public double prev_y; // The Y-axis (latitude) position of the vehicle in the previous epoch 
 	final public double x;
 	final public double y;
+	final public double bearing;
 	final public double speed;
 	final public int origin_id;
 	final public int dest_id;
@@ -31,12 +32,12 @@ public class EVSnapshot {
 
 	public EVSnapshot(ElectricTaxi vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
-				coordinate.y, vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
+				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
 				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.served_pass);
 	}
 
-	public EVSnapshot(int id, double prev_x, double prev_y, double x, double y, double speed, int origin_id, int dest_id,
+	public EVSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
 			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID,
 			int served_pass) throws Throwable {
 		if (id < 0) {
@@ -58,6 +59,7 @@ public class EVSnapshot {
 		this.prev_y =  prev_y;
 		this.x =  x;
 		this.y =  y;
+		this.bearing = bearing;
 		this.speed = speed;
 		this.origin_id = origin_id;
 		this.dest_id = dest_id;
@@ -85,6 +87,10 @@ public class EVSnapshot {
 
 	public double getY() {
 		return this.y;
+	}
+	
+	public double getBearing() {
+		return this.bearing;
 	}
 
 	public double getSpeed() {

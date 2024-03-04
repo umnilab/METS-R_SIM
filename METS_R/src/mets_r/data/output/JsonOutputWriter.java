@@ -745,6 +745,7 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add((float) ev.getPrevY());
 		vehicleArray.add((float) ev.getX());
 		vehicleArray.add((float) ev.getY());
+		vehicleArray.add((float) ev.getBearing());
 		vehicleArray.add(Math.round(ev.getSpeed()*10)/10.0);
 		vehicleArray.add(ev.getOriginID());
 		vehicleArray.add(ev.getDestID());
@@ -776,6 +777,7 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add((float) bus.getPrevY());
 		vehicleArray.add((float) bus.getX());
 		vehicleArray.add((float) bus.getY());
+		vehicleArray.add((float) bus.getBearing());
 		vehicleArray.add(Math.round(bus.getSpeed()*10)/10.0);
 		vehicleArray.add(Math.round(bus.getBatteryLevel()*10)/10.0);
 		vehicleArray.add(bus.getServedPass());
@@ -824,6 +826,7 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(vehicle.getPrevY());
 		vehicleArray.add(vehicle.getX());
 		vehicleArray.add(vehicle.getY());
+		vehicleArray.add(vehicle.getBearing());
 		vehicleArray.add(Math.round(vehicle.getSpeed()*10)/10.0);
 		vehicleArray.add(vehicle.getOriginX());
 		vehicleArray.add(vehicle.getOriginY());
