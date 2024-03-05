@@ -291,15 +291,16 @@ public class DataCollector {
 		if (vehicle.getVehicleClass() == 0) { // Normal vehicle
 			this.currentSnapshot.logVehicle(vehicle, coordinate);
 		}
-		if (vehicle.getVehicleClass() == 1) { // EV
+		else if (vehicle.getVehicleClass() == 1) { // EV
 			// Add the vehicle to the current snapshot
 			this.currentSnapshot.logEV((ElectricTaxi) vehicle, coordinate, vehicle.getState());
 		}
-
-		if (vehicle.getVehicleClass() == 2) { // Bus
+		else if (vehicle.getVehicleClass() == 2) { // Bus
 			// Add the vehicle to the current snapshot
 			this.currentSnapshot.logBus((ElectricBus) vehicle, coordinate);
 		}
+		
+		
 
 	}
 

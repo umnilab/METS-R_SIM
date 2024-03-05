@@ -741,17 +741,17 @@ public class JsonOutputWriter implements DataConsumer {
 		ArrayList<Object> vehicleArray = new ArrayList<Object>();
 		// extract the values from the vehicle snapshot
 		vehicleArray.add(ev.getId());
-		vehicleArray.add((float) ev.getPrevX());
-		vehicleArray.add((float) ev.getPrevY());
-		vehicleArray.add((float) ev.getX());
-		vehicleArray.add((float) ev.getY());
-		vehicleArray.add((float) ev.getBearing());
+		vehicleArray.add((int) ((ev.getPrevX()- GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((ev.getPrevY()- GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add((int) ((ev.getX() - GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((ev.getY() - GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add(Math.round(ev.getBearing()*10)/10.0);
 		vehicleArray.add(Math.round(ev.getSpeed()*10)/10.0);
 		vehicleArray.add(ev.getOriginID());
 		vehicleArray.add(ev.getDestID());
 		vehicleArray.add(Math.round(ev.getBatteryLevel()*10)/10.0);
 		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10.0);
-		vehicleArray.add(ev.getRoadID());
+//		vehicleArray.add(ev.getRoadID());
 		vehicleArray.add(ev.getServedPass());
 
 		return vehicleArray;
@@ -773,11 +773,11 @@ public class JsonOutputWriter implements DataConsumer {
 		// Extract the values from the vehicle snapshot
 		vehicleArray.add(bus.getId());
 		vehicleArray.add(bus.getRouteID());
-		vehicleArray.add((float) bus.getPrevX());
-		vehicleArray.add((float) bus.getPrevY());
-		vehicleArray.add((float) bus.getX());
-		vehicleArray.add((float) bus.getY());
-		vehicleArray.add((float) bus.getBearing());
+		vehicleArray.add((int) ((bus.getPrevX()- GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((bus.getPrevY()- GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add((int) ((bus.getX() - GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((bus.getY() - GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add(Math.round(bus.getBearing()*10)/10.0);
 		vehicleArray.add(Math.round(bus.getSpeed()*10)/10.0);
 		vehicleArray.add(Math.round(bus.getBatteryLevel()*10)/10.0);
 		vehicleArray.add(bus.getServedPass());
@@ -822,18 +822,18 @@ public class JsonOutputWriter implements DataConsumer {
 
 		// Extract the values from the vehicle snapshot
 		vehicleArray.add(vehicle.getId());
-		vehicleArray.add(vehicle.getPrevX());
-		vehicleArray.add(vehicle.getPrevY());
-		vehicleArray.add(vehicle.getX());
-		vehicleArray.add(vehicle.getY());
-		vehicleArray.add(vehicle.getBearing());
+		vehicleArray.add((int) ((vehicle.getPrevX()- GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((vehicle.getPrevY()- GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add((int) ((vehicle.getX() - GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((vehicle.getY() - GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add(Math.round(vehicle.getBearing()*10)/10.0);
 		vehicleArray.add(Math.round(vehicle.getSpeed()*10)/10.0);
 		vehicleArray.add(vehicle.getOriginX());
 		vehicleArray.add(vehicle.getOriginY());
 		vehicleArray.add(vehicle.getDestX());
 		vehicleArray.add(vehicle.getDestY());
-		vehicleArray.add(vehicle.getvehicleClass());
-		vehicleArray.add(vehicle.getRoadID());
+//		vehicleArray.add(vehicle.getvehicleClass());
+//		vehicleArray.add(vehicle.getRoadID());
 
 		return vehicleArray;
 	}

@@ -35,6 +35,9 @@ public class Vehicle {
 	public final static int EBUS = 2;
 	public final static int PRIVATE_EV = 3;
 	
+	public final static int VANILLA = 0;
+	public final static int CONNECTED_VEHICLE = 1;
+	
 	public final static int PARKING = 0;
 	public final static int OCCUPIED_TRIP = 1;
 	public final static int INACCESSIBLE_RELOCATION_TRIP = 2; // For designated relocation tasks, vehicles will not be															
@@ -76,8 +79,9 @@ public class Vehicle {
 	private Road road;
 	private Lane lane;
 	
-	// Vehicle status and class
+	// Vehicle class, status, and sensorType
 	private int vehicleClass; 
+	private int vehicleSensorType;
 	private int vehicleState; 
 	
 	// For vehicle based routing
@@ -123,6 +127,7 @@ public class Vehicle {
 	/**
 	 * Constructor of Vehicle Class
 	 * @param vClass Vehicle type, 0 for gasoline (private vehicle), 1 for EV taxi, 2 for EV bus, 3 for EV (private vehicle) 
+	 * @param sType Vehicle sensor type, 0 for no sensor, 1 for connected vehicle sensor
 	 */
 	public Vehicle(int vClass) {
 		this.ID = ContextCreator.generateAgentID();
@@ -486,7 +491,7 @@ public class Vehicle {
 					// location
 				}
 				this.nextDistance_ = (this.distance_ - accDist);
-				this.setBearing(distAndAngle[1]);
+				this.bearing_ = distAndAngle[1];
 				for (int j = i + 1; j < coords.length; j++) { // Add the rest coords into the CoordMap
 					coordMap.add(coords[j]);
 				}
@@ -877,7 +882,7 @@ public class Vehicle {
 						this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
 						this.distance_ -= this.nextDistance_;
 						this.nextDistance_ = distAndAngle[0];
-						this.setBearing(distAndAngle[1]);
+						this.bearing_ = distAndAngle[1];
 					}
 				}
 				// Otherwise move as far as we can 
@@ -2114,11 +2119,20 @@ public class Vehicle {
 		}
 	}
 	
-	/**
-	 * Get vehicle type
-	 */
 	public int getVehicleClass() {
 		return this.vehicleClass;
+	}
+	
+	public void setVehicleClass(int vehicleClass) {
+		this.vehicleClass = vehicleClass;
+	}
+	
+	public int getVehicleSensorType() {
+		return this.vehicleSensorType;
+	}
+	
+	public void setVehicleSensorType(int vehicleSensorType) {
+		this.vehicleSensorType = vehicleSensorType;
 	}
 	
 	/**
@@ -2126,13 +2140,6 @@ public class Vehicle {
 	 */
 	public double currentAcc() {
 		return this.accRate_;
-	}
-	
-	/**
-	 * Set vehicle type
-	 */
-	public void setVehicleClass(int vehicleClass) {
-		this.vehicleClass = vehicleClass;
 	}
 	
 	public int getDestRoadID() {
@@ -2147,10 +2154,6 @@ public class Vehicle {
 		return this.bearing_;
 	}
 
-	public void setBearing(double bearing_) {
-		this.bearing_ = bearing_;
-	}
-	
 	/**
 	 * Get vehicle state (parking, doing certain type of trip, charging, etc.)
 	 */

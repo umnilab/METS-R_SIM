@@ -81,7 +81,9 @@ public class GlobalVariables {
 	public static final String CHARGER_CSV = loadConfig("CHARGER_CSV");
 
 	public static int NUM_OF_ZONE = Integer.valueOf(loadConfig("NUM_OF_ZONE"));
-
+	public static double INITIAL_X = Double.valueOf(loadConfig("INITIAL_X"));
+	public static double INITIAL_Y = Double.valueOf(loadConfig("INITIAL_Y"));
+	
 	// Background traffic
 	public static final String BT_EVENT_FILE = loadConfig("BT_EVENT_FILE");
 	public static final String BT_STD_FILE = loadConfig("BT_STD_FILE");
