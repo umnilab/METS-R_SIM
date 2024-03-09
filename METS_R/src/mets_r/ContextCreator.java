@@ -104,10 +104,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 				logger.info("Simulation pausing for waiting bus schedules");
 				if (num_tried > 20 && connection != null) {
 					try {
-						int tick = (int) Math.round((0.0+ContextCreator.getCurrentTick())
+						int index = (int) Math.round((0.0+ContextCreator.getCurrentTick())
 								/ GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
-						logger.info("Send request for the " + tick + "-th schedule.");
-						tick = tick * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
+						logger.info("Send request for the " + index + "-th schedule.");
+						int tick = index * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
 						if (tick >= GlobalVariables.SIMULATION_STOP_TIME)
 							break; // The end of the simulation
 						connection.sendTickSnapshot(new TickSnapshot(tick));
@@ -331,19 +331,19 @@ public class ContextCreator implements ContextBuilder<Object> {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
 		schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime");
-		if (GlobalVariables.BUS_PLANNING) { // wait for new bus schedules if dynamic bus planning is enabled
-			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0,
-					GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5);
-			schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
-		}
 	}
 
-	// Schedule the event for link management or incidents, e.g., road closure
+	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
 	public void scheduleNetworkEventHandling() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
 		schedule.schedule(supplySideEventParams, eventHandler, "checkEvents");
+		if (GlobalVariables.BUS_PLANNING) { // wait for new bus schedules if dynamic bus planning is enabled
+			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0,
+					GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5);
+			schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
+		}
 	}
 
 	// Schedule the event for vehicle movements (multi-thread)
