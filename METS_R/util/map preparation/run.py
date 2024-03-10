@@ -6,6 +6,7 @@
 """
 
 from graph_reduction import *
+from util import length_geometry
 
 def main(input_folder, output_folder = 'ouptput/', cache_res=True, start_phase = 1, city = 'NYC'):
     '''
@@ -154,6 +155,12 @@ def main(input_folder, output_folder = 'ouptput/', cache_res=True, start_phase =
         if(start_phase == 9):
             name8=output_folder+'road_file'+ city +'.shp'
             df8 = gp.read_file(name8)
+            if np.any(df8['length'] == 0): # the length inform is broken
+                df8['length'] = df8['geometry'].apply(length_geometry)
+                gpd_to_file(df8, output_folder+'road_file'+ city +'.shp')
+                df8_=df8[['linkID','nLane','Type','tLinkID','FN','TN','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9','length']].copy()
+                df8_.columns = ['LinkID','LaneNum','RoadType','TLinkID','FnJunction','TnJunction','Left','Through','Right','Lane1','Lane2','Lane3','Lane4','Lane5','Lane6','Lane7','Lane8','Lane9','Length']
+                df8_.to_csv(output_folder+'/'+'road_file'+ city +'.csv', index = None)
         df9=create_lane_shape(df8,val=0.00003)
         name9=output_folder+'lane_file'+ city +'.shp'
         df9=graph_togpk(df9,name9) 
