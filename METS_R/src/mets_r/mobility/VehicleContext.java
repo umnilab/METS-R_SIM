@@ -7,8 +7,6 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import com.vividsolutions.jts.geom.Coordinate;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.*;
@@ -55,8 +53,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
 			if(z.getCapacity()>0) {
-				Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
-				
 				int vehicle_num_to_generate = (int) Math
 						.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
 				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
@@ -67,16 +63,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					// Sample 1%% of vehicles for collecting trajectory data\
 					ElectricTaxi v;
 					if(vehicle_num>10000) v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.001);
-					else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick()); // Initialize the
-																										// first plan
+					else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);																				// first plan
 					this.add(v);
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
-					v.setCurrentCoord(coord);
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
-					v.setNextPlan();
-					v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
-					v.setNextPlan();
+					v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 					total_vehicles += 1;
 					this.taxiList.add(v);
 					tmpQueue.add(v);
@@ -89,7 +79,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
 			for (Zone z : ContextCreator.getZoneContext().getAll()) {
 				if(z.getCapacity()>0) {
-					Coordinate coord = zoneGeography.getGeometry(z).getCoordinate();
 					int vehicle_num_to_generate = num_total <= z.getCapacity()? num_total: z.getCapacity();
 					num_total -= vehicle_num_to_generate;
 					for (int i = 0; i < vehicle_num_to_generate; i++) {
@@ -97,15 +86,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 						ElectricTaxi v;
 						if(vehicle_num>10000) v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.001);
 						else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick()); // Initialize the
-																											// first plan
 						this.add(v);
 						ContextCreator.logger.debug("Vehicle:" + i + " generated");
-						v.setCurrentCoord(coord);
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
-						v.setNextPlan();
-						v.addPlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
-						v.setNextPlan();
+						v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 						total_vehicles += 1;
 						this.taxiList.add(v);
 						this.availableTaxiMap.get(z.getIntegerID()).add(v);

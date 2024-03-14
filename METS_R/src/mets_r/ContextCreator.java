@@ -28,6 +28,8 @@ import org.json.simple.JSONObject;
 import galois.partition.*;
 import mets_r.GlobalVariables;
 import mets_r.communication.Connection;
+import mets_r.communication.ConnectionManager;
+import mets_r.communication.KafkaDataManager;
 import mets_r.data.input.BackgroundTraffic;
 import mets_r.data.input.BusSchedule;
 import mets_r.data.input.NetworkEventHandler;
@@ -70,7 +72,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	DataCollectionContext dataContext;
 
 	/* Data communication */
+	// Connection manager maintains the socket server for remote programs
+	@SuppressWarnings("unused")
+	public static final ConnectionManager manager = ConnectionManager.getInstance();
 	public static Connection connection = null;
+	// Kafka manager maintains the resources for sending message to Kafka
+	public static KafkaDataManager kafkaManager = new KafkaDataManager(); 
+	
 	// Candidate path sets for eco-routing, 
 	// id: origin-destination pair, value: npaths
 	public static HashMap<String, List<List<Integer>>> route_UCB = new HashMap<String, List<List<Integer>>>();
@@ -78,11 +86,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Volatile (thread-read-safe) flags to check if the operational data is prepared 
 	public static volatile boolean isRouteUCBPopulated = false;
 	public static volatile boolean isRouteUCBBusPopulated = false;
-	public static volatile boolean receiveNewBusSchedule = false;
+	public static volatile boolean receivedNewBusSchedule = false;
+	public static volatile boolean receivedNextStepCommand = false;
 	// Route results received from RemoteDataClient
 	public static HashMap<String, Integer> routeResult_received = new HashMap<String, Integer>();
 	public static HashMap<String, Integer> routeResult_received_bus = new HashMap<String, Integer>();
-
+	
 	/* Functions */
 	// Reading simulation properties stored at data/Data.properties
 	public Properties readPropertyFile() {
@@ -98,7 +107,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public void waitForNewBusSchedule() {
 		int num_tried = 0;
-		while (!receiveNewBusSchedule) {
+		while (!receivedNewBusSchedule) {
 			try {
 				Thread.sleep(1000);
 				logger.info("Simulation pausing for waiting bus schedules");
@@ -122,7 +131,28 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 
-		receiveNewBusSchedule = false;
+		receivedNewBusSchedule = false;
+	}
+	
+	public void waitForNextStepCommand() {
+		while(!receivedNextStepCommand) {
+			try {
+				Thread.sleep(10);
+				if (connection != null) {
+					try {
+						int tick = ContextCreator.getCurrentTick();
+						if (tick >= GlobalVariables.SIMULATION_STOP_TIME) break;
+						connection.sendTickSnapshot(new TickSnapshot(tick));
+					}
+					catch (IOException e) {
+						e.printStackTrace();
+					}
+				} 
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		receivedNextStepCommand = false;
 	}
 
 	// Initializing simulation agents
@@ -142,7 +172,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			double demand_from_zone = 0;
 			int i = z.getIntegerID();
 			for (int j = 0; j < GlobalVariables.NUM_OF_ZONE; j++) {
-				demand_from_zone += sumOfArray(travelDemand.getTravelDemand(i, j),
+				demand_from_zone += sumOfArray(travelDemand.getPublicTravelDemand(i, j),
 						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
@@ -339,12 +369,24 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
 		schedule.schedule(supplySideEventParams, eventHandler, "checkEvents");
-		if (GlobalVariables.BUS_PLANNING) { // wait for new bus schedules if dynamic bus planning is enabled
-			ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0,
-					GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5);
-			schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
-		}
 	}
+	
+	// Schedule the event for bus schedule updates
+	public void scheduleTransitUpdating() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0,
+				GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5);
+		schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
+	}
+
+	// Schedule the event for synchronized update
+	public void scheduleNextStepUpdating() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(0,
+				1, 6);
+		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
+	}
+	
 
 	// Schedule the event for vehicle movements (multi-thread)
 	public void scheduleMultiThreadedRoadStep() {
@@ -495,6 +537,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduleFreeFlowSpeedRefresh();
 		scheduleNetworkEventHandling(); // For temporarily alter the link speed
 		
+		// Set up bus schedule update
+		if (GlobalVariables.BUS_PLANNING) {
+			scheduleTransitUpdating();
+		}
+				
+		
 		// Set up data collection
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			scheduleDataCollection();
@@ -511,6 +559,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleSequentialZoneStep();
 			scheduleSequentialSignalStep();
 			scheduleSequentialChargingStationStep();
+		}
+		
+		// Schedule synchronized updates
+		if (GlobalVariables.SYNCHRONIZED) {
+			scheduleNextStepUpdating();
 		}
 		
 		logger.info("Events scheduled!");

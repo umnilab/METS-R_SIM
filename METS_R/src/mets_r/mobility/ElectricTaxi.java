@@ -6,9 +6,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
-import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
-import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
-
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
@@ -27,40 +24,18 @@ import util.Pair;
  *
  */
 
-public class ElectricTaxi extends Vehicle {
-	/* Constant */
-	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-	public static double batteryCapacity = GlobalVariables.EV_BATTERY; // the storedEnergy is 50 kWh.
-	
-	// Parameters for Fiori (2016) model
-	public static double p0 = 1.2256;
-	public static double A = 2.3316;
-	public static double cd = 0.28;
-	public static double cr = 1.75;
-	public static double c1 = 0.0328;
-	public static double c2 = 4.575;
-	public static double etaM = 0.92; // efficiency of the driver line
-	public static double etaG = 0.91; // efficiency of the electric motor
-	public static double Pconst = 1500; // energy consumption by auxiliary accessories
-
+public class ElectricTaxi extends ElectricVehicle {
 	/* Local variables */
 	private int numPeople_; // no of people inside the vehicle
 	private double avgPersonMass_; // average mass of a person in lbs
-	private double batteryLevel_; // current battery level
 	private double lowerBatteryRechargeLevel_;
 	private double higherBatteryRechargeLevel_;
-	private double mass; // mass of the vehicle in kg
-	private boolean onChargingRoute_ = false;
+
 	private int cruisingTime_;
 
 	// Parameters for storing energy consumptions
-	private double tickConsume;
-	private double totalConsume;
 	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
 								// zero once this ev entering a new road.
-	private double tripConsume; // For UCB testing
-	
-	private boolean recordTrajectory;
 	
 	/* Public variables */
 	// For operational features
@@ -68,18 +43,24 @@ public class ElectricTaxi extends Vehicle {
 	public int currentZone;
 	
 	// Service metrics
-	public int served_pass = 0;
-	public int charging_time = 0;
-	public int charging_waiting_time = 0;
-	public double initial_charging_state = 0;
-	
+	public int servedPass = 0;
 	// Parameter to show which route has been chosen in eco-routing.
 	public int routeChoice = -1;
 
-	public ElectricTaxi(boolean recordTrajectory) {
-		super(Vehicle.ETAXI);
-		this.recordTrajectory = recordTrajectory;
-		this.setInitialParams();
+	public ElectricTaxi(boolean vSensor) {
+		super(Vehicle.ETAXI, vSensor?Vehicle.CONNECTED_VEHICLE:Vehicle.VANILLA);
+		this.numPeople_ = 0;
+		this.cruisingTime_ = 0;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
+		this.avgPersonMass_ = 60; // kg
+
+		// Parameters for energy calculation
+		this.tickConsume = 0.0; // kWh
+		this.totalConsume = 0.0; // kWh
+		
+		// Parameters for UCB calculation
+		this.linkConsume = 0;
+		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
 	}
 
 	// Find the closest charging station and update the activity plan
@@ -128,7 +109,7 @@ public class ElectricTaxi extends Vehicle {
 		
 	}
 	
-	// Find the closest Zone with parking space and relocate to their
+	// Find the closest Zone with parking space and relocate to there
 	public void goParking() {
 		ContextCreator.getZoneContext().get(this.getDestID()).removeOneCruisingVehicle();
 		for(int z: ContextCreator.getZoneContext().get(this.getDestID()).getNeighboringZones()) {
@@ -160,18 +141,6 @@ public class ElectricTaxi extends Vehicle {
 		totalConsume += tickEnergy;
 		tripConsume += tickEnergy;
 		batteryLevel_ -= tickEnergy;
-		if(this.recordTrajectory) {
-			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
-					+ "," + this.getRoad().getID() + "," + this.getDistance() + "," + this.currentSpeed() 
-					+ "," + this.currentAcc() + "," + this.batteryLevel_  + "," + this.getTickConsume() 
-					+ "," + this.getNumPeople() + "\r\n";
-			try {
-				ContextCreator.agg_logger.traj_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
-		}
-		
 	}
 
 	// Relocate vehicle
@@ -207,7 +176,7 @@ public class ElectricTaxi extends Vehicle {
 				this.addPlan(p.getDestination(),
 						p.getDestCoord(),
 						ContextCreator.getNextTick());
-				this.served_pass += 1;
+				this.servedPass += 1;
 				this.setNumPeople(this.getNumPeople() + 1);
 			}
 			this.setNextPlan();
@@ -286,7 +255,7 @@ public class ElectricTaxi extends Vehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.reachDest(); 
+			super.reachDestButNotLeave(); 
 			super.leaveNetwork(); // remove from the network
 			// Add to the charging station
 			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getID());
@@ -310,7 +279,7 @@ public class ElectricTaxi extends Vehicle {
 
 			Zone z = ContextCreator.getZoneContext().get(this.getDestID()); // get destination zone info
 			
-			super.reachDest(); // Update the vehicle status
+			super.reachDestButNotLeave(); // Update the vehicle status
 			
 			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
@@ -414,34 +383,6 @@ public class ElectricTaxi extends Vehicle {
 		}
 	}
 
-	public void setInitialParams() {
-		this.numPeople_ = 0;
-		this.cruisingTime_ = 0;
-		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
-				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; // unit:kWh,
-																											// times a
-																											// large
-																											// number to
-																											// disable
-																											// charging
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
-		this.mass = 1521; // kg
-		this.avgPersonMass_ = 60; // kg
-
-		// Parameters for energy calculation
-		this.tickConsume = 0.0; // kWh
-		this.totalConsume = 0.0; // kWh
-		
-		// Parameters for UCB calculation
-		this.linkConsume = 0;
-		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
-	}
-
-	public double getBatteryLevel() {
-		return batteryLevel_;
-	}
-
 	public int getNumPeople() {
 		return numPeople_;
 	}
@@ -449,76 +390,21 @@ public class ElectricTaxi extends Vehicle {
 	public void setNumPeople(int numPeople) {
 		numPeople_ = numPeople;
 	}
-
+	
+	@Override
 	public double getMass() {
 		return 1.05 * mass + numPeople_ * avgPersonMass_;
 	}
-
-	public boolean onChargingRoute() {
-		return this.onChargingRoute_;
-	}
-
-	// Charge the battery.
-	public void chargeItself(double batteryValue) {
-		charging_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-		batteryLevel_ += batteryValue;
-	}
-
-	// EV energy consumption model
-	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle
-	// energy consumption model: Model development and validation. Applied Energy,
-	// 168, 257-268.
-	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0
-	// AC_Dv^2+mgsin(\theta))v
-	public double calculateEnergy() {
-		double velocity = currentSpeed(); // obtain the speed
-		double acceleration = currentAcc(); // obtain the acceleration
-		if (!this.movingFlag) { // static, no movement energy consumed
-			velocity = 0;
-			acceleration = 0;
-		}
-		
-		double slope = 0.0f; // positive: uphill; negative: downhill, this is always 0, change this if the
-								// slope data is available
-		double dt = GlobalVariables.SIMULATION_STEP_SIZE; // the length of one tick
-		double f1 = getMass() * acceleration;
-		double f2 = getMass() * gravity * Math.cos(slope) * cr / 1000 * (c1 * velocity + c2);
-		double f3 = 1 / 2 * p0 * A * cd * velocity * velocity;
-		double f4 = getMass() * gravity * Math.sin(slope);
-		double F = f1 + f2 + f3 + f4;
-		double Pte = F * velocity;
-		double Pbat;
-		if (acceleration >= 0) {
-			Pbat = (Pte/etaM + Pconst) / etaG;
-		} else {
-			double nrb = 1 / Math.exp(0.0411 / Math.abs(acceleration)); // 0.0411 from the equation (10)
-			Pbat = Pte * nrb + Pconst / etaG;
-		}
-		double energyConsumption = Pbat * dt / (3600 * 1000); // wh to kw
-		if(Math.abs(energyConsumption)>5) {
-			ContextCreator.logger.warn("Abnormal energy " + this.getID() + ", " + this.getState() + ", dist: "+ this.getDistance() + ", v: " + this.currentSpeed() + ", a: " + this.currentAcc());
-		}
-		
-		return energyConsumption;
-	}
-
-	// spline interpolation
-	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
-		SplineInterpolator splineInt = new SplineInterpolator();
-		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
-		return polynomialSpl;
-	}
 	
-
-
+	@Override
 	public void finishCharging(Integer chargerID, String chargerType) {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
-				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
-				+ this.charging_time + "," + this.initial_charging_state + "\r\n";
+				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
+				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
 		try {
 			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.charging_waiting_time = 0;
-			this.charging_time = 0;
+			this.chargingWaitingTime = 0;
+			this.chargingTime = 0;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -530,13 +416,6 @@ public class ElectricTaxi extends Vehicle {
 		this.departure(); 
 	}
 	
-	public double getTickConsume() {
-		return tickConsume;
-	}
-
-	public double getTotalConsume() {
-		return totalConsume;
-	}
 
 	public double getLinkConsume() {
 		return linkConsume;
@@ -549,13 +428,5 @@ public class ElectricTaxi extends Vehicle {
 
 	public void recLinkSnaphotForUCB() {
 		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getID(), this.getLinkConsume());
-	}
-
-	public void recSpeedVehicle() {
-		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getID(), this.currentSpeed());
-	}
-
-	public double getTripConsume() {
-		return tripConsume;
 	}
 }

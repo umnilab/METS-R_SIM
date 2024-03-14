@@ -162,7 +162,7 @@ public class TickSnapshot {
 		int roadID = vehicle.getRoad().getID();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
-		int servedPass = vehicle.served_pass;
+		int servedPass = vehicle.servedPass;
 
 		if (this.getEVSnapshot(id, vehicle.getState()) != null) {
 			prev_x = this.getEVSnapshot(id, vehicle.getState()).prev_x;

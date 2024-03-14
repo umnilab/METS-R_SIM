@@ -1,5 +1,3 @@
-METS_R/logs/*
-METS_R/data/agg_output/*
-METS_R/data/sim_output/*
 *.log
 *.class
+*.DS_Store

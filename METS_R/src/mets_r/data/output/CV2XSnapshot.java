@@ -1,5 +1,10 @@
 package mets_r.data.output;
 
+import java.util.HashMap;
+import java.util.Objects;
+
+import org.json.simple.JSONObject;
+
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
@@ -37,7 +42,7 @@ public class CV2XSnapshot {
 	public double utc_time;
 
 	public CV2XSnapshot(Vehicle vehicle, Coordinate coordinate) {
-		this(vehicle.getID(), 3, coordinate.x, coordinate.y, coordinate.z, 42, 42, false, false, false, false, false,
+		this(vehicle.getID(), 3, coordinate.x, coordinate.y, 0, 42, 42, false, false, false, false, false,
 				2.0, 2.0, 0, vehicle.getBearing(), vehicle.currentSpeed(), 0, 0, 0.5, 3, 18,
 				ContextCreator.getCurrentTick());
 	}
@@ -164,6 +169,40 @@ public class CV2XSnapshot {
 
 	public double getUtc_time() {
 		return utc_time;
+	}
+	
+	@Override
+	public String toString() {
+		// to json string
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();		
+		jsonObj.put("vid", vid);
+		jsonObj.put("utc_fix_mode", utc_fix_mode);
+		jsonObj.put("latitude", latitude);
+		jsonObj.put("longitude", longitude);
+		jsonObj.put("altitude", altitude);
+		jsonObj.put("qty_SV_in_view", qty_SV_in_view);
+		jsonObj.put("qty_SV_used", qty_SV_used);
+		jsonObj.put("GNSS_unavailable", GNSS_unavailable);
+		jsonObj.put("GNSS_aPDOPofUnder5", GNSS_aPDOPofUnder5);
+		jsonObj.put("GNSS_inViewOfUnder5", GNSS_inViewOfUnder5);
+		jsonObj.put("GNSS_localCorrectionsPresent", GNSS_localCorrectionsPresent);
+		jsonObj.put("GNSS_networkCorrectionsPresent", GNSS_networkCorrectionsPresent);
+		jsonObj.put("SemiMajorAxisAccuracy", SemiMajorAxisAccuracy);
+		jsonObj.put("SemiMinorAxisAccuracy", SemiMinorAxisAccuracy);
+		jsonObj.put("SemiMajorAxisOrientation", SemiMajorAxisOrientation);
+		jsonObj.put("heading", heading);
+		jsonObj.put("velocity", velocity);
+		jsonObj.put("climb", climb);
+		jsonObj.put("time_confidence", time_confidence);
+		jsonObj.put("velocity_confidence", velocity_confidence);
+		jsonObj.put("elevation_confidence", elevation_confidence);
+		jsonObj.put("leap_seconds", leap_seconds);
+		jsonObj.put("utc_time", utc_time);
+        return JSONObject.toJSONString(jsonObj);
+	}
+	
+	public int hashCode(){
+        return Objects.hash(super.hashCode(), vid, latitude, longitude, altitude, heading, velocity, climb, utc_time);
 	}
 	
 }

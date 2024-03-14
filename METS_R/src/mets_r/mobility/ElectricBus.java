@@ -10,8 +10,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
-import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
-import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
@@ -29,21 +27,14 @@ import util.Pair;
  * @author Zengxiang Lei, Jiawei Xue
  */
 
-public class ElectricBus extends Vehicle {
+public class ElectricBus extends ElectricVehicle {
 	/* Constants */
 	// Parameters for Fiori (2016) model,
 	// Modified frontal area and draft coefficient according to Bus 2 in the paper
 	// "Aerodynamic Exterior Body Design of Bus"
-	public static double p0 = 1.2256;
 	public static double A = 6.93; // frontal area of the vehicle
 	public static double cd = 0.68; // draft coefficient
-	public static double cr = 1.75;
-	public static double c1 = 0.0328;
-	public static double c2 = 4.575;
-	public static double etaM = 0.92;
-	public static double etaG = 0.91;
 	public static double Pconst = 5500; // energy consumption by auxiliary accessories
-	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
 	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
 	
 	/* Local variables */
@@ -62,38 +53,30 @@ public class ElectricBus extends Vehicle {
 	private ArrayList<Integer> destinationDemandOnBus; // The destination distribution of passengers on the bus now.
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
-	private boolean onChargingRoute_ = false;
-	private double batteryLevel_; // current battery level
 	private double avgPersonMass_; // average mass of a person in lbs
 	private double lowerBatteryRechargeLevel_;
 	private double higherBatteryRechargeLevel_;
-	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calcuation
+	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calculation
 	private double mass; // mass of the vehicle in kg
 	
 	// Parameters for storing energy consumptions
-	private double tickConsume;
-	private double totalConsume;
 	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to
-								// zero once this ev entering a new road.
-	private double tripConsume; // for UCB testing
+								// zero once this EV entering a new road.
 	
 	/* Public variables */
 	// For operational features
 	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
 	
 	// Service metrics
-	public int charging_time = 0; // total time of charging
 	public int served_pass = 0;
-	public int charging_waiting_time = 0;
-	public double initial_charging_state = 0;
 	
 	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
 	
 
-	// Function 1: constructors
+	// Constructor
 	public ElectricBus(int routeID, ArrayList<Integer> route, int nextDepartureTime) {
-		super(1.2, -2.0, Vehicle.EBUS); // max acc, min dc, and vehicle class
+		super(1.2, -2.0, Vehicle.EBUS, Vehicle.VANILLA); // max acc, min dc, and vehicle class
 		this.routeID = routeID;
 		this.busStop = route;
 		this.stopBus = new Hashtable<Integer, Integer>();
@@ -106,32 +89,19 @@ public class ElectricBus extends Vehicle {
 		for (int i = 0; i < route.size(); i++) {
 			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Request>());
 		}
-		this.setInitialParams();
-	}
-
-	// Function 2: setInitialParams
-	public void setInitialParams() {
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
 		this.numSeat = 40;
 		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY
-				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh,
-																											// times a
-																											// large
-																											// number to
-																											// disable
-																											// charging
+				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh
 		this.lowerBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY;
 		this.higherBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_HIGH * GlobalVariables.BUS_BATTERY;
 		this.mass = 18000.0; // the weight of bus is 18t.
 		this.mass_ = mass * 1.05;
 		this.avgPersonMass_ = 180.0;
-
-		this.tickConsume = 0.0; // kWh
-		this.totalConsume = 0.0; // kWh
 	}
 
-	// Function 4: updateBatteryLevel
+	// UpdateBatteryLevel
 	@Override
 	public void updateBatteryLevel() {
 		if (this.routeID >= 0) {
@@ -142,10 +112,6 @@ public class ElectricBus extends Vehicle {
 			tripConsume += tickEnergy;
 			batteryLevel_ -= tickEnergy;
 		}
-	}
-
-	public double getTripConsume() {
-		return tripConsume;
 	}
 
 	public void goCharging() {
@@ -217,7 +183,7 @@ public class ElectricBus extends Vehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.reachDest(); 
+			super.reachDestButNotLeave(); 
 			super.leaveNetwork(); // remove the bus from the network
 			ContextCreator.logger.debug("Bus arriving at charging station:" + this.getID());
 			ChargingStation cs = ContextCreator.getChargingStationContext().get(this.getDestID());
@@ -258,7 +224,7 @@ public class ElectricBus extends Vehicle {
 				}
 			}
 			
-			super.reachDest(); // Update the vehicle status
+			super.reachDestButNotLeave(); // Update the vehicle status
 			// Decide the next step
 			if (nextStop == busStop.size() || this.routeID == -1) { // arrive at the last stop
 				this.routeID = -1; // Clear the previous route ID
@@ -306,20 +272,6 @@ public class ElectricBus extends Vehicle {
 		this.setPassNum(this.getPassNum() + passOnBoard.size());
 	}
 
-	// Charge the battery.
-	public void chargeItself(double batteryValue) {
-		charging_time += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-		batteryLevel_ += batteryValue;
-	}
-
-	public boolean onChargingRoute() {
-		return this.onChargingRoute_;
-	}
-
-	public double getBatteryLevel() {
-		return batteryLevel_;
-	}
-
 	public int getPassNum() {
 		return this.passNum;
 	}
@@ -339,67 +291,22 @@ public class ElectricBus extends Vehicle {
 	public double getMass() {
 		return this.mass_ + this.avgPersonMass_ * passNum;
 	}
-
-	// New EV energy consumption model
-	// Fiori, C., Ahn, K., & Rakha, H. A. (2016). Power-based electric vehicle
-	// energy consumption model: Model development and validation. Applied Energy,
-	// P = (ma + mgcos(\theta)\frac{C_r}{1000)(c_1v+c_2) + 1/2 \rho_0
-	// AC_Dv^2+mgsin(\theta))v
-	public double calculateEnergy() {
-		double velocity = currentSpeed(); // obtain the speed
-		double acceleration = currentAcc(); // obtain the acceleration
-		if (!this.movingFlag) {
-			velocity = 0;
-			acceleration = 0;
-		}
-		double slope = 0.0f; // positive: uphill; negative: downhill, this is always 0, change this if the
-								// slope data is available
-		double dt = GlobalVariables.SIMULATION_STEP_SIZE; // this time interval, the length of one tick. 0.3
-		double f1 = getMass() * acceleration;
-		double f2 = getMass() * gravity * Math.cos(slope) * cr / 1000 * (c1 * velocity + c2);
-		double f3 = 1 / 2 * p0 * A * cd * velocity * velocity;
-		double f4 = getMass() * gravity * Math.sin(slope);
-		double F = f1 + f2 + f3 + f4;
-		double Pte = F * velocity;
-		double Pbat;
-		if (acceleration >= 0) {
-			Pbat = (Pte/etaM + Pconst) / etaG;
-		} else {
-			double nrb = 1 / Math.exp(0.0411 / Math.abs(acceleration));
-			Pbat = Pte * nrb + Pconst / etaG;
-		}
-		double energyConsumption = Pbat * dt / (3600 * 1000);
-		return energyConsumption;
-	}
-
-	public PolynomialSplineFunction splineFit(double[] x, double[] y) {
-		SplineInterpolator splineInt = new SplineInterpolator();
-		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
-		return polynomialSpl;
-	}
-
-	public double getTickConsume() {
-		return tickConsume;
-	}
-
-	public double getTotalConsume() {
-		return totalConsume;
-	}
-
+	
+	@Override
 	public void finishCharging(Integer chargerID, String chargerType) {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
-				+ this.getVehicleClass() + "," + chargerType + "," + this.charging_waiting_time + ","
-				+ this.charging_time + "," + this.initial_charging_state + "\r\n";
+				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
+				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
 		try {
 			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.charging_waiting_time = 0;
-			this.charging_time = 0;
+			this.chargingWaitingTime = 0;
+			this.chargingTime = 0;
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		this.onChargingRoute_ = false;
 		this.setNextPlan();
-		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
+		this.setState(Vehicle.BUS_TRIP);
 		this.departure();
 		
 	}

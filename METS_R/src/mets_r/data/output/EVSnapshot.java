@@ -34,7 +34,7 @@ public class EVSnapshot {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
-				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.served_pass);
+				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.servedPass);
 	}
 
 	public EVSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,

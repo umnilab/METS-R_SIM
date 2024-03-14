@@ -99,7 +99,7 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "TrajLog-" + timestamp + ".csv", false);
 			traj_logger = new BufferedWriter(fw);
 			traj_logger
-					.write("tick,vehicleID,vehicleState,linkID,distToJunction,speed,acc,battery_level,tick_consume,passNum");
+					.write("tick,vehicleID,vehicleState,linkID,distToJunction,speed,acc,batteryLevel,tickConsume,totalMass");
 			traj_logger.newLine();
 			traj_logger.flush();
 		} catch (IOException e) {

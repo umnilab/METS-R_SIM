@@ -30,10 +30,10 @@ import repast.simphony.space.gis.Geography;
 
 public class Vehicle {
 	/* Constants */
-	public final static int GASOLINE = 0;
+	public final static int GV = 0; // Private gasoline vehicle
 	public final static int ETAXI = 1;
 	public final static int EBUS = 2;
-	public final static int PRIVATE_EV = 3;
+	public final static int EV = 3; // Private electric vehicle
 	
 	public final static int VANILLA = 0;
 	public final static int CONNECTED_VEHICLE = 1;
@@ -47,6 +47,8 @@ public class Vehicle {
 	public final static int CRUISING_TRIP = 5;
 	public final static int PICKUP_TRIP = 6;
 	public final static int ACCESSIBLE_RELOCATION_TRIP = 7; // Vehicles are available to the zone that they travel through
+	
+	public final static int PRIVATE_TRIP = 8;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 	
@@ -73,7 +75,7 @@ public class Vehicle {
 	private Coordinate destCoord;
 	private Coordinate previousEpochCoord;// This variable stores the coordinates of the vehicle when last time
 										  // vehicle snapshot was recorded for visualization interpolation
-	private boolean reachDest;
+	private boolean isReachDest;
 	private boolean onLane; // On a lane, false when the vehicle is in an intersection or not on road
 	private boolean onRoad; // On a road, false when the vehicle is parking/charging
 	private Road road;
@@ -129,7 +131,7 @@ public class Vehicle {
 	 * @param vClass Vehicle type, 0 for gasoline (private vehicle), 1 for EV taxi, 2 for EV bus, 3 for EV (private vehicle) 
 	 * @param sType Vehicle sensor type, 0 for no sensor, 1 for connected vehicle sensor
 	 */
-	public Vehicle(int vClass) {
+	public Vehicle(int vClass, int vSensor) {
 		this.ID = ContextCreator.generateAgentID();
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.rand_route_only = new Random(rand.nextInt());
@@ -147,7 +149,7 @@ public class Vehicle {
 		this.previousEpochCoord = new Coordinate();
 		this.endTime = 0;
 		this.atOrigin = true;
-		this.reachDest = false;
+		this.isReachDest = false;
 		this.onLane = false;
 		this.onRoad = false;
 		this.accRate_ = 0;
@@ -171,7 +173,8 @@ public class Vehicle {
 		// For adaptive network partitioning
 		this.Nshadow = 0;
 		this.futureRoutingRoad = new ArrayList<Road>();
-		this.setVehicleClass(vClass);
+		this.vehicleClass = vClass;
+		this.vehicleSensorType = vSensor;
 		
 		// Start with parking
 		this.setState(Vehicle.PARKING);
@@ -183,8 +186,8 @@ public class Vehicle {
 	 * @param maximumDeceleration minimum deceleration of this vehicle
 	 * @param vClass Vehicle type
 	 */
-	public Vehicle(double maximumAcceleration, double maximumDeceleration, int vClass) {
-		this(vClass);
+	public Vehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
+		this(vClass, vSensor);
 		this.maxAcceleration_ = maximumAcceleration;
 		this.maxDeceleration_ = maximumDeceleration;
 	}
@@ -202,6 +205,18 @@ public class Vehicle {
 		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord).getID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
 		this.activityplan.remove(0); // Remove current schedule
+	}
+	
+	/**
+	 * Initialize the vehicle state 
+	 */
+	public void initializePlan(int loc_id, Coordinate location, double d) {
+		this.setCurrentCoord(location);
+		this.addPlan(loc_id, location, d); 
+		this.addPlan(loc_id, location, d); 
+		this.setNextPlan(); // This will set the origin to 0 and dest to loc_id
+		this.addPlan(loc_id, location, d);
+		this.setNextPlan(); // This will set the origin to the loc_id
 	}
 	
 	/**
@@ -257,7 +272,7 @@ public class Vehicle {
 	 * Append vehicle to the pending list to the closest road
 	 */
 	public void departure() {
-		this.reachDest = false;
+		this.isReachDest = false;
 		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
 			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord());
 			// The first list of coordinates for the vehicle to follow
@@ -277,6 +292,15 @@ public class Vehicle {
 	 */
 	public void updateBatteryLevel() {
 		// Do nothing
+	}
+	
+	/**
+	 * A place holder for reporting vehicle status
+	 */
+	public void reportStatus() {
+		if((this.getVehicleSensorType() == Vehicle.CONNECTED_VEHICLE) && GlobalVariables.V2X) {
+			ContextCreator.kafkaManager.cv2xProduce(this, this.getCurrentCoord());
+		}
 	}
 
 	/**
@@ -925,7 +949,7 @@ public class Vehicle {
 	public void primitiveMove() {
 		Coordinate currentCoord = this.getCurrentCoord();
 		Coordinate target = this.coordMap.get(0);
-		if (this.reachDest) {
+		if (this.isReachDest) {
 			return;
 		}
 
@@ -949,7 +973,7 @@ public class Vehicle {
 	 */
 	public boolean changeRoad() {
 		// Check if the vehicle has reached the destination or not
-		if (this.reachDest || this.roadPath.size()<2) {
+		if (this.isReachDest || this.roadPath.size()<2) {
 			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
 			return false; // Only reach destination once
 		} else if (this.nextRoad_ != null) {
@@ -1321,7 +1345,18 @@ public class Vehicle {
 	 *  Call when arriving the destination
 	 */
 	public void reachDest() {
-		this.reachDest = true;
+		this.isReachDest = true;
+		this.accummulatedDistance_ = 0;
+		// Vehicle arrive
+		this.endTime = ContextCreator.getCurrentTick();
+		this.leaveNetwork();
+	}
+	
+	/**
+	 *  Call when arriving the destination but not leave the network
+	 */
+	public void reachDestButNotLeave() {
+		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive
 		this.endTime = ContextCreator.getCurrentTick();
@@ -1997,7 +2032,7 @@ public class Vehicle {
 	 * @return double critLag
 	 */
 	public boolean appendToJunction(Lane nextlane) {
-		if (this.reachDest) {
+		if (this.isReachDest) {
 			return false;
 		} else { // Want to change to next lane
 			coordMap.clear();
@@ -2123,16 +2158,8 @@ public class Vehicle {
 		return this.vehicleClass;
 	}
 	
-	public void setVehicleClass(int vehicleClass) {
-		this.vehicleClass = vehicleClass;
-	}
-	
 	public int getVehicleSensorType() {
 		return this.vehicleSensorType;
-	}
-	
-	public void setVehicleSensorType(int vehicleSensorType) {
-		this.vehicleSensorType = vehicleSensorType;
 	}
 	
 	/**

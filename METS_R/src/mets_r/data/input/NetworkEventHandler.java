@@ -11,7 +11,6 @@ import java.util.TreeMap;
 import au.com.bytecode.opencsv.CSVReader;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.communication.ConnectionManager;
 import mets_r.data.output.DataCollector;
 import mets_r.facility.Road;
 
@@ -25,10 +24,6 @@ public class NetworkEventHandler {
 	// key
 	private TreeMap<Integer, ArrayList<NetworkEventObject>> runningQueue;
 
-	// Connection manager maintains the socket server for remote programs
-	@SuppressWarnings("unused")
-	private static final ConnectionManager manager = ConnectionManager.getInstance();
-
 	// Constructor: initialize everything
 	public NetworkEventHandler() {
 		runningQueue = new TreeMap<Integer, ArrayList<NetworkEventObject>>();
@@ -36,7 +31,7 @@ public class NetworkEventHandler {
 	}
 
 	public void readEventFile() {
-		// Note queue is first in first out, so the eventfile should order event start
+		// Note queue is first in first out, so the event file should order event start
 		// time in ascending order, earliest comes first
 		File eventFile = new File(GlobalVariables.EVENT_FILE);
 		CSVReader csvreader = null;

@@ -20,7 +20,9 @@ import org.json.simple.parser.JSONParser;
  **/
 
 public class TravelDemand {
-	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> travelDemand; // The outer key is the origin and the
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> privateEVTravelDemand;
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> privateGVTravelDemand;
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> publicTravelDemand; // The outer key is the origin and the
 																				// inner key is the destination
 	private List<Integer> waitingThreshold;
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> sharePercentage;
@@ -28,7 +30,9 @@ public class TravelDemand {
 
 	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
-		travelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
+		privateEVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
+		privateGVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
+		publicTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
 		sharePercentage = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		readDemandFile();
@@ -53,11 +57,45 @@ public class TravelDemand {
 				;
 				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
 
-				if (!travelDemand.containsKey(originInd)) {
-					travelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
+				if (!publicTravelDemand.containsKey(originInd)) {
+					publicTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
 				}
 
-				travelDemand.get(originInd).put(destInd, value);
+				publicTravelDemand.get(originInd).put(destInd, value);
+			}
+			
+			obj = parser.parse(new FileReader(GlobalVariables.EV_DEMAND_FILE));
+			jsonObject = (JSONObject) obj;
+			for (String OD : (Set<String>) jsonObject.keySet()) {
+				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
+
+				String[] inds = OD.split(",");
+				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
+				;
+				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
+
+				if (!privateEVTravelDemand.containsKey(originInd)) {
+					privateEVTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
+				}
+
+				privateEVTravelDemand.get(originInd).put(destInd, value);
+			}
+			
+			obj = parser.parse(new FileReader(GlobalVariables.GV_DEMAND_FILE));
+			jsonObject = (JSONObject) obj;
+			for (String OD : (Set<String>) jsonObject.keySet()) {
+				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
+
+				String[] inds = OD.split(",");
+				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
+				;
+				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
+
+				if (!privateGVTravelDemand.containsKey(originInd)) {
+					privateGVTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
+				}
+
+				privateGVTravelDemand.get(originInd).put(destInd, value);
 			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
@@ -120,14 +158,36 @@ public class TravelDemand {
 			e.printStackTrace();
 		} catch (Exception e) {
 			e.printStackTrace();
-	}
+		}
 	}
 	
-	public double getTravelDemand(int originID, int destID, int hour) {
-		if (travelDemand.containsKey(originID)) {
-			if (travelDemand.get(originID).containsKey(destID)) {
+	public double getPrivateEVTravelDemand(int originID, int destID, int hour) {
+		if (privateEVTravelDemand.containsKey(originID)) {
+			if (privateEVTravelDemand.get(originID).containsKey(destID)) {
 				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return travelDemand.get(originID).get(destID).get(hour);
+					return privateEVTravelDemand.get(originID).get(destID).get(hour);
+				}
+			}
+		}
+		return 0d;
+	}
+	
+	public double getPrivateGVTravelDemand(int originID, int destID, int hour) {
+		if (privateGVTravelDemand.containsKey(originID)) {
+			if (privateGVTravelDemand.get(originID).containsKey(destID)) {
+				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
+					return privateGVTravelDemand.get(originID).get(destID).get(hour);
+				}
+			}
+		}
+		return 0d;
+	}
+	
+	public double getPublicTravelDemand(int originID, int destID, int hour) {
+		if (publicTravelDemand.containsKey(originID)) {
+			if (publicTravelDemand.get(originID).containsKey(destID)) {
+				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
+					return publicTravelDemand.get(originID).get(destID).get(hour);
 				}
 
 			}
@@ -135,10 +195,10 @@ public class TravelDemand {
 		return 0d;
 	}
 	
-	public ArrayList<Double> getTravelDemand(int originID, int destID) {
-		if (travelDemand.containsKey(originID)) {
-			if (travelDemand.get(originID).containsKey(destID)) {
-				return travelDemand.get(originID).get(destID);
+	public ArrayList<Double> getPublicTravelDemand(int originID, int destID) {
+		if (publicTravelDemand.containsKey(originID)) {
+			if (publicTravelDemand.get(originID).containsKey(destID)) {
+				return publicTravelDemand.get(originID).get(destID);
 			}
 		}
 		return new ArrayList<Double>(Collections.nCopies(GlobalVariables.HOUR_OF_DEMAND, 0.0d));

@@ -189,6 +189,7 @@ public class Road {
 			if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been visited yet
 				currentVehicle.move();
 				currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				currentVehicle.reportStatus();
 				currentVehicle.checkAtDestination();
 			}
 			currentVehicle = nextVehicle;
@@ -495,7 +496,7 @@ public class Road {
 
 	/* Modify the free flow speed based on the events */
 	public void updateFreeFlowSpeed(double newFFSpd) {
-		this.freeSpeed_ = newFFSpd * 0.44694; // HG: convert from mph to m/s
+		this.freeSpeed_ = newFFSpd * 0.44694; // Convert from mph to m/s
 	}
 
 	public void recordEnergyConsumption(Vehicle v) {

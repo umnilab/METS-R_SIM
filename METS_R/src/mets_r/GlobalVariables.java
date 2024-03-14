@@ -90,11 +90,15 @@ public class GlobalVariables {
 	public static int HOUR_OF_SPEED = Integer.valueOf(loadConfig("HOUR_OF_SPEED"));
 
 	// Travel demand
+	public static final String EV_DEMAND_FILE = loadConfig("EV_DEMAND_FILE");
+	public static final String GV_DEMAND_FILE = loadConfig("GV_DEMAND_FILE");
 	public static final String RH_DEMAND_FILE = loadConfig("RH_DEMAND_FILE");
 	public static final String RH_WAITING_TIME = loadConfig("RH_WAITING_TIME");
 	public static final String RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");
 	public static final boolean RH_DEMAND_SHARABLE = Boolean.valueOf(loadConfig("RH_DEMAND_SHARABLE"));
 	public static final double RH_DEMAND_FACTOR = Double.valueOf(loadConfig("RH_DEMAND_FACTOR"));
+	public static final double EV_DEMAND_FACTOR = Double.valueOf(loadConfig("EV_DEMAND_FACTOR"));
+	public static final double GV_DEMAND_FACTOR = Double.valueOf(loadConfig("GV_DEMAND_FACTOR"));
 	
 	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
 	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
@@ -113,6 +117,12 @@ public class GlobalVariables {
 	// Event file, placeholder for future extension
 	public static final String EVENT_FILE = loadConfig("EVENT_FILE");
 	public static final int EVENT_CHECK_FREQUENCY = Integer.valueOf(loadConfig("EVENT_CHECK_FREQUENCY"));
+	
+	// Whether the simulation is ran in the synchronized mode
+	public static final boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
+	
+	// Whether the simulation is ran with V2X enabled
+	public static final boolean V2X = Boolean.valueOf(loadConfig("V2X"));
 
 	/* Operation Options */
 	public static final boolean K_SHORTEST_PATH = Boolean.valueOf(loadConfig("K_SHORTEST_PATH"));

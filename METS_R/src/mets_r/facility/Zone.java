@@ -1,7 +1,7 @@
 package mets_r.facility;
 
 /**
- * Taxi/Bus service Zone
+ * Demand zone/Bus stop
  * Each zone has two queues of passengers, one for buses and one for taxis
  * Any problem please contact lei67@purdue.edu
  * 
@@ -25,6 +25,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Plan;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
@@ -211,7 +212,53 @@ public class Zone {
 		this.passengerWaitBus();
 		this.taxiWaitPassenger();
 		this.generatePassenger();
+		this.generatePrivateEVTrip();
+		this.generatePrivateGVTrip();
 	}
+	
+	// Generate EV/GV trips
+	protected void generatePrivateEVTrip() {
+		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
+			double tripRate = ContextCreator.travelDemand.getPrivateEVTravelDemand(this.getIntegerID(), destination, this.currentHour)
+					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL / (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
+			if (tripRate > 0) {
+				Zone destZone = ContextCreator.getZoneContext().get(destination);
+				tripRate *= GlobalVariables.EV_DEMAND_FACTOR;
+				double numToGenerate = Math.floor(tripRate)
+						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
+				for (int i = 0; i < numToGenerate; i++) {
+					ElectricVehicle v = new ElectricVehicle(Vehicle.EV, Vehicle.VANILLA);
+					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
+					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+					v.setNextPlan();
+					v.setState(Vehicle.PRIVATE_TRIP);
+					v.departure();
+				}
+			}
+		}
+	}
+	
+	protected void generatePrivateGVTrip() {
+		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
+			double tripRate = ContextCreator.travelDemand.getPrivateGVTravelDemand(this.getIntegerID(), destination, this.currentHour)
+					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL / (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
+			if (tripRate > 0) {
+				tripRate *= GlobalVariables.GV_DEMAND_FACTOR;
+				double numToGenerate = Math.floor(tripRate)
+						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
+				Zone destZone = ContextCreator.getZoneContext().get(destination);
+				for (int i = 0; i < numToGenerate; i++) {
+					Vehicle v = new Vehicle(Vehicle.GV, Vehicle.VANILLA);
+					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
+					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+					v.setNextPlan();
+					v.setState(Vehicle.PRIVATE_TRIP);
+					v.departure();
+				}
+			}
+		}
+	}
+	
 	
 	// Generate passenger
 	protected void generatePassenger() {
@@ -220,7 +267,7 @@ public class Zone {
 			this.futureDemand = 0.0;
 		}
 		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
-			double passRate = ContextCreator.travelDemand.getTravelDemand(this.getIntegerID(), destination, this.currentHour)
+			double passRate = ContextCreator.travelDemand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour)
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		    
@@ -229,7 +276,7 @@ public class Zone {
 				passRate *= GlobalVariables.RH_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
-				double sharableRate = ContextCreator.travelDemand.getTravelDemand(this.getIntegerID(), destination, this.currentHour);
+				double sharableRate = ContextCreator.travelDemand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour);
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);

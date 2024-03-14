@@ -283,7 +283,7 @@ public class Connection implements DataConsumer {
 						}
 					}
 					ContextCreator.busSchedule.updateEvent(newhour, newRouteName, newRoutes, newBusNum, newBusGap);
-					ContextCreator.receiveNewBusSchedule = true;
+					ContextCreator.receivedNewBusSchedule = true;
 				}
 			}
 		} catch (ParseException e) {
