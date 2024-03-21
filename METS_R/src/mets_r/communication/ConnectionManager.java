@@ -22,9 +22,6 @@ import mets_r.GlobalVariables;
 
 public class ConnectionManager {
 
-	/** This instance is the only connection manager object in the system. */
-	private static ConnectionManager instance;
-
 	/** The server which listens for incoming sockets to create. */
 	private Server server;
 
@@ -35,14 +32,8 @@ public class ConnectionManager {
 	/**
 	 * Constructs the connection manager system which performs any steps needed to
 	 * build and start the WebSocket listening server within the simulation program.
-	 * 
-	 * This constructor is private to prevent multiple instances of the manager
-	 * being created within the program. All references to the manager should be
-	 * made through ConnectionManager.getInstance() which will create the object the
-	 * first time it is requested and return the same object each time after that to
-	 * ensure only one socket server is ever created in the program.
 	 */
-	private ConnectionManager() {
+	public ConnectionManager() {
 		// create the list for holding all the open connections
 		this.connections = new Vector<Connection>();
 
@@ -61,19 +52,6 @@ public class ConnectionManager {
 			Thread startThread = new Thread(startRunnable);
 			startThread.start();
 		}
-	}
-
-	/**
-	 * Returns the singleton instance of the connection manager.
-	 * 
-	 * @return the singleton instance of the connection manager.
-	 */
-	public static ConnectionManager getInstance() {
-		if (ConnectionManager.instance == null) {
-			ConnectionManager.instance = new ConnectionManager();
-		}
-
-		return ConnectionManager.instance;
 	}
 
 	/**
@@ -132,7 +110,6 @@ public class ConnectionManager {
 					// The default maximum size for a single message sent over
 					// the socket is way too small (64K) so we bump it higher
 					factory.getPolicy().setMaxTextMessageSize(maxMsgSize);
-
 					// Tell the factory which class has our socket methods
 					factory.register(Connection.class);
 				}
@@ -148,10 +125,12 @@ public class ConnectionManager {
 			// Wait until the route_UCB in ContextCreator is populated
 			// otherwise route_UCB map will not be correctly received by the
 			// RemoteDataClientManager
-			while (!ContextCreator.isRouteUCBMapPopulated())
-				;
-			while (!ContextCreator.isRouteUCBBusMapPopulated())
-				;
+			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
+				while (!ContextCreator.isRouteUCBMapPopulated());
+			}
+			if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
+				while (!ContextCreator.isRouteUCBBusMapPopulated());
+			}
 			this.server.start();
 			ConnectionManager.printDebug("CTRL", "Started.");
 		} catch (Exception e) {

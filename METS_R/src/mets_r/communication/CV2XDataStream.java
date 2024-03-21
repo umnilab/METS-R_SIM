@@ -1,4 +1,4 @@
-package mets_r.data.output;
+package mets_r.communication;
 
 import java.util.HashMap;
 import java.util.Objects;
@@ -16,7 +16,7 @@ import mets_r.mobility.Vehicle;
  * @author Zengxiang Lei
  *
  */
-public class CV2XSnapshot {
+public class CV2XDataStream {
 	public int vid;
 	public int utc_fix_mode;
 	public double latitude;
@@ -41,13 +41,13 @@ public class CV2XSnapshot {
 	public int leap_seconds;
 	public double utc_time;
 
-	public CV2XSnapshot(Vehicle vehicle, Coordinate coordinate) {
+	public CV2XDataStream(Vehicle vehicle, Coordinate coordinate) {
 		this(vehicle.getID(), 3, coordinate.x, coordinate.y, 0, 42, 42, false, false, false, false, false,
 				2.0, 2.0, 0, vehicle.getBearing(), vehicle.currentSpeed(), 0, 0, 0.5, 3, 18,
 				ContextCreator.getCurrentTick());
 	}
 
-	public CV2XSnapshot(int vid, int utc_fix_mode, double latitude, double longitude, double altitude,
+	public CV2XDataStream(int vid, int utc_fix_mode, double latitude, double longitude, double altitude,
 			int qty_SV_in_view, int qty_SV_used, boolean GNSS_unavailable, boolean GNSS_aPDOPofUnder5,
 			boolean GNSS_inViewOfUnder5, boolean GNSS_localCorrectionsPresent, boolean GNSS_networkCorrectionsPresent,
 			double SemiMajorAxisAccuracy, double SemiMinorAxisAccuracy, double SemiMajorAxisOrientation, double heading,
@@ -79,7 +79,7 @@ public class CV2XSnapshot {
 	}
 
 	// get methods
-	public int getVid() {
+	public int getVID() {
 		return vid;
 	}
 
@@ -167,7 +167,7 @@ public class CV2XSnapshot {
 		return leap_seconds;
 	}
 
-	public double getUtc_time() {
+	public double getUTC_time() {
 		return utc_time;
 	}
 	

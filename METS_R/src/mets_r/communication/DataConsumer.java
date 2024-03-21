@@ -1,4 +1,4 @@
-package mets_r.data.output;
+package mets_r.communication;
 
 import java.util.ArrayList;
 import java.util.Collection;

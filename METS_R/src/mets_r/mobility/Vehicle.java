@@ -298,9 +298,7 @@ public class Vehicle {
 	 * A place holder for reporting vehicle status
 	 */
 	public void reportStatus() {
-		if((this.getVehicleSensorType() == Vehicle.CONNECTED_VEHICLE) && GlobalVariables.V2X) {
-			ContextCreator.kafkaManager.cv2xProduce(this, this.getCurrentCoord());
-		}
+		// Do nothing
 	}
 
 	/**
@@ -792,7 +790,7 @@ public class Vehicle {
 	public void recVehSnaphotForVisInterp() {
 		Coordinate currentCoord = this.getCurrentCoord();
 		try {
-			DataCollector.getInstance().recordSnapshot(this, currentCoord);
+			ContextCreator.dataCollector.recordSnapshot(this, currentCoord);
 		} catch (Throwable t) {
 			// Could not log the vehicle's new position in data buffer!
 			DataCollector.printDebug("ERR" + t.getMessage());
@@ -2040,22 +2038,6 @@ public class Vehicle {
 		}
 
 		this.onLane = false;
-
-		// Record energy consumption
-		if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-			if (this.getVehicleClass() == 1) { // EV
-				((ElectricTaxi) this).recLinkSnaphotForUCB();
-				((ElectricTaxi) this).recSpeedVehicle();
-			} 
-		}
-		if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-			if (this.getVehicleClass() == 1) { // EV
-				((ElectricTaxi) this).recSpeedVehicle();
-			} 
-			else if (this.getVehicleClass() == 2) { // Bus
-				((ElectricBus) this).recLinkSnaphotForUCBBus();
-			}
-		}
 
 		if (!this.changeRoad()) {
 			return false;

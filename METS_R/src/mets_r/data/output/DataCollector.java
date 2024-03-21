@@ -8,6 +8,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.DataConsumer;
 import mets_r.data.input.NetworkEventObject;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
@@ -27,9 +28,6 @@ import repast.simphony.engine.environment.RunEnvironment;
  **/
 
 public class DataCollector {
-
-	/** This instance is the only data collector object in the program. */
-	private static final DataCollector instance = new DataCollector();
 
 	/** A flag for knowing if the collector is running. */
 	private boolean collecting;
@@ -67,7 +65,7 @@ public class DataCollector {
 	 * made through DataCollector.getInstance() which will create the object the
 	 * first time it is needed.
 	 */
-	private DataCollector() {
+	public DataCollector() {
 
 		// Create the data buffer
 		this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
@@ -80,15 +78,6 @@ public class DataCollector {
 		this.paused = false;
 		this.currentSnapshot = null;
 		this.lastTick = -1.0;
-	}
-
-	/**
-	 * Returns a reference to the singleton instance of this class.
-	 * 
-	 * @return a reference to the singleton instance of this class.
-	 */
-	public static DataCollector getInstance() {
-		return DataCollector.instance;
 	}
 
 	/**
@@ -629,15 +618,15 @@ public class DataCollector {
 		}
 	}
 
-	public void recordLinkSnapshot(int id, double linkConsume) {
-		this.currentSnapshot.logLinkUCB(id, linkConsume);
-	}
-
-	public void recordLinkSnapshotBus(int id, double linkConsume) {
-		this.currentSnapshot.logLinkUCBBus(id, linkConsume);
-	}
-
-	public void recordSpeedVehilce(int id, double linkSpeed) {
-		this.currentSnapshot.logSpeedVehicle(id, linkSpeed);
-	}
+//	public void recordLinkSnapshot(int id, double linkConsume) {
+//		this.currentSnapshot.logLinkUCB(id, linkConsume);
+//	}
+//
+//	public void recordLinkSnapshotBus(int id, double linkConsume) {
+//		this.currentSnapshot.logLinkUCBBus(id, linkConsume);
+//	}
+//
+//	public void recordSpeedVehilce(int id, double linkSpeed) {
+//		this.currentSnapshot.logSpeedVehicle(id, linkSpeed);
+//	}
 }

@@ -14,8 +14,8 @@ public class Signal {
 	private int ID;
 	private int state; // state of the signal light
 	private ArrayList<Integer> phaseTime;  // GreenYellowRed, note this is cumulative
-	// e.g., 21 step of green, 3s of yellow, 20s of red
-	// will be 21, 3, 20
+	// e.g., 21s of green, 3s of yellow, 20s of red
+	// will be 21, 24, 44
     private int currentTime;
     private int nextUpdateTime;
     

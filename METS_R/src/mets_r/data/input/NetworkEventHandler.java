@@ -100,7 +100,7 @@ public class NetworkEventHandler {
 					NetworkEventObject event = this.setEvent(e, true);
 					// Store event information in data buffer
 					try {
-						DataCollector.getInstance().recordEventSnapshot(e, 1);// Here 1 value denotes starting of event
+						ContextCreator.dataCollector.recordEventSnapshot(e, 1);// Here 1 value denotes starting of event
 					} catch (Throwable t) {
 						// Could not log the event strating in data buffer!
 						DataCollector.printDebug("ERR" + t.getMessage());
@@ -142,7 +142,7 @@ public class NetworkEventHandler {
 				this.setEvent(e, false);
 				// Store event information in data buffer
 				try {
-					DataCollector.getInstance().recordEventSnapshot(e, 2);// Here 2 value denotes ending of event
+					ContextCreator.dataCollector.recordEventSnapshot(e, 2);// Here 2 value denotes ending of event
 				} catch (Throwable t) {
 					// could not log the event ending in data buffer!
 					DataCollector.printDebug("ERR" + t.getMessage());

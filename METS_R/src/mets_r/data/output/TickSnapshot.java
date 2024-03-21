@@ -2,11 +2,7 @@ package mets_r.data.output;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashMap;
-//import java.util.LinkedList;
-import java.util.Map;
-
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.data.input.NetworkEventObject;
@@ -44,9 +40,9 @@ public class TickSnapshot {
 	private HashMap<Integer, BusSnapshot> buses;
 
 	// Link energy consumptions for UCB
-	private Map<Integer, ArrayList<Double>> link_UCB; // the link energy consumption for taxis
-	private Map<Integer, ArrayList<Double>> link_UCB_BUS; // the link energy consumption for bus.
-	private Map<Integer, ArrayList<Double>> speed_vehicle; // used for shadow bus construction.
+//	private Map<Integer, ArrayList<Double>> link_UCB; // the link energy consumption for taxis
+//	private Map<Integer, ArrayList<Double>> link_UCB_BUS; // the link energy consumption for bus.
+//	private Map<Integer, ArrayList<Double>> speed_vehicle; // used for shadow bus construction.
 
 	// Placeholders for future operation algorithms that may use data
 	// from zones and charging stations
@@ -87,9 +83,6 @@ public class TickSnapshot {
 
 		// Setup the map for holding the link energy consumption, which is a map of
 		// linkid: link of passed vehicles, we store this for each tick
-		this.link_UCB = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
-		this.link_UCB_BUS = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
-		this.speed_vehicle = Collections.synchronizedMap(new HashMap<Integer, ArrayList<Double>>());
 	}
 
 	/**
@@ -245,33 +238,6 @@ public class TickSnapshot {
 			this.events.get(2).add(event);
 		}
 	}
-	
-	public void logLinkUCB(int id, double linkConsume) {
-		synchronized (link_UCB) {
-			if (!this.link_UCB.containsKey(id)) {
-				this.link_UCB.put(id, new ArrayList<Double>());
-			}
-			this.link_UCB.get(id).add(linkConsume);
-		}
-	}
-
-	public void logLinkUCBBus(int id, double linkConsume) {
-		synchronized (link_UCB_BUS) {
-			if (!this.link_UCB_BUS.containsKey(id)) {
-				this.link_UCB_BUS.put(id, new ArrayList<Double>());
-			}
-			this.link_UCB_BUS.get(id).add(linkConsume);
-		}
-	}
-
-	public void logSpeedVehicle(int id, double linkSpeed) {
-		synchronized (speed_vehicle) {
-			if (!this.speed_vehicle.containsKey(id)) {
-				this.speed_vehicle.put(id, new ArrayList<Double>());
-			}
-			this.speed_vehicle.get(id).add(linkSpeed);
-		}
-	}
 
 	public Collection<Integer> getVehicleList() {
 		if (this.vehicles == null || this.vehicles.isEmpty()) {
@@ -321,18 +287,6 @@ public class TickSnapshot {
 		}
 
 		return this.events;
-	}
-
-	public Collection<Integer> getLinkIDList() {
-		synchronized (link_UCB) {
-			return this.link_UCB.keySet();
-		}
-	}
-
-	public Collection<Integer> getLinkIDListBus() {
-		synchronized (link_UCB_BUS) {
-			return this.link_UCB_BUS.keySet();
-		}
 	}
 
 	public VehicleSnapshot getVehicleSnapshot(int id) {
@@ -402,42 +356,6 @@ public class TickSnapshot {
 		return snapshot;
 	}
 
-	public ArrayList<Double> getLinkEnergyList(int id) {
-		ArrayList<Double> linkEnergy = null;
-		synchronized (link_UCB) {
-			if (this.link_UCB == null || this.link_UCB.isEmpty()) {
-				return null;
-			}
-			linkEnergy = this.link_UCB.get(id);
-
-		}
-		return linkEnergy;
-	}
-
-	public ArrayList<Double> getLinkEnergyListBus(int id) {
-		ArrayList<Double> linkEnergy = null;
-		synchronized (link_UCB_BUS) {
-			if (this.link_UCB_BUS == null || this.link_UCB_BUS.isEmpty()) {
-				return null;
-			}
-			linkEnergy = this.link_UCB_BUS.get(id);
-		}
-
-		return linkEnergy;
-	}
-
-	public ArrayList<Double> getSpeedVehicle(int id) {
-		ArrayList<Double> linkSpeed = null;
-		synchronized (speed_vehicle) {
-			if (this.speed_vehicle == null || this.speed_vehicle.isEmpty()) {
-				return null;
-			}
-			linkSpeed = this.speed_vehicle.get(id);
-		}
-
-		return linkSpeed;
-	}
-
 	public boolean isEmpty() {
 		return (this.vehicles.isEmpty() && this.evs_occupied.isEmpty() && this.evs_relocation.isEmpty()
 				&& this.evs_charging.isEmpty() && this.buses.isEmpty());
@@ -445,16 +363,5 @@ public class TickSnapshot {
 
 	public int getTickNumber() {
 		return this.tickNumber;
-	}
-
-
-	public Map<Integer, ArrayList<Double>> getLinkUCB() {
-		return this.link_UCB;
-	}
-
-	public void printUCBData() {
-		this.link_UCB.entrySet().forEach(entry -> {
-			System.out.println(entry.getKey() + " " + entry.getValue());
-		});
 	}
 }

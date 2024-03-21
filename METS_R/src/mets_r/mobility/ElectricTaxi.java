@@ -10,7 +10,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.data.output.DataCollector;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
@@ -424,9 +423,5 @@ public class ElectricTaxi extends ElectricVehicle {
 	// Reset link consume once a ev has passed a link
 	public void resetLinkConsume() {
 		this.linkConsume = 0;
-	}
-
-	public void recLinkSnaphotForUCB() {
-		DataCollector.getInstance().recordLinkSnapshot(this.getRoad().getID(), this.getLinkConsume());
 	}
 }

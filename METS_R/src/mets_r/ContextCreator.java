@@ -10,7 +10,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
-import java.util.Set;
 import javax.measure.unit.NonSI;
 import javax.measure.unit.SI;
 
@@ -24,12 +23,13 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 
 import org.apache.log4j.Logger;
-import org.json.simple.JSONObject;
 import galois.partition.*;
 import mets_r.GlobalVariables;
 import mets_r.communication.Connection;
 import mets_r.communication.ConnectionManager;
-import mets_r.communication.KafkaDataManager;
+import mets_r.communication.ControlMessageHandler;
+import mets_r.communication.KafkaDataStreamProducer;
+import mets_r.communication.StepMessageHandler;
 import mets_r.data.input.BackgroundTraffic;
 import mets_r.data.input.BusSchedule;
 import mets_r.data.input.NetworkEventHandler;
@@ -73,11 +73,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	/* Data communication */
 	// Connection manager maintains the socket server for remote programs
-	@SuppressWarnings("unused")
-	public static final ConnectionManager manager = ConnectionManager.getInstance();
+	// set to be final to avoid further modifications
+	public static final ConnectionManager manager = new ConnectionManager();
 	public static Connection connection = null;
+	public static final StepMessageHandler stepHandler = new StepMessageHandler();
+	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
 	// Kafka manager maintains the resources for sending message to Kafka
-	public static KafkaDataManager kafkaManager = new KafkaDataManager(); 
+	public static final KafkaDataStreamProducer kafkaManager = new KafkaDataStreamProducer(); 
+	// Data collector gather tick by tick tickSnapshot and provide it to data consumers
+	public static final DataCollector dataCollector = new DataCollector();
 	
 	// Candidate path sets for eco-routing, 
 	// id: origin-destination pair, value: npaths
@@ -109,48 +113,36 @@ public class ContextCreator implements ContextBuilder<Object> {
 		int num_tried = 0;
 		while (!receivedNewBusSchedule) {
 			try {
-				Thread.sleep(1000);
+				Thread.sleep(1000); // 1s
 				logger.info("Simulation pausing for waiting bus schedules");
-				if (num_tried > 20 && connection != null) {
-					try {
-						int index = (int) Math.round((0.0+ContextCreator.getCurrentTick())
-								/ GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
-						logger.info("Send request for the " + index + "-th schedule.");
-						int tick = index * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
-						if (tick >= GlobalVariables.SIMULATION_STOP_TIME)
-							break; // The end of the simulation
-						connection.sendTickSnapshot(new TickSnapshot(tick));
-						num_tried = 0;
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
+				if (num_tried > 5 && connection != null) {
+					int index = (int) Math.round(
+							(0.0 + ContextCreator.getCurrentTick()) / GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
+					logger.info("Send request for the " + index + "-th schedule.");
+					int tick = index * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
+					if (tick >= GlobalVariables.SIMULATION_STOP_TIME)
+						break; // The end of the simulation
+					connection.sendStepMessage(tick);
+					num_tried = 0;
 				}
 				num_tried++;
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
 		}
-
 		receivedNewBusSchedule = false;
 	}
 	
 	public void waitForNextStepCommand() {
+		int num_tried = 0;
 		while(!receivedNextStepCommand) {
-			try {
-				Thread.sleep(10);
-				if (connection != null) {
-					try {
-						int tick = ContextCreator.getCurrentTick();
-						if (tick >= GlobalVariables.SIMULATION_STOP_TIME) break;
-						connection.sendTickSnapshot(new TickSnapshot(tick));
-					}
-					catch (IOException e) {
-						e.printStackTrace();
-					}
-				} 
-			} catch (InterruptedException e) {
-				e.printStackTrace();
+			if (connection != null && num_tried > 100) {
+				int tick = ContextCreator.getCurrentTick();
+				if (tick >= GlobalVariables.SIMULATION_STOP_TIME) break;
+				connection.sendStepMessage(tick);
+				num_tried = 0;
 			}
+			num_tried++;
 		}
 		receivedNextStepCommand = false;
 	}
@@ -617,36 +609,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			return arrayList.get(n);
 		else
 			return arrayList.get(n) + sumOfArray(arrayList, n - 1);
-	}
-	
-	// Format the candidate routes information as a message string
-	public static String getUCBRouteStringForOD(String OD) {
-		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		jsonObj.put("MSG_TYPE", "OD_PAIR");
-		jsonObj.put("OD", OD);
-		List<List<Integer>> roadLists = ContextCreator.route_UCB.get(OD);
-		jsonObj.put("road_lists", roadLists);
-		String line = JSONObject.toJSONString(jsonObj);
-		return line;
-	}
-
-	// Format the bus candidate routes information as a message string
-	public static String getUCBRouteStringForODBus(String OD) {
-		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		jsonObj.put("MSG_TYPE", "BOD_PAIR");
-		jsonObj.put("BOD", OD);
-		List<List<Integer>> roadLists = ContextCreator.route_UCB_bus.get(OD);
-		jsonObj.put("road_lists", roadLists);
-		String line = JSONObject.toJSONString(jsonObj);
-		return line;
-	}
-
-	public static Set<String> getUCBRouteODPairs() {
-		return ContextCreator.route_UCB.keySet();
-	}
-
-	public static Set<String> getUCBRouteODPairsBus() {
-		return ContextCreator.route_UCB_bus.keySet();
 	}
 
 	public static boolean isRouteUCBMapPopulated() {

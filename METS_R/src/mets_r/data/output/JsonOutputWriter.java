@@ -18,6 +18,7 @@ import org.json.simple.JSONObject;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.DataConsumer;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.mobility.Vehicle;
@@ -209,9 +210,6 @@ public class JsonOutputWriter implements DataConsumer {
 		Runnable writingRunnable = new Runnable() {
 			@Override
 			public void run() {
-				// Get a reference to the data buffer for pulling new items
-				DataCollector collector = DataCollector.getInstance();
-
 				// Loop and process data buffers until we are told to stop
 				int totalCount = 0;
 				int writeCount = 0;
@@ -240,7 +238,7 @@ public class JsonOutputWriter implements DataConsumer {
 
 					// Get the next item from the buffer.
 					int nextTick = JsonOutputWriter.this.currentTick + GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS;
-					TickSnapshot snapshot = collector.getNextTick(nextTick);
+					TickSnapshot snapshot = ContextCreator.dataCollector.getNextTick(nextTick);
 					if (snapshot == null) {
 						// The buffer has no more items for us at this time
 						if (writeCount > 0) {
@@ -251,7 +249,7 @@ public class JsonOutputWriter implements DataConsumer {
 						}
 
 						// Is the data collection process finished?
-						if (!collector.isCollecting() && !collector.isPaused()) {
+						if (!ContextCreator.dataCollector.isCollecting() && !ContextCreator.dataCollector.isPaused()) {
 							// The collector is stopped so no more are coming
 							break;
 						}

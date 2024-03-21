@@ -24,9 +24,6 @@ import repast.simphony.engine.environment.RunEnvironment;
 
 public class DataCollectionContext extends DefaultContext<Object> {
 
-	/** A convenience reference to to the system-wide data collector. */
-	private DataCollector collector;
-
 	/** A consumer of output data from the buffer which saves it to disk. */
 	private JsonOutputWriter jsonOutputWriter;
 
@@ -38,37 +35,32 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		// Needed for the repast contexts framework to give it a name
 		super("DataCollectionContext");
 
-		// There is no real need to do this, but this gives us a location
-		// where we know during startup this was guaranteed to be called
-		// at least once to ensure that it created an instance of itself
-		this.collector = DataCollector.getInstance();
-
 		// Create the JSON output file writer. without specifying a filename,
 		// this will generate a unique value including a current timestamp
 		// and placing it in the current jre working directory.
 		if (GlobalVariables.ENABLE_JSON_WRITE) {
 			this.jsonOutputWriter = new JsonOutputWriter();
-			this.collector.registerDataConsumer(this.jsonOutputWriter);
+			ContextCreator.dataCollector.registerDataConsumer(this.jsonOutputWriter);
 		}
 	}
 
 	public void startCollecting() {
-		this.collector.startDataCollection();
+		ContextCreator.dataCollector.startDataCollection();
 	}
 
 	public void stopCollecting() {
-		this.collector.stopDataCollection();
+		ContextCreator.dataCollector.stopDataCollection();
 	}
 
 	public void startTick() {
 		// Get the current tick number from the system
 		int tickNumber = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
 		// Tell the data framework what tick is starting
-		this.collector.startTickCollection(tickNumber);
+		ContextCreator.dataCollector.startTickCollection(tickNumber);
 	}
 
 	public void stopTick() {
-		this.collector.stopTickCollection();
+		ContextCreator.dataCollector.stopTickCollection();
 	}
 
 	public void displayMetrics() {

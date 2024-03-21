@@ -6,7 +6,6 @@ import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.data.output.DataCollector;
 
 /**
  * Electric vehicles
@@ -80,7 +79,8 @@ public class ElectricVehicle extends Vehicle {
 	
 	@Override
 	public void reportStatus() {
-		if(this.getVehicleSensorType() == Vehicle.CONNECTED_VEHICLE) {
+		if(this.getVehicleSensorType() == Vehicle.CONNECTED_VEHICLE) { 
+			// Record trajectories for debugging energy models
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 					+ "," + this.getRoad().getID() + "," + this.getDistance() + "," + this.currentSpeed() 
 					+ "," + this.currentAcc() + "," + this.batteryLevel_  + "," + this.getTickConsume() 
@@ -89,6 +89,11 @@ public class ElectricVehicle extends Vehicle {
 				ContextCreator.agg_logger.traj_logger.write(formated_msg);
 			} catch (IOException e) {
 				e.printStackTrace();
+			}
+			
+			// Send V2X data for CAV applications
+			if(GlobalVariables.V2X) {
+				ContextCreator.kafkaManager.cv2xProduce(this, this.getCurrentCoord());
 			}
 		}
 		super.reportStatus();
@@ -151,11 +156,6 @@ public class ElectricVehicle extends Vehicle {
 		SplineInterpolator splineInt = new SplineInterpolator();
 		PolynomialSplineFunction polynomialSpl = splineInt.interpolate(x, y);
 		return polynomialSpl;
-	}
-
-	// Reset link consume once a ev has passed a link
-	public void recSpeedVehicle() {
-		DataCollector.getInstance().recordSpeedVehilce(this.getRoad().getID(), this.currentSpeed());
 	}
 	
 	public double getTickConsume() {

@@ -501,13 +501,22 @@ public class Road {
 
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
-		if (v.getVehicleClass() == 1) { // EV
+		if (v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
 			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
+			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
+				ContextCreator.kafkaManager.linkEnergyProduce(ev.getID(), ev.getVehicleClass(), this.getID(),
+						ev.getLinkConsume());
+			}
 			ev.resetLinkConsume();
-		} else if (v.getVehicleClass() == 2) {
+		} else if (v.getVehicleClass() == Vehicle.EBUS) {
 			ElectricBus bv = (ElectricBus) v;
 			this.totalEnergy += bv.getLinkConsume();
+			if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
+				ContextCreator.kafkaManager.linkEnergyProduce(bv.getID(), bv.getVehicleClass(), this.getID(),
+						bv.getLinkConsume());
+			}
+			bv.resetLinkConsume();
 		}
 	}
 
@@ -526,9 +535,13 @@ public class Road {
 	public int getRoadType() {
 		return roadType;
 	}
-	
+
 	public void recordTravelTime(Vehicle v) {
 		this.travelTimeHistory_.add(v.getLinkTravelTime());
+		if (GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
+			ContextCreator.kafkaManager.linkTravelTimeProduce(v.getID(), v.getVehicleClass(), this.getID(),
+					v.getLinkTravelTime());
+		}
 		v.resetLinkTravelTime();
 	}
 
