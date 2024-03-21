@@ -2,6 +2,7 @@ package mets_r.mobility;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map.Entry;
@@ -19,8 +20,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private ConcurrentHashMap<ElectricTaxi, Integer> relocationTaxiMap; 
 	
 	// For data collection
-	private ArrayList<ElectricTaxi> taxiList; 
-	private ArrayList<ElectricBus> busList;
+	private HashMap<Integer, ElectricTaxi> taxiMap; 
+	private HashMap<Integer, ElectricBus> busMap;
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -30,8 +31,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 
 		this.availableTaxiMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>>();
 		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Integer>();
-		this.taxiList = new ArrayList<ElectricTaxi>();
-		this.busList = new ArrayList<ElectricBus>();
+		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
+		this.busMap = new HashMap<Integer, ElectricBus>();
 		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
 		createBusContextFromZone(zoneGeography, GlobalVariables.NUM_OF_BUS);
@@ -68,7 +69,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
 					v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 					total_vehicles += 1;
-					this.taxiList.add(v);
+					this.taxiMap.put(v.getID(), v);
 					tmpQueue.add(v);
 				}
 				z.addParkingVehicleStock(vehicle_num_to_generate);
@@ -90,7 +91,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 						ContextCreator.logger.debug("Vehicle:" + i + " generated");
 						v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
 						total_vehicles += 1;
-						this.taxiList.add(v);
+						this.taxiMap.put(v.getID(), v);
 						this.availableTaxiMap.get(z.getIntegerID()).add(v);
 					}
 					z.addParkingVehicleStock(vehicle_num_to_generate);
@@ -136,7 +137,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					if (next_departure_time > 3600 / GlobalVariables.SIMULATION_STEP_SIZE) {
 						next_departure_time = 0;
 					}
-					this.busList.add(b);
+					this.busMap.put(b.getID(), b);
 				}
 			}
 		} catch (Exception e) {
@@ -149,12 +150,22 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return this.availableTaxiMap.get(integerID);
 	}
 
-	public List<ElectricTaxi> getTaxis() {
-		return this.taxiList;
+	public Collection<ElectricTaxi> getTaxis() {
+		return this.taxiMap.values();
 	}
 
-	public List<ElectricBus> getBuses() {
-		return this.busList;
+	public Collection<ElectricBus> getBuses() {
+		return this.busMap.values();
+	}
+	
+	public ElectricTaxi getTaxi(int vid) {
+		if(this.taxiMap.containsKey(vid)) return this.taxiMap.get(vid);
+		return null;
+	}
+	
+	public ElectricBus getBus(int vid) {
+		if(this.busMap.containsKey(vid)) return this.busMap.get(vid);
+		return null;
 	}
 
 	// Add vehicle to zones

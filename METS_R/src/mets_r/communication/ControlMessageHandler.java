@@ -11,14 +11,22 @@ import mets_r.ContextCreator;
 public class ControlMessageHandler extends MessageHandler {
 	
 	@Override
-	public void handleMessage(String msgType, JSONObject jsonMsg) {
+	public String handleMessage(String msgType, JSONObject jsonMsg) {
 		long startTime = System.currentTimeMillis();
-		count++;
-		if(msgType.equals("routingTaxi")) routingTaxi(jsonMsg);
-		if(msgType.equals("routingBus")) routingBus(jsonMsg);
-		if(msgType.equals("scheduleBus")) scheduleBus(jsonMsg);
-		if(msgType.equals("scheduleTaxi")) sheduleTaxi(jsonMsg);
+		String answer;
+		try {
+			if(msgType.equals("routingTaxi")) routingTaxi(jsonMsg);
+			if(msgType.equals("routingBus")) routingBus(jsonMsg);
+			if(msgType.equals("scheduleBus")) scheduleBus(jsonMsg);
+			if(msgType.equals("scheduleTaxi")) sheduleTaxi(jsonMsg);
+			answer = "OK";
+		}
+		catch(Exception e) {
+			answer = "KO: " + e.toString();
+		}
 		time += System.currentTimeMillis() - startTime;
+		count++;
+		return answer;
 	}
 	
 	public void routingTaxi(JSONObject jsonMsg) {

@@ -2201,4 +2201,15 @@ public class Vehicle {
 	public int getRegime() {
 		return regime_;
 	}
+	
+	/**
+	 * Get current route
+	 */
+	public List<Integer> getRoute(){
+		List<Integer> res = new ArrayList<Integer>();
+		for(Road r: roadPath) {
+			res.add(r.getID());
+		}
+		return res;
+	}
 }

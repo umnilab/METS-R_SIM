@@ -107,9 +107,12 @@ public class Connection{
 				ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg);;
 			}
 			else if(msgType[0].equals("QUERY")){
-				this.queryHandler.handleMessage(msgType[1], jsonMsg);
+				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg);
+				this.answerSender.sendMessage(session, answer);
 			}
 		} catch (ParseException e) {
+			e.printStackTrace();
+		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}

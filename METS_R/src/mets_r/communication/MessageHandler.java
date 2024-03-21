@@ -6,7 +6,13 @@ public abstract class MessageHandler {
 	protected int count; // Number of received messages
 	protected long time; // Time consumed for handle the messages
 	
-	public void handleMessage(String msgType, JSONObject jsonMsg) {}
+	public String handleMessage(String msgType, JSONObject jsonMsg) {
+		long startTime = System.currentTimeMillis();
+		count ++;
+		String message = "OK";
+		time += System.currentTimeMillis() - startTime;
+		return message;
+	}
 	
 	public int getCount() {
 		return count;

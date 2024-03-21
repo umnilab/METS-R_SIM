@@ -9,6 +9,7 @@ public abstract class MessageSender {
 	protected long time; // Time consumed for handle the messages
 	
 	public void sendMessage(Session session, String message) throws IOException {
+		long startTime = System.currentTimeMillis();
 		if (message.trim().length() < 1) {
 			return;
 		}
@@ -18,6 +19,8 @@ public abstract class MessageSender {
 			throw new IOException("Socket session is not open.");
 		}
 		session.getRemote().sendString(message);
+		count ++;
+		time += System.currentTimeMillis() - startTime;
 	}
 	
 	public int getCount() {
