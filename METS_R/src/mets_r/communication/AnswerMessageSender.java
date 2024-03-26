@@ -13,8 +13,9 @@ public class AnswerMessageSender extends MessageSender{
 	public void sendCandidateRoutesForTaxi(Session session) throws IOException {
 		for (String OD : ContextCreator.route_UCB.keySet()) {
 			HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-			jsonObj.put("MSG_TYPE", "ANS_TAXIUCB");
+			jsonObj.put("TYPE", "ANS_TaxiUCB");
 			jsonObj.put("OD", OD);
+			jsonObj.put("SIZE", ContextCreator.route_UCB.size());
 			List<List<Integer>> roadLists = ContextCreator.route_UCB.get(OD);
 			jsonObj.put("road_lists", roadLists);
 			String line = JSONObject.toJSONString(jsonObj);
@@ -26,8 +27,9 @@ public class AnswerMessageSender extends MessageSender{
 	public void sendCandidateRoutesForBus(Session session) throws IOException {
 		for (String OD :  ContextCreator.route_UCB_bus.keySet()) {
 			HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-			jsonObj.put("MSG_TYPE", "ANS_BUSUCB");
+			jsonObj.put("TYPE", "ANS_BusUCB");
 			jsonObj.put("BOD", OD);
+			jsonObj.put("SIZE", ContextCreator.route_UCB_bus.size());
 			List<List<Integer>> roadLists = ContextCreator.route_UCB_bus.get(OD);
 			jsonObj.put("road_lists", roadLists);
 			String line = JSONObject.toJSONString(jsonObj);

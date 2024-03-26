@@ -167,6 +167,30 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		if(this.busMap.containsKey(vid)) return this.busMap.get(vid);
 		return null;
 	}
+	
+	public Vehicle getVehicle(int vid) {
+		Vehicle vehicle = (Vehicle) this.getTaxi(vid);
+		if(vehicle == null) {
+			vehicle = (Vehicle) this.getBus(vid);
+		}
+		return vehicle;
+	}
+	
+	public List<Integer> getTaxiIDList(){
+		List<Integer> vehicleIDList = new ArrayList<>(this.taxiMap.keySet());
+	    return vehicleIDList;
+	}
+	
+	public List<Integer> getBusIDList(){
+		List<Integer> vehicleIDList = new ArrayList<>(this.busMap.keySet());
+	    return vehicleIDList;
+	}
+	
+	public List<Integer> getVehicleIDList(){
+		 List<Integer> vehicleIDList = new ArrayList<>(this.taxiMap.keySet());
+	    vehicleIDList.addAll(this.busMap.keySet());
+	    return vehicleIDList;
+	}
 
 	// Add vehicle to zones
 	public void addAvailableTaxi(ElectricTaxi v, int integerID) {

@@ -83,9 +83,6 @@ public class Connection{
 			if (GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
 				answerSender.sendCandidateRoutesForBus(this.session);
 			}
-			// Send the first tick message, important for getting the reply 
-			// the bus schedules if dynamic bus planning is on 
-			this.stepSender.sendMessage(this.session, 0);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -94,13 +91,14 @@ public class Connection{
 
 	@OnWebSocketMessage
 	public void onMessage(String message) {
+		ContextCreator.logger.info("Received message " + message);
 		// Transfer to JSON here
 		JSONObject jsonMsg = new JSONObject();
 		try {
 			JSONParser parser = new JSONParser();
 			jsonMsg = (JSONObject) parser.parse(message);
-			String[] msgType = jsonMsg.get("MSG_TYPE").toString().split("_");
-			if (msgType[0] == "STEP") {
+			String[] msgType = jsonMsg.get("TYPE").toString().split("_");
+			if (msgType[0].equals("STEP")) {
 				ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg);
 			}
 			else if (msgType[0].equals("CTRL")) {
@@ -108,7 +106,7 @@ public class Connection{
 			}
 			else if(msgType[0].equals("QUERY")){
 				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg);
-				this.answerSender.sendMessage(session, answer);
+				if(!answer.equals("KO")) this.answerSender.sendMessage(session, answer);
 			}
 		} catch (ParseException e) {
 			e.printStackTrace();

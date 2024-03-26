@@ -53,13 +53,13 @@ public class KafkaDataStreamProducer{
 		compService.submit(sender);
 	}
 	
-	public void linkTravelTimeProduce(int vid, int vehType, int roadID, double linkEnergy) {
-		LinkTravelTimeDataStream myMessage = new LinkTravelTimeDataStream(vid, vehType, roadID, linkEnergy);
+	public void linkTravelTimeProduce(int vid, int vehType, int roadID, double linkTravelTime, double length) {
+		LinkTravelTimeDataStream myMessage = new LinkTravelTimeDataStream(vid, vehType, roadID, linkTravelTime, length);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
 		Callable<String> sender = () -> {
-			myProducer.send(new ProducerRecord<String, String>("link_speed", key, message));
-			return "sent link_speed";
+			myProducer.send(new ProducerRecord<String, String>("link_tt", key, message));
+			return "sent link_tt";
 		};
 		compService.submit(sender);
 	}

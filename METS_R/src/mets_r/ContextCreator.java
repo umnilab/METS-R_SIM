@@ -82,6 +82,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static final KafkaDataStreamProducer kafkaManager = new KafkaDataStreamProducer(); 
 	// Data collector gather tick by tick tickSnapshot and provide it to data consumers
 	public static final DataCollector dataCollector = new DataCollector();
+	public static long prevTime = System.currentTimeMillis();
 	
 	// Candidate path sets for eco-routing, 
 	// id: origin-destination pair, value: npaths
@@ -110,22 +111,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public void waitForNewBusSchedule() {
-		int num_tried = 0;
 		while (!receivedNewBusSchedule) {
 			try {
 				Thread.sleep(1000); // 1s
 				logger.info("Simulation pausing for waiting bus schedules");
-				if (num_tried > 5 && connection != null) {
-					int index = (int) Math.round(
-							(0.0 + ContextCreator.getCurrentTick()) / GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL);
-					logger.info("Send request for the " + index + "-th schedule.");
-					int tick = index * GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL;
-					if (tick >= GlobalVariables.SIMULATION_STOP_TIME)
-						break; // The end of the simulation
-					connection.sendStepMessage(tick);
-					num_tried = 0;
-				}
-				num_tried++;
 			} catch (InterruptedException e) {
 				e.printStackTrace();
 			}
@@ -134,15 +123,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	public void waitForNextStepCommand() {
-		int num_tried = 0;
+		int tick = ContextCreator.getCurrentTick();
+		prevTime = -10001;
 		while(!receivedNextStepCommand) {
-			if (connection != null && num_tried > 100) {
-				int tick = ContextCreator.getCurrentTick();
-				if (tick >= GlobalVariables.SIMULATION_STOP_TIME) break;
-				connection.sendStepMessage(tick);
-				num_tried = 0;
+			if ((System.currentTimeMillis()-prevTime)>10000) {
+				if (connection != null) connection.sendStepMessage(tick);
+				prevTime = System.currentTimeMillis();
 			}
-			num_tried++;
 		}
 		receivedNextStepCommand = false;
 	}

@@ -12,7 +12,6 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	@Override
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
-		long startTime = System.currentTimeMillis();
 		String answer;
 		try {
 			if(msgType.equals("routingTaxi")) routingTaxi(jsonMsg);
@@ -24,7 +23,6 @@ public class ControlMessageHandler extends MessageHandler {
 		catch(Exception e) {
 			answer = "KO: " + e.toString();
 		}
-		time += System.currentTimeMillis() - startTime;
 		count++;
 		return answer;
 	}
@@ -46,7 +44,7 @@ public class ControlMessageHandler extends MessageHandler {
 	public void routingBus(JSONObject jsonMsg) {
 		HashMap<String, Integer> res = new HashMap<String, Integer>();
 		ContextCreator.logger.info("Received bus route result!");
-		JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
+		JSONArray list_OD = (JSONArray) jsonMsg.get("BOD");
 		JSONArray list_result = (JSONArray) jsonMsg.get("result");
 		for (int index = 0; index < list_OD.size(); index++) {
 			Long result = (Long) list_result.get(index);

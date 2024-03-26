@@ -282,6 +282,10 @@ public class ElectricBus extends ElectricVehicle {
 	public int getNextStopZoneID() {
 		return busStop.get(nextStop);
 	}
+	
+	public int getCurrentStop() {
+		return this.nextStop - 1;
+	}
 
 	public int getRouteID() {
 		return this.routeID;

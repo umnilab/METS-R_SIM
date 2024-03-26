@@ -1,7 +1,9 @@
 package mets_r.facility;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 
 import mets_r.ContextCreator;
 import repast.simphony.context.DefaultContext;
@@ -41,5 +43,10 @@ public class FacilityContext<T> extends DefaultContext<T>{
 	
 	public Collection<T> getAll(){
 		return this.facilityDictionary.values();
+	}
+	
+	public List<Integer> getIDList(){
+		List<Integer> facilityIDList = new ArrayList<>(this.facilityDictionary.keySet());
+		return facilityIDList;
 	}
 }

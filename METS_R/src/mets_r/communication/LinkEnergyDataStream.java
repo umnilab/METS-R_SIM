@@ -52,7 +52,7 @@ public class LinkEnergyDataStream {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();		
 		jsonObj.put("vid", vid);
 		jsonObj.put("veh_type", vehType);
-		jsonObj.put("road_type", roadID);
+		jsonObj.put("road_id", roadID);
 		jsonObj.put("link_energy", linkEnergy);
 		jsonObj.put("utc_time", utc_time);
 		return JSONObject.toJSONString(jsonObj);

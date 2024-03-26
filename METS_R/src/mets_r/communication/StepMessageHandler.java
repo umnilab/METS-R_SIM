@@ -7,7 +7,7 @@ import mets_r.ContextCreator;
 public class StepMessageHandler extends MessageHandler{
 	@Override
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
-		int tick = (int) jsonMsg.get("TICK");
+		int tick = ((Long) jsonMsg.get("TICK")).intValue();
 		if(tick == ContextCreator.getCurrentTick()) {
 			ContextCreator.receivedNextStepCommand = true;
 			return "OK";

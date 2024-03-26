@@ -540,7 +540,7 @@ public class Road {
 		this.travelTimeHistory_.add(v.getLinkTravelTime());
 		if (GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
 			ContextCreator.kafkaManager.linkTravelTimeProduce(v.getID(), v.getVehicleClass(), this.getID(),
-					v.getLinkTravelTime());
+					v.getLinkTravelTime(), this.getLength());
 		}
 		v.resetLinkTravelTime();
 	}
