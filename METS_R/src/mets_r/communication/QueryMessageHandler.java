@@ -56,7 +56,7 @@ public class QueryMessageHandler extends MessageHandler {
 
 		if(vehicle != null) {
 			jsonObj.put("TYPE", "ANS_vehicle");
-			jsonObj.put("vid", vehicle.getID());
+			jsonObj.put("ID", vehicle.getID());
 			jsonObj.put("v_type", vehicle.getVehicleClass());
 			jsonObj.put("state", vehicle.getState());
 			jsonObj.put("x", vehicle.getCurrentCoord().x);
@@ -64,11 +64,8 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("bearing", vehicle.getBearing());
 			jsonObj.put("acc", vehicle.currentAcc());
 			jsonObj.put("speed", vehicle.currentSpeed());
-			jsonObj.put("road", vehicle.getRoad());
-			jsonObj.put("lane", vehicle.getLane());
 			jsonObj.put("origin", vehicle.getOriginID());
 			jsonObj.put("dest", vehicle.getDestID());
-			jsonObj.put("route", vehicle.getRoute());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
@@ -87,8 +84,8 @@ public class QueryMessageHandler extends MessageHandler {
 		ElectricBus bus = ContextCreator.getVehicleContext().getBus(id);
 		if(bus != null) {
 			jsonObj.put("TYPE", "ANS_bus");
-			jsonObj.put("vid", bus.getID());
-			jsonObj.put("route", bus.getRoute());
+			jsonObj.put("ID", bus.getID());
+			jsonObj.put("route", bus.getRouteID());
 			jsonObj.put("current_stop",bus.getCurrentStop());
 			jsonObj.put("pass_num", bus.getPassNum());
 			jsonObj.put("battery_state", bus.getBatteryLevel());	
@@ -110,7 +107,7 @@ public class QueryMessageHandler extends MessageHandler {
 		ElectricTaxi taxi = ContextCreator.getVehicleContext().getTaxi(id);
 		if (taxi != null) {
 			jsonObj.put("TYPE", "ANS_taxi");
-			jsonObj.put("vid", taxi.getID());
+			jsonObj.put("ID", taxi.getID());
 			jsonObj.put("state", taxi.getState());
 			jsonObj.put("x", taxi.getCurrentCoord().x);
 			jsonObj.put("y", taxi.getCurrentCoord().y);
@@ -135,7 +132,7 @@ public class QueryMessageHandler extends MessageHandler {
 		Road road = ContextCreator.getRoadContext().get(id);
 		if (road != null) {
 			jsonObj.put("TYPE", "ANS_road");
-			jsonObj.put("rid", road.getID());
+			jsonObj.put("ID", road.getID());
 			jsonObj.put("r_type", road.getRoadType());
 			jsonObj.put("num_veh", road.getVehicleNum());
 			jsonObj.put("speed_limit", road.getFreeSpeed());
@@ -160,7 +157,7 @@ public class QueryMessageHandler extends MessageHandler {
 		Zone zone = ContextCreator.getZoneContext().get(id);
 		if (zone != null) {
 			jsonObj.put("TYPE", "ANS_zone");
-			jsonObj.put("zid", zone.getID());
+			jsonObj.put("ID", zone.getID());
 			jsonObj.put("z_type", zone.getZoneType());
 			jsonObj.put("taxi_demand", zone.getTaxiPassengerNum());
 			jsonObj.put("bus_demand", zone.getBusPassengerNum());
@@ -185,7 +182,7 @@ public class QueryMessageHandler extends MessageHandler {
 		Signal signal = ContextCreator.getSignalContext().get(id);
 		if (signal != null) {
 			jsonObj.put("TYPE", "ANS_signal");
-			jsonObj.put("sid", signal.getID());
+			jsonObj.put("ID", signal.getID());
 			jsonObj.put("state", signal.getState());
 			jsonObj.put("nex_state", signal.getNextState());
 			jsonObj.put("next_update_time", signal.getNextUpdateTime());
@@ -198,7 +195,7 @@ public class QueryMessageHandler extends MessageHandler {
 	public String getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("ID")) {
-			jsonObj.put("TYPE", "ANS_chargingstation");
+			jsonObj.put("TYPE", "ANS_chargingStation");
 			jsonObj.put("id_list", ContextCreator.getChargingStationContext().getIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
@@ -206,7 +203,8 @@ public class QueryMessageHandler extends MessageHandler {
 		int id = ((Long) jsonMsg.get("ID")).intValue();
 		ChargingStation cs = ContextCreator.getChargingStationContext().get(id);
 		if (cs != null) {
-			jsonObj.put("MSG_TYPE", "ANS_chargingstation");	
+			jsonObj.put("TYPE", "ANS_chargingStation");	
+			jsonObj.put("ID", cs.getID());
 			jsonObj.put("num_available_charger", cs.capacity());	
 			jsonObj.put("x", cs.getCoord().x);
 			jsonObj.put("y", cs.getCoord().y);

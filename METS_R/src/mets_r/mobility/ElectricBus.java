@@ -119,7 +119,7 @@ public class ElectricBus extends ElectricVehicle {
 		this.onChargingRoute_ = true;
 		
 		ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
-		this.addPlan(cs.getIntegerID(), cs.getCoord(), (int) ContextCreator.getNextTick()); // instantly go to
+		this.addPlan(cs.getID(), cs.getCoord(), (int) ContextCreator.getNextTick()); // instantly go to
 																								// charging station
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, (int) ContextCreator.getNextTick()); // Follow the old

@@ -167,7 +167,7 @@ public class ChargingStation {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
 					// add vehicle to departureQueue of corresponding road
-					ev.finishCharging(this.getIntegerID(), "L2");
+					ev.finishCharging(this.getID(), "L2");
 				}
 			}
 			this.chargingVehicleL2.removeAll(toRemoveVeh);
@@ -205,7 +205,7 @@ public class ChargingStation {
 				} else {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
-					ev.finishCharging(this.getIntegerID(), "L3");
+					ev.finishCharging(this.getID(), "L3");
 				}
 			}
 			this.chargingVehicleL3.removeAll(chargingVehicleL3);
@@ -243,7 +243,7 @@ public class ChargingStation {
 					evBus.chargeItself(maxChargingDemand); // Battery increases by maxChargingDemand
 					toRemoveBus.add(evBus); // The vehicle leaves the charger
 					evBus.setState(Vehicle.BUS_TRIP);
-					evBus.finishCharging(this.getIntegerID(), "Bus");
+					evBus.finishCharging(this.getID(), "Bus");
 				}
 			}
 
@@ -306,7 +306,7 @@ public class ChargingStation {
 		return price;
 	}
 
-	public int getIntegerID() {
+	public int getID() {
 		return this.ID;
 	}
 

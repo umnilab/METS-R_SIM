@@ -69,7 +69,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
 		this.onChargingRoute_ = true;
-		this.addPlan(cs.getIntegerID(), cs.getCoord(), ContextCreator.getNextTick());
+		this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
 		this.setNextPlan();
 		this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
 		this.setState(Vehicle.CHARGING_TRIP);
