@@ -79,7 +79,7 @@ public class ElectricVehicle extends Vehicle {
 	
 	@Override
 	public void reportStatus() {
-		if(this.getVehicleSensorType() == Vehicle.CONNECTED_VEHICLE) { 
+		if(this.getVehicleSensorType() == Vehicle.CV2X || this.getVehicleSensorType() == Vehicle.DSRC ) { 
 			// Record trajectories for debugging energy models
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 					+ "," + this.getRoad().getID() + "," + this.getDistance() + "," + this.currentSpeed() 
@@ -93,7 +93,7 @@ public class ElectricVehicle extends Vehicle {
 			
 			// Send V2X data for CAV applications
 			if(GlobalVariables.V2X) {
-				ContextCreator.kafkaManager.cv2xProduce(this, this.getCurrentCoord());
+				ContextCreator.kafkaManager.bsmProduce(this, this.getCurrentCoord(), this.getVehicleSensorType());
 			}
 		}
 		super.reportStatus();

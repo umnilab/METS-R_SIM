@@ -121,6 +121,10 @@ public class GlobalVariables {
 	// Whether the simulation is ran in the synchronized mode
 	public static final boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
 	
+	// Whether the simulation is ran in the standalone mode
+	public static final boolean STANDALONE = Boolean.valueOf(loadConfig("STANDALONE"));
+	
+	
 	// Whether the simulation is ran with V2X enabled
 	public static final boolean V2X = Boolean.valueOf(loadConfig("V2X"));
 
@@ -205,7 +209,6 @@ public class GlobalVariables {
 	public static final String AGG_DEFAULT_PATH = loadConfig("AGG_DEFAULT_PATH");
 
 	// Parameters for handling network connections to remote programs
-	public static final boolean ENABLE_NETWORK = Boolean.valueOf(loadConfig("ENABLE_NETWORK"));
 	public static final boolean DEBUG_NETWORK = Boolean.valueOf(loadConfig("DEBUG_NETWORK"));
 	public static final int NETWORK_BUFFER_RERESH = Integer.valueOf(loadConfig("NETWORK_BUFFER_REFRESH"));
 	public static final int NETWORK_STATUS_REFRESH = Integer.valueOf(loadConfig("NETWORK_STATUS_REFRESH"));
@@ -260,7 +263,6 @@ public class GlobalVariables {
 	// For microscopic vehicle movement
 	public static final double MIN_LEAD = Float.valueOf(loadConfig("MIN_LEAD"));; // (m/sec)
 	public static final double MIN_LAG = Float.valueOf(loadConfig("MIN_LAG"));; // (m/sec)
-	public static final float FREE_SPEED = Float.valueOf(loadConfig("FREE_SPEED"));
 	public static final float DEFAULT_VEHICLE_WIDTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_WIDTH")); // meters
 	public static final float DEFAULT_VEHICLE_LENGTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_LENGTH")); // meters
 	public static final float NO_LANECHANGING_LENGTH = Float.valueOf(loadConfig("NO_LANECHANGING_LENGTH")); // meters
@@ -271,6 +273,14 @@ public class GlobalVariables {
 	public static final float H_LOWER = Float.valueOf(loadConfig("H_LOWER"));
 	public static final double FLT_INF = Float.MAX_VALUE;
 	public static final double FLT_EPSILON = 1.0 / FLT_INF;
+	
+	public static final double STREET_SPEED = Float.valueOf(loadConfig("STREET_SPEED")); // mph
+	public static final double HIGHWAY_SPEED = Float.valueOf(loadConfig("HIGHWAY_SPEED")); // mph
+	public static final double BRIDGE_SPEED = Float.valueOf(loadConfig("BRIDGE_SPEED")); // mph
+	public static final double TUNNEL_SPEED = Float.valueOf(loadConfig("TUNNEL_SPEED")); // mph
+	public static final double DRIVEWAY_SPEED = Float.valueOf(loadConfig("DRIVEWAY_SPEED")); // mph
+	public static final double RAMP_SPEED = Float.valueOf(loadConfig("RAMP_SPEED")); // mph
+	public static final double UTURN_SPEED = Float.valueOf(loadConfig("UTURN_SPEED")); // mph
 	
 	// Parameters for MLC
 	public static final double betaLeadMLC01 = 0.05;

@@ -227,7 +227,7 @@ public class Zone {
 				double numToGenerate = Math.floor(tripRate)
 						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
 				for (int i = 0; i < numToGenerate; i++) {
-					ElectricVehicle v = new ElectricVehicle(Vehicle.EV, Vehicle.VANILLA);
+					ElectricVehicle v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
 					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
 					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
@@ -248,7 +248,7 @@ public class Zone {
 						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
 				Zone destZone = ContextCreator.getZoneContext().get(destination);
 				for (int i = 0; i < numToGenerate; i++) {
-					Vehicle v = new Vehicle(Vehicle.GV, Vehicle.VANILLA);
+					Vehicle v = new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
 					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
 					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
 					v.setNextPlan();

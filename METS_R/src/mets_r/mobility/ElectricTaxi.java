@@ -47,7 +47,7 @@ public class ElectricTaxi extends ElectricVehicle {
 	public int routeChoice = -1;
 
 	public ElectricTaxi(boolean vSensor) {
-		super(Vehicle.ETAXI, vSensor?Vehicle.CONNECTED_VEHICLE:Vehicle.VANILLA);
+		super(Vehicle.ETAXI, vSensor?Vehicle.CV2X:Vehicle.NONE_OF_THE_ABOVE);
 		this.numPeople_ = 0;
 		this.cruisingTime_ = 0;
 		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;

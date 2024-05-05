@@ -31,13 +31,13 @@ public class KafkaDataStreamProducer{
 		compService = new ExecutorCompletionService<String>(executorService);
 	}
 	
-	public void cv2xProduce(Vehicle vehicle, Coordinate coordinate) {
-		CV2XDataStream myMessage = new CV2XDataStream(vehicle, coordinate);
+	public void bsmProduce(Vehicle vehicle, Coordinate coordinate, int type) {
+		BSMDataStream myMessage = new BSMDataStream(vehicle, coordinate, type);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
 		Callable<String> sender = ()->{
-			myProducer.send(new ProducerRecord<String, String>("cv2x", key, message));
-			return "sent cv2x";
+			myProducer.send(new ProducerRecord<String, String>("bsm", key, message));
+			return "sent bsm";
 		};
 		compService.submit(sender);
 	}

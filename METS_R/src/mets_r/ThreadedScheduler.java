@@ -112,7 +112,6 @@ public class ThreadedScheduler {
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionSignalThread(patitionSignals.get(i), i));
 		}
-
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();

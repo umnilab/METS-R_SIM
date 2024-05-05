@@ -75,7 +75,7 @@ public class ElectricBus extends ElectricVehicle {
 
 	// Constructor
 	public ElectricBus(int routeID, ArrayList<Integer> route, int nextDepartureTime) {
-		super(1.2, -2.0, Vehicle.EBUS, Vehicle.VANILLA); // max acc, min dc, and vehicle class
+		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
 		this.routeID = routeID;
 		this.busStop = route;
 		this.stopBus = new Hashtable<Integer, Integer>();

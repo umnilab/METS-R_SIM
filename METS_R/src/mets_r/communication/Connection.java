@@ -92,20 +92,20 @@ public class Connection{
 	@OnWebSocketMessage
 	public void onMessage(String message) {
 		ContextCreator.logger.info("Received message " + message);
-		// Transfer to JSON here
 		JSONObject jsonMsg = new JSONObject();
 		try {
 			JSONParser parser = new JSONParser();
 			jsonMsg = (JSONObject) parser.parse(message);
 			String[] msgType = jsonMsg.get("TYPE").toString().split("_");
 			if (msgType[0].equals("STEP")) {
-				ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg);
+				ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg); // stepHandler is shared
 			}
 			else if (msgType[0].equals("CTRL")) {
-				ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg);;
+				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
+				if(!answer.equals("KO")) this.answerSender.sendMessage(session, answer);
 			}
 			else if(msgType[0].equals("QUERY")){
-				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg);
+				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
 				if(!answer.equals("KO")) this.answerSender.sendMessage(session, answer);
 			}
 		} catch (ParseException e) {

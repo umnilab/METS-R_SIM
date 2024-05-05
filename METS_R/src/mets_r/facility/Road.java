@@ -32,9 +32,14 @@ public class Road {
 	public final static int Ramp = 9;
 	public final static int U_Turn = 13;
 	
+	public final static int CoSim = 1;
+	
+	public final static int NONE_OF_THE_ABOVE = -1;
+	
 	/* Private variables */
 	private int ID;
 	private int roadType;
+	private int controlType;
 	private double length;
 	private ArrayList<Coordinate> coords;
 	
@@ -54,11 +59,11 @@ public class Road {
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
 	private Vehicle firstVehicle_;
 	private double travelTime;
-	private double freeSpeed_;
 	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
-	private double cachedFreeSpeed_; // For caching the speed before certain regulation events
+	private double speedLimit_; // Speed for travel time estimation
+	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
 	private ConcurrentLinkedQueue<Double> travelTimeHistory_; 
 	
 	// For parallel computing
@@ -74,16 +79,15 @@ public class Road {
 		this.ID = id;
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = new AtomicInteger(0);
-
-		this.freeSpeed_ = GlobalVariables.FREE_SPEED; // m/s
+		this.speedLimit_ = 31.2928; // m/s, 70 mph
 		this.downStreamRoads = new ArrayList<Integer>();
 		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.lastUpdateHour = -1;
-		this.travelTime =  this.length / this.freeSpeed_;
+		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeHistory_ = new ConcurrentLinkedQueue<Double>();
 		this.neighboringZone = -1;
-		this.setDistToZone(Double.MAX_VALUE);
+		this.setDistToZone(Double.MAX_VALUE); 
 
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
@@ -91,7 +95,7 @@ public class Road {
 		this.eventFlag = false;
 
 		// Set default value
-		this.cachedFreeSpeed_ = this.freeSpeed_; 
+		this.cachedSpeedLimit_ = this.speedLimit_; 
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
 	}
@@ -102,13 +106,13 @@ public class Road {
 	}
 
 	// Set the defaultFreeSpeed_
-	public void setDefaultFreeSpeed() {
-		this.cachedFreeSpeed_ = this.freeSpeed_;
+	public void cacheSpeedLimit() {
+		this.cachedSpeedLimit_ = this.speedLimit_;
 	}
 
-	// Get the defaultFreeSpeed_
-	public double getDefaultFreeSpeed() {
-		return this.cachedFreeSpeed_;
+	// Get the speed limit
+	public double getSpeedLimit() {
+		return this.cachedSpeedLimit_;
 	}
 
 	// Check the eventFlag
@@ -129,6 +133,8 @@ public class Road {
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
+		if(this.getControlType() == Road.CoSim) return;
+		
 		int tickcount = ContextCreator.getCurrentTick();
 		
 		/* Vehicle loading */
@@ -195,6 +201,87 @@ public class Road {
 			currentVehicle = nextVehicle;
 		}
 	}
+	
+	/*
+	 * Insert vehicle to a specific location
+	 * If the to-insert vehicle collide with 
+	 */
+	public boolean insertVehicle(Vehicle veh, Lane lane, double dist, double x, double y) {
+		if (veh.getRoad() == this) {
+			if (veh.getLane() == lane) // Case 1, veh's road is this road and this lane, check overtake issue, change its dist
+			{
+				if(veh.leading() != null) {
+					if(veh.leading().getDistance() + veh.leading().length() >= dist) {
+						// Overtaking in the same lane
+						ContextCreator.logger.error("Overtaking " +veh.leading().getID() + " in the same lane, this veh: " + veh.getID() + ", front veh dist: " + veh.leading().getDistance() + ", this veh dist: " + dist);
+						return false;
+					}
+				}
+				if(veh.trailing() != null) {
+					if(veh.trailing().getDistance() <= dist + veh.length()) {
+						// Overtaking in the same lane
+						ContextCreator.logger.error("Overpassing " +veh.trailing().getID() + " in the same lane, this veh: " + veh.getID() + ", behind veh dist: " + veh.trailing().getDistance() + ", this veh dist: " + dist);
+						return false;
+					}
+				}
+				veh.setDistance(dist);
+				// Move veh to the x and y location
+				veh.setCurrentCoord(new Coordinate(x, y));
+			}
+			else { // Case 2, veh's road is this road but not the same lane, find the leading and trailing veh
+				Vehicle leadVehicle = null;
+				Vehicle lagVehicle = null;
+				
+				Vehicle toCheckVeh = lane.firstVehicle();
+				while (toCheckVeh != null) { // find where to insert the veh
+					 if(toCheckVeh.getDistance()<=dist) {
+						 if(toCheckVeh.getDistance() + toCheckVeh.length() > dist) {
+							 ContextCreator.logger.error("Front collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", front veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
+							 return false;
+						 }
+						 leadVehicle = toCheckVeh;
+						 toCheckVeh = toCheckVeh.trailing();
+					 }
+					 else {
+						 if(toCheckVeh.getDistance() < dist + veh.length()) {
+							 ContextCreator.logger.error("Behind collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", behind veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
+							 return false;
+						 }
+						 lagVehicle = toCheckVeh;
+						 break;
+					 }
+				}
+				veh.removeFromLane();
+				veh.setDistance(dist);
+				// Move veh to the x and y location
+				veh.setCurrentCoord(new Coordinate(x, y));
+				veh.insertToLane(lane, leadVehicle, lagVehicle);
+					
+				// Insert the veh to the prop macroList loc, find the macroleading and trailing veh
+				veh.advanceInMacroList();
+			}
+			
+			if(dist<=0) { // change road
+				veh.checkAtDestination();
+				// if next road is not controlled by CARLA, destroy the veh
+				if (veh.changeRoad()) {
+					
+				}
+			}
+		}
+		else {
+			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) {
+				veh.changeRoad();
+			}
+			else {
+				ContextCreator.logger.error("Veh " + veh.getID() + "is on road " + veh.getRoad().getID() + " is not " + this.getID());
+				return false;
+			}
+		}
+		
+		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
+		return true;
+	}
 
 	@Override
 	public String toString() {
@@ -224,7 +311,6 @@ public class Road {
 	public ArrayList<Coordinate> getCoords() {
 		return this.coords;
 	}
-
 
 	public void sortLanes() {
 		Collections.sort(this.lanes, new LaneComparator());
@@ -377,18 +463,6 @@ public class Road {
 		return this.departureVehMap.get(firstDeparture_).get(0);
 	}
 
-	public double getFreeSpeed() {
-		return this.freeSpeed_;
-	}
-	
-	// Assume the car-following speed is normally distributed based on
-	// Wagner, P. (2012). Analyzing fluctuations in car-following. Transportation research part B: methodological, 46(10), 1384-1392.
-	// From Figure 2 and 4, it can be seen that when speed is less than 30 m/s the speed distribution follows a normal pdf with std around 0.5
-	public double getRandomFreeSpeed(double coef) {
-		return  Math.max(
-				this.freeSpeed_ + coef * 0.5, 0);
-	}
-
 	public double calcSpeed() {
 		return  Math.max((this.length/(this.travelTime + 1)), 0.0001); // +1s to avoid divide 0
 	}
@@ -398,7 +472,7 @@ public class Road {
 	 * 
 	 * @author Zhan & Hemant
 	 */
-	public boolean setTravelTime() {
+	public boolean updateTravelTimeEstimation() {
 		// for output travel times
 		double newTravelTime;
 		if(travelTimeHistory_.size()>0) {
@@ -417,7 +491,7 @@ public class Road {
 			travelTimeHistory_.clear();
 		}
 		else {
-			newTravelTime =  this.length / this.freeSpeed_;
+			newTravelTime =  this.length / this.speedLimit_;
 		}
 		
 		if(this.travelTime == newTravelTime) return false;
@@ -475,7 +549,7 @@ public class Road {
 	}
 
 	/*
-	 * Wenbo: update background traffic through speed file. if road event flag is
+	 * Update background traffic through speed file. if road event flag is
 	 * true, just pass to default free speed, else, update link free flow speed
 	 */
 	public void updateFreeFlowSpeed() {
@@ -484,11 +558,14 @@ public class Road {
 		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.lastUpdateHour < hour) {
-			double value = ContextCreator.backgroundTraffic.getBackgroundTraffic(this.ID, hour)* 0.44694; // mph to m/s
+			for(Lane lane: this.getLanes()) {
+				lane.setSpeed(ContextCreator.backgroundTraffic.getBackgroundTraffic(this.ID, hour) * 0.44694);
+			}
+			
 			if (this.checkEventFlag()) {
-				this.setDefaultFreeSpeed();
+				this.cacheSpeedLimit();
 			} else {
-				this.freeSpeed_ = value;
+				this.speedLimit_ =  this.cachedSpeedLimit_;
 			}
 		}
 		this.lastUpdateHour = hour;
@@ -496,7 +573,7 @@ public class Road {
 
 	/* Modify the free flow speed based on the events */
 	public void updateFreeFlowSpeed(double newFFSpd) {
-		this.freeSpeed_ = newFFSpd * 0.44694; // Convert from mph to m/s
+		this.speedLimit_ = newFFSpd * 0.44694; // Convert from mph to m/s
 	}
 
 	public void recordEnergyConsumption(Vehicle v) {
@@ -529,11 +606,46 @@ public class Road {
 	}
 
 	public void setRoadType(int roadType) {
+		// update speed limit
+		switch(roadType) {
+			case Road.Street:
+				this.speedLimit_ = GlobalVariables.STREET_SPEED * 0.44694; 
+				break;
+			case Road.Highway:
+				this.speedLimit_ = GlobalVariables.HIGHWAY_SPEED * 0.44694; 
+				break;
+			case Road.Bridge:
+				this.speedLimit_ = GlobalVariables.BRIDGE_SPEED * 0.44694; 
+				break;
+			case Road.Tunnel:
+				this.speedLimit_ = GlobalVariables.TUNNEL_SPEED * 0.44694; 
+				break;
+			case Road.Driveway:
+				this.speedLimit_ = GlobalVariables.DRIVEWAY_SPEED * 0.44694; 
+				break;
+			case Road.Ramp:
+				this.speedLimit_ = GlobalVariables.RAMP_SPEED * 0.44694; 
+				break;
+			case Road.U_Turn:
+				this.speedLimit_ = GlobalVariables.UTURN_SPEED * 0.44694; 
+				break;
+			default:
+				this.speedLimit_ = GlobalVariables.STREET_SPEED * 0.44694; 
+				break;
+		}
 		this.roadType = roadType;
 	}
 	
 	public int getRoadType() {
 		return roadType;
+	}
+	
+	public void setControlType(int controlType) {
+		this.controlType = controlType;
+	}
+	
+	public int getControlType() {
+		return controlType;
 	}
 
 	public void recordTravelTime(Vehicle v) {
@@ -575,5 +687,9 @@ public class Road {
 
 	public void setDownStreamJunction(int downStreamJunction) {
 		this.downStreamJunction = downStreamJunction;
+	}
+
+	public void setSpeedLimit(double speedLimit) {
+		this.speedLimit_ = speedLimit;
 	}
 }

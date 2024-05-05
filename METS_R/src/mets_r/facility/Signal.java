@@ -40,7 +40,6 @@ public class Signal {
     }
     
     // API's for update the phase
-    // TODO: data collector + customizable signal
     public void step() {
         this.currentTime = this.nextUpdateTime;
         this.state = (this.state + 1) % 3;

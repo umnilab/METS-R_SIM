@@ -8,7 +8,6 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
-import mets_r.data.input.OpenDriveMap;
 import mets_r.data.input.SumoXML;
 
 //import java.util.HashMap;
@@ -76,16 +75,8 @@ public class LaneContext extends FacilityContext<Lane> {
 				e.printStackTrace();
 			}
 		}
-		else if(fileName.endsWith("xodr")){
-			OpenDriveMap odm = new OpenDriveMap(fileName);
-			GeometryFactory geomFac = new GeometryFactory();
-			for (Lane l : odm.getLane().values()) {
-				this.put(l.getID(), l);
-				laneGeography.move(l, geomFac.createLineString(l.getCoords().toArray(new Coordinate[l.getCoords().size()])));
-			}
-		}
 		else {
-			SumoXML sxml = new SumoXML(fileName);
+			SumoXML sxml = SumoXML.getData(fileName);
 			GeometryFactory geomFac = new GeometryFactory();
 			for (Lane l : sxml.getLane().values()) {
 				this.put(l.getID(), l);

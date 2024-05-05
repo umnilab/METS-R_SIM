@@ -135,7 +135,7 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("ID", road.getID());
 			jsonObj.put("r_type", road.getRoadType());
 			jsonObj.put("num_veh", road.getVehicleNum());
-			jsonObj.put("speed_limit", road.getFreeSpeed());
+			jsonObj.put("speed_limit", road.getSpeedLimit());
 			jsonObj.put("avg_travel_time", road.getTravelTime());
 			jsonObj.put("length", road.getLength());
 			jsonObj.put("energy_consumed", road.getTotalEnergy());

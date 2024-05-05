@@ -14,7 +14,6 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 import com.vividsolutions.jts.geom.Point;
 
 import mets_r.*;
-import mets_r.data.input.OpenDriveMap;
 import mets_r.data.input.SumoXML;
 import mets_r.routing.RouteContext;
 
@@ -208,7 +207,7 @@ public class CityContext extends DefaultContext<Object> {
 				road.setUpStreamNode(node1);
 				road.setDownStreamNode(node2);
 				
-				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, road.getLength()/road.getFreeSpeed()); 
+				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, road.getLength()/road.getSpeedLimit()); 
 				
 				if (!roadNetwork.containsEdge(edge)) {
 					roadNetwork.addEdge(edge);
@@ -229,102 +228,50 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		} 
 		else {
-			// Case 2: junction is provided, xodr or SumoXML case
-			if(GlobalVariables.NETWORK_FILE.contains("xodr")) {
-				OpenDriveMap odm = new OpenDriveMap(GlobalVariables.NETWORK_FILE);
-				for (Junction j : odm.getJunction().values()) {
-					junctionContext.put(j.getID(), j);
-				}
-				for (Road r: ContextCreator.getRoadContext().getAll()) {
-					Node node1, node2;
-					node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
-					node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
-					ContextCreator.getNodeContext().put(node1.getID(), node1);
-					ContextCreator.getNodeContext().put(node2.getID(), node2);
-					// Tell the node about their road
-					node1.setRoad(r);
-					node2.setRoad(r);
-					// Tell road about their node
-					r.setUpStreamNode(node1);
-					r.setDownStreamNode(node2);
-				}
-				for (int jid: odm.getRoadConnection().keySet()) {
-					Junction j = junctionContext.get(jid);
-					int jx = 0;
-					int jy = 0;
-					for (List<Integer> rc: odm.getRoadConnection(jid)) {
-						Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
-						Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
-						r1.setDownStreamJunction(jid);
-						r2.setUpStreamJunction(jid);
-						// set coordinates of the junction
-						Geometry roadGeom1 = roadGeography.getGeometry(r1);
-						Geometry roadGeom2 = roadGeography.getGeometry(r2);
-						jx += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].x; 
-						jy += roadGeom1.getCoordinates()[roadGeom1.getNumPoints()-1].y;
-						jx += roadGeom2.getCoordinates()[0].x;
-						jy += roadGeom2.getCoordinates()[0].y;
-						// Tell the node about their junction
-						Node node1 = r1.getDownStreamNode();
-						Node node2 = r2.getUpStreamNode();
-						node1.setJunction(j);
-						node2.setJunction(j);
-					}
-					// set coordinates of the junction
-					Coordinate jcoord = new Coordinate();
-					jcoord.x = jx/odm.getRoadConnection(jid).size()/2;
-					jcoord.y = jy/odm.getRoadConnection(jid).size()/2;
-					junctionContext.get(jid).setCoord(jcoord);
-			    }
+			// Case 2: junction is provided, SumoXML case
+			SumoXML sxml = SumoXML.getData(GlobalVariables.NETWORK_FILE);
+			for (Junction j : sxml.getJunction().values()) {
+				junctionContext.put(j.getID(), j);
 			}
-			else {
-				SumoXML sxml = new SumoXML(GlobalVariables.NETWORK_FILE);
-				for (Junction j : sxml.getJunction().values()) {
-					junctionContext.put(j.getID(), j);
-				}
-				for (Road r: ContextCreator.getRoadContext().getAll()) {
-					Node node1, node2;
-					node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
-					node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
-					ContextCreator.getNodeContext().put(node1.getID(), node1);
-					ContextCreator.getNodeContext().put(node2.getID(), node2);
-					// Tell the node about their road
-					node1.setRoad(r);
-					node2.setRoad(r);
-					// Tell road about their node
-					r.setUpStreamNode(node1);
-					r.setDownStreamNode(node2);
-				}
-				for (int jid: sxml.getRoadConnection().keySet()) {
-					Junction j = junctionContext.get(jid);
-					for (List<Integer> rc: sxml.getRoadConnection(jid)) {
-						Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
-						Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
-						r1.setDownStreamJunction(jid);
-						r2.setUpStreamJunction(jid);
-						// Tell the node about their junction
-						Node node1 = r1.getDownStreamNode();
-						Node node2 = r2.getUpStreamNode();
-						node1.setJunction(j);
-						node2.setJunction(j); 
-						// Set the signal
-						if(sxml.getSignal().containsKey(r1.getID())) {
-							if(sxml.getSignal().get(r1.getID()).containsKey(r2.getID())) {
-								j.setSignal(r1.getID(), r2.getID(), sxml.getSignal().get(r1.getID()).get(r2.getID()));
-								j.setControlType(Junction.StaticSignal);
-							}
-						}
-					}
-			    }
-				
+			for (Road r: ContextCreator.getRoadContext().getAll()) {
+				Node node1, node2;
+				node1 = new Node(10*r.getID()+(r.getID()>0?1:-1));
+				node2 = new Node(10*r.getID()+(r.getID()>0?2:-2));
+				ContextCreator.getNodeContext().put(node1.getID(), node1);
+				ContextCreator.getNodeContext().put(node2.getID(), node2);
+				// Tell the node about their road
+				node1.setRoad(r);
+				node2.setRoad(r);
+				// Tell road about their node
+				r.setUpStreamNode(node1);
+				r.setDownStreamNode(node2);
 			}
+			for (int jid: sxml.getRoadConnection().keySet()) {
+				Junction j = junctionContext.get(jid);
+				for (List<Integer> rc: sxml.getRoadConnection(jid)) {
+					Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
+					Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
+					r1.setDownStreamJunction(jid);
+					r2.setUpStreamJunction(jid);
+					// Tell the node about their junction
+					Node node1 = r1.getDownStreamNode();
+					Node node2 = r2.getUpStreamNode();
+					node1.setJunction(j);
+					node2.setJunction(j); 
+					// Set the signal
+					if(j.getControlType() == Junction.StaticSignal) {
+						j.setSignal(r1.getID(), r2.getID(), sxml.getSignal().get(r1.getID()).get(r2.getID()));
+					}
+				}
+		    }
+			
 		}
 			
 		for(Road road: ContextCreator.getRoadContext().getAll()) {
 			Node node1 = road.getUpStreamNode();
 			Node node2 = road.getDownStreamNode();
 			RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,
-					road.getLength() / road.getFreeSpeed());
+					road.getLength() / road.getSpeedLimit());
 
 			if (!roadNetwork.containsEdge(edge)) {
 				roadNetwork.addEdge(edge);
@@ -386,7 +333,7 @@ public class CityContext extends DefaultContext<Object> {
 			// SUMO XML
 			for (Junction j: junctionContext.getAll()) {
 				if(j.getControlType()!=Junction.StaticSignal) {
-					// Deduce the stop sign, yield and delay
+					// Deduce the delay time for the stop sign and yield sign
 					ArrayList<Integer> roadTypes = new ArrayList<Integer>();
 					for(int r: j.getUpStreamRoads()) 
 						roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
@@ -395,23 +342,25 @@ public class CityContext extends DefaultContext<Object> {
 					Collections.sort(roadTypes);
 					
 					if (roadTypes.size() >= 2) {
-						if ((roadTypes.get(0) == Road.Street)
-								&& (roadTypes.get(j.getUpStreamRoads().size() - 1) <= Road.Highway)) {
+						if (j.getControlType() == Junction.Yield) {
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-									j.setDelay(r1, r2, 0);
+									if(ContextCreator.getRoadContext().get(r1).getRoadType() == Road.Highway) {
+										j.setDelay(r1, r2, 0);
+									}
+									else {
+										j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
+									}
 								}
 							}
-						} else if ((roadTypes.get(0) == Road.Street)
-								&& (roadTypes.get(j.getUpStreamRoads().size() - 1) == Road.Driveway)) {
-							j.setControlType(Junction.StopSign);
+						} else if (j.getControlType() == Junction.StopSign) {
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
 									j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
 								}
 							}
 						}
-						else {
+						else { // No control
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
 									j.setDelay(r1, r2, 0);
@@ -457,9 +406,15 @@ public class CityContext extends DefaultContext<Object> {
 							}
 						}
 						else {
+							j.setControlType(Junction.Yield);
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-									j.setDelay(r1, r2, 0);
+									if(ContextCreator.getRoadContext().get(r1).getRoadType() == Road.Highway) {
+										j.setDelay(r1, r2, 0);
+									}
+									else {
+										j.setDelay(r1, r2, (int) Math.ceil(3/GlobalVariables.SIMULATION_STEP_SIZE));
+									}
 								}
 							}
 						}
@@ -473,6 +428,7 @@ public class CityContext extends DefaultContext<Object> {
 						}
 					}
 					else {
+						j.setControlType(Junction.NoControl);
 						for(int r1: j.getUpStreamRoads()) {
 							for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
 								j.setDelay(r1, r2, 0);
@@ -483,6 +439,8 @@ public class CityContext extends DefaultContext<Object> {
 				
 			}
 		}
+		
+		ContextCreator.logger.info("Signal initialized!");
 		
 		// Establish edges
 		for (Junction j: junctionContext.getAll()) {
@@ -503,11 +461,12 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 	}
+	
 
 	// Update node based routing
 	public void modifyRoadNetwork() {
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if(road.setTravelTime()) {
+			if(road.updateTravelTimeEstimation()) {
 				Node node1 = road.getUpStreamNode();
 				Node node2 = road.getDownStreamNode();
 				ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(road.getTravelTime());

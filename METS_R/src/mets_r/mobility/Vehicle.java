@@ -13,6 +13,7 @@ import mets_r.routing.RouteContext;
 
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -35,8 +36,8 @@ public class Vehicle {
 	public final static int EBUS = 2;
 	public final static int EV = 3; // Private electric vehicle
 	
-	public final static int VANILLA = 0;
-	public final static int CONNECTED_VEHICLE = 1;
+	public final static int DSRC = 0;
+	public final static int CV2X = 1;
 	
 	public final static int PARKING = 0;
 	public final static int OCCUPIED_TRIP = 1;
@@ -55,11 +56,14 @@ public class Vehicle {
 	/* Private variables that are not visible to descendant classes */
 	private int destRoadID;
 	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized
-	private double length;
-	private double distance_;// distance from downstream junction
+	private double length; // vehicle length
+	private double distance_; // distance from downstream junction
 	private double nextDistance_; // distance from the start point of next line segment
+	
 	private double currentSpeed_;
 	private double accRate_;
+	private LinkedList<Double> accPlan_; 
+	private boolean accDecided_;
 	private double bearing_;
 	private double desiredSpeed_; // in meter/sec
 	private int regime_;
@@ -101,7 +105,7 @@ public class Vehicle {
 	// For adaptive network partitioning
 	private int Nshadow; // Number of current shadow roads in the path
 	private ArrayList<Road> futureRoutingRoad;
-	private ArrayList<Plan> activityplan; // A set of zone for the vehicle to visit
+	private ArrayList<Plan> activityPlan; // A set of zone for the vehicle to visit
 	
 	// For calculating vehicle coordinates
 	GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
@@ -138,13 +142,15 @@ public class Vehicle {
 		this.rand_relocate_only = new Random(rand.nextInt());
 		this.rand_car_follow_only = new Random(rand.nextInt());
 		this.currentCoord_ = new Coordinate();
-		this.activityplan = new ArrayList<Plan>(); // Empty plan
+		this.activityPlan = new ArrayList<Plan>(); // Empty plan
 
 		this.length = GlobalVariables.DEFAULT_VEHICLE_LENGTH;
 		this.travelPerTurn = GlobalVariables.TRAVEL_PER_TURN;
 		this.maxAcceleration_ = 3.0;
 		this.maxDeceleration_ = -4.0;
 		this.normalDeceleration_ = -0.5;
+		this.accPlan_ = new LinkedList<Double>();
+		this.accDecided_ = false;
 
 		this.previousEpochCoord = new Coordinate();
 		this.endTime = 0;
@@ -196,7 +202,7 @@ public class Vehicle {
 	 * Update the destination of the vehicle according to its plan, a plan is a triplet as (target zone, target location, departure time)
 	 */
 	public void setNextPlan() {
-		Plan next = this.activityplan.get(1);
+		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
 		this.destinationID = next.getDestID();
 		double duration = next.getDuration();
@@ -204,7 +210,7 @@ public class Vehicle {
 		this.destCoord = next.getLocation();
 		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord).getID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
-		this.activityplan.remove(0); // Remove current schedule
+		this.activityPlan.remove(0); // Remove current schedule
 	}
 	
 	/**
@@ -227,10 +233,10 @@ public class Vehicle {
 	 */
 	public boolean modifyPlan(int dest_id, Coordinate location) {
 		if(this.isOnRoad()) {
-			if(this.activityplan.size() > 1) {
+			if(this.activityPlan.size() > 1) {
 				ContextCreator.logger.error("Something went wrong, cannot modify the vehicle with multiple plans");
 			}
-			this.activityplan.clear();
+			this.activityPlan.clear();
 			this.addPlan(dest_id, location, ContextCreator.getNextTick());
 			this.destinationID = dest_id;
 			this.destCoord = location;
@@ -267,6 +273,28 @@ public class Vehicle {
 		}
 		return false;
 	}
+	
+	/**
+	 * Vehicle enters the road, success when the road has enough space in the specified lane
+	 * @param The road and the lane that the vehicle enter
+	 * @return Whether the road successfully enter the road 
+	 */
+	public boolean enterNetwork(Road road, Lane lane) {
+		// Sanity check
+		if(lane.getRoad() != road.getID()) return false;
+		double gap = entranceGap(lane);
+		int tickcount = ContextCreator.getCurrentTick();
+		if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
+			this.getAndSetLastMoveTick(tickcount);
+			currentSpeed_ = 0.0; // The initial speed
+			this.appendToLane(lane);
+			this.appendToRoad(road);
+			this.setNextRoad();
+			return true;
+		}
+		return false;
+	}
+	
 
 	/**
 	 * Append vehicle to the pending list to the closest road
@@ -440,6 +468,13 @@ public class Vehicle {
 			}
 		}
 	}
+	
+	/**
+	 * Get the next to-visit road of this vehicle
+	 */
+	public Road getNextRoad() {
+		return this.nextRoad_;
+	}
 
 	/**
 	 * Append a vehicle to vehicle list in a specific lane
@@ -529,15 +564,21 @@ public class Vehicle {
 	 * At the start of each simulation step, update the vehicles' decisions on acceleration and lane changing
 	 */
 	public void calcState() {
-		if(ContextCreator.getCurrentTick() % 10 == 0) {
+		if (ContextCreator.getCurrentTick() % 10 == 0) {
 			// re-sample the target speed every 3 seconds to mimic the behavior of 
 			// following background traffic (i.e., human-drive vehicles)
 			// add this randomness will not change the travel time significantly, but
 			// will increase the energy consumption, which creates 
 			// more conservative metrics for planning/design
-			this.desiredSpeed_ = this.road.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
+			this.desiredSpeed_ = this.lane.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
 		}
-		this.makeAcceleratingDecision();
+		if (!this.accDecided_) {
+			this.makeAcceleratingDecision();
+		}
+		else {
+			this.accDecided_ = false;
+		}
+
 		if (this.road.getNumberOfLanes() > 1 && this.isOnLane() && this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH) {
 			this.makeLaneChangingDecision();
 		}
@@ -576,8 +617,9 @@ public class Vehicle {
 			// process
 			acc = 0;
 		}
-
-		accRate_ = acc;
+		
+		accPlan_.add(acc);
+		
 		if (Double.isNaN(accRate_)) {
 			ContextCreator.logger.error("NaN acceleration rate for " + this);
 		}
@@ -597,15 +639,15 @@ public class Vehicle {
 				double decTime = this.currentSpeed_ / this.normalDeceleration_;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
 					return  (Math.max(this.maxDeceleration_, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
-							- this.nextRoad_.getFreeSpeed() * this.nextRoad_.getFreeSpeed()) / this.distance_));
+							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
 				}
 			}
 			
-			if (this.nextRoad_.getFreeSpeed() < this.currentSpeed_) { // edge case 2: brake to prepare for entering the next road
-				double decTime = (this.currentSpeed_ - this.nextRoad_.getFreeSpeed()) / this.normalDeceleration_;
-				if (this.distance_ <= 0.5 * (this.currentSpeed_ + this.nextRoad_.getFreeSpeed()) * decTime) {
+			if (this.nextRoad_.getSpeedLimit() < this.currentSpeed_) { // edge case 2: brake to prepare for entering the next road
+				double decTime = (this.currentSpeed_ - this.nextRoad_.getSpeedLimit()) / this.normalDeceleration_;
+				if (this.distance_ <= 0.5 * (this.currentSpeed_ + this.nextRoad_.getSpeedLimit()) * decTime) {
 					return  (Math.max(this.maxDeceleration_, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
-							- this.nextRoad_.getFreeSpeed() * this.nextRoad_.getFreeSpeed()) / this.distance_));
+							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
 				}
 			}
 		}
@@ -818,6 +860,9 @@ public class Vehicle {
 	 * Also, the vehicle will be removed from the network if it arrives its destination.
 	 */
 	public void move() {
+		/* Load the acc decision */
+		accRate_ = accPlan_.pop();
+		
 		/* Sanity check */
 		if (distance_ < 0 || Double.isNaN(distance_))
 			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
@@ -984,10 +1029,6 @@ public class Vehicle {
 				case Junction.NoControl:
 					movable = true;
 					break;
-				case Junction.CustomizedSignal:
-					if(nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
-						movable = true;
-					break;
 				case Junction.DynamicSignal:
 					if(nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 						movable = true;
@@ -1001,7 +1042,8 @@ public class Vehicle {
 						movable = true;
 					break;
 				case Junction.Yield:
-					movable = true;
+					if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
+						movable = true;
 					break;
 				default:
 					movable = true;
@@ -1206,6 +1248,13 @@ public class Vehicle {
 	}
 	
 	/**
+	 * Set distance to the next intersection
+	 */
+	public void setDistance(double distance) {
+		this.distance_ = distance;
+	}
+	
+	/**
 	 * Get distance fraction to go in the current link
 	 */
 	public double distFraction() {
@@ -1222,20 +1271,20 @@ public class Vehicle {
 		return length;
 	}
 	
-	/**
-	 * Set vehicle ID
-	 * @param id
-	 */
-	public void setID(int id) {
-		this.ID = id;
-	}
-	
 	public Lane getLane() {
 		return lane;
 	}
 
 	public int getID() {
 		return this.ID;
+	}
+	
+	/**
+	 * Set vehicle ID
+	 * @param id
+	 */
+	public void setID(int id) {
+		this.ID = id;
 	}
 	
 	/**
@@ -1256,14 +1305,14 @@ public class Vehicle {
 	 * Get the current trip plans of the vehicle
 	 */
 	public ArrayList<Plan> getPlan() {
-		return this.activityplan;
+		return this.activityPlan;
 	}
 	
 	/**
 	 * Remove a specific plan in the current trip plans
 	 */
 	public void removePlan(Plan p) {
-		this.activityplan.remove(p);
+		this.activityPlan.remove(p);
 	}
 	
 	/**
@@ -1274,7 +1323,7 @@ public class Vehicle {
 	 */
 	public void addPlan(int dest_id, Coordinate location, double d) {
 		Plan p = new Plan(dest_id, location, d);
-		this.activityplan.add(p);
+		this.activityPlan.add(p);
 	}
 	
 	/**
@@ -1282,7 +1331,7 @@ public class Vehicle {
 	 * @param activityPlan to-add plans
 	 */
 	public void addPlan(List<Plan> activityPlan) {
-		this.activityplan.addAll(activityPlan);
+		this.activityPlan.addAll(activityPlan);
 	}
 	
 	/**
@@ -2116,7 +2165,7 @@ public class Vehicle {
 			radius = 0.0;
 		}
 		return distance;
-	}
+	}	
 	
 	/**
 	 * Move vehicle toward a target location for certain amount of distance
@@ -2134,6 +2183,15 @@ public class Vehicle {
 		else {
 			this.setCurrentCoord(new Coordinate((1 - p) * origin.x + p * target.x, (1 - p) * origin.y + +p * target.y));
 		}
+	}
+	
+	/**
+	 * Manually specify the acceleration
+	 * @param acc
+	 */
+	public void controlVehicleAcc(double acc) {
+		this.accPlan_.push(acc);
+		this.accDecided_ = true;
 	}
 	
 	public int getVehicleClass() {

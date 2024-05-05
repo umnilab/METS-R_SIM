@@ -13,11 +13,10 @@ public class Junction {
 	public final static int Yield = 1;
 	public final static int StopSign = 2;
 	public final static int StaticSignal = 3;
-	public final static int DynamicSignal = 4;
-	public final static int CustomizedSignal = 5;
+	public final static int DynamicSignal = 4; // Placeholder for intelligent signal control 
 	
 	/* Private variables */
-	private int ID; // From shape file
+	private int ID;
 	private Coordinate coord;
 	private ArrayList<Integer> upStreamRoads;
 	private ArrayList<Integer> downStreamRoads;
@@ -126,8 +125,6 @@ public class Junction {
 	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID).getState();
 	    	}
 	    }
-//    	ContextCreator.logger.warn("No signal found in junction: "+ this.getID() +
-//    			"between road: "+ upStreamRoadID + "," + downStreamRoadID);
     	return 0;
 	}
 	

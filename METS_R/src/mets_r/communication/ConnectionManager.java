@@ -38,20 +38,18 @@ public class ConnectionManager {
 		this.connections = new Vector<Connection>();
 
 		// start the server listening for incoming connections
-		if (GlobalVariables.ENABLE_NETWORK) {
-			Runnable startRunnable = new Runnable() {
-				@Override
-				public void run() {
-					try {
-						Thread.sleep(5000);
-					} catch (Throwable t) {
-					}
-					ConnectionManager.this.startServer();
+		Runnable startRunnable = new Runnable() {
+			@Override
+			public void run() {
+				try {
+					Thread.sleep(5000);
+				} catch (Throwable t) {
 				}
-			};
-			Thread startThread = new Thread(startRunnable);
-			startThread.start();
-		}
+				ConnectionManager.this.startServer();
+			}
+		};
+		Thread startThread = new Thread(startRunnable);
+		startThread.start();
 	}
 
 	/**

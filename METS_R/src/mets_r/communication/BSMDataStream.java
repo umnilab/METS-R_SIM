@@ -16,7 +16,7 @@ import mets_r.mobility.Vehicle;
  * @author Zengxiang Lei
  *
  */
-public class CV2XDataStream {
+public class BSMDataStream {
 	public int vid;
 	public int utc_fix_mode;
 	public double latitude;
@@ -40,19 +40,24 @@ public class CV2XDataStream {
 	public double elevation_confidence;
 	public int leap_seconds;
 	public double utc_time;
+	public int type; // how this record is generated, 0 represents the DSRC, 1 represents C-V2X
+	public double true_x; // for deciding who will see this message and should never be used in operation!
+	public double true_y; // for deciding who will see this message and should never be used in operation!
 
-	public CV2XDataStream(Vehicle vehicle, Coordinate coordinate) {
+
+	public BSMDataStream(Vehicle vehicle, Coordinate coordinate, int type) {
+		// TODO: add sensor error here
 		this(vehicle.getID(), 3, coordinate.x, coordinate.y, 0, 42, 42, false, false, false, false, false,
 				2.0, 2.0, 0, vehicle.getBearing(), vehicle.currentSpeed(), 0, 0, 0.5, 3, 18,
-				ContextCreator.getCurrentTick());
+				ContextCreator.getCurrentTick(), type, coordinate.x, coordinate.y);
 	}
 
-	public CV2XDataStream(int vid, int utc_fix_mode, double latitude, double longitude, double altitude,
+	public BSMDataStream(int vid, int utc_fix_mode, double latitude, double longitude, double altitude,
 			int qty_SV_in_view, int qty_SV_used, boolean GNSS_unavailable, boolean GNSS_aPDOPofUnder5,
 			boolean GNSS_inViewOfUnder5, boolean GNSS_localCorrectionsPresent, boolean GNSS_networkCorrectionsPresent,
 			double SemiMajorAxisAccuracy, double SemiMinorAxisAccuracy, double SemiMajorAxisOrientation, double heading,
 			double velocity, double climb, double time_confidence, double velocity_confidence,
-			double elevation_confidence, int leap_seconds, double utc_time) {
+			double elevation_confidence, int leap_seconds, double utc_time, int type, double true_x, double true_y) {
 		this.vid = vid;
 		this.utc_fix_mode = utc_fix_mode;
 		this.latitude = latitude;

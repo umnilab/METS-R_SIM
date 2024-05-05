@@ -74,12 +74,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* Data communication */
 	// Connection manager maintains the socket server for remote programs
 	// set to be final to avoid further modifications
-	public static final ConnectionManager manager = new ConnectionManager();
+	public static final ConnectionManager manager =  GlobalVariables.STANDALONE?null: new ConnectionManager();
 	public static Connection connection = null;
 	public static final StepMessageHandler stepHandler = new StepMessageHandler();
 	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
 	// Kafka manager maintains the resources for sending message to Kafka
-	public static final KafkaDataStreamProducer kafkaManager = new KafkaDataStreamProducer(); 
+	public static final KafkaDataStreamProducer kafkaManager = GlobalVariables.STANDALONE?null:new KafkaDataStreamProducer(); 
 	// Data collector gather tick by tick tickSnapshot and provide it to data consumers
 	public static final DataCollector dataCollector = new DataCollector();
 	public static long prevTime = System.currentTimeMillis();

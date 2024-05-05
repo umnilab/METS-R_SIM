@@ -34,10 +34,9 @@ public class Lane {
 	private AtomicInteger nVehicles_; // Number of vehicle in the lane
 	private Vehicle firstVehicle_; // The first vehicle on a lane
 	private Vehicle lastVehicle_; // The last vehicle vehicle on a lane
-	private float speed_;
-	private float maxSpeed_;
 	private AtomicInteger lastEnterTick; // Store the latest enter time of vehicles
 	private Random rand; // Random seed for lane changing
+	private double freeSpeed_; // Target speed for vehicles on this lane
 
 	public Lane(int id) {
 		this.ID = id;
@@ -90,8 +89,16 @@ public class Lane {
 		this.road = roadID;
 	}
 
-	public float speed() {
-		return this.speed_;
+	public double getSpeed() {
+		return this.freeSpeed_;
+	}
+	
+	// Assume the car-following speed is normally distributed based on
+	// Wagner, P. (2012). Analyzing fluctuations in car-following. Transportation research part B: methodological, 46(10), 1384-1392.
+	// From Figure 2 and 4, it can be seen that when speed is less than 30 m/s the speed distribution follows a normal pdf with std around 0.5
+	public double getRandomFreeSpeed(double coef) {
+		return  Math.max(
+				this.freeSpeed_ + coef * 0.5, 0);
 	}
 
 
@@ -112,8 +119,8 @@ public class Lane {
 
 	}
 
-	public float maxSpeed() {
-		return maxSpeed_;
+	public void setSpeed(double speed) {
+		this.freeSpeed_ = speed;
 	}
 
 	public Vehicle firstVehicle() {
