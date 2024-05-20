@@ -654,9 +654,9 @@ public class Vehicle {
 		
 		// free flow
 		if (this.currentSpeed_ < this.desiredSpeed_) { // accelerate to reach the desired speed
-			return Math.min(this.maxAcceleration(), (this.desiredSpeed_ - this.currentSpeed_)/GlobalVariables.SIMULATION_STEP_SIZE);
+			return Math.min(this.maxAcceleration(), (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
 		} else { // decelerate if it exceeds the desired speed
-			return Math.max(this.normalDeceleration_, (this.desiredSpeed_ - this.currentSpeed_)/GlobalVariables.SIMULATION_STEP_SIZE);
+			return Math.max(this.normalDeceleration_, (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
 		}
 	}
 	
@@ -1061,7 +1061,7 @@ public class Vehicle {
 					this.setNextRoad();
 					return true;
 				}
-				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) { // addressing gridlock
+				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
 					for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
 						Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
 						List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
@@ -1392,6 +1392,9 @@ public class Vehicle {
 	 *  Call when arriving the destination
 	 */
 	public void reachDest() {
+		if(this.getState() == Vehicle.PRIVATE_TRIP) {
+			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive

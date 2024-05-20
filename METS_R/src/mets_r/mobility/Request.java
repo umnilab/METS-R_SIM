@@ -32,7 +32,7 @@ public class Request {
 		this.originCoord = originCoord;
 		this.destCoord = destCoord;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
-		this.currentWaitingTime = 0;	
+		this.currentWaitingTime = 0;
 		this.willingToShare = willingToShare;
 	}
 	

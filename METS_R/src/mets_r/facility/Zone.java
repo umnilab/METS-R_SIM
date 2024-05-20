@@ -14,6 +14,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Queue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
@@ -44,6 +45,7 @@ public class Zone {
 	private AtomicInteger parkingVehicleStock; // number of parking vehicles at this zone
 	private AtomicInteger cruisingVehicleStock;  // number of cruising vehicles at this zone
 	private int currentHour = -1;
+	private int currentTimeIndex = 0;
 	private int lastTravelTimeUpdateHour = -1; // the last time for updating the travel time estimation
 	
 	// For vehicle repositioning
@@ -105,7 +107,7 @@ public class Zone {
 	public int taxiCruisingTime;
 	
     // Constructor
-	public Zone(int ID, int capacity) {
+	public Zone(int ID, int capacity, int type) {
 		rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		rand_demand_only = new Random(rand.nextInt());
 		rand_mode_only = new Random(rand.nextInt());
@@ -125,11 +127,7 @@ public class Zone {
 		this.nRequestForTaxi = 0;
 		this.busReachableZone = new ArrayList<Integer>();
 		this.busGap = new ConcurrentHashMap<Integer, Float>();
-		if (GlobalVariables.HUB_INDEXES.contains(this.ID)) {
-			this.zoneType = 1;
-		} else {
-			this.zoneType = 0;
-		}
+		this.zoneType = type;
 		// Initialize metrices
 		this.numberOfGeneratedTaxiRequest = 0;
 		this.numberOfGeneratedBusRequest = 0;
@@ -164,7 +162,7 @@ public class Zone {
 		this.vehicleSurplus = 0.0;
 		this.vehicleDeficiency = 0.0;
 		if (GlobalVariables.PROACTIVE_RELOCATION) {
-			H = (int) (GlobalVariables.MAX_CRUISING_TIME * 60 / (GlobalVariables.SIMULATION_STEP_SIZE * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL));
+			H = GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME / GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
 		}
 	}
     
@@ -193,14 +191,14 @@ public class Zone {
 	}
 	
 	// Main logic goes here
-	public void step() {
+	public void ridehailingStep() {
 		this.processToAddPassengers();
 		// Happens at time step t
 		this.servePassengerByTaxi();
 		this.relocateTaxi();
 	}
 	
-	public void step2() {
+	public void step() {
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) {
 			// Skip the last update which is outside of the study period
 			return;
@@ -214,47 +212,70 @@ public class Zone {
 		this.generatePassenger();
 		this.generatePrivateEVTrip();
 		this.generatePrivateGVTrip();
+		
+		currentTimeIndex += 1;
 	}
 	
 	// Generate EV/GV trips
 	protected void generatePrivateEVTrip() {
-		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
-			double tripRate = ContextCreator.travelDemand.getPrivateEVTravelDemand(this.getIntegerID(), destination, this.currentHour)
-					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL / (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
-			if (tripRate > 0) {
-				Zone destZone = ContextCreator.getZoneContext().get(destination);
-				tripRate *= GlobalVariables.EV_DEMAND_FACTOR;
-				double numToGenerate = Math.floor(tripRate)
-						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
-				for (int i = 0; i < numToGenerate; i++) {
-					ElectricVehicle v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+		// Loop over private trip demand
+		for (Entry<Integer, Integer> oneTrip: ContextCreator.travelDemand.getPrivateEVTravelDemand(currentTimeIndex, ID).entrySet()) {
+			ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(oneTrip.getKey());
+			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
+			if(v != null) { // If vehicle exists
+				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
+					// If vehicle is not on road
 					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+					v.addPlan(oneTrip.getValue(), this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
 				}
+				else { // If vehicle is on road
+					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+				}
+			}
+			else { // If vehicle does not exists
+				// Create vehicle
+				v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+				// Assign trips
+				v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+				v.setNextPlan();
+				v.setState(Vehicle.PRIVATE_TRIP);
+				v.departure();
+				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
 			}
 		}
 	}
 	
 	protected void generatePrivateGVTrip() {
-		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
-			double tripRate = ContextCreator.travelDemand.getPrivateGVTravelDemand(this.getIntegerID(), destination, this.currentHour)
-					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL / (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
-			if (tripRate > 0) {
-				tripRate *= GlobalVariables.GV_DEMAND_FACTOR;
-				double numToGenerate = Math.floor(tripRate)
-						+ (rand_demand_only.nextDouble() < (tripRate - Math.floor(tripRate)) ? 1 : 0);
-				Zone destZone = ContextCreator.getZoneContext().get(destination);
-				for (int i = 0; i < numToGenerate; i++) {
-					Vehicle v = new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
+		for (Entry<Integer, Integer> oneTrip: ContextCreator.travelDemand.getPrivateGVTravelDemand(currentTimeIndex, ID).entrySet()) {
+			Vehicle v = ContextCreator.getVehicleContext().getPrivateGV(oneTrip.getKey());
+			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
+			if(v != null) { // If vehicle exists
+				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
+					// If vehicle is not on road
 					v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(destination, this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+					v.addPlan(oneTrip.getValue(), this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
 				}
+				else { // If vehicle is on road
+					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+				}
+			}
+			else { // If vehicle does not exists
+				// Create vehicle
+				v = new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
+				// Assign trips
+				v.initializePlan(this.getIntegerID(), this.sampleOriginCoord(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), this.sampleDestCoord(destZone), (int) ContextCreator.getNextTick());
+				v.setNextPlan();
+				v.setState(Vehicle.PRIVATE_TRIP);
+				v.departure();
+				ContextCreator.getVehicleContext().registerPrivateGV(oneTrip.getKey(), v);
 			}
 		}
 	}
@@ -266,13 +287,13 @@ public class Zone {
 		if (this.lastDemandUpdateHour != this.currentHour) {
 			this.futureDemand = 0.0;
 		}
-		for (int destination = 0; destination < GlobalVariables.NUM_OF_ZONE; destination++) {
+		for (Zone destZone : ContextCreator.getZoneContext().getAll()) {
+			int destination = destZone.getIntegerID();
 			double passRate = ContextCreator.travelDemand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour)
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		    
 			if (passRate > 0) {
-				Zone destZone = ContextCreator.getZoneContext().get(destination);
 				passRate *= GlobalVariables.RH_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
@@ -735,7 +756,7 @@ public class Zone {
 					}
 				} else {
 					// Shortest path to hubs
-					for (int z2_id : GlobalVariables.HUB_INDEXES) {
+					for (int z2_id :  ContextCreator.getZoneContext().HUB_INDEXES) {
 						Zone z2 = ContextCreator.getZoneContext().get(z2_id);
 						if (this.getIntegerID() != z2.getIntegerID()) {
 							double travel_time = 0;
@@ -794,7 +815,7 @@ public class Zone {
 			}
 		} else {
 			// Shortest path to hubs
-			for (int z2_id : GlobalVariables.HUB_INDEXES) {
+			for (int z2_id :  ContextCreator.getZoneContext().HUB_INDEXES) {
 				if (!busReachableZone.contains(z2_id)) { // Find the closest zone with bus that can connect to this hub
 					Zone z = ContextCreator.getCityContext().findNearestZoneWithBus(this.getCoord(), z2_id);
 					if (z != null) {

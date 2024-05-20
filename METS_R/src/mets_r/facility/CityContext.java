@@ -73,17 +73,18 @@ public class CityContext extends DefaultContext<Object> {
 	// Set the neighboring links/zones
 	public void setNeighboringGraph() {
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
-		for (Zone z1 : ContextCreator.getZoneContext().getAll()) {
+		for (Zone z1 : ContextCreator.getZoneContext().getAll()) { 
 			int threshold = 1000; // initial threshold as 1 km
 			boolean flag = true;
+			
 			while (flag) {
 				for (Zone z2 : ContextCreator.getZoneContext().getAll()) {
 					if (this.getDistance(z1.getCoord(), z2.getCoord()) < threshold && z1 != z2) {
 						z1.addNeighboringZone(z2.getID());
 					}
 				}
-				if (z1.getNeighboringZoneSize() < ContextCreator.getZoneGeography().size() - 1) {
-					threshold = threshold + 1000;
+				if (z1.getNeighboringZoneSize() < Math.min(ContextCreator.getZoneGeography().size() - 1, 100)) {
+					threshold = threshold * 2;
 				} else {
 					flag = false;
 				}
@@ -92,12 +93,11 @@ public class CityContext extends DefaultContext<Object> {
 			// Add the nearest hub if not shown in the neighboring list
 			double dist_to_hub = Double.MAX_VALUE;
 			int to_add = -1;
-			for(Zone z2: ContextCreator.getZoneContext().getAll()) {
-				if(z2.getZoneType() == Zone.HUB) {
-					if (this.getDistance(z1.getCoord(), z2.getCoord()) < dist_to_hub){
-						dist_to_hub = this.getDistance(z1.getCoord(), z2.getCoord());
-						to_add = z2.getID();
-					}
+			for(int hubID: ContextCreator.getZoneContext().HUB_INDEXES) {
+				Zone z2 = ContextCreator.getZoneContext().get(hubID);
+				if (this.getDistance(z1.getCoord(), z2.getCoord()) < dist_to_hub){
+					dist_to_hub = this.getDistance(z1.getCoord(), z2.getCoord());
+					to_add = z2.getID();
 				}
 			}
 			if(to_add != -1) { // Zone ID is always nonnegative
@@ -123,20 +123,17 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		
 		for (Zone z: ContextCreator.getZoneContext().getAll()) {
-			int i = 1;
+			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
 			while (z.getNeighboringLinkSize() < 10) { // Take at least 10 neighboring links
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
-				Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
+				Geometry buffer = point.buffer(searchBuffer); 
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					if(this.getDistance(z.getCoord(), r.getStartCoord()) < i * GlobalVariables.CRUISING_BUFFER) {
-						z.addNeighboringLink(r.getID());
-					}
+					z.addNeighboringLink(r.getID());
 				}
-				i++;
+				searchBuffer = searchBuffer * 2;
 			}
 		}
-		
 	}
 	
 	public double getDistance(Coordinate c1, Coordinate c2) {
@@ -660,7 +657,7 @@ public class CityContext extends DefaultContext<Object> {
 			double travel_time = 0;
 
 			for (int shift = 0; shift < route.size(); shift++) {
-				if (GlobalVariables.HUB_INDEXES.contains(route.get(shift))) { // is hub
+				if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(route.get(shift))) { // is hub
 					Zone hub = ContextCreator.getZoneContext().get(route.get(shift));
 					Zone z1 = hub;
 					Zone z2;

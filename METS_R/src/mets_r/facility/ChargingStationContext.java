@@ -52,7 +52,7 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0);
 				} else {
 					ContextCreator.logger.error(
-							"Incorrect format for charging station plan. Is there anything wrong in data/NYC/charging_station?");
+							"Incorrect format for charging station. The incorrect element is"+ result[0]+","+ result[1]+","+ result[2]);
 				}
 				this.put(int_id, cs);
 				int_id -= 1;
@@ -60,7 +60,7 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 			br.close();
 			ContextCreator.logger.info("Charging Station generated, total number: " + (-int_id));
 		} catch (Exception e) {
-			ContextCreator.logger.error("Malformed URL exception when reading housesshapefile.");
+			ContextCreator.logger.error("Exception when reading charging sation shape file/csv.");
 			e.printStackTrace();
 		}
 	}

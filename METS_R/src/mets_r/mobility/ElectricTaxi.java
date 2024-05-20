@@ -329,7 +329,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.departure();
 			}
 			else if (this.getState() == Vehicle.CRUISING_TRIP) {
-				if(this.cruisingTime_ <= GlobalVariables.MAX_CRUISING_TIME * 60 / GlobalVariables.SIMULATION_STEP_SIZE) {
+				if(this.cruisingTime_ <= GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME) {
 					if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
 						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).remove(this);

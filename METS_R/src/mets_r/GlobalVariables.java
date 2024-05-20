@@ -40,10 +40,7 @@ import mets_r.data.input.NetworkEventObject;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedList;
-import java.util.List;
 import java.util.Properties;
 
 public class GlobalVariables {
@@ -63,11 +60,49 @@ public class GlobalVariables {
 		}
 		return config.getProperty(property);
 	}
+	
+	// Whether the simulation is ran in the synchronized mode
+	public static final boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
+	
+	// Whether the simulation is ran in the standalone mode
+	public static final boolean STANDALONE = Boolean.valueOf(loadConfig("STANDALONE"));
+	
+	
+	// Whether the simulation is ran with V2X enabled
+	public static final boolean V2X = Boolean.valueOf(loadConfig("V2X"));
+	
+	/* Simulation setup */
+	public static final int RANDOM_SEED = Integer
+			.valueOf(loadConfig("RANDOM_SEED"));
+	public static final Random RandomGenerator = new Random(RANDOM_SEED);
+	
+	public static final float SIMULATION_STEP_SIZE = Float.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
+	
+	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_SIGNAL_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_SIGNAL_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_DEMAND_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_SPEED_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_SPEED_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_BUS_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_BUS_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_CHARGING_STATION_REFRESH_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_CHARGING_STATION_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
+	public static final int SIMULATION_RH_MATCHING_WINDOW = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_RH_MATCHING_WINDOW")) / SIMULATION_STEP_SIZE);
+	public static int SIMULATION_RH_MAX_CRUISING_TIME = (int) (Integer
+			.valueOf(loadConfig("SIMULATION_RH_MAX_CRUISING_TIME")) / SIMULATION_STEP_SIZE);
 
-	/* Input Files */
-	// Designating the hub ID in ZONE_SHP, JFK, LGA, Penn
-	public static final List<Integer> HUB_INDEXES = new ArrayList<Integer>(Arrays.asList(131, 140, 180));
-
+	public static final int SIMULATION_STOP_TIME = (int) (60 * Integer.valueOf(loadConfig("SIMULATION_STOP_TIME"))
+			/ SIMULATION_STEP_SIZE);
+	
+	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
+	
+	public static final int HOUR_OF_DEMAND = SIMULATION_STOP_TIME / SIMULATION_DEMAND_REFRESH_INTERVAL;
+	public static final int HOUR_OF_SPEED = SIMULATION_STOP_TIME / SIMULATION_SPEED_REFRESH_INTERVAL;
+	
 	// Road Network
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");
 	public static final String ROADS_CSV = loadConfig("ROADS_CSV");
@@ -80,14 +115,12 @@ public class GlobalVariables {
 	public static final String CHARGER_SHAPEFILE = loadConfig("CHARGER_SHAPEFILE");
 	public static final String CHARGER_CSV = loadConfig("CHARGER_CSV");
 
-	public static int NUM_OF_ZONE = Integer.valueOf(loadConfig("NUM_OF_ZONE"));
 	public static double INITIAL_X = Double.valueOf(loadConfig("INITIAL_X"));
 	public static double INITIAL_Y = Double.valueOf(loadConfig("INITIAL_Y"));
 	
 	// Background traffic
 	public static final String BT_EVENT_FILE = loadConfig("BT_EVENT_FILE");
 	public static final String BT_STD_FILE = loadConfig("BT_STD_FILE");
-	public static int HOUR_OF_SPEED = Integer.valueOf(loadConfig("HOUR_OF_SPEED"));
 
 	// Travel demand
 	public static final String EV_DEMAND_FILE = loadConfig("EV_DEMAND_FILE");
@@ -97,11 +130,6 @@ public class GlobalVariables {
 	public static final String RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");
 	public static final boolean RH_DEMAND_SHARABLE = Boolean.valueOf(loadConfig("RH_DEMAND_SHARABLE"));
 	public static final double RH_DEMAND_FACTOR = Double.valueOf(loadConfig("RH_DEMAND_FACTOR"));
-	public static final double EV_DEMAND_FACTOR = Double.valueOf(loadConfig("EV_DEMAND_FACTOR"));
-	public static final double GV_DEMAND_FACTOR = Double.valueOf(loadConfig("GV_DEMAND_FACTOR"));
-	
-	public static int HOUR_OF_DEMAND = Integer.valueOf(loadConfig("HOUR_OF_DEMAND"));
-	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	
 	// Default bus schedule
 	public static final String BUS_SCHEDULE = loadConfig("BUS_SCHEDULE");
@@ -118,22 +146,12 @@ public class GlobalVariables {
 	public static final String EVENT_FILE = loadConfig("EVENT_FILE");
 	public static final int EVENT_CHECK_FREQUENCY = Integer.valueOf(loadConfig("EVENT_CHECK_FREQUENCY"));
 	
-	// Whether the simulation is ran in the synchronized mode
-	public static final boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
-	
-	// Whether the simulation is ran in the standalone mode
-	public static final boolean STANDALONE = Boolean.valueOf(loadConfig("STANDALONE"));
-	
-	
-	// Whether the simulation is ran with V2X enabled
-	public static final boolean V2X = Boolean.valueOf(loadConfig("V2X"));
 
 	/* Operation Options */
 	public static final boolean K_SHORTEST_PATH = Boolean.valueOf(loadConfig("K_SHORTEST_PATH"));
 	public static final boolean COLLABORATIVE_EV = Boolean.valueOf(loadConfig("COLLABORATIVE_EV"));
 	public static final boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 	public static final boolean PROACTIVE_RELOCATION = Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
-	public static int MAX_CRUISING_TIME = Integer.valueOf(loadConfig("MAX_CRUISING_TIME"));
 
 	// Eco-routing Parameters
 	public static final boolean ENABLE_ECO_ROUTING_EV = Boolean.valueOf(loadConfig("ECO_ROUTING_EV"));
@@ -147,29 +165,6 @@ public class GlobalVariables {
 	public static final double BUS_RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_LOW"));
 	public static final double BUS_RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_HIGH"));
 	
-	// Addressing the gridlock in the parallel mode
-	public static final int MAX_STUCK_TIME = Integer.valueOf(loadConfig("MAX_STUCK_TIME"));
-	
-	/* Simulation setup */
-	public static final int RANDOM_SEED = Integer
-			.valueOf(loadConfig("RANDOM_SEED"));
-	public static final Random RandomGenerator = new Random(RANDOM_SEED);
-	public static final float SIMULATION_STEP_SIZE = Float.valueOf(loadConfig("SIMULATION_STEP_SIZE"));
-	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"));
-	public static final int SIMULATION_SIGNAL_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_SIGNAL_REFRESH_INTERVAL"));
-	public static final int SIMULATION_DEMAND_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"));
-	public static final int SIMULATION_SPEED_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_SPEED_REFRESH_INTERVAL"));
-	public static final int SIMULATION_BUS_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_BUS_REFRESH_INTERVAL"));
-	public static final int SIMULATION_CHARGING_STATION_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_CHARGING_STATION_REFRESH_INTERVAL"));
-
-	public static final int SIMULATION_INTERVAL_SIZE = Integer.valueOf(loadConfig("SIMULATION_INTERVAL_SIZE"));
-	public static final int SIMULATION_STOP_TIME = Integer.valueOf(loadConfig("SIMULATION_STOP_TIME"));
 	
 	/* Network Partitioning */
 	public static final boolean MULTI_THREADING = Boolean.valueOf(loadConfig("MULTI_THREADING"));
@@ -327,4 +322,7 @@ public class GlobalVariables {
 	public static final double INITIAL_PRICE_TAXI = Double.valueOf(loadConfig("INITIAL_PRICE_TAXI"));
 	public static final double TAXI_BASE = Double.valueOf(loadConfig("TAXI_BASE"));
 	public static final double BUS_BASE = Double.valueOf(loadConfig("BUS_BASE"));
+	
+	// Addressing the gridlock in the parallel mode
+	public static final int MAX_STUCK_TIME = (int) (Integer.valueOf(loadConfig("MAX_STUCK_TIME"))/SIMULATION_STEP_SIZE);
 }

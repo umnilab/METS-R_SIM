@@ -32,7 +32,7 @@ public class BusSchedule {
 	private ArrayList<ArrayList<Integer>> busRoute;
 	private ArrayList<Integer> busNum;
 	private ArrayList<Integer> busGap; // in minute
-	private Map<Integer, Integer> locationIDMap;
+	private Map<Long, Integer> locationIDMap;
 
 	// For updating the schedule
 	private ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
@@ -53,14 +53,14 @@ public class BusSchedule {
 		JSONParser parser = new JSONParser();
 
 		try {
-			locationIDMap = new HashMap<Integer, Integer>();
+			locationIDMap = new HashMap<Long, Integer>();
 			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
 			br.readLine(); // Skip the first row
 			int integerID = 0;
 			String line;
 			while ((line = br.readLine()) != null) {
 				String[] result = line.split(",");
-				locationIDMap.put(Integer.parseInt(result[1]), integerID);
+				locationIDMap.put(Long.parseLong(result[1]), integerID);
 				integerID += 1;
 			}
 			br.close();
@@ -73,8 +73,8 @@ public class BusSchedule {
 			for (ArrayList<Long> route : (ArrayList<ArrayList<Long>>) jsonObject.get("routes")) {
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
 				for (Long station : route) {
-					if(locationIDMap.containsKey(station.intValue())){
-						oneRoute.add(locationIDMap.get(station.intValue()));
+					if(locationIDMap.containsKey(station.longValue())){
+						oneRoute.add(locationIDMap.get(station.longValue()));
 					}
 				}
 				busRoute.add(oneRoute);
@@ -114,21 +114,21 @@ public class BusSchedule {
 				int i = 0;
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
 				if (busNum.get(i) > 0) {
-					for (int zoneID : route) {
+					for (long zoneID : route) {
 						if(locationIDMap.containsKey(zoneID)){
 							oneRoute.add(locationIDMap.get(zoneID));
 							Zone zone = ContextCreator.getZoneContext().get(locationIDMap.get(zoneID));
 							if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
-								for (int destinationID : route) {
+								for (long destinationID : route) {
 									if(locationIDMap.containsKey(destinationID)) {
-										if (GlobalVariables.HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
+										if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
 											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
 										}
 									}
 								}
 							} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be
 																	// another hub)
-								for (int destinationID : route) {
+								for (long destinationID : route) {
 									if(locationIDMap.containsKey(destinationID)) {
 										if (zone.getIntegerID() != locationIDMap.get(destinationID)) {
 											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));

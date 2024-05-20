@@ -143,14 +143,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 		this.cityContext.createSubContexts();
 		this.cityContext.buildRoadNetwork();
 		this.cityContext.setNeighboringGraph();
-
 		// Calculate the demand of each zone
 		double demand_total = 0;
 
 		for (Zone z : getZoneContext().getAll()) {
 			double demand_from_zone = 0;
 			int i = z.getIntegerID();
-			for (int j = 0; j < GlobalVariables.NUM_OF_ZONE; j++) {
+			for (Zone z2 : getZoneContext().getAll()) {
+				int j = z2.getIntegerID();
 				demand_from_zone += sumOfArray(travelDemand.getPublicTravelDemand(i, j),
 						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
@@ -158,7 +158,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
 		}
 		ContextCreator.logger
-				.info("Vehicle Generation: total demand " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
+				.info("Ridehailing total demand: " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
 
 		// Initialize vehicles
 		this.vehicleContext = new VehicleContext();
@@ -176,7 +176,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				Zone zone = ContextCreator.getZoneContext().get(zoneID);
 				if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
 					for (int destinationID : route) {
-						if (GlobalVariables.HUB_INDEXES.contains(destinationID)) {
+						if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(destinationID)) {
 							zone.setBusInfo(destinationID, busSchedule.getBusGap().get(i));
 						}
 					}
@@ -225,8 +225,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			for (Zone origin : getZoneContext().getAll()) {
 				for (Zone destination : getZoneContext().getAll()) {
 					if (origin.getIntegerID() != destination.getIntegerID()
-							&& (GlobalVariables.HUB_INDEXES.contains(origin.getIntegerID())
-									|| GlobalVariables.HUB_INDEXES.contains(destination.getIntegerID()))) {
+							&& ( ContextCreator.getZoneContext().HUB_INDEXES.contains(origin.getIntegerID())
+									||  ContextCreator.getZoneContext().HUB_INDEXES.contains(destination.getIntegerID()))) {
 						logger.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
 						try {
 							List<List<Integer>> candidate_routes = RouteContext.UCBRoute(origin.getCoord(),
@@ -319,6 +319,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedule.schedule(endParams, this, "end");
 
 	}
+	
+	// Schedule the event of loading the demand chunk
+	public void schedulePrivateTripLoader() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(0, (int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
+		schedule.schedule(privateTripLoaderParams, travelDemand, "loadPrivateDemandChunk");
+	}
+	
 
 	// Schedule the event of refreshing road information for routing
 	public void scheduleRoadNetworkRefresh() {
@@ -409,6 +417,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		schedule.schedule(agentParaParams, s, "paraZoneStep");
 		
+		ScheduleParameters agentParaParams2 = ScheduleParameters.createRepeating(0,
+				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
+		schedule.schedule(agentParaParams2, s, "paraZoneRidehailingStep");
+		
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
 		schedule.schedule(endParallelParams, s, "shutdownScheduler");
@@ -422,11 +434,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule the passenger serving events
 		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
+		
+		ScheduleParameters demandServeParams2 = ScheduleParameters.createRepeating(0,
+				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
+		
 		for (Zone z : getZoneContext().getAll()) {
 			schedule.schedule(demandServeParams, z, "step");
 		}
 		for (Zone z : getZoneContext().getAll()) {
-			schedule.schedule(demandServeParams, z, "step2");
+			schedule.schedule(demandServeParams2, z, "ridehailingStep");
 		}
 	}
 
@@ -512,6 +528,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Schedule start and end
 		logger.info("Scheduling events");
 		scheduleStartAndEnd();
+		schedulePrivateTripLoader();
 		scheduleRoadNetworkRefresh();
 		scheduleFreeFlowSpeedRefresh();
 		scheduleNetworkEventHandling(); // For temporarily alter the link speed
@@ -571,6 +588,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - startTime));
 		agg_logger.close();
+		travelDemand.close();
 		// Close the user interface
 		System.exit(0);
 	}
@@ -592,10 +610,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public static double sumOfArray(ArrayList<Double> arrayList, int n) {
-		if (n == 0)
-			return arrayList.get(n);
-		else
-			return arrayList.get(n) + sumOfArray(arrayList, n - 1);
+		double res = 0d;
+		for(int i = 0; i <= n; i++) {
+			res += arrayList.get(i);
+		}
+		return res;
 	}
 
 	public static boolean isRouteUCBMapPopulated() {

@@ -1,5 +1,6 @@
 package mets_r.data.input;
 
+import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -10,6 +11,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 import java.util.*;
+import java.util.Map.Entry;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -20,30 +22,49 @@ import org.json.simple.parser.JSONParser;
  **/
 
 public class TravelDemand {
-	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> privateEVTravelDemand;
-	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> privateGVTravelDemand;
+	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateEVTravelDemand; // The outer key is departure time, the inner key is vid
+	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateGVTravelDemand;
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> publicTravelDemand; // The outer key is the origin and the
 																				// inner key is the destination
 	private List<Integer> waitingThreshold;
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> sharePercentage;
 	
+	private BufferedReader privateEVTripReader;
+	private BufferedReader privateGVTripReader;
+	
+	private int hour;
+	
 
 	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
-		privateEVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
-		privateGVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
+		privateEVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
+		privateGVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
 		publicTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
 		sharePercentage = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
-		readDemandFile();
+		readPublicDemandFile();
 		readWaitTimeFile();
 		if(GlobalVariables.RH_DEMAND_SHARABLE) {
 			readSharePercentFile();
 		}
+		
+		try {
+			privateEVTripReader = new BufferedReader(new FileReader(GlobalVariables.EV_DEMAND_FILE));
+			privateGVTripReader = new BufferedReader(new FileReader(GlobalVariables.GV_DEMAND_FILE));
+			
+			// skip the first line
+			privateEVTripReader.readLine();
+			privateGVTripReader.readLine();
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		
+		hour = 0;
 	}
 
 	@SuppressWarnings("unchecked")
-	public void readDemandFile() {
+	public void readPublicDemandFile() {
 		JSONParser parser = new JSONParser();
 		try {
 			Object obj = parser.parse(new FileReader(GlobalVariables.RH_DEMAND_FILE));
@@ -64,39 +85,6 @@ public class TravelDemand {
 				publicTravelDemand.get(originInd).put(destInd, value);
 			}
 			
-			obj = parser.parse(new FileReader(GlobalVariables.EV_DEMAND_FILE));
-			jsonObject = (JSONObject) obj;
-			for (String OD : (Set<String>) jsonObject.keySet()) {
-				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
-
-				String[] inds = OD.split(",");
-				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
-				;
-				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
-
-				if (!privateEVTravelDemand.containsKey(originInd)) {
-					privateEVTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
-				}
-
-				privateEVTravelDemand.get(originInd).put(destInd, value);
-			}
-			
-			obj = parser.parse(new FileReader(GlobalVariables.GV_DEMAND_FILE));
-			jsonObject = (JSONObject) obj;
-			for (String OD : (Set<String>) jsonObject.keySet()) {
-				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
-
-				String[] inds = OD.split(",");
-				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
-				;
-				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
-
-				if (!privateGVTravelDemand.containsKey(originInd)) {
-					privateGVTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
-				}
-
-				privateGVTravelDemand.get(originInd).put(destInd, value);
-			}
 		} catch (FileNotFoundException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
@@ -104,6 +92,90 @@ public class TravelDemand {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
+	}
+	
+	public void loadPrivateDemandChunk() { // For loading the next hour demand
+		// Add the logger
+		int ev_trip_number = 0;
+		int gv_trip_number = 0;
+		// clear the previous chunk
+		Iterator<Map.Entry<Integer, HashMap<Integer, ArrayList<Integer>>>> iter = this.privateGVTravelDemand.entrySet().iterator();
+	    while (iter.hasNext()) {
+	        if (iter.next().getKey() < hour * 60) {
+	            iter.remove();
+	        }
+	    }
+	    Iterator<Map.Entry<Integer,HashMap<Integer, ArrayList<Integer>>>> iter2 = this.privateEVTravelDemand.entrySet().iterator();
+	    while (iter2.hasNext()) {
+	        if (iter2.next().getKey() < hour * 60) {
+	            iter2.remove();
+	        }
+	    }
+		// read the new chunk
+	    try {
+	    	boolean flag = true;
+		    while(flag) {
+		    	String line = privateEVTripReader.readLine();
+		    	if(line != null) {
+		    		String[] result = line.split(",");
+		    		int vid = Integer.parseInt(result[0]);
+		    		int time_ind = Integer.parseInt(result[1]);
+		    		int origin = Integer.parseInt(result[2]);
+		    		int dest = Integer.parseInt(result[3]);
+		    		
+		    		// add it to the privateEVTravelDemand
+		    		if(!privateEVTravelDemand.containsKey(time_ind)) {
+		    			privateEVTravelDemand.put(time_ind, new HashMap<Integer, ArrayList<Integer>>());
+		    		}
+		    		ArrayList<Integer> od = new ArrayList<Integer>();
+		    		od.add(origin);
+		    		od.add(dest);
+		    		privateEVTravelDemand.get(time_ind).put(vid, od);
+		    		
+		    		ev_trip_number += 1;
+		    		
+		    		// if this demand happens earlier/within than this hour, continue the reading
+		    		if(time_ind <= (hour+1) * 60 ) continue;
+		    	}
+		    	flag = false;
+		    }
+		    flag = true;
+		    while(flag) {
+		    	String line = privateGVTripReader.readLine();
+		    	if(line != null) {
+		    		String[] result = line.split(",");
+		    		int vid = Integer.parseInt(result[0]);
+		    		int time_ind = Integer.parseInt(result[1]);
+		    		int origin = Integer.parseInt(result[2]);
+		    		int dest = Integer.parseInt(result[3]);
+		    		
+		    		// add it to the privateEVTravelDemand
+		    		if(!privateGVTravelDemand.containsKey(time_ind)) {
+		    			privateGVTravelDemand.put(time_ind, new HashMap<Integer, ArrayList<Integer>>());
+		    		}
+		    		ArrayList<Integer> od = new ArrayList<Integer>();
+		    		od.add(origin);
+		    		od.add(dest);
+		    		privateGVTravelDemand.get(time_ind).put(vid, od);
+		    		
+		    		gv_trip_number += 1;
+		    		
+		    		// if this demand happens earlier/within than this hour, continue the reading
+		    		if(time_ind <= (hour+1) * 60 ) continue;
+		    	}
+		    	flag = false;
+		    }
+		    
+		    ContextCreator.logger.info("Private trips at hour " + hour + " has been loaded, EV trip number: " + ev_trip_number + ", GV trip number: " + gv_trip_number);
+	    }
+	    catch (IOException e) {
+	    	ContextCreator.logger.error(
+					"Fail to load the private trip demand chunk with error " + e.toString());
+	    	e.printStackTrace();
+	    }
+	    
+	    hour += 1;
+		
 	}
 	
 	public void readWaitTimeFile() {
@@ -161,26 +233,36 @@ public class TravelDemand {
 		}
 	}
 	
-	public double getPrivateEVTravelDemand(int originID, int destID, int hour) {
-		if (privateEVTravelDemand.containsKey(originID)) {
-			if (privateEVTravelDemand.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return privateEVTravelDemand.get(originID).get(destID).get(hour);
+	public HashMap<Integer, Integer> getPrivateEVTravelDemand(int timeIndex, int originID) {
+		// return a list of vid, dest
+		HashMap<Integer, Integer> result = new HashMap<Integer, Integer>();
+		if (this.privateEVTravelDemand.containsKey(timeIndex)) {
+			for(Entry<Integer, ArrayList<Integer>> item: this.privateEVTravelDemand.get(timeIndex).entrySet()) {
+				int vid = item.getKey();
+				int origin = item.getValue().get(0);
+				int dest = item.getValue().get(1);
+				if(origin == originID) {
+					result.put(vid, dest);
 				}
 			}
 		}
-		return 0d;
+		return result;
 	}
 	
-	public double getPrivateGVTravelDemand(int originID, int destID, int hour) {
-		if (privateGVTravelDemand.containsKey(originID)) {
-			if (privateGVTravelDemand.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return privateGVTravelDemand.get(originID).get(destID).get(hour);
+	public HashMap<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {
+		// return a list of vid, dest
+		HashMap<Integer, Integer> result = new HashMap<Integer, Integer>();
+		if (this.privateGVTravelDemand.containsKey(timeIndex)) {
+			for(Entry<Integer, ArrayList<Integer>> item: this.privateGVTravelDemand.get(timeIndex).entrySet()) {
+				int vid = item.getKey();
+				int origin = item.getValue().get(0);
+				int dest = item.getValue().get(1);
+				if(origin == originID) {
+					result.put(vid, dest);
 				}
 			}
 		}
-		return 0d;
+		return result;
 	}
 	
 	public double getPublicTravelDemand(int originID, int destID, int hour) {
@@ -221,5 +303,15 @@ public class TravelDemand {
 			return waitingThreshold.get(hour);
 		}
 		return 600;
+	}
+	
+	public void close() {
+		try {
+			this.privateEVTripReader.close();
+			this.privateGVTripReader.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 }

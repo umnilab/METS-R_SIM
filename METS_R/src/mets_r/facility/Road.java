@@ -550,7 +550,7 @@ public class Road {
 
 	/*
 	 * Update background traffic through speed file. if road event flag is
-	 * true, just pass to default free speed, else, update link free flow speed
+	 * true, just pass to cached speed limit, otherwise, update link free flow speed
 	 */
 	public void updateFreeFlowSpeed() {
 		// Get current tick
@@ -559,7 +559,8 @@ public class Road {
 		// each hour set events
 		if (this.lastUpdateHour < hour) {
 			for(Lane lane: this.getLanes()) {
-				lane.setSpeed(ContextCreator.backgroundTraffic.getBackgroundTraffic(this.ID, hour) * 0.44694);
+				double new_speed = ContextCreator.backgroundTraffic.getBackgroundTraffic(this.ID, hour);
+				if(new_speed > 0) lane.setSpeed(new_speed * 0.44694);
 			}
 			
 			if (this.checkEventFlag()) {

@@ -15,13 +15,17 @@ import repast.simphony.context.DefaultContext;
 import repast.simphony.space.gis.Geography;
 
 public class VehicleContext extends DefaultContext<Vehicle> {
-	// For operation
+	// For taxi/ride-hailing operation
 	private HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
 	private ConcurrentHashMap<ElectricTaxi, Integer> relocationTaxiMap; 
 	
 	// For data collection
 	private HashMap<Integer, ElectricTaxi> taxiMap; 
 	private HashMap<Integer, ElectricBus> busMap;
+	
+	// For tracking private vehicle trips, note the key is not the agentID but the one used in the TravelDemand JSON files
+	private HashMap<Integer, ElectricVehicle> privateEVMap;
+	private HashMap<Integer, Vehicle> privateGVMap;
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -33,13 +37,24 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Integer>();
 		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
 		this.busMap = new HashMap<Integer, ElectricBus>();
-		createVehicleContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
+		createTaxiContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
 		createBusContextFromZone(zoneGeography, GlobalVariables.NUM_OF_BUS);
 		ContextCreator.logger.info("BUS generated!");
 	}
+	
+	
+	public void createVehicleContextFromZone(Geography<Zone> zoneGeography) {
+		int total_EVs = 0;
+		int total_GVs = 0;
+		// Generating private vehicles according to the travelDemand file
+		
+		
+		ContextCreator.logger.info("Total private EV generated " + total_EVs);
+		ContextCreator.logger.info("Total private GV generated " + total_GVs);
+	}
 
-	public void createVehicleContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
+	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
 		int total_vehicles = 0;
 
 		// Generating vehicle according to demand distribution
@@ -103,7 +118,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    	ContextCreator.logger.info("There are still vehicles to generate, but no space for them, to generate number " + num_total);
 	    }
 
-		ContextCreator.logger.info("Total EV vehicles generated " + total_vehicles);
+		ContextCreator.logger.info("Total EV taxis generated " + total_vehicles);
 	}
 
 	// Initialize buses for each route, if station is assigned to specified
@@ -111,9 +126,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void createBusContextFromZone(Geography<Zone> zoneGeography, int bus_num) {
 		// Go through all routes, generate vehicle_num[i] buses in the beginning of the
 		// routes
-		int num_per_hub = (int) Math.ceil(bus_num / (GlobalVariables.HUB_INDEXES.size()>0?GlobalVariables.HUB_INDEXES.size():1));
+		int num_per_hub = (int) Math.ceil(bus_num / (ContextCreator.getZoneContext().HUB_INDEXES.size()>0? ContextCreator.getZoneContext().HUB_INDEXES.size():1));
 		try {
-			for (int startZone : GlobalVariables.HUB_INDEXES) {
+			for (int startZone :  ContextCreator.getZoneContext().HUB_INDEXES) {
 				ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));
 				int vehicle_gap = Math.round(60 / GlobalVariables.SIMULATION_STEP_SIZE); // Ticks between two
 																							// consecutive bus
@@ -215,6 +230,36 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	          }
 		}
 		return result;
+	}
+	
+	public ElectricVehicle getPrivateEV(int vid) {
+		if(this.privateEVMap.containsKey(vid)) {
+			return this.privateEVMap.get(vid);
+		}
+		else {
+			return null;
+		}
+	}
+	
+	public Vehicle getPrivateGV(int vid) {
+		if(this.privateGVMap.containsKey(vid)) {
+			return this.privateGVMap.get(vid);
+		}
+		else {
+			return null;
+		}
+	}
+	
+	public void registerPrivateEV(int vid, ElectricVehicle ev) {
+		if(!this.privateEVMap.containsKey(vid)) {
+			this.privateEVMap.put(vid, ev);
+		}
+	}
+	
+	public void registerPrivateGV(int vid, Vehicle gv) {
+		if(!this.privateGVMap.containsKey(vid)) {
+			this.privateGVMap.put(vid, gv);
+		}
 	}
 
 }

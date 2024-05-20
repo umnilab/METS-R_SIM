@@ -78,6 +78,28 @@ public class ThreadedScheduler {
 			ex.printStackTrace();
 		}
 	}
+	
+	public void paraZoneRidehailingStep() {
+		// Load the partitions, each partition is a subset of Zones
+		ArrayList<ArrayList<Zone>> partitionedZones = ContextCreator.partitioner.getpartitionedZones();
+		// Creates tasks to run zone.step() function in each partition
+		List<PartitionZoneRidehailingThread> tasks = new ArrayList<PartitionZoneRidehailingThread>();
+		for (int i = 0; i < this.N_Partition; i++) {
+			tasks.add(new PartitionZoneRidehailingThread(partitionedZones.get(i), i));
+		}
+		try {
+			List<Future<Integer>> futures = executor.invokeAll(tasks);
+			ArrayList<Integer> time_stat = new ArrayList<Integer>();
+			for (int i = 0; i < N_Partition; i++)
+				time_stat.add(futures.get(i).get());
+			ArrayList<Integer> time_result = minMaxAvg(time_stat);
+			min_para_time = min_para_time + time_result.get(0);
+			max_para_time = max_para_time + time_result.get(1);
+			avg_para_time = avg_para_time + time_result.get(2);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+	}
 
 	public void paraChargingStationStep() {
 		// Load the partitions, each partition is a subset of Charging stations
@@ -216,8 +238,32 @@ class PartitionZoneThread implements Callable<Integer> {
 			for (Zone z : this.ZoneSet) {
 				z.step();
 			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+		}
+		return (int) (System.currentTimeMillis() - start_t);
+	}
+}
+
+/* A thread to call zones's ridehailingStep() method */
+class PartitionZoneRidehailingThread implements Callable<Integer> {
+	private ArrayList<Zone> ZoneSet;
+	private int threadID;
+
+	public PartitionZoneRidehailingThread(ArrayList<Zone> zonePartition, int ID) {
+		this.ZoneSet = zonePartition;
+		this.threadID = ID;
+	}
+
+	public int getThreadID() {
+		return this.threadID;
+	}
+
+	public Integer call() {
+		double start_t = System.currentTimeMillis();
+		try {
 			for (Zone z : this.ZoneSet) {
-				z.step2();
+				z.ridehailingStep();
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
