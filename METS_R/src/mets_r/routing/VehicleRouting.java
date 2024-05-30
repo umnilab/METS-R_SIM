@@ -30,10 +30,11 @@ public class VehicleRouting {
 		else if (roadNetwork instanceof ContextJungNetwork)
 			graphA = ((ContextJungNetwork) roadNetwork).getGraph();
 		NodeToJgraph<Node> converter = new NodeToJgraph<Node>();
-		this.transformedNetwork = converter.convertToJgraph(graphA);
+		transformedNetwork = converter.convertToJgraph(graphA);
 	}
 
 	public void setEdgeWeight(Node node1, Node node2, double weight) {
+//		ContextCreator.logger.info("Node 1" + node1.getID() + " Node 2" + node2.getID() + " Weight " + weight); 
 		transformedNetwork.setEdgeWeight(transformedNetwork.getEdge(node1, node2), weight);
 	}
 
@@ -78,7 +79,7 @@ public class VehicleRouting {
 			roadPath_.add(currentRoad);
 		}
 		else {
-			if (GlobalVariables.K_SHORTEST_PATH && rand != null) { // rand is null when used merely for travel time estimation
+			if (GlobalVariables.K_SHORTEST_PATH && rand != null) { // rand is null when this is used merely for travel time estimation
 				// Find the k-shortest path
 				YenKShortestPath<Node, RepastEdge<Node>> ksp = new YenKShortestPath<Node, RepastEdge<Node>>(
 						transformedNetwork);

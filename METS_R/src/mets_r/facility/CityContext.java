@@ -34,6 +34,8 @@ public class CityContext extends DefaultContext<Object> {
 	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
 	private HashMap<Coordinate, Road> coordRoad_KeyCoord; // Cache the closest road
 	private HashMap<Integer, HashMap<Integer, Road>> nodeIDRoad_KeyNodeID;
+	
+	private Boolean networkInitialized = false;
           
 	public CityContext() {
 		super("CityContext"); // Very important otherwise repast complains
@@ -462,20 +464,22 @@ public class CityContext extends DefaultContext<Object> {
 
 	// Update node based routing
 	public void modifyRoadNetwork() {
+		// At beginning, initialize route object
+		if (!this.networkInitialized) {
+			try {
+				RouteContext.createRoute();
+				networkInitialized = true;
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+				
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
 			if(road.updateTravelTimeEstimation()) {
 				Node node1 = road.getUpStreamNode();
 				Node node2 = road.getDownStreamNode();
 				ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(road.getTravelTime());
-			}
-		}
-
-		// At beginning, initialize route object
-		if (!ContextCreator.isRouteUCBMapPopulated()) {
-			try {
-				RouteContext.createRoute();
-			} catch (Exception e) {
-				e.printStackTrace();
+				RouteContext.setEdgeWeight(node1, node2, road.getTravelTime());
 			}
 		}
 	}

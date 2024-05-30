@@ -494,7 +494,9 @@ public class Road {
 			newTravelTime =  this.length / this.speedLimit_;
 		}
 		
-		if(this.travelTime == newTravelTime) return false;
+		if(this.travelTime == newTravelTime) {
+			return false;
+		}
 		else {
 			this.travelTime = newTravelTime;
 			return true;

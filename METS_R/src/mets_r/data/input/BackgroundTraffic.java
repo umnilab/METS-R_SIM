@@ -100,8 +100,8 @@ public class BackgroundTraffic {
 			if(backgroundSpeed.get(ID).size()>hour)
 				return backgroundSpeed.get(ID).get(hour); 
 		}
-		ContextCreator.logger.warn("Could not find the background speed for link " +
-				ID + " at hour " + hour + ", keep the original target speed.");
+//		ContextCreator.logger.warn("Could not find the background speed for link " +
+//				ID + " at hour " + hour + ", keep the original target speed.");
 		return -1;
 	}
 

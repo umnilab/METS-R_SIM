@@ -37,6 +37,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.relocationTaxiMap = new ConcurrentHashMap<ElectricTaxi, Integer>();
 		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
 		this.busMap = new HashMap<Integer, ElectricBus>();
+		
+		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
+		this.privateGVMap = new HashMap<Integer, Vehicle>();
+		
 		createTaxiContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
 		createBusContextFromZone(zoneGeography, GlobalVariables.NUM_OF_BUS);
