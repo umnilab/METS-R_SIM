@@ -25,11 +25,18 @@ METS-R SIM was developed based on a hurricane evacuation simulator named [A-RESC
 # Publications
 
 ## Main papers
-[1] Lei, Z., Xue, J., Chen, X., Qian, X., Saumya, C., He, M., ... & Ukkusuri, S. V. (2024). METS-R SIM: A simulator for Multi-modal Energy-optimal Trip Scheduling in Real-time with shared autonomous electric vehicles. Simulation Modelling Practice and Theory, 132, 102898.
++ Lei, Z., Xue, J., Chen, X., Qian, X., Saumya, C., He, M., ... & Ukkusuri, S. V. (2024). METS-R SIM: A simulator for Multi-modal Energy-optimal Trip Scheduling in Real-time with shared autonomous electric vehicles. Simulation Modelling Practice and Theory, 132, 102898.
 
-[2] Lei, Z., Xue, J., Chen, X., Saumya, C., Qian, X., He, M., ... & Ukkusuri, S. V. (2021, September). ADDS-EVS: An agent-based deployment decision-support system for electric vehicle services. In 2021 IEEE International Intelligent Transportation Systems Conference (ITSC) (pp. 1658-1663). IEEE
++ Lei, Z., Xue, J., Chen, X., Saumya, C., Qian, X., He, M., ... & Ukkusuri, S. V. (2021). ADDS-EVS: An agent-based deployment decision-support system for electric vehicle services. In 2021 IEEE International Intelligent Transportation Systems Conference (ITSC) (pp. 1658-1663). IEEE
 
-## Papers using the METS-R SIM
+## Papers that METS-R is built on
++ Chen, X., Xue, J., Lei, Z., Qian, X., & Ukkusuri, S. V. (2022). Online eco-routing for electric vehicles using combinatorial multi-armed bandit with estimated covariance. Transportation Research Part D: Transport and Environment, 111, 103447.
 
-[3] Chen, X., Lei, Z., & Ukkusuri, S. V. (2024). Modeling the influence of charging cost on electric ride-hailing vehicles. Transportation Research Part C: Emerging Technologies, 160, 104514.
++ Qian, X., Xue, J., & Ukkusuri, S. V. (2021). Demand-adaptive route planning and scheduling for urban hub-based high-capacity mobility-on-demand services. Accepted in ISTTT 24 Proceedings.
+
++  Qian, X., Xue, J., Sobolevsky, S., Yang, C., & Ukkusuri, S. (2019). Stationary spatial charging demand distribution for commercial electric vehicles in urban area. In 2019 IEEE intelligent transportation systems conference (ITSC) (pp. 220-225). IEEE.
+
+
+## Papers that use METS-R
++ Chen, X., Lei, Z., & Ukkusuri, S. V. (2024). Modeling the influence of charging cost on electric ride-hailing vehicles. Transportation Research Part C: Emerging Technologies, 160, 104514.
 
