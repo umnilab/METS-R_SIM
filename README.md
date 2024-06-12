@@ -9,18 +9,11 @@ The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulat
 
 | Resource name      | Link      |
 | ------------- | ------------- |
-| The latest document | [https://umnilab.github.io/METS-R_doc/] |
-| The HPC module | [https://github.com/umnilab/METS-R_HPC] |
-| A visualization demo |https://engineering.purdue.edu/HSEES/METSRVis/] |
-| The simulation paper | [https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121)]  A new paper detailing the cloud service and co-simulation capabilities is in progress.
+| The latest document | https://umnilab.github.io/METS-R_doc/ |
+| The HPC module | https://github.com/umnilab/METS-R_HPC |
+| A visualization demo | https://engineering.purdue.edu/HSEES/METSRVis/ |
+| The simulation paper | https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121 |
 
-1. The [latest document](https://umnilab.github.io/METS-R_doc/).
-
-2. The [HPC module](https://github.com/umnilab/METS-R_HPC).
-
-3. A [visualization demo](https://engineering.purdue.edu/HSEES/METSRVis/).
-
-4. The [simulation paper](https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121).
 
 # Contributors
 The current contributors of METS-R SIM are **Zengxiang Lei** and **Ruichen Tan**.
