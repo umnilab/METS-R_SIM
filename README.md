@@ -18,7 +18,7 @@ The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulat
 # Contributors
 The current contributors of METS-R SIM are **Zengxiang Lei** (lei67@purdue.edu) and **Ruichen Tan** (tan479@purdue.edu). If you have any questions, please feel free to contact them.
 
-The following people contributed directly to the source code of the METS-R SIM until 2021: **Zengxiang Lei**, **Jiawei Xue**, **Xiaowei Chen**, **Charitha Samya**, Juan **Esteban Suarez Lopez**, and **Zhenyu Wang**.
+The following people contributed directly to the source code of the METS-R SIM until 2021: **Zengxiang Lei**, **Jiawei Xue**, **Xiaowei Chen**, **Charitha Samya**, **Juan Esteban Suarez Lopez**, and **Zhenyu Wang**.
 
 METS-R SIM was developed based on a hurricane evacuation simulator named [A-RESCUE](https://github.com/umnilab/A_RESCUE), whose authors are: **Xianyuan Zhan**, **Samiul Hasan**, **Christopher Thompson**, **Xinwu Qian**, **Heman Gelhot**, **Wenbo Zhang**, **Zengxiang Lei**, and **Rajat Verma**.
 
