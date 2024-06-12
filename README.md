@@ -22,12 +22,14 @@ The following people contributed directly to the source code of the METS-R SIM u
 
 METS-R SIM was developed based on a hurricane evacuation simulator named [A-RESCUE](https://github.com/umnilab/A_RESCUE), whose authors are: **Xianyuan Zhan**, **Samiul Hasan**, **Christopher Thompson**, **Xinwu Qian**, **Heman Gelhot**, **Wenbo Zhang**, **Zengxiang Lei**, and **Rajat Verma**.
 
-# Pulications
+# Publications
 
-
+## Main papers
 [1] Lei, Z., Xue, J., Chen, X., Qian, X., Saumya, C., He, M., ... & Ukkusuri, S. V. (2024). METS-R SIM: A simulator for Multi-modal Energy-optimal Trip Scheduling in Real-time with shared autonomous electric vehicles. Simulation Modelling Practice and Theory, 132, 102898.
 
 [2] Lei, Z., Xue, J., Chen, X., Saumya, C., Qian, X., He, M., ... & Ukkusuri, S. V. (2021, September). ADDS-EVS: An agent-based deployment decision-support system for electric vehicle services. In 2021 IEEE International Intelligent Transportation Systems Conference (ITSC) (pp. 1658-1663). IEEE
+
+## Papers using METS-R SIM
 
 [3] Chen, X., Lei, Z., & Ukkusuri, S. V. (2024). Modeling the influence of charging cost on electric ride-hailing vehicles. Transportation Research Part C: Emerging Technologies, 160, 104514.
 
