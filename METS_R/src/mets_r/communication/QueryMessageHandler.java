@@ -4,7 +4,11 @@ import java.util.HashMap;
 
 import org.json.simple.JSONObject;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
+import mets_r.GlobalVariables;
+import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Signal;
@@ -15,7 +19,7 @@ import mets_r.mobility.Vehicle;
 
 public class QueryMessageHandler extends MessageHandler {
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
-		String answer = "KO"; // default message
+		String answer = null; // default message
 		if(msgType.equals("vehicle")) {
 			answer = getVehicle(jsonMsg);
 		}
@@ -44,19 +48,78 @@ public class QueryMessageHandler extends MessageHandler {
 	public String getVehicle(JSONObject jsonMsg) {
 		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		// PRV True or False
+		// TRAN True or False
+		
 		if(!jsonMsg.containsKey("ID")) {
 			jsonObj.put("TYPE", "ANS_vehicle");
-			jsonObj.put("id_list", ContextCreator.getVehicleContext().getVehicleIDList());
+			jsonObj.put("public_vids", ContextCreator.getVehicleContext().getPublicVehicleIDList());
+			jsonObj.put("private_vids", ContextCreator.getVehicleContext().getPrivateVehicleIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
 			
 		int id = ((Long) jsonMsg.get("ID")).intValue();
-		Vehicle vehicle = ContextCreator.getVehicleContext().getVehicle(id);
+		if(jsonMsg.containsKey("PRV")) {
+			Vehicle vehicle;
+			if((Boolean) jsonMsg.get("PRV")) {
+				vehicle = ContextCreator.getVehicleContext().getPrivateVehicle(id);
+			}
+			else {
+				vehicle = ContextCreator.getVehicleContext().getPublicVehicle(id);
+			}
+			if(vehicle != null) {
+				Coordinate coord;
+				if(jsonMsg.containsKey("TRAN") && (Boolean) jsonMsg.get("TRAN")) {
+					coord= vehicle.getCurrentCoord(SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+				}
+				else {
+					coord= vehicle.getCurrentCoord();
+				}
+				jsonObj.put("TYPE", "ANS_vehicle");
+				jsonObj.put("ID", vehicle.getID());
+				jsonObj.put("v_type", vehicle.getVehicleClass());
+				jsonObj.put("state", vehicle.getState());
+				jsonObj.put("x", coord.x);
+				jsonObj.put("y", coord.y);
+				jsonObj.put("bearing", vehicle.getBearing());
+				jsonObj.put("acc", vehicle.currentAcc());
+				jsonObj.put("speed", vehicle.currentSpeed());
+				jsonObj.put("origin", vehicle.getOriginID());
+				jsonObj.put("dest", vehicle.getDestID());
+				jsonObj.put("on_road", vehicle.isOnRoad());
+//				jsonObj.put("on_lane", vehicle.isOnLane());
+//				// if vehicle is on road
+//				if(vehicle.isOnRoad()) {
+//					jsonObj.put("current_route", vehicle.getRoute());
+//					jsonObj.put("road", vehicle.getRoad().getID());
+//					jsonObj.put("speed_limit", vehicle.getRoad().getSpeedLimit());
+//					jsonObj.put("dist_to_junction", vehicle.getDistance());
+//				}
+				
+				String answer = JSONObject.toJSONString(jsonObj);
+				return answer;
+			}
+		}
+	    return "KO";
+	}
+	
+	public String getPrivateVehicle(JSONObject jsonMsg) {
+		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("ID")) {
+			jsonObj.put("TYPE", "ANS_privateVehicle");
+			jsonObj.put("id_list", ContextCreator.getVehicleContext().getPrivateVehicleIDList());
+			String answer = JSONObject.toJSONString(jsonObj);
+			return answer;
+		}
+			
+		int id = ((Long) jsonMsg.get("ID")).intValue();
+		Vehicle vehicle = ContextCreator.getVehicleContext().getPrivateVehicle(id);
 
 		if(vehicle != null) {
-			jsonObj.put("TYPE", "ANS_vehicle");
-			jsonObj.put("ID", vehicle.getID());
+			jsonObj.put("TYPE", "ANS_privateVehicle");
+			jsonObj.put("ID", id); // Note here the id should not be vehicle.getID()
 			jsonObj.put("v_type", vehicle.getVehicleClass());
 			jsonObj.put("state", vehicle.getState());
 			jsonObj.put("x", vehicle.getCurrentCoord().x);
@@ -66,6 +129,7 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("speed", vehicle.currentSpeed());
 			jsonObj.put("origin", vehicle.getOriginID());
 			jsonObj.put("dest", vehicle.getDestID());
+			jsonObj.put("on_road", vehicle.isOnRoad());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
@@ -185,7 +249,7 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("ID", signal.getID());
 			jsonObj.put("state", signal.getState());
 			jsonObj.put("nex_state", signal.getNextState());
-			jsonObj.put("next_update_time", signal.getNextUpdateTime());
+			jsonObj.put("next_update_time", signal.getNextUpdateTick());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}

@@ -80,8 +80,6 @@ public class GlobalVariables {
 	
 	public static final int SIMULATION_ZONE_REFRESH_INTERVAL = (int) (Integer
 			.valueOf(loadConfig("SIMULATION_ZONE_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
-	public static final int SIMULATION_SIGNAL_REFRESH_INTERVAL = (int) (Integer
-			.valueOf(loadConfig("SIMULATION_SIGNAL_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
 	public static final int SIMULATION_DEMAND_REFRESH_INTERVAL = (int) (Integer
 			.valueOf(loadConfig("SIMULATION_DEMAND_REFRESH_INTERVAL"))/SIMULATION_STEP_SIZE);
 	public static final int SIMULATION_SPEED_REFRESH_INTERVAL = (int) (Integer
@@ -97,6 +95,8 @@ public class GlobalVariables {
 
 	public static final int SIMULATION_STOP_TIME = (int) (60 * Integer.valueOf(loadConfig("SIMULATION_STOP_TIME"))
 			/ SIMULATION_STEP_SIZE);
+	
+	public static final int SIMULATION_SIGNAL_REFRESH_INTERVAL = SIMULATION_STEP_SIZE>1? 1: (int) (1 / SIMULATION_STEP_SIZE);
 	
 	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	

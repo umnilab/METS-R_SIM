@@ -57,7 +57,6 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new LaneContext());
 		this.addSubContext(new ZoneContext());
 		this.addSubContext(new ChargingStationContext());
-		this.initializeLaneDistance();
 	}
 	
 	// Calculate the length of each length based on their geometries
@@ -205,25 +204,6 @@ public class CityContext extends DefaultContext<Object> {
 				
 				road.setUpStreamNode(node1);
 				road.setDownStreamNode(node2);
-				
-				RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, road.getLength()/road.getSpeedLimit()); 
-				
-				if (!roadNetwork.containsEdge(edge)) {
-					roadNetwork.addEdge(edge);
-					this.edgeRoadID_KeyEdge.put(edge, road.getID());
-					this.edgeIDEdge_KeyID.put(road.getID(), edge);
-					if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
-						this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
-					} else {
-						HashMap<Integer, Road> tmp = new HashMap<Integer, Road>();
-						tmp.put(node2.getID(), road);
-						this.nodeIDRoad_KeyNodeID.put(node1.getID(), tmp);
-					}
-				} else {
-					ContextCreator.logger
-					.error("buildRoadNetwork1: this edge that has just been created "
-							+ "already exists in the RoadNetwork!");
-				}
 			}
 		} 
 		else {
@@ -250,8 +230,12 @@ public class CityContext extends DefaultContext<Object> {
 				for (List<Integer> rc: sxml.getRoadConnection(jid)) {
 					Road r1 = ContextCreator.getRoadContext().get(rc.get(0));
 					Road r2 = ContextCreator.getRoadContext().get(rc.get(1));
+					// Tell the road about their junction
 					r1.setDownStreamJunction(jid);
 					r2.setUpStreamJunction(jid);
+					// Tell the junction about their road
+					j.addUpStreamRoad(r1.getID());
+					j.addDownStreamRoad(r2.getID());
 					// Tell the node about their junction
 					Node node1 = r1.getDownStreamNode();
 					Node node2 = r2.getUpStreamNode();
@@ -259,19 +243,25 @@ public class CityContext extends DefaultContext<Object> {
 					node2.setJunction(j); 
 					// Set the signal
 					if(j.getControlType() == Junction.StaticSignal) {
-						j.setSignal(r1.getID(), r2.getID(), sxml.getSignal().get(r1.getID()).get(r2.getID()));
+						Signal s = sxml.getSignal().get(r1.getID()).get(r2.getID());
+						// Add the signal to SignalContext
+						ContextCreator.getSignalContext().put(s.getID(), s);
+						j.setSignal(r1.getID(), r2.getID(), s);
+						j.setDelay(r1.getID(), r2.getID(), s.getDelay());
 					}
 				}
 		    }
 			
 		}
+		
+		this.initializeLaneDistance();
 			
 		for(Road road: ContextCreator.getRoadContext().getAll()) {
 			Node node1 = road.getUpStreamNode();
 			Node node2 = road.getDownStreamNode();
 			RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,
 					road.getLength() / road.getSpeedLimit());
-
+			
 			if (!roadNetwork.containsEdge(edge)) {
 				roadNetwork.addEdge(edge);
 				this.edgeRoadID_KeyEdge.put(edge, road.getID());
@@ -339,7 +329,6 @@ public class CityContext extends DefaultContext<Object> {
 					for(int r: j.getDownStreamRoads()) 
 						roadTypes.add(ContextCreator.getRoadContext().get(r).getRoadType());
 					Collections.sort(roadTypes);
-					
 					if (roadTypes.size() >= 2) {
 						if (j.getControlType() == Junction.Yield) {
 							for(int r1: j.getUpStreamRoads()) {
@@ -367,7 +356,6 @@ public class CityContext extends DefaultContext<Object> {
 							}
 						}
 					}
-					
 				}
 			}			
 		}
@@ -391,15 +379,12 @@ public class CityContext extends DefaultContext<Object> {
 							int signalNumber=j.getUpStreamRoads().size();
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-									j.setDelay(r1, r2, 
-											(int) Math.ceil((signalNumber-1)/signalNumber*
-													(signalNumber-1)/signalNumber*
-													15/GlobalVariables.SIMULATION_STEP_SIZE));
 									Signal signal = new Signal(ContextCreator.generateAgentID(), 
-											new ArrayList<Integer>(Arrays.asList(27,3,30*signalNumber)), 
+											new ArrayList<Integer>(Arrays.asList(27,3,30*(signalNumber-1))), 
 													signalIndex*30);
 									ContextCreator.getSignalContext().put(signal.getID(), signal);
 									j.setSignal(r1, r2, signal);
+									j.setDelay(r1, r2, signal.getDelay());
 								}
 								signalIndex++;
 							}
@@ -443,8 +428,8 @@ public class CityContext extends DefaultContext<Object> {
 		
 		// Establish edges
 		for (Junction j: junctionContext.getAll()) {
-			for(Integer r1: j.getDelay().keySet()) {
-				for(Integer r2: j.getDelay().get(r1).keySet()) {
+			for(int r1: j.getDelay().keySet()) {
+				for(int r2: j.getDelay().get(r1).keySet()) {
 					Node node1 = ContextCreator.getRoadContext().get(r1).getDownStreamNode();
 					Node node2 = ContextCreator.getRoadContext().get(r2).getUpStreamNode();
 					RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true,j.getDelay(r1, r2));

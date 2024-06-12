@@ -187,12 +187,26 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return null;
 	}
 	
-	public Vehicle getVehicle(int vid) {
+	public Vehicle getPublicVehicle(int vid) {
 		Vehicle vehicle = (Vehicle) this.getTaxi(vid);
 		if(vehicle == null) {
 			vehicle = (Vehicle) this.getBus(vid);
 		}
 		return vehicle;
+	}
+	
+	public Vehicle getPrivateVehicle(int vid){
+		Vehicle	vehicle = (Vehicle) this.getPrivateEV(vid);
+		if(vehicle == null) {
+			vehicle = (Vehicle) this.getPrivateGV(vid);
+		}
+		return vehicle;
+	}
+	
+	public List<Integer> getPrivateVehicleIDList(){
+		List<Integer> vehicleIDList = new ArrayList<>(this.privateEVMap.keySet());
+	    vehicleIDList.addAll(this.privateGVMap.keySet());
+	    return vehicleIDList;
 	}
 	
 	public List<Integer> getTaxiIDList(){
@@ -205,7 +219,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    return vehicleIDList;
 	}
 	
-	public List<Integer> getVehicleIDList(){
+	public List<Integer> getPublicVehicleIDList(){
 		 List<Integer> vehicleIDList = new ArrayList<>(this.taxiMap.keySet());
 	    vehicleIDList.addAll(this.busMap.keySet());
 	    return vehicleIDList;

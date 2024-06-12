@@ -380,6 +380,7 @@ public class SumoXML {
 					    endY += coords.get(coords.size()-1).y;
 					    nLane++;
 					    lanes.put(currentLane.getID(), currentLane);
+					    currentRoad.addLane(currentLane); // Add lane to the road
 					}
 				    
 				}
@@ -465,12 +466,12 @@ public class SumoXML {
 										roadConnections.put(junction_id, new ArrayList<List<Integer>>());
 										laneConnections.put(junction_id, new ArrayList<List<Integer>>());
 									}
-									if (roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+									if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
 										roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
 										if ((attributes.getValue("tl") != null) && signalIDMap.containsKey(attributes.getValue("tl"))) {
 											// has signal control
 											if(!signals.containsKey(from_road_id)) {
-												signals.put(to_road_id, new HashMap<Integer, Signal>());
+												signals.put(from_road_id, new HashMap<Integer, Signal>());
 											}
 											signals.get(from_road_id).put(to_road_id, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
 										}

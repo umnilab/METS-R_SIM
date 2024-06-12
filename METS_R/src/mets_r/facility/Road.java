@@ -112,7 +112,7 @@ public class Road {
 
 	// Get the speed limit
 	public double getSpeedLimit() {
-		return this.cachedSpeedLimit_;
+		return this.speedLimit_;
 	}
 
 	// Check the eventFlag
@@ -337,7 +337,13 @@ public class Road {
 	}
 
 	public double getLength() {
-		return length;
+		if (this.length <= 0){ // no length is provided
+		    for(Lane lane: this.lanes) {
+		    	this.length += lane.getLength();
+		    }
+		    this.length /= this.lanes.size();
+		}
+		return this.length;
 	}
 
 	public void addDownStreamRoad(int dsRoad) {
@@ -551,13 +557,12 @@ public class Road {
 	}
 
 	/*
-	 * Update background traffic through speed file. if road event flag is
+	 * Update background traffic through a speed file. if road event flag is
 	 * true, just pass to cached speed limit, otherwise, update link free flow speed
 	 */
 	public void updateFreeFlowSpeed() {
 		// Get current tick
 		int hour = (int) Math.floor(ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
-		hour = hour % GlobalVariables.HOUR_OF_SPEED;
 		// each hour set events
 		if (this.lastUpdateHour < hour) {
 			for(Lane lane: this.getLanes()) {

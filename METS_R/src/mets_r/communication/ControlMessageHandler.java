@@ -2,55 +2,139 @@ package mets_r.communication;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 
 import mets_r.ContextCreator;
+import mets_r.GlobalVariables;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
+import mets_r.facility.Zone;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 public class ControlMessageHandler extends MessageHandler {
 	
 	@Override
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
-		String answer = "KO";
+		String answer = null;
 		Boolean flag = false;
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		try {
-			if(msgType.equals("teleportVeh")) flag = teleportVeh(jsonMsg);
-			if(msgType.equals("controlVeh")) flag = controlVeh(jsonMsg);
-			if(msgType.equals("routingTaxi")) flag = routingTaxi(jsonMsg);
-			if(msgType.equals("routingBus")) flag = routingBus(jsonMsg);
-			if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg);
-			if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg);
+			if(msgType.equals("teleportVeh")) flag = teleportVeh(jsonMsg, jsonAns);
+			if(msgType.equals("controlVeh")) flag = controlVeh(jsonMsg, jsonAns);
+			if(msgType.equals("routingTaxi")) flag = routingTaxi(jsonMsg, jsonAns);
+			if(msgType.equals("routingBus")) flag = routingBus(jsonMsg, jsonAns);
+			if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg, jsonAns);
+			if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg, jsonAns);
+			if(msgType.equals("generateTrip")) flag = generateTrip(jsonMsg, jsonAns);
+			if(msgType.equals("setCoSimRoad")) flag = setCoSimRoad(jsonMsg, jsonAns);
 			if(flag) {
-				HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-				jsonObj.put("TYPE", msgType);
-				jsonObj.put("CODE", "OK");
-				answer = JSONObject.toJSONString(jsonObj);
+				jsonAns.put("TYPE", "CTRL_" + msgType);
+				jsonAns.put("CODE", "OK");
 			}
 			else {
-				HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-				jsonObj.put("TYPE", msgType);
-				jsonObj.put("CODE", "KO");
-				answer = JSONObject.toJSONString(jsonObj);
+				jsonAns.put("TYPE", "CTRL_" + msgType);
+				jsonAns.put("CODE", "KO");
 			}
 		}catch (Exception e) {
-			HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-			jsonObj.put("TYPE", msgType);
-			jsonObj.put("CODE", "KO");
-			jsonObj.put("ERR", e.toString());
-			answer = JSONObject.toJSONString(jsonObj);
+			jsonAns.put("TYPE", "CTRL_" + msgType);
+			jsonAns.put("CODE", "KO");
+			jsonAns.put("ERR", e.toString());
+			
 		}
+		answer = JSONObject.toJSONString(jsonAns);
 		count++;
 		return answer;
 	}
 	
+	private boolean setCoSimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+		// Get data
+		int roadID = ((Long) jsonMsg.get("roadID")).intValue();
+		Road r = ContextCreator.getRoadContext().get(roadID);
+		if (r != null) {
+			if (r.getVehicleNum()==0) {
+				r.setControlType(Road.CoSim);
+				return true;
+			}
+			else {
+				ContextCreator.logger.warn("Road is not empty, road ID: " + r.getID());
+				return false;
+			}
+		}
+		else {
+			ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+			return false;
+		}
+	    
+	}
+	
+    private boolean generateTrip(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+    	// Get data
+    	int vehID = ((Long) jsonMsg.get("vehID")).intValue();
+    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
+    	if(v != null) {
+			if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
+    			ContextCreator.logger.warn("The private EV: " + vehID + " is currently on the road, maybe there are two trips for the same vehicle that are too close?");
+    			return false;
+			}
+    	}
+		else { // If vehicle does not exists
+			// Create vehicle
+			v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+			ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
+		}
+		
+		// Find the origin and dest zones
+		int originID = ((Long) jsonMsg.get("origin")).intValue();
+		int destID = ((Long) jsonMsg.get("destination")).intValue();
+		Zone originZone = null;
+		Zone destZone = null;
+		
+		if(originID >= 0) {
+			originZone = ContextCreator.getZoneContext().get(originID);
+			if(originZone == null) {
+				ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
+				return false;
+			}
+		}
+		else {
+			// randomly select a zone as origin
+			originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
+			originZone = ContextCreator.getZoneContext().get(originID);
+		}
+		
+		if(destID >= 0) {
+			destZone = ContextCreator.getZoneContext().get(destID);
+			if(destZone == null) {
+				ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
+				return false;
+			}
+		}
+		else {
+			// randomly select a zone as destination
+			destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
+			destZone = ContextCreator.getZoneContext().get(destID);
+		}
+    			
+		// Assign trips
+		v.initializePlan(originID, originZone.sampleCoord(), (int) ContextCreator.getCurrentTick());
+		v.addPlan(destID, destZone.sampleCoord(), (int) ContextCreator.getNextTick());
+		v.setNextPlan();
+		v.setState(Vehicle.PRIVATE_TRIP);
+		v.departure();
+		jsonAns.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
+		jsonAns.put("origin", originID);
+		jsonAns.put("destination",destID);
+		return true;
+    }
+	
 	// This can be done at t or t+1, directly change the road properties
 	// When perform at t+1 (wait == false), append takes effect immediately
-	private boolean teleportVeh(JSONObject jsonMsg) {
+	private boolean teleportVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Get data
-		Vehicle veh = ContextCreator.getVehicleContext().getVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		Vehicle veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
 		Road road = ContextCreator.getRoadContext().get(((Long) jsonMsg.get("roadID")).intValue());
 		Lane lane = ContextCreator.getLaneContext().get(((Long) jsonMsg.get("laneID")).intValue());
 		double dist = (Double) jsonMsg.get("dist");
@@ -68,16 +152,16 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	// This need to be made at t, and takes effect during t to t+1
 	// This essentially alternate the acceleration decisions
-	private boolean controlVeh(JSONObject jsonMsg) {
+	private boolean controlVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Get vehicle
-		Vehicle veh = ContextCreator.getVehicleContext().getVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		Vehicle veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
 		double acc = (Double) jsonMsg.get("acc");
 		// Register its acceleration
 		veh.controlVehicleAcc(acc);
 		return true;
 	}
 
-	private boolean routingTaxi(JSONObject jsonMsg) {
+	private boolean routingTaxi(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		HashMap<String, Integer> res = new HashMap<String, Integer>();
 		ContextCreator.logger.info("Received route result!");
 		JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
@@ -92,7 +176,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return true;
 	}
 	
-	private boolean routingBus(JSONObject jsonMsg) {
+	private boolean routingBus(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		HashMap<String, Integer> res = new HashMap<String, Integer>();
 		ContextCreator.logger.info("Received bus route result!");
 		JSONArray list_OD = (JSONArray) jsonMsg.get("BOD");
@@ -107,7 +191,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return true;
 	}
 	
-	private boolean scheduleBus(JSONObject jsonMsg) {
+	private boolean scheduleBus(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		ContextCreator.logger.info("Received bus schedules!");
 		JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
 		JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
@@ -157,7 +241,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return false;
 	}
 	
-	private boolean sheduleTaxi(JSONObject jsonMsg) {
+	private boolean sheduleTaxi(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		return true;
 	}
 	

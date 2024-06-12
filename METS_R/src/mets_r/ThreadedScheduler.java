@@ -129,7 +129,7 @@ public class ThreadedScheduler {
 		// Load the partitions, each partition is a subset of Charging stations
 		ArrayList<ArrayList<Signal>> patitionSignals = ContextCreator.partitioner
 				.getpartitionedSignals();
-		// Creates tasks to run chargingStation.step() function in each partition
+		// Creates tasks to run the first chargingStation.step() function in each partition
 		List<PartitionSignalThread> tasks = new ArrayList<PartitionSignalThread>();
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionSignalThread(patitionSignals.get(i), i));
@@ -299,7 +299,7 @@ class PartitionChargingStationThread implements Callable<Integer> {
 	}
 }
 
-/* A thread to call charging station's step() method */
+/* A thread to call signal's step() method */
 class PartitionSignalThread implements Callable<Integer> {
 	private ArrayList<Signal> signalSet;
 	private int threadID;

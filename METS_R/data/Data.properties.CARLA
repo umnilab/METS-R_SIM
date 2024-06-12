@@ -1,0 +1,240 @@
+# Config File by Zhan, Lei, Charitha, Xue
+# Notes: please leave no "space" at the end of each row since it may 
+# cause the true being identified as false, i.e., "[feature A] = true  "
+# might be treated as "[feature A] = false" in the simulation.
+
+#-----------------------------#
+# Simulation setup 
+#-----------------------------#
+## The following two will completely change the data communication behavior of the simulation
+## Synchronized, the simulation will run tick by tick and communicate with an external server
+STANDALONE = true
+SYNCHRONIZED = false
+
+## V2X = true then the OBU and RSU will send message to the cloud service
+V2X = false
+
+## Random seed
+RANDOM_SEED = 42
+
+## Second per step, default is 0.1s/tick
+SIMULATION_STEP_SIZE = 0.1
+
+### unit: second,  the interval/time variables
+SIMULATION_ZONE_REFRESH_INTERVAL = 60
+SIMULATION_DEMAND_REFRESH_INTERVAL = 3600
+SIMULATION_SPEED_REFRESH_INTERVAL = 3600
+SIMULATION_NETWORK_REFRESH_INTERVAL = 300
+SIMULATION_BUS_REFRESH_INTERVAL = 7200
+SIMULATION_CHARGING_STATION_REFRESH_INTERVAL = 30
+#### Time window length for matching vehicle and passenger in ride-hailing services
+SIMULATION_RH_MATCHING_WINDOW = 60
+### After this amount of time vehicle will try to park to the closest zone with parking space available
+SIMULATION_RH_MAX_CRUISING_TIME = 600
+
+### unit: minute
+SIMULATION_STOP_TIME = 60
+
+### If DEMAND_DIFFUSION is true, then the origin/destination (except in the hub) 
+### will be uniformly distributed in a zone; if it is false, the origin/destination
+### will be the centroids of the corresponding zones.
+DEMAND_DIFFUSION = true
+
+#-----------------------------#
+#Input Files
+#-----------------------------#
+## Road Network
+ROADS_SHAPEFILE = data/NYC/facility/road/road_fileNYC.shp
+ROADS_CSV = data/NYC/facility/road/road_fileNYC.csv
+
+LANES_SHAPEFILE = data/NYC/facility/road/lane_fileNYC.shp
+LANES_CSV = data/NYC/facility/road/lane_fileNYC.csv
+
+## This will override the above network references, example: data/IN/facility/road/indiana-35.net.xml
+NETWORK_FILE = data/CARLA/facility/road/Town05.net.xml
+
+ZONES_SHAPEFILE = data/CARLA/facility/zone/Town05_centroid.shp
+ZONE_CSV = data/CARLA/facility/zone/Town05_centroid.csv
+CHARGER_SHAPEFILE = data/CARLA/facility/charging_station/Town05_charging_station.shp
+CHARGER_CSV = data/CARLA/facility/charging_station/Town05_charging_station.csv
+
+## INITIAL X and Y for trajectory outputs, used in JsonOutputWriter, for NYC: use -73, 40
+INITIAL_X = 0
+INITIAL_Y = 0
+
+## Background Traffic
+BT_EVENT_FILE = data/CARLA/operation/speed/empty.csv
+BT_STD_FILE = data/CARLA/operation/speed/empty.csv
+
+## Travel demand
+### 1. Ride-hailing (EV taxis) demand
+RH_DEMAND_FILE = data/CARLA/demand/request/blank.json
+RH_WAITING_TIME = data/CARLA/demand/wait/empty.csv
+RH_SHARE_PERCENTAGE = data/CARLA/demand/share/blank.json
+RH_DEMAND_SHARABLE = false
+RH_DEMAND_FACTOR = 1
+
+### 2. Private vehicle trips
+EV_DEMAND_FILE = data/CARLA/demand/private/empty.csv
+GV_DEMAND_FILE = data/CARLA/demand/private/empty.csv
+
+## Default bus schedule
+BUS_SCHEDULE = data/CARLA/operation/bus_planning/blank.json
+
+## Number of shared vehicles, i.e., EV taxis and EV buses
+NUM_OF_EV = 0
+NUM_OF_BUS = 0
+
+## Battery Capacity, unit: kWh
+EV_BATTERY = 50
+BUS_BATTERY = 250
+
+## Event File, specify event like road closure or traffic regulation
+EVENT_FILE = data/NYC/operation/event/empty.csv
+
+### Check event for every X seconds, unit: second
+EVENT_CHECK_FREQUENCY = 10
+
+#-----------------------------#
+# Operation Options
+#-----------------------------#
+K_SHORTEST_PATH = false
+COLLABORATIVE_EV = false
+BUS_PLANNING = false
+PROACTIVE_RELOCATION = true
+
+## Ecorouting Parameters
+ECO_ROUTING_EV = false
+ECO_ROUTING_BUS = false
+NUM_CANDIDATE_ROUTES = 20
+
+## Vehicle charging
+PROACTIVE_CHARGING = false
+RECHARGE_LEVEL_LOW = 0.2
+RECHARGE_LEVEL_HIGH = 0.8
+BUS_RECHARGE_LEVEL_LOW = 0.5
+BUS_RECHARGE_LEVEL_HIGH = 0.8
+
+#-----------------------------#
+# Network Partitioning
+#-----------------------------#
+MULTI_THREADING = true
+## Number of Partitions: 1 not allowed, only number of partition=2^k can produce correct partitions
+N_PARTITION = 16
+N_THREADS = 16
+SIMULATION_PARTITION_REFRESH_INTERVAL = 10000
+SIMULATION_MAX_PARTITION_REFRESH_INTERVAL = 40000
+THRESHOLD_VEHICLE_NUMBER = 200
+
+#-----------------------------#
+# Data collection
+#-----------------------------#
+## Parameters for data collection buffer
+ENABLE_DATA_COLLECTION = true
+DEBUG_DATA_BUFFER = false
+DATA_CLEANUP_REFRESH = 30000
+
+## Parameters for JSON output file writer
+ENABLE_JSON_WRITE = true
+JSON_DEFAULT_FILENAME = EOut
+JSON_DEFAULT_EXTENSION = json
+JSON_DEFAULT_PATH = trajectory_output
+### This value should always be greater than FREQ_RECORD_VEH_SNAPSHOT
+JSON_TICKS_BETWEEN_TWO_RECORDS = 20
+JSON_FREQ_RECORD_LINK_SNAPSHOT = 1000
+JSON_BUFFER_REFRESH = 200
+JSON_TICK_LIMIT_PER_FILE = 2
+
+## Parameters for aggregated report writer
+AGG_DEFAULT_PATH = agg_output
+
+## Parameters for handling network connections
+ENABLE_NETWORK = true
+DEBUG_NETWORK = true
+NETWORK_BUFFER_REFRESH = 2500
+NETWORK_STATUS_REFRESH = 5000
+NETWORK_LISTEN_PORT = 61279
+NETWORK_MAX_MESSAGE_SIZE = 1000000000
+
+## Parameter for recording vehicle snapshot
+FREQ_RECORD_VEH_SNAPSHOT = 20
+
+## Parameters for display metrics
+ENABLE_METRICS_DISPLAY = true
+
+## unit: tick
+METRICS_DISPLAY_INTERVAL = 600
+
+#-----------------------------#
+# Constants
+#-----------------------------#
+## Parameters for primitive move, 3 m/s
+TRAVEL_PER_TURN = 3
+
+## Searching scope for nearby links and charging stations. unit: degree, default: ~5km
+SEARCHING_BUFFER = 0.05
+## unit: meter, minimum cruising scope for nearby links and charging stations, default: 0.5km
+CRUISING_BUFFER = 500
+
+## Car following status
+STATUS_REGIME_FREEFLOWING = 0
+STATUS_REGIME_CARFOLLOWING = 128
+STATUS_REGIME_EMERGENCY =256
+
+## Car following model constants
+ALPHA_DEC = 1.55
+BETA_DEC = 1.08
+GAMMA_DEC = 1.65
+ALPHA_ACC = 2.15
+BETA_ACC = -1.67
+GAMMA_ACC = -0.89
+
+## For K_SHORTEST_PATH 
+K_VALUE = 3
+THETA_LOGIT = 0.25
+
+## Parameters for the adaptive network weighting
+PART_ALPHA = 15
+PART_BETA = 5
+PART_GAMMA = 10
+
+## Number of future road segments to be considered in counting shadow vehicles
+N_SHADOW = 10
+
+## For microscopic vehicle movement
+MIN_LEAD = 3.0
+MIN_LAG = 5.0
+DEFAULT_VEHICLE_WIDTH = 1.8
+DEFAULT_VEHICLE_LENGTH = 5.5
+NO_LANECHANGING_LENGTH = 30
+LANE_WIDTH = 3.5
+H_UPPER = 1.36
+H_LOWER = 0.5
+FLT_INF = Float.MAX_VALUE
+FLT_EPSILON = 1.0 / FLT_INF
+
+STREET_SPEED = 45
+HIGHWAY_SPEED = 70
+BRIDGE_SPEED = 45
+TUNNEL_SPEED = 35
+DRIVEWAY_SPEED = 30
+RAMP_SPEED = 60
+UTURN_SPEED = 25
+
+## For lane changing
+LANE_CHANGING_PROB_PART1 = 0.5
+LANE_CHANGING_PROB_PART2 = 0.5
+
+## Mode split
+### unit: dollars, per mile, per minute
+BUS_TICKET_PRICE = 15.0f
+MS_ALPHA = -0.078725f
+MS_BETA = -0.020532f
+BASE_PRICE_TAXI = 2.0f
+INITIAL_PRICE_TAXI = 2.5f
+TAXI_BASE = -0.672839f
+BUS_BASE = -1.479586f
+
+## For resolving gridlock
+###  unit: seconds, after this amount of time we force the vehicle to move to the next available link
+MAX_STUCK_TIME = 600

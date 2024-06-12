@@ -16,6 +16,7 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class ZoneContext extends FacilityContext<Zone> {
 	public List<Integer> HUB_INDEXES;
+	public int ZONE_NUM = 0;
 	
 	public ZoneContext() {
 		super("ZoneContext");
@@ -50,6 +51,7 @@ public class ZoneContext extends FacilityContext<Zone> {
 				zone.setCoord(zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
 			}
 			br.close();
+			ZONE_NUM = int_id;
 			ContextCreator.logger.info("Zone generated, total number: " + (int_id + 1));
 		} catch (Exception e) {
 			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone sshapefile.");

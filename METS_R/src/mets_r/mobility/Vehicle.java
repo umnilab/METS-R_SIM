@@ -18,7 +18,11 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.geotools.geometry.jts.JTS;
 import org.geotools.referencing.GeodeticCalculator;
+import org.opengis.referencing.operation.MathTransform;
+import org.opengis.referencing.operation.TransformException;
+
 import repast.simphony.space.gis.Geography;
 
 /**
@@ -1052,7 +1056,7 @@ public class Vehicle {
 			}
 			
 			if(movable) {
-				// Check if the target long road has space
+				// Check if the target road has space
 				if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
 					this.removeFromLane();
 					this.removeFromMacroList();
@@ -1360,10 +1364,49 @@ public class Vehicle {
 	}
 	
 	/**
+	 * Get (a copy of) of the vehicle location in the original coordinate system
+	 */
+	public Coordinate getCurrentCoord(MathTransform transform) {
+		Coordinate coord = new Coordinate();
+		coord.x = this.currentCoord_.x;
+		coord.y = this.currentCoord_.y;
+		coord.z = this.currentCoord_.z;
+		try {
+			JTS.transform(coord, coord, transform.inverse());
+		} catch (TransformException e) {
+			e.printStackTrace();
+		}
+		return coord;
+	}
+	
+	/**
 	 * Set the vehicle location
 	 * @param coord New location
 	 */
 	public void setCurrentCoord(Coordinate coord) {
+		if (coord == null) {
+			ContextCreator.logger.error("New coord is null!");
+		} else {
+			this.currentCoord_.x = coord.x;
+			this.currentCoord_.y = coord.y;
+			this.currentCoord_.z = coord.z;
+		}
+
+		if (this.originCoord == null) {
+			this.originCoord = coord;
+		}
+	}
+	
+	/**
+	 * Set the vehicle location using coordinates from the original coordinate system
+	 * @param coord New location
+	 */
+	public void setCurrentCoord(Coordinate coord, MathTransform transform) {
+		try {
+			JTS.transform(coord, coord, transform);
+		} catch (TransformException e) {
+			e.printStackTrace();
+		}
 		if (coord == null) {
 			ContextCreator.logger.error("New coord is null!");
 		} else {

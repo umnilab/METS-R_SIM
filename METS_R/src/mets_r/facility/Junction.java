@@ -75,21 +75,16 @@ public class Junction {
 	}
 
 	public void addUpStreamRoad(int road) {
-		if(ContextCreator.getRoadContext().contains(road)) {
+		if(!ContextCreator.getRoadContext().contains(road)) ContextCreator.logger.error("The to-add upstream road does not exist.");
+		if(!this.upStreamRoads.contains(road)) {
 			this.upStreamRoads.add(road);
 		}
-		else {
-			ContextCreator.logger.error("The to-add upstream road does not exist.");
-		}
-		
 	}
 	
 	public void addDownStreamRoad(int road) {
-		if(ContextCreator.getRoadContext().contains(road)) {
+		if(!ContextCreator.getRoadContext().contains(road)) ContextCreator.logger.error("The to-add downstream road does not exist.");
+		if(!this.downStreamRoads.contains(road)) {
 			this.downStreamRoads.add(road);
-		}
-		else {
-			ContextCreator.logger.error("The to-add downstream road does not exist.");
 		}
 	}
 	

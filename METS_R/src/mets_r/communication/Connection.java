@@ -91,7 +91,7 @@ public class Connection{
 
 	@OnWebSocketMessage
 	public void onMessage(String message) {
-		ContextCreator.logger.info("Received message " + message);
+//		ContextCreator.logger.info("Received message " + message);
 		JSONObject jsonMsg = new JSONObject();
 		try {
 			JSONParser parser = new JSONParser();
@@ -102,11 +102,11 @@ public class Connection{
 			}
 			else if (msgType[0].equals("CTRL")) {
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
-				if(!answer.equals("KO")) this.answerSender.sendMessage(session, answer);
+				if(answer != null) this.answerSender.sendMessage(session, answer);
 			}
 			else if(msgType[0].equals("QUERY")){
 				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
-				if(!answer.equals("KO")) this.answerSender.sendMessage(session, answer);
+				if(answer != null) this.answerSender.sendMessage(session, answer);
 			}
 		} catch (ParseException e) {
 			e.printStackTrace();
@@ -118,6 +118,14 @@ public class Connection{
 	public void sendStepMessage(int tick) {
 		try {
 			stepSender.sendMessage(session, tick);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void sendReadyMessage() {
+		try {
+			answerSender.sendReadyMessage(session);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

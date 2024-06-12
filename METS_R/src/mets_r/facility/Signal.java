@@ -13,49 +13,51 @@ public class Signal {
 	
 	private int ID;
 	private int state; // state of the signal light
-	private ArrayList<Integer> phaseTime;  // GreenYellowRed, note this is cumulative
+	private ArrayList<Integer> phaseTick;  // GreenYellowRed, the unit is tick
 	// e.g., 21s of green, 3s of yellow, 20s of red
 	// will be 21, 24, 44
-    private int currentTime;
-    private int nextUpdateTime;
+    private int currentTick;
+    private int nextUpdateTick;
     
     public Signal(int id, List<Integer> phaseTime, int currentTime) {
     	this.ID = id;
-    	this.phaseTime = new ArrayList<Integer>();
-    	this.currentTime = (int) (currentTime/GlobalVariables.SIMULATION_STEP_SIZE);
-    	
-    	int tmp = 0;
-    	int index = 0;
+    	this.phaseTick = new ArrayList<Integer>();
+    	this.currentTick = (int) (currentTime/GlobalVariables.SIMULATION_STEP_SIZE);
     	this.state = -1;
-    	for(int onePhaseTime: phaseTime) {
-    		int onePhaseTick = (int) (onePhaseTime/GlobalVariables.SIMULATION_STEP_SIZE);
-    		tmp += onePhaseTick;
-    		this.phaseTime.add(onePhaseTick);
-    		if((tmp>this.currentTime) && this.state == -1) {
-    			this.state = index;
-    			this.nextUpdateTime = tmp - this.currentTime;
-    		}
-    		index += 1;
-    	}
+    	this.initialization(phaseTime);
     }
     
-    // API's for update the phase
+    // Step function
     public void step() {
-        this.currentTime = this.nextUpdateTime;
-        this.state = (this.state + 1) % 3;
-        this.nextUpdateTime = this.currentTime + this.phaseTime.get(this.state);
-        ContextCreator.scheduleNextEvent(this, this.getNextUpdateTime());
-    }
-    
-    // Another API's for update the signal time, used for multi-thread mode
-    public void step2() {
-    	this.currentTime += GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL;
-    	if(this.currentTime >= this.nextUpdateTime) {
-    		this.state = (this.state + 1) % 3;
-    		this.nextUpdateTime += this.phaseTime.get(this.state);
+    	this.currentTick = ContextCreator.getCurrentTick();
+    	if(this.currentTick == this.nextUpdateTick) {
+            this.goNextPhase();
+            this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
+            ContextCreator.scheduleOneSignalUpdate(this, this.getNextUpdateTick());
+    	}
+    	else if (this.currentTick < this.nextUpdateTick) {
+    		// First call
+    		ContextCreator.scheduleOneSignalUpdate(this, this.getNextUpdateTick());
+    	}
+    	else {
+    		ContextCreator.logger.error("The signal update is called in a wrong tick, Signal ID:" + this.getID() + " currentTIck:" + this.currentTick + " nextUpdateTick: "+this.nextUpdateTick);
     	}
     }
-
+    
+    // Step function for parallel update
+    public void step2() {
+    	this.currentTick += GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL;
+    	if(this.currentTick >= this.nextUpdateTick) {
+    		this.state = (this.state + 1) % 3;
+    		this.nextUpdateTick += this.phaseTick.get(this.state);
+    	}
+    }
+    
+    // API for update the phase
+    public void goNextPhase() {
+    	this.state = (this.state + 1) % 3;
+    }
+    
 	public int getID() {
 		return ID;
 	}
@@ -64,12 +66,39 @@ public class Signal {
 		return state;
 	}
     
-	public int getNextUpdateTime() {
-		return this.nextUpdateTime;
+	public int getNextUpdateTick() {
+		return this.nextUpdateTick;
 	}
 	
 	public int getNextState() {
 		return (this.state + 1) % 3;
+	}
+	
+	// Delay estimation assuming uniform arrival
+	public int getDelay() {
+		int stop = this.phaseTick.get(1) + this.phaseTick.get(2);
+		int total = this.phaseTick.get(0) + stop;
+		return (stop * stop) / (2 * total);
+	}
+	
+	private void initialization(List<Integer> phaseTime) {
+		int index = 0;
+		int tmp = 0;
+		for(int onePhaseTime: phaseTime) {
+    		int onePhaseTick = (int) (onePhaseTime/GlobalVariables.SIMULATION_STEP_SIZE);
+    		tmp += onePhaseTick;
+    		if(tmp == 0) {
+    			ContextCreator.logger.warn("The signal " + this.ID + " has no green phase!");
+    		}
+    		this.phaseTick.add(onePhaseTick);
+    		
+    		if((tmp >= this.currentTick) && this.state == -1) {
+    			this.state = index;
+    			this.nextUpdateTick = tmp;
+    		}
+    		
+    		index += 1;
+    	}
 	}
     
 }

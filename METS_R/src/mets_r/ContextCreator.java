@@ -66,6 +66,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static BusSchedule busSchedule = new BusSchedule();
 	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition); 
 	
+	/* Multi-thread scheduler */
+	public static ThreadedScheduler tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_Partition):null;
+	
 	/* Simulation objects */
 	CityContext cityContext;
 	VehicleContext vehicleContext;
@@ -313,7 +316,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
 		logger.info("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
-		ScheduleParameters startParams = ScheduleParameters.createOneTime(ScheduleParameters.LAST_PRIORITY);
+		ScheduleParameters startParams = ScheduleParameters.createOneTime(0, ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(startParams, this, "start");
 		ScheduleParameters endParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(endParams, this, "end");
@@ -323,7 +326,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event of loading the demand chunk
 	public void schedulePrivateTripLoader() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(0, (int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
+		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(0, 
+				(int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
 		schedule.schedule(privateTripLoaderParams, travelDemand, "loadPrivateDemandChunk");
 	}
 	
@@ -378,18 +382,18 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for vehicle movements (multi-thread)
 	public void scheduleMultiThreadedRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
+		
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(1, 1, 0);
-		schedule.schedule(agentParaParams, s, "paraRoadStep");
+		schedule.schedule(agentParaParams, tscheduler, "paraRoadStep");
 		
 		// Schedule shutting down the parallel thread pool
 		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
-		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		schedule.schedule(endParallelParams, tscheduler, "shutdownScheduler");
 
 		// Schedule time counter
 		ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(1,
 				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 0);
-		schedule.schedule(timerParaParams, s, "reportTime");
+		schedule.schedule(timerParaParams, tscheduler, "reportTime");
 
 		// Schedule graph partitioning
 		ScheduleParameters partitionParams = ScheduleParameters.createRepeating(
@@ -412,19 +416,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for zone updates (multi-thread)
 	public void scheduleMultiThreadedZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
+		
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
-		schedule.schedule(agentParaParams, s, "paraZoneStep");
+		schedule.schedule(agentParaParams, tscheduler, "paraZoneStep");
 		
 		ScheduleParameters agentParaParams2 = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
-		schedule.schedule(agentParaParams2, s, "paraZoneRidehailingStep");
-		
-		// Schedule shutting down the parallel thread pool
-		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
-		schedule.schedule(endParallelParams, s, "shutdownScheduler");
-
+		schedule.schedule(agentParaParams2, tscheduler, "paraZoneRidehailingStep");
 	}
 
 	// Schedule the event for zone updates (single-thread)
@@ -449,14 +448,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for charging station updates (multi-thread)
 	public void scheduleMultiThreadedChargingStationStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
+
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
-		schedule.schedule(agentParaParams, s, "paraChargingStationStep");
-		
-		// Schedule shutting down the parallel thread pool
-		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
-		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		schedule.schedule(agentParaParams, tscheduler, "paraChargingStationStep");
 	}
 
 	// Schedule the event for  charging station updates (single-thread)
@@ -472,21 +467,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for signal updates (multi-thread)
 	public void scheduleMultiThreadedSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ThreadedScheduler s = new ThreadedScheduler(GlobalVariables.N_Partition);
-		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
-				GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1);
-		schedule.schedule(agentParaParams, s, "paraSignalStep");
-		
-		// Schedule shutting down the parallel thread pool
-		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
-		schedule.schedule(endParallelParams, s, "shutdownScheduler");
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1); 
+		schedule.schedule(agentParaParams, tscheduler, "paraSignalStep");
 	}
 
-	// Schedule the event for  charging station updates (single-thread)
+	// Schedule the event for charging station updates (single-thread)
 	public void scheduleSequentialSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		for (Signal s : getSignalContext().getAll()) {
-			ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(s.getNextUpdateTime(), 1);
+			ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(0, 1);
 			schedule.schedule(signalUpdateParams, s, "step");
 		}
 	}
@@ -565,6 +554,18 @@ public class ContextCreator implements ContextBuilder<Object> {
 		logger.info("Events scheduled!");
 
 		agentID = 0;
+		
+		// Send a ready signal (tick 0) in the synchronized mode
+		if(GlobalVariables.SYNCHRONIZED) {
+			// Wait for the connection to be established
+			while(ContextCreator.connection == null)
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			ContextCreator.connection.sendReadyMessage(); 
+		}
 
 		return context;
 	}
@@ -594,7 +595,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	// For traffic signal controls
-	public static void scheduleNextEvent(Signal s, int startTime) {
+	public static void scheduleOneSignalUpdate(Signal s, int startTime) {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(startTime, 1);
 		schedule.schedule(signalUpdateParams, s, "step");

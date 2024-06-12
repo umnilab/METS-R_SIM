@@ -37,7 +37,7 @@ public class AnswerMessageSender extends MessageSender{
 		}
 	}
 	
-	// Format the to generate veh information in CARLA
+	// Format the message to generate veh information in CARLA, not used
 	public void createCarlaVeh(Session session, String vid, double x, double y, double bearing, List<List<Integer>> roadLists) throws IOException{
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("TYPE", "ANS_genVeh");
@@ -50,11 +50,19 @@ public class AnswerMessageSender extends MessageSender{
 		super.sendMessage(session, message);
 	}
 	
-	// Format the to remove veh information in CARLA
+	// Format the message to remove veh information in CARLA, not used
 	public void removeCarlaVeh(Session session, String vid) throws IOException{
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("TYPE", "ANS_removeVeh");
 		jsonObj.put("ID", vid);
+		String message = JSONObject.toJSONString(jsonObj);
+		super.sendMessage(session, message);
+	}
+	
+	// Format message to inform that the simulation has completed initialization
+	public void sendReadyMessage(Session session) throws IOException{
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("TYPE", "ANS_ready");
 		String message = JSONObject.toJSONString(jsonObj);
 		super.sendMessage(session, message);
 	}
