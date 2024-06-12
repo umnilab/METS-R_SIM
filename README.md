@@ -7,17 +7,34 @@ The **multi-modal energy-optimal trip scheduling in real-time (METS-R)** simulat
 
 # Related resources
 
+| Resource name      | Link      |
+| ------------- | ------------- |
+| The latest document | [https://umnilab.github.io/METS-R_doc/] |
+| The HPC module | [https://github.com/umnilab/METS-R_HPC] |
+| A visualization demo |https://engineering.purdue.edu/HSEES/METSRVis/] |
+| The simulation paper | [https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121)]  A new paper detailing the cloud service and co-simulation capabilities is in progress.
+
 1. The [latest document](https://umnilab.github.io/METS-R_doc/).
 
 2. The [HPC module](https://github.com/umnilab/METS-R_HPC).
 
 3. A [visualization demo](https://engineering.purdue.edu/HSEES/METSRVis/).
 
-4. The [simulation paper](https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121). A new paper detailing the cloud service and co-simulation capabilities is in progress.
+4. The [simulation paper](https://www.sciencedirect.com/science/article/abs/pii/S1569190X24000121).
 
 # Contributors
-The current contributors of METS-R SIM are Zengxiang Lei and Ruichen Tan.
+The current contributors of METS-R SIM are **Zengxiang Lei** and **Ruichen Tan**.
 
-The following people contributed directly to the source code of the METS-R SIM until 2021: Zengxiang Lei, Jiawei Xue, Charitha Samya, Juan Esteban Suarez Lopez, and Zhenyu Wang.
+The following people contributed directly to the source code of the METS-R SIM until 2021: **Zengxiang Lei**, **Jiawei Xue**, **Xiaowei Chen**, **Charitha Samya**, Juan **Esteban Suarez Lopez**, and **Zhenyu Wang**.
 
-METS-R SIM was developed based on a hurricane evacuation simulator named [A-RESCUE](https://github.com/umnilab/A_RESCUE), whose authors are: Xianyuan Zhan, Samiul Hasan, Christopher Thompson, Xinwu Qian, Heman Gelhot, Wenbo Zhang, Zengxiang Lei, and Rajat Verma.
+METS-R SIM was developed based on a hurricane evacuation simulator named [A-RESCUE](https://github.com/umnilab/A_RESCUE), whose authors are: **Xianyuan Zhan**, **Samiul Hasan**, **Christopher Thompson**, **Xinwu Qian**, **Heman Gelhot**, **Wenbo Zhang**, **Zengxiang Lei**, and **Rajat Verma**.
+
+# Pulications
+
+
+[1] Lei, Z., Xue, J., Chen, X., Qian, X., Saumya, C., He, M., ... & Ukkusuri, S. V. (2024). METS-R SIM: A simulator for Multi-modal Energy-optimal Trip Scheduling in Real-time with shared autonomous electric vehicles. Simulation Modelling Practice and Theory, 132, 102898.
+
+[2] Lei, Z., Xue, J., Chen, X., Saumya, C., Qian, X., He, M., ... & Ukkusuri, S. V. (2021, September). ADDS-EVS: An agent-based deployment decision-support system for electric vehicle services. In 2021 IEEE International Intelligent Transportation Systems Conference (ITSC) (pp. 1658-1663). IEEE
+
+[3] Chen, X., Lei, Z., & Ukkusuri, S. V. (2024). Modeling the influence of charging cost on electric ride-hailing vehicles. Transportation Research Part C: Emerging Technologies, 160, 104514.
+
