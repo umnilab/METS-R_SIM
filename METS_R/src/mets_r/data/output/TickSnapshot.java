@@ -8,6 +8,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.data.input.NetworkEventObject;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -34,9 +35,10 @@ public class TickSnapshot {
 	/** The collection of vehicle data gathered during this time tick. */
 	/** Consider two classes of vehicles: EV and Bus */
 	private HashMap<Integer, VehicleSnapshot> vehicles;
-	private HashMap<Integer, EVSnapshot> evs_occupied;
-	private HashMap<Integer, EVSnapshot> evs_relocation;
-	private HashMap<Integer, EVSnapshot> evs_charging;
+	private HashMap<Integer, EVSnapshot> evs_private;
+	private HashMap<Integer, ETaxiSnapshot> evs_occupied;
+	private HashMap<Integer, ETaxiSnapshot> evs_relocation;
+	private HashMap<Integer, ETaxiSnapshot> evs_charging;
 	private HashMap<Integer, BusSnapshot> buses;
 
 	// Link energy consumptions for UCB
@@ -70,9 +72,10 @@ public class TickSnapshot {
 		// Setup the map for holding the vehicle data
 		this.vehicles = new HashMap<Integer, VehicleSnapshot>();
 		this.buses = new HashMap<Integer, BusSnapshot>();
-		this.evs_occupied = new HashMap<Integer, EVSnapshot>();
-		this.evs_relocation = new HashMap<Integer, EVSnapshot>();
-		this.evs_charging = new HashMap<Integer, EVSnapshot>();
+		this.evs_private = new HashMap<Integer, EVSnapshot>();
+		this.evs_occupied = new HashMap<Integer, ETaxiSnapshot>();
+		this.evs_relocation = new HashMap<Integer, ETaxiSnapshot>();
+		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
 
 		// Setup the map for holding the event data. Two subarraylists (for starting
 		// events and ending events) is created in a large arraylist
@@ -131,9 +134,45 @@ public class TickSnapshot {
 			this.vehicles.put(id, snapshot);
 		}
 	}
+	
+	// Store the current state of the given EV to the tick snapshot.
+	public void logPrivateEV(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
+		if (vehicle == null) {
+			return;
+		}
+		if (coordinate == null) {
+			return;
+		}
+		// Pull out values from the vehicle & coord we need to capture
+		int id = vehicle.getID();
+		double prev_x = vehicle.getpreviousEpochCoord().x;
+		double prev_y = vehicle.getpreviousEpochCoord().y;
+		double x = coordinate.x;
+		double y = coordinate.y;
+		double speed = vehicle.currentSpeed();
+		double bearing = vehicle.getBearing();
+		int originID = vehicle.getOriginID();
+		int destID = vehicle.getDestID();
+		int nearlyArrived = vehicle.nearlyArrived();
+		int vehicleClass = vehicle.getVehicleClass();
+		int roadID = vehicle.getRoad().getID();
+		double batteryLevel = vehicle.getBatteryLevel();
+		double energyConsumption = vehicle.getTotalConsume();
+
+		if (this.getPrivateEVSnapshot(id) != null) {
+			prev_x = this.getPrivateEVSnapshot(id).prev_x;
+			prev_y = this.getPrivateEVSnapshot(id).prev_y;
+		}
+
+		// Create a snapshot for the vehicle and store it in the map
+		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
+				vehicleClass, batteryLevel, energyConsumption, roadID);
+		
+		this.evs_private.put(id, snapshot);
+	}
 
 	// Store the current state of the given EV to the tick snapshot.
-	public void logEV(ElectricTaxi vehicle, Coordinate coordinate, int vehState) throws Throwable {
+	public void logETaxi(ElectricTaxi vehicle, Coordinate coordinate, int vehState) throws Throwable {
 		if (vehicle == null) {
 			return;
 		}
@@ -157,13 +196,13 @@ public class TickSnapshot {
 		double energyConsumption = vehicle.getTotalConsume();
 		int servedPass = vehicle.servedPass;
 
-		if (this.getEVSnapshot(id, vehicle.getState()) != null) {
-			prev_x = this.getEVSnapshot(id, vehicle.getState()).prev_x;
-			prev_y = this.getEVSnapshot(id, vehicle.getState()).prev_y;
+		if (this.getETaxiSnapshot(id, vehicle.getState()) != null) {
+			prev_x = this.getETaxiSnapshot(id, vehicle.getState()).prev_x;
+			prev_y = this.getETaxiSnapshot(id, vehicle.getState()).prev_y;
 		}
 
 		// Create a snapshot for the vehicle and store it in the map
-		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
+		ETaxiSnapshot snapshot = new ETaxiSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
 				vehicleClass, batteryLevel, energyConsumption, roadID, servedPass
 		);
 
@@ -246,8 +285,15 @@ public class TickSnapshot {
 
 		return this.vehicles.keySet();
 	}
+	
+	public Collection<Integer> getPrivateEVList(){
+		if (this.evs_private == null || this.evs_private.isEmpty()) {
+			return null;
+		}
+		return this.evs_private.keySet();
+	}
 
-	public Collection<Integer> getEVList(int vehState) {
+	public Collection<Integer> getETaxiList(int vehState) {
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			if (this.evs_occupied == null || this.evs_occupied.isEmpty()) {
 				return null;
@@ -301,8 +347,21 @@ public class TickSnapshot {
 		// Return the found vehicle snapshot or null if nothing found
 		return snapshot;
 	}
+	
+	public EVSnapshot getPrivateEVSnapshot(int id) {
+		// check the map exists and is not empty
+		if (this.evs_private == null || this.evs_private.isEmpty()) {
+			return null;
+		}
 
-	public EVSnapshot getEVSnapshot(int id, int vehState) {
+		// attempt to pull out the vehicle from the map with the given id
+		EVSnapshot snapshot = this.evs_private.get(id);
+
+		// return the found vehicle snapshot or null if nothing found
+		return snapshot;
+	}
+
+	public ETaxiSnapshot getETaxiSnapshot(int id, int vehState) {
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			// Check the map exists and is not empty
 			if (this.evs_occupied == null || this.evs_occupied.isEmpty()) {
@@ -310,7 +369,7 @@ public class TickSnapshot {
 			}
 
 			// Attempt to pull out the vehicle from the map with the given id
-			EVSnapshot snapshot = this.evs_occupied.get(id);
+			ETaxiSnapshot snapshot = this.evs_occupied.get(id);
 
 			// Return the found vehicle snapshot or null if nothing found
 			return snapshot;
@@ -322,7 +381,7 @@ public class TickSnapshot {
 			}
 
 			// Attempt to pull out the vehicle from the map with the given id
-			EVSnapshot snapshot = this.evs_relocation.get(id);
+			ETaxiSnapshot snapshot = this.evs_relocation.get(id);
 
 			// Return the found vehicle snapshot or null if nothing found
 			return snapshot;
@@ -334,7 +393,7 @@ public class TickSnapshot {
 			}
 
 			// Attempt to pull out the vehicle from the map with the given id
-			EVSnapshot snapshot = this.evs_charging.get(id);
+			ETaxiSnapshot snapshot = this.evs_charging.get(id);
 
 			// Return the found vehicle snapshot or null if nothing found
 			return snapshot;
@@ -358,7 +417,7 @@ public class TickSnapshot {
 
 	public boolean isEmpty() {
 		return (this.vehicles.isEmpty() && this.evs_occupied.isEmpty() && this.evs_relocation.isEmpty()
-				&& this.evs_charging.isEmpty() && this.buses.isEmpty());
+				&& this.evs_charging.isEmpty() && this.evs_private.isEmpty() && this.buses.isEmpty());
 	}
 
 	public int getTickNumber() {

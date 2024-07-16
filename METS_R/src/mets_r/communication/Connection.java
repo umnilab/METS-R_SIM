@@ -91,7 +91,7 @@ public class Connection{
 
 	@OnWebSocketMessage
 	public void onMessage(String message) {
-//		ContextCreator.logger.info("Received message " + message);
+        ContextCreator.logger.debug("Received message " + message);
 		JSONObject jsonMsg = new JSONObject();
 		try {
 			JSONParser parser = new JSONParser();

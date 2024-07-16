@@ -588,7 +588,7 @@ public class JsonOutputWriter implements DataConsumer {
 		// check the tick snapshot exists
 		if (tick == null) {
 			HashMap<String, Object> tickArray = new HashMap<String, Object>();
-
+			tickArray.put("ev_private", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_occupied", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_relocation", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_charging", new ArrayList<ArrayList<Float>>());
@@ -598,18 +598,39 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 
 		// Get the list of of vehicles stored in the tick snapshot
-		Collection<Integer> evIDs = tick.getEVList(Vehicle.OCCUPIED_TRIP);
-		ArrayList<ArrayList<Object>> occupiedArrayArray = new ArrayList<ArrayList<Object>>();
+		Collection<Integer> evIDs = tick.getPrivateEVList();
+		ArrayList<ArrayList<Object>> privateArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 			for (Integer id : evIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
-				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.OCCUPIED_TRIP);
+				EVSnapshot ev = tick.getPrivateEVSnapshot(id);
 				if (ev == null) {
 					continue;
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createPrivateEVLine(ev);
+				if (evArray == null) {
+					continue;
+				}
+
+				privateArrayArray.add(evArray);
+			}
+		}
+		
+		
+		evIDs = tick.getETaxiList(Vehicle.OCCUPIED_TRIP);
+		ArrayList<ArrayList<Object>> occupiedArrayArray = new ArrayList<ArrayList<Object>>();
+		if (!(evIDs == null || evIDs.isEmpty())) {
+			for (Integer id : evIDs) {
+				// Retrieve the vehicle snapshot from the tick snapshot
+				ETaxiSnapshot ev = tick.getETaxiSnapshot(id, Vehicle.OCCUPIED_TRIP);
+				if (ev == null) {
+					continue;
+				}
+
+				// Get the arraylist representation of this vehicle
+				ArrayList<Object> evArray = JsonOutputWriter.createETaxiLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -618,19 +639,19 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 
-		evIDs = tick.getEVList(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
+		evIDs = tick.getETaxiList(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ArrayList<Object>> relocationArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
-				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
+				ETaxiSnapshot ev = tick.getETaxiSnapshot(id, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 				if (ev == null) {
 					continue;
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createETaxiLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -639,19 +660,19 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 
-		evIDs = tick.getEVList(Vehicle.CHARGING_TRIP);
+		evIDs = tick.getETaxiList(Vehicle.CHARGING_TRIP);
 		ArrayList<ArrayList<Object>> chargingArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
 
 			for (Integer id : evIDs) {
 				// Retrieve the vehicle snapshot from the tick snapshot
-				EVSnapshot ev = tick.getEVSnapshot(id, Vehicle.CHARGING_TRIP);
+				ETaxiSnapshot ev = tick.getETaxiSnapshot(id, Vehicle.CHARGING_TRIP);
 				if (ev == null) {
 					continue;
 				}
 
 				// Get the arraylist representation of this vehicle
-				ArrayList<Object> evArray = JsonOutputWriter.createEVLine(ev);
+				ArrayList<Object> evArray = JsonOutputWriter.createETaxiLine(ev);
 				if (evArray == null) {
 					continue;
 				}
@@ -659,6 +680,7 @@ public class JsonOutputWriter implements DataConsumer {
 				chargingArrayArray.add(evArray);
 			}
 		}
+		
 		Collection<Integer> busIDs = tick.getBusList();
 		ArrayList<ArrayList<Object>> busArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(busIDs == null || busIDs.isEmpty())) {
@@ -714,6 +736,7 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("ev_occupied", occupiedArrayArray);
 		tickArray.put("ev_relocation", relocationArrayArray);
 		tickArray.put("ev_charging", chargingArrayArray);
+		tickArray.put("ev_private", privateArrayArray);
 		tickArray.put("bus", busArrayArray);
 		tickArray.put("link", linkArrayArray);
 		tickArray.put("served", servedPass);
@@ -731,7 +754,7 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @param ev the ev snapshot to convert to arraylist.
 	 * @return the arraylist representation of the given vehicle snapshot.
 	 */
-	public static ArrayList<Object> createEVLine(EVSnapshot ev) {
+	public static ArrayList<Object> createETaxiLine(ETaxiSnapshot ev) {
 		if (ev == null) {
 			return null;
 		}
@@ -751,6 +774,34 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10.0);
 //		vehicleArray.add(ev.getRoadID());
 		vehicleArray.add(ev.getServedPass());
+
+		return vehicleArray;
+	}
+	
+	/**
+	 * Returns the ArrayList representation of the given EV snapshot.
+	 * 
+	 * @param ev the ev snapshot to convert to arraylist.
+	 * @return the arraylist representation of the given vehicle snapshot.
+	 */
+	public static ArrayList<Object> createPrivateEVLine(EVSnapshot ev) {
+		if (ev == null) {
+			return null;
+		}
+
+		ArrayList<Object> vehicleArray = new ArrayList<Object>();
+		// extract the values from the vehicle snapshot
+		vehicleArray.add(ev.getId());
+		vehicleArray.add((int) ((ev.getPrevX()- GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((ev.getPrevY()- GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add((int) ((ev.getX() - GlobalVariables.INITIAL_X)*100000));
+		vehicleArray.add((int) ((ev.getY() - GlobalVariables.INITIAL_Y)*100000));
+		vehicleArray.add(Math.round(ev.getBearing()*10)/10.0);
+		vehicleArray.add(Math.round(ev.getSpeed()*10)/10.0);
+		vehicleArray.add(ev.getOriginID());
+		vehicleArray.add(ev.getDestID());
+		vehicleArray.add(Math.round(ev.getBatteryLevel()*10)/10.0);
+		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10.0);
 
 		return vehicleArray;
 	}

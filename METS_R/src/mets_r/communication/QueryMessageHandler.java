@@ -1,6 +1,8 @@
 package mets_r.communication;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 
 import org.json.simple.JSONObject;
 
@@ -22,6 +24,9 @@ public class QueryMessageHandler extends MessageHandler {
 		String answer = null; // default message
 		if(msgType.equals("vehicle")) {
 			answer = getVehicle(jsonMsg);
+		}
+		else if(msgType.equals("coSimVehicle")) {
+			answer = getCoSimVehicle(jsonMsg);
 		}
 		else if(msgType.equals("taxi")) {
 			answer = getTaxi(jsonMsg);
@@ -48,9 +53,6 @@ public class QueryMessageHandler extends MessageHandler {
 	public String getVehicle(JSONObject jsonMsg) {
 		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		// PRV True or False
-		// TRAN True or False
-		
 		if(!jsonMsg.containsKey("ID")) {
 			jsonObj.put("TYPE", "ANS_vehicle");
 			jsonObj.put("public_vids", ContextCreator.getVehicleContext().getPublicVehicleIDList());
@@ -88,20 +90,54 @@ public class QueryMessageHandler extends MessageHandler {
 				jsonObj.put("origin", vehicle.getOriginID());
 				jsonObj.put("dest", vehicle.getDestID());
 				jsonObj.put("on_road", vehicle.isOnRoad());
-//				jsonObj.put("on_lane", vehicle.isOnLane());
-//				// if vehicle is on road
-//				if(vehicle.isOnRoad()) {
+				jsonObj.put("on_lane", vehicle.isOnLane());
+				// if vehicle is on road
+				if(vehicle.isOnLane()) {
 //					jsonObj.put("current_route", vehicle.getRoute());
-//					jsonObj.put("road", vehicle.getRoad().getID());
-//					jsonObj.put("speed_limit", vehicle.getRoad().getSpeedLimit());
-//					jsonObj.put("dist_to_junction", vehicle.getDistance());
-//				}
+					jsonObj.put("road", vehicle.getRoad().getID());
+					jsonObj.put("lane", vehicle.getLane().getID());
+					jsonObj.put("speed_limit", vehicle.getRoad().getSpeedLimit());
+					jsonObj.put("dist", vehicle.getDistance());
+				}
 				
 				String answer = JSONObject.toJSONString(jsonObj);
 				return answer;
 			}
 		}
 	    return "KO";
+	}
+	
+	// 0. Mapping CARLA ROAD to METS-R Road (coSimRoads, id: CARLA/SUMO road ID, value: METS-R road)
+	// 1. Get in road vehicle
+	// 2. Send the vehicle id in two lists
+	public String getCoSimVehicle(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("TYPE", "ANS_coSimVehicle");
+		
+		List<Integer> vehicleIDList = new ArrayList<Integer>();
+		List<Boolean> vehicleTypeList = new ArrayList<Boolean>();
+		
+		for(Road r: ContextCreator.coSimRoads.values()) {
+			Vehicle v = r.firstVehicle();
+			while(v != null) {
+				Vehicle nextVehicle = v.macroTrailing();
+				if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
+					vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
+					vehicleTypeList.add(true);
+				}
+				else { // public vehicle
+					vehicleIDList.add(v.getID());
+					vehicleTypeList.add(false);
+				}
+				v = nextVehicle;
+			}
+		}
+		
+		jsonObj.put("vid_list", vehicleIDList); // ID for private vehicles
+		jsonObj.put("vtype_list", vehicleTypeList); // ID for public vehicles
+		
+		String answer = JSONObject.toJSONString(jsonObj);
+		return answer;
 	}
 	
 	public String getPrivateVehicle(JSONObject jsonMsg) {

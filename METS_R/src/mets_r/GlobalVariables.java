@@ -100,8 +100,8 @@ public class GlobalVariables {
 	
 	public static final boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	
-	public static final int HOUR_OF_DEMAND = SIMULATION_STOP_TIME / SIMULATION_DEMAND_REFRESH_INTERVAL;
-	public static final int HOUR_OF_SPEED = SIMULATION_STOP_TIME / SIMULATION_SPEED_REFRESH_INTERVAL;
+	public static final int HOUR_OF_DEMAND = (int) Math.ceil(SIMULATION_STOP_TIME / (SIMULATION_DEMAND_REFRESH_INTERVAL + 0.0));
+	public static final int HOUR_OF_SPEED = (int) Math.ceil(SIMULATION_STOP_TIME / (SIMULATION_SPEED_REFRESH_INTERVAL + 0.0));
 	
 	// Road Network
 	public static final String ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");

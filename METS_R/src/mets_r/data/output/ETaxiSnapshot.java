@@ -2,7 +2,7 @@ package mets_r.data.output;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
-import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.ElectricTaxi;
 
 /**
  * This class is the simple data object for capturing the state of an
@@ -15,7 +15,7 @@ import mets_r.mobility.ElectricVehicle;
  * @author Zengxiang Lei
  **/
 
-public class EVSnapshot {
+public class ETaxiSnapshot {
 	final public int id;
 	final public double prev_x; // The X-axis (longitude) position of the vehicle in the previous epoch 
 	final public double prev_y; // The Y-axis (latitude) position of the vehicle in the previous epoch 
@@ -28,16 +28,18 @@ public class EVSnapshot {
 	final public double batteryLevel;
 	final public double totalConsumption;
 	final public int roadID;
+	final public int served_pass;
 
-	public EVSnapshot(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
+	public ETaxiSnapshot(ElectricTaxi vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
-				vehicle.getTotalConsume(), vehicle.getRoad().getID());
+				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.servedPass);
 	}
 
-	public EVSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
-			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID) throws Throwable {
+	public ETaxiSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
+			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID,
+			int served_pass) throws Throwable {
 		if (id < 0) {
 			throw new Exception("Vehicle ID cannot be negative.");
 		}
@@ -64,6 +66,7 @@ public class EVSnapshot {
 		this.batteryLevel =  batteryLevel;
 		this.totalConsumption =  energyConsumption;
 		this.roadID = roadID;
+		this.served_pass = served_pass;
 	}
 
 	public int getId() {
@@ -112,5 +115,9 @@ public class EVSnapshot {
 
 	public int getRoadID() {
 		return this.roadID;
+	}
+
+	public int getServedPass() {
+		return this.served_pass;
 	}
 }

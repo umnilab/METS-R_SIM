@@ -937,7 +937,7 @@ public class Vehicle {
 						lastStepMove_ = distTravelled;
 						if (this.nextRoad_ != null) { // has next road
 							this.coordMap.add(this.getCurrentCoord()); 
-							if (this.appendToJunction(nextLane_)) { // Successfully entered the next link
+							if (this.appendToJunction(nextLane_)) { // Vehicle arrived the destination, could be unnecessary
 								current_road.recordEnergyConsumption(this);
 								current_road.recordTravelTime(this);
 							}
@@ -1022,7 +1022,7 @@ public class Vehicle {
 		// Check if the vehicle has reached the destination or not
 		if (this.isReachDest || this.roadPath.size()<2) {
 			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
-			return false; // Only reach destination once
+			return true; // Only reach destination once
 		} else if (this.nextRoad_ != null) {
 			// Check if there is enough space in the next road to change to
 			int tickcount = ContextCreator.getCurrentTick();
@@ -1034,11 +1034,11 @@ public class Vehicle {
 					movable = true;
 					break;
 				case Junction.DynamicSignal:
-					if(nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+					if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 						movable = true;
 					break;
 				case Junction.StaticSignal:
-					if(nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+					if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 						movable = true;
 					break;
 				case Junction.StopSign:
@@ -1054,7 +1054,7 @@ public class Vehicle {
 					break;
 				}
 			}
-			
+
 			if(movable) {
 				// Check if the target road has space
 				if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
@@ -1085,6 +1085,10 @@ public class Vehicle {
 						}
 					}
 				}
+			}
+			else {
+				// Add to the junction
+				this.onLane = false;
 			}
 		}
 		coordMap.clear();
@@ -2127,16 +2131,12 @@ public class Vehicle {
 	public boolean appendToJunction(Lane nextlane) {
 		if (this.isReachDest) {
 			return false;
-		} else { // Want to change to next lane
+		} else { // Want to change to next road
 			coordMap.clear();
 			coordMap.add(this.getCurrentCoord());
 		}
 
 		this.onLane = false;
-
-		if (!this.changeRoad()) {
-			return false;
-		}
 
 		return true;
 	}

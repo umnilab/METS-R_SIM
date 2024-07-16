@@ -3,11 +3,16 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import org.geotools.geometry.jts.JTS;
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
+import org.opengis.referencing.operation.TransformException;
+
+import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
@@ -24,12 +29,14 @@ public class ControlMessageHandler extends MessageHandler {
 		try {
 			if(msgType.equals("teleportVeh")) flag = teleportVeh(jsonMsg, jsonAns);
 			if(msgType.equals("controlVeh")) flag = controlVeh(jsonMsg, jsonAns);
+			if(msgType.equals("enterNextRoad")) flag = enterNextRoad(jsonMsg, jsonAns);
 			if(msgType.equals("routingTaxi")) flag = routingTaxi(jsonMsg, jsonAns);
 			if(msgType.equals("routingBus")) flag = routingBus(jsonMsg, jsonAns);
 			if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg, jsonAns);
 			if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg, jsonAns);
 			if(msgType.equals("generateTrip")) flag = generateTrip(jsonMsg, jsonAns);
 			if(msgType.equals("setCoSimRoad")) flag = setCoSimRoad(jsonMsg, jsonAns);
+			if(msgType.equals("releaseCosimRoad")) flag = releaseCosimRoad(jsonMsg, jsonAns);
 			if(flag) {
 				jsonAns.put("TYPE", "CTRL_" + msgType);
 				jsonAns.put("CODE", "OK");
@@ -51,23 +58,34 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	private boolean setCoSimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Get data
-		int roadID = ((Long) jsonMsg.get("roadID")).intValue();
-		Road r = ContextCreator.getRoadContext().get(roadID);
-		if (r != null) {
-			if (r.getVehicleNum()==0) {
+		String roadID = jsonMsg.get("roadID").toString();
+		// Find road with the orig road ID
+		for(Road r: ContextCreator.getRoadContext().getAll()) {
+			if(r.getOrigID().equals(roadID)) {
 				r.setControlType(Road.CoSim);
+				// Add road to coSim HashMap in the road context
+				ContextCreator.coSimRoads.put(roadID, r);
 				return true;
 			}
-			else {
-				ContextCreator.logger.warn("Road is not empty, road ID: " + r.getID());
-				return false;
+		}
+		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+		return false;
+	}
+	
+	private boolean releaseCosimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+		// Get data
+		String roadID = jsonMsg.get("roadID").toString();
+		// Find road with the orig road ID
+		for(Road r: ContextCreator.getRoadContext().getAll()) {
+			if(r.getOrigID().equals(roadID)) {
+				r.setControlType(Road.NONE_OF_THE_ABOVE);
+				// Add road to coSim HashMap in the road context
+				ContextCreator.coSimRoads.remove(roadID);
+				return true;
 			}
 		}
-		else {
-			ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
-			return false;
-		}
-	    
+		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+		return false;
 	}
 	
     private boolean generateTrip(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
@@ -80,8 +98,7 @@ public class ControlMessageHandler extends MessageHandler {
     			return false;
 			}
     	}
-		else { // If vehicle does not exists
-			// Create vehicle
+		else { // If vehicle does not exists, create vehicle
 			v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
 			ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
 		}
@@ -134,17 +151,43 @@ public class ControlMessageHandler extends MessageHandler {
 	// When perform at t+1 (wait == false), append takes effect immediately
 	private boolean teleportVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Get data
-		Vehicle veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
-		Road road = ContextCreator.getRoadContext().get(((Long) jsonMsg.get("roadID")).intValue());
-		Lane lane = ContextCreator.getLaneContext().get(((Long) jsonMsg.get("laneID")).intValue());
-		double dist = (Double) jsonMsg.get("dist");
-		double x = (Double) jsonMsg.get("x");
-		double y = (Double) jsonMsg.get("y");
-		if(road != null && veh != null && lane != null) {
-			// integrity check
-			if (lane.getRoad() != road.getID()) return false;
-			// Update its location in the target link and target lane
-			return road.insertVehicle(veh, lane, dist, x, y);
+		Vehicle veh = null;
+		if((Boolean) jsonMsg.get("prv")) {
+			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
+		else {
+			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
+		
+		if(veh != null) {
+			Road road = ContextCreator.getRoadContext().get(((Long) jsonMsg.get("roadID")).intValue());
+			Lane lane = ContextCreator.getLaneContext().get(((Long) jsonMsg.get("laneID")).intValue());
+			double dist = (Double) jsonMsg.get("dist");
+			double x = (Double) jsonMsg.get("x");
+			double y = (Double) jsonMsg.get("y");
+			if(road != null && veh != null && lane != null) {
+				// Integrity check
+				if (lane.getRoad() != road.getID()) return false;
+				
+				// Transform coordinates if needed 
+				if(jsonMsg.containsKey("TRAN") && (Boolean) jsonMsg.get("TRAN")) {
+					Coordinate coord = new Coordinate();
+					coord.x = x;
+					coord.y = y;
+					coord.z = 0;
+					try {
+						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+						x = coord.x;
+						y = coord.y;
+					} catch (TransformException e) {
+						ContextCreator.logger.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+						e.printStackTrace();
+					}
+				}
+				
+				// Update its location in the target link and target lane
+				return road.insertVehicle(veh, lane, dist, x, y);
+			}
 		}
 		// Send back the fail feedback message
 		return false;
@@ -154,7 +197,13 @@ public class ControlMessageHandler extends MessageHandler {
 	// This essentially alternate the acceleration decisions
 	private boolean controlVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Get vehicle
-		Vehicle veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		Vehicle veh = null;
+		if((Boolean) jsonMsg.get("prv")) {
+			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
+		else {
+			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
 		double acc = (Double) jsonMsg.get("acc");
 		// Register its acceleration
 		veh.controlVehicleAcc(acc);
@@ -239,6 +288,22 @@ public class ControlMessageHandler extends MessageHandler {
 			return true;
 		}
 		return false;
+	}
+	
+	private boolean enterNextRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+		Vehicle veh = null;
+		if((Boolean) jsonMsg.get("prv")) {
+			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
+		else {
+			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		}
+		if(veh != null) {
+			return veh.changeRoad();
+		}
+		else {
+			return false;
+		}
 	}
 	
 	private boolean sheduleTaxi(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {

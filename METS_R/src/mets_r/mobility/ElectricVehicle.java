@@ -37,6 +37,7 @@ public class ElectricVehicle extends Vehicle {
 	protected double tickConsume; // Energy consumption per tick, for verifying the energy model
 	protected double totalConsume; // Total energy consumption by this vehicle
 	protected double tripConsume; // Energy consumption for the latest accomplished trip
+	protected double linkConsume; // Parameters for storing energy consumptions
 	
 	// For recording charging behaviors
 	public int chargingTime = 0;
@@ -53,11 +54,13 @@ public class ElectricVehicle extends Vehicle {
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
 		super(maximumAcceleration, maximumDeceleration, vClass, vSensor);
 	}
-
+	
+	@Override
 	public void updateBatteryLevel() {
 		double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
 		tickConsume = tickEnergy;
 		totalConsume += tickEnergy;
+		linkConsume += tickEnergy;
 		tripConsume += tickEnergy;
 		batteryLevel_ -= tickEnergy;
 	}
@@ -105,6 +108,15 @@ public class ElectricVehicle extends Vehicle {
 	
 	public double getMass() {
 		return 1.05 * mass;
+	}
+	
+	public double getLinkConsume() {
+		return linkConsume;
+	}
+
+	// Reset link consume once a EV has passed a link
+	public void resetLinkConsume() {
+		this.linkConsume = 0;
 	}
 
 	public boolean onChargingRoute() {

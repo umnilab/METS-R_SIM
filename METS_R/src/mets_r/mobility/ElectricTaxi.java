@@ -31,10 +31,6 @@ public class ElectricTaxi extends ElectricVehicle {
 	private double higherBatteryRechargeLevel_;
 
 	private int cruisingTime_;
-
-	// Parameters for storing energy consumptions
-	private double linkConsume; // For UCB eco-routing, energy spent for passing current link, will be reset to
-								// zero once this ev entering a new road.
 	
 	/* Public variables */
 	// For operational features
@@ -52,13 +48,8 @@ public class ElectricTaxi extends ElectricVehicle {
 		this.cruisingTime_ = 0;
 		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
 		this.avgPersonMass_ = 60; // kg
-
-		// Parameters for energy calculation
-		this.tickConsume = 0.0; // kWh
-		this.totalConsume = 0.0; // kWh
 		
 		// Parameters for UCB calculation
-		this.linkConsume = 0;
 		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
 	}
 
@@ -413,15 +404,5 @@ public class ElectricTaxi extends ElectricVehicle {
 		ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
 		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		this.departure(); 
-	}
-	
-
-	public double getLinkConsume() {
-		return linkConsume;
-	}
-
-	// Reset link consume once a ev has passed a link
-	public void resetLinkConsume() {
-		this.linkConsume = 0;
 	}
 }

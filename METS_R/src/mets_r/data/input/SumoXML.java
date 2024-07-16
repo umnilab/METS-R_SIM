@@ -328,6 +328,7 @@ public class SumoXML {
 						isInternalRoadMap.put(currentRoadID, false);
 						int road_id = generateRoadID(attributes.getValue("id"));
 						currentRoad = new Road(road_id);
+						currentRoad.setOrigID(attributes.getValue("id"));
 						ArrayList<Integer> oneRoadLane = new ArrayList<Integer>();
 						roadLane.put(road_id, oneRoadLane);
 						roads.put(road_id, currentRoad);
@@ -354,6 +355,7 @@ public class SumoXML {
 						isInternalLaneMap.put(attributes.getValue("id"), false);
 					    int lane_id = generateLaneID(currentRoad.getID(), attributes.getValue("id"));
 					    currentLane = new Lane(lane_id);
+					    currentLane.setOrigID(attributes.getValue("id"));
 					    currentLane.setRoad(currentRoad.getID());    
 					    roadLane.get(currentRoad.getID()).add(lane_id);
 					    currentLane.setLength(Double.parseDouble(attributes.getValue("length")));
@@ -370,7 +372,7 @@ public class SumoXML {
 							} catch (TransformException e) {
 								e.printStackTrace();
 							}
-					    	coords.add(coord);
+					    	coords.add(0, coord);
 					    }
 					    currentLane.setCoords(coords);
 					    

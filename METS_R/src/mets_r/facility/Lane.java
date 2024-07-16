@@ -21,6 +21,7 @@ import mets_r.mobility.Vehicle;
 public class Lane {
 	/* Private variables */
 	private int ID; // From shape file
+	private String origID;
 	private int index;
 	private ArrayList<Coordinate> coords;
 	private double length;
@@ -40,6 +41,7 @@ public class Lane {
 
 	public Lane(int id) {
 		this.ID = id;
+		this.origID = "";
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.nVehicles_ = new AtomicInteger(0);
 		this.lastVehicle_ = null;
@@ -248,6 +250,14 @@ public class Lane {
 		} else {
 			return this;
 		}
+	}
+	
+	public String getOrigID() {
+		return this.origID;
+	}
+	
+	public void setOrigID(String newID) {
+		this.origID = newID;
 	}
 
 }

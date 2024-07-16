@@ -15,6 +15,7 @@ import com.vividsolutions.jts.geom.Geometry;
 import mets_r.*;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -38,8 +39,9 @@ public class Road {
 	
 	/* Private variables */
 	private int ID;
-	private int roadType;
-	private int controlType;
+	private String origID;
+	private int roadType = NONE_OF_THE_ABOVE;
+	private int controlType = NONE_OF_THE_ABOVE;
 	private double length;
 	private ArrayList<Coordinate> coords;
 	
@@ -77,6 +79,7 @@ public class Road {
 	// Road constructor
 	public Road(int id) {
 		this.ID = id;
+		this.origID = "";
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = new AtomicInteger(0);
 		this.speedLimit_ = 31.2928; // m/s, 70 mph
@@ -133,8 +136,6 @@ public class Road {
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	public void step() {
-		if(this.getControlType() == Road.CoSim) return;
-		
 		int tickcount = ContextCreator.getCurrentTick();
 		
 		/* Vehicle loading */
@@ -171,6 +172,11 @@ public class Road {
 				}
 				break;
 			}
+		}
+		
+		if(this.getControlType() == Road.CoSim) {
+			ContextCreator.logger.debug("Skipped vehicle movements for the coSim road with origin ID: " + this.getOrigID());
+			return;
 		}
 
 		/* Vehicle movement */
@@ -263,10 +269,7 @@ public class Road {
 			
 			if(dist<=0) { // change road
 				veh.checkAtDestination();
-				// if next road is not controlled by CARLA, destroy the veh
-				if (veh.changeRoad()) {
-					
-				}
+				veh.changeRoad();
 			}
 		}
 		else {
@@ -586,7 +589,12 @@ public class Road {
 
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
-		if (v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
+		if (v.getVehicleClass() == Vehicle.EV) { // Private
+			ElectricVehicle ev = (ElectricVehicle) v;
+			this.totalEnergy += ev.getLinkConsume();
+			ev.resetLinkConsume();
+		}
+		else if(v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
 			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
 			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
@@ -700,4 +708,13 @@ public class Road {
 	public void setSpeedLimit(double speedLimit) {
 		this.speedLimit_ = speedLimit;
 	}
+	
+	public String getOrigID() {
+		return this.origID;
+	}
+	
+	public void setOrigID(String newID) {
+		this.origID = newID;
+	}
+
 }

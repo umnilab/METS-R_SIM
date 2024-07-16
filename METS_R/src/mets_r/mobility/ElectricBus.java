@@ -58,10 +58,6 @@ public class ElectricBus extends ElectricVehicle {
 	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calculation
 	private double mass; // mass of the vehicle in kg
 	
-	// Parameters for storing energy consumptions
-	private double linkConsume; // for UCB eco-routing, energy spent for passing current link, will be reset to
-								// zero once this EV entering a new road.
-	
 	/* Public variables */
 	// For operational features
 	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
@@ -312,15 +308,6 @@ public class ElectricBus extends ElectricVehicle {
 		this.setState(Vehicle.BUS_TRIP);
 		this.departure();
 		
-	}
-
-	public double getLinkConsume() {
-		return linkConsume;
-	}
-
-	// Reset link consume once a EV has passed a link
-	public void resetLinkConsume() {
-		this.linkConsume = 0;
 	}
 
 	public void updateSchedule(int newID, ArrayList<Integer> newRoute, ArrayList<Integer> departureTime) {

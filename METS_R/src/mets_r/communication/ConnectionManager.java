@@ -120,9 +120,6 @@ public class ConnectionManager {
 
 		// Start the server listening
 		try {
-			// Wait until the route_UCB in ContextCreator is populated
-			// otherwise route_UCB map will not be correctly received by the
-			// RemoteDataClientManager
 			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
 				while (!ContextCreator.isRouteUCBMapPopulated());
 			}

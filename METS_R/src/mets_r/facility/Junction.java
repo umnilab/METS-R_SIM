@@ -114,13 +114,22 @@ public class Junction {
 		}
 	}
 	
-	public int getSignal(int upStreamRoadID, int downStreamRoadID) {
+	public int getSignalState(int upStreamRoadID, int downStreamRoadID) {
 		if(this.signals.containsKey(upStreamRoadID)) {
 	    	if(this.signals.get(upStreamRoadID).containsKey(downStreamRoadID)) {
 	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID).getState();
 	    	}
 	    }
     	return 0;
+	}
+	
+	public Signal getSignal(int upStreamRoadID, int downStreamRoadID) {
+		if(this.signals.containsKey(upStreamRoadID)) {
+	    	if(this.signals.get(upStreamRoadID).containsKey(downStreamRoadID)) {
+	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID);
+	    	}
+	    }
+    	return null;
 	}
 	
 	public void setSignal(int upStreamRoadID, int downStreamRoadID, Signal signal) {

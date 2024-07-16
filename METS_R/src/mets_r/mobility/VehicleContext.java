@@ -26,6 +26,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	// For tracking private vehicle trips, note the key is not the agentID but the one used in the TravelDemand JSON files
 	private HashMap<Integer, ElectricVehicle> privateEVMap;
 	private HashMap<Integer, Vehicle> privateGVMap;
+	
+	private HashMap<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -40,6 +42,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		
 		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
 		this.privateGVMap = new HashMap<Integer, Vehicle>();
+		
+		this.privateVIDMap = new HashMap<Integer, Integer>();
 		
 		createTaxiContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		ContextCreator.logger.info("EV generated!");
@@ -204,23 +208,23 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public List<Integer> getPrivateVehicleIDList(){
-		List<Integer> vehicleIDList = new ArrayList<>(this.privateEVMap.keySet());
+		List<Integer> vehicleIDList = new ArrayList<Integer>(this.privateEVMap.keySet());
 	    vehicleIDList.addAll(this.privateGVMap.keySet());
 	    return vehicleIDList;
 	}
 	
 	public List<Integer> getTaxiIDList(){
-		List<Integer> vehicleIDList = new ArrayList<>(this.taxiMap.keySet());
+		List<Integer> vehicleIDList = new ArrayList<Integer>(this.taxiMap.keySet());
 	    return vehicleIDList;
 	}
 	
 	public List<Integer> getBusIDList(){
-		List<Integer> vehicleIDList = new ArrayList<>(this.busMap.keySet());
+		List<Integer> vehicleIDList = new ArrayList<Integer>(this.busMap.keySet());
 	    return vehicleIDList;
 	}
 	
 	public List<Integer> getPublicVehicleIDList(){
-		 List<Integer> vehicleIDList = new ArrayList<>(this.taxiMap.keySet());
+		List<Integer> vehicleIDList = new ArrayList<Integer>(this.taxiMap.keySet());
 	    vehicleIDList.addAll(this.busMap.keySet());
 	    return vehicleIDList;
 	}
@@ -271,13 +275,22 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void registerPrivateEV(int vid, ElectricVehicle ev) {
 		if(!this.privateEVMap.containsKey(vid)) {
 			this.privateEVMap.put(vid, ev);
+			this.privateVIDMap.put(ev.getID(), vid);
 		}
 	}
 	
 	public void registerPrivateGV(int vid, Vehicle gv) {
 		if(!this.privateGVMap.containsKey(vid)) {
 			this.privateGVMap.put(vid, gv);
+			this.privateVIDMap.put(gv.getID(), vid);
 		}
+	}
+	
+	public int getPrivateVID(int agentID) {
+		if(privateVIDMap.containsKey(agentID)) {
+			return privateVIDMap.get(agentID);
+		}
+		return -1;
 	}
 
 }

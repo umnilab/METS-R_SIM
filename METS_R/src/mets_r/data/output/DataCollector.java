@@ -12,6 +12,7 @@ import mets_r.communication.DataConsumer;
 import mets_r.data.input.NetworkEventObject;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 import repast.simphony.engine.environment.RunEnvironment;
 
@@ -277,20 +278,20 @@ public class DataCollector {
 			throw new Exception("No tick snapshot being processed.");
 		}
 
-		if (vehicle.getVehicleClass() == 0) { // Normal vehicle
-			this.currentSnapshot.logVehicle(vehicle, coordinate);
+		if (vehicle.getVehicleClass() == Vehicle.EV) { // Private EV
+			this.currentSnapshot.logPrivateEV((ElectricVehicle) vehicle, coordinate);
 		}
-		else if (vehicle.getVehicleClass() == 1) { // EV
+		else if (vehicle.getVehicleClass() == Vehicle.ETAXI) { // ETAXI
 			// Add the vehicle to the current snapshot
-			this.currentSnapshot.logEV((ElectricTaxi) vehicle, coordinate, vehicle.getState());
+			this.currentSnapshot.logETaxi((ElectricTaxi) vehicle, coordinate, vehicle.getState());
 		}
-		else if (vehicle.getVehicleClass() == 2) { // Bus
+		else if (vehicle.getVehicleClass() == Vehicle.EBUS) { // Bus
 			// Add the vehicle to the current snapshot
 			this.currentSnapshot.logBus((ElectricBus) vehicle, coordinate);
 		}
-		
-		
-
+		else {
+			this.currentSnapshot.logVehicle(vehicle, coordinate);
+		}
 	}
 
 	/**

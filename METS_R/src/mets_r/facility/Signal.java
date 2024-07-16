@@ -15,7 +15,7 @@ public class Signal {
 	private int state; // state of the signal light
 	private ArrayList<Integer> phaseTick;  // GreenYellowRed, the unit is tick
 	// e.g., 21s of green, 3s of yellow, 20s of red
-	// will be 21, 24, 44
+	// will be 21, 3, 20
     private int currentTick;
     private int nextUpdateTick;
     

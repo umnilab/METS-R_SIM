@@ -100,6 +100,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static HashMap<String, Integer> routeResult_received = new HashMap<String, Integer>();
 	public static HashMap<String, Integer> routeResult_received_bus = new HashMap<String, Integer>();
 	
+	// Road collections for co-simulation
+	public static HashMap<String, Road> coSimRoads = new HashMap<String, Road>();
+	
 	/* Functions */
 	// Reading simulation properties stored at data/Data.properties
 	public Properties readPropertyFile() {
@@ -127,11 +130,16 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	public void waitForNextStepCommand() {
 		int tick = ContextCreator.getCurrentTick();
-		prevTime = -10001;
+		prevTime = -10001; // for the first tick
 		while(!receivedNextStepCommand) {
-			if ((System.currentTimeMillis()-prevTime)>10000) {
-				if (connection != null) connection.sendStepMessage(tick);
-				prevTime = System.currentTimeMillis();
+			try{
+				Thread.sleep(1);
+				if ((System.currentTimeMillis()-prevTime)>10000) {
+					connection.sendStepMessage(tick);
+					prevTime = System.currentTimeMillis();
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
 			}
 		}
 		receivedNextStepCommand = false;
@@ -200,15 +208,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
 			createUCBRoutes(); // generate eco-routing routes
 		}
-		else {
-			ContextCreator.isRouteUCBPopulated = true;
-		}
+
 		if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
 			createUCBBusRoutes(); // generate Bus eco-routing routes
 		}
-		else {
-			ContextCreator.isRouteUCBBusPopulated = true;
-		}
+
 	}
 
 	// Create eco-routing candidate path set
@@ -546,25 +550,34 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleSequentialChargingStationStep();
 		}
 		
-		// Schedule synchronized updates
-		if (GlobalVariables.SYNCHRONIZED) {
-			scheduleNextStepUpdating();
-		}
-		
 		logger.info("Events scheduled!");
 
 		agentID = 0;
 		
 		// Send a ready signal (tick 0) in the synchronized mode
 		if(GlobalVariables.SYNCHRONIZED) {
-			// Wait for the connection to be established
-			while(ContextCreator.connection == null)
+			// Wait for the connection to be established, and all the pre-required data has been submitted
+			while((ContextCreator.connection == null))
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
+			
+			if(GlobalVariables.ENABLE_ECO_ROUTING_EV || GlobalVariables.ENABLE_ECO_ROUTING_BUS){
+				try {
+					Thread.sleep(10000); // Wait another 10s for synchronizing the eco-routing data
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			
 			ContextCreator.connection.sendReadyMessage(); 
+		}
+		
+		// Schedule synchronized updates
+		if (GlobalVariables.SYNCHRONIZED) {
+			scheduleNextStepUpdating();
 		}
 
 		return context;
@@ -623,7 +636,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	public static boolean isRouteUCBBusMapPopulated() {
-		return ContextCreator.isRouteUCBPopulated;
+		return ContextCreator.isRouteUCBBusPopulated;
 	}
 	
 	public static VehicleContext getVehicleContext() {
