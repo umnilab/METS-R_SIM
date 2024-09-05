@@ -158,6 +158,7 @@ public class TickSnapshot {
 		int roadID = vehicle.getRoad().getID();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
+		int numTrip = vehicle.getNumTrips();
 
 		if (this.getPrivateEVSnapshot(id) != null) {
 			prev_x = this.getPrivateEVSnapshot(id).prev_x;
@@ -166,7 +167,7 @@ public class TickSnapshot {
 
 		// Create a snapshot for the vehicle and store it in the map
 		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
-				vehicleClass, batteryLevel, energyConsumption, roadID);
+				vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
 		
 		this.evs_private.put(id, snapshot);
 	}

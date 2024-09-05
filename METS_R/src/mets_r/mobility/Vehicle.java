@@ -134,6 +134,8 @@ public class Vehicle {
 	protected Lane nextLane_;
 	protected double linkTravelTime;
 	
+	protected int numTrips; // Number of trips initialized
+	
 	/**
 	 * Constructor of Vehicle Class
 	 * @param vClass Vehicle type, 0 for gasoline (private vehicle), 1 for EV taxi, 2 for EV bus, 3 for EV (private vehicle) 
@@ -304,11 +306,13 @@ public class Vehicle {
 	 * Append vehicle to the pending list to the closest road
 	 */
 	public void departure() {
+		this.numTrips ++;
 		this.isReachDest = false;
 		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
 			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord());
 			// The first list of coordinates for the vehicle to follow
 			Coordinate[] coords = laneGeography.getGeometry(road.firstLane()).getCoordinates();
+			this.setPreviousEpochCoord(coords[0]);
 			for (Coordinate coord : coords) {
 				this.coordMap.add(coord);    
 			}
@@ -597,7 +601,7 @@ public class Vehicle {
 	public void makeAcceleratingDecision() {
 		double aZ = this.accRate_; /* car-following */
 		double acc = this.maxAcceleration_; /* returned rate */
-		if (this.onLane) {
+		if (this.isOnLane()) {
 			/*
 			 * Vehicle will have acceleration rate based on car following if it is not
 			 * in yielding or nosing state
@@ -2315,5 +2319,21 @@ public class Vehicle {
 			res.add(r.getID());
 		}
 		return res;
+	}
+	
+	/**
+	 * Get number of started trips.
+	 */
+	public int getNumTrips() {
+		return this.numTrips;
+	}
+	
+	/**
+	 * Print the coordMap (subroute within a road) of the vehicle
+	 */
+	public void printCoordMap() {
+		for(Coordinate coord: this.coordMap) {
+			ContextCreator.logger.info(coord);
+		}
 	}
 }

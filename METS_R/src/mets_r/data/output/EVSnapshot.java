@@ -28,16 +28,17 @@ public class EVSnapshot {
 	final public double batteryLevel;
 	final public double totalConsumption;
 	final public int roadID;
+	final public int trip_number;
 
 	public EVSnapshot(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
-				vehicle.getTotalConsume(), vehicle.getRoad().getID());
+				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.getNumTrips());
 	}
 
 	public EVSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
-			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID) throws Throwable {
+			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID, int tripNumber) throws Throwable {
 		if (id < 0) {
 			throw new Exception("Vehicle ID cannot be negative.");
 		}
@@ -64,6 +65,7 @@ public class EVSnapshot {
 		this.batteryLevel =  batteryLevel;
 		this.totalConsumption =  energyConsumption;
 		this.roadID = roadID;
+		this.trip_number = tripNumber;
 	}
 
 	public int getId() {
@@ -112,5 +114,9 @@ public class EVSnapshot {
 
 	public int getRoadID() {
 		return this.roadID;
+	}
+	
+	public int getTripNumber() {
+		return this.trip_number;
 	}
 }

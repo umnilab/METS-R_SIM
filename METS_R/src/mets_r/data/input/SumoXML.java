@@ -304,10 +304,10 @@ public class SumoXML {
 						GeographicCRS geoCRS = org.geotools.referencing.crs.DefaultGeographicCRS.WGS84;
 						CartesianCS cartCS = org.geotools.referencing.cs.DefaultCartesianCS.GENERIC_2D;
 						ParameterValueGroup parameters = mtFactory.getDefaultParameters("Transverse_Mercator");
-						parameters.parameter("central_meridian").setValue(0);
+						parameters.parameter("central_meridian").setValue(0.0); //4.4869
 						parameters.parameter("latitude_of_origin").setValue(0.0);
-						parameters.parameter("scale_factor").setValue(0.9996);
-						parameters.parameter("false_easting").setValue(500000.0);
+						parameters.parameter("scale_factor").setValue(1.0); //0.9996
+						parameters.parameter("false_easting").setValue(0.0); //500000.0
 						parameters.parameter("false_northing").setValue(0.0);
 						Map<String, String> properties = Collections.singletonMap("name", "WGS 84 / Default");
 						ProjectedCRS sourceutm = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
@@ -358,7 +358,7 @@ public class SumoXML {
 					    currentLane.setOrigID(attributes.getValue("id"));
 					    currentLane.setRoad(currentRoad.getID());    
 					    roadLane.get(currentRoad.getID()).add(lane_id);
-					    currentLane.setLength(Double.parseDouble(attributes.getValue("length")));
+					    // currentLane.setLength(Double.parseDouble(attributes.getValue("length")));
 					    currentLane.setSpeed(Double.parseDouble(attributes.getValue("speed")));
 					    currentMaxSpeed = Math.max(currentLane.getSpeed(), currentMaxSpeed);
 					    // get coords
@@ -372,7 +372,7 @@ public class SumoXML {
 							} catch (TransformException e) {
 								e.printStackTrace();
 							}
-					    	coords.add(0, coord);
+					    	coords.add(coord);
 					    }
 					    currentLane.setCoords(coords);
 					    
@@ -382,7 +382,7 @@ public class SumoXML {
 					    endY += coords.get(coords.size()-1).y;
 					    nLane++;
 					    lanes.put(currentLane.getID(), currentLane);
-					    currentRoad.addLane(currentLane); // Add lane to the road
+					    currentRoad.addLane(currentLane, 0); // Add lane to the road, lane from the rightmost to the centered.
 					}
 				    
 				}
@@ -623,8 +623,8 @@ public class SumoXML {
 	
 	public static void main(String[] args) {
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
-//		SumoXML sxml = new SumoXML("data/IN/facility/road/indiana-35.net.xml");
-		SumoXML sxml = new SumoXML("data/CARLA/facility/road/Town05.net.xml");
+		SumoXML sxml = new SumoXML("data/IN/facility/road/ruralindiana.net.xml");
+//		SumoXML sxml = new SumoXML("data/CARLA/facility/road/Town05.net.xml");
 		sxml.print();
 	}
 	

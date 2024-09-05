@@ -78,6 +78,10 @@ public class QueryMessageHandler extends MessageHandler {
 				else {
 					coord= vehicle.getCurrentCoord();
 				}
+				// Display coordMap
+//				ContextCreator.logger.info("VID: " + vehicle.getID() + " coord: " + vehicle.getCurrentCoord() + " coord2: " + coord);
+//				vehicle.printCoordMap();
+//				ContextCreator.logger.info("Lane ID:" + vehicle.getLane().getID() + " " + vehicle.getLane().getCoords());
 				jsonObj.put("TYPE", "ANS_vehicle");
 				jsonObj.put("ID", vehicle.getID());
 				jsonObj.put("v_type", vehicle.getVehicleClass());

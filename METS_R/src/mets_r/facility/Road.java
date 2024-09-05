@@ -527,6 +527,10 @@ public class Road {
 	public void addLane(Lane l) {
 		this.lanes.add(l);
 	}
+	
+	public void addLane(Lane l, int index) {
+		this.lanes.add(index, l);
+	}
 
 	public ArrayList<Lane> getLanes() {
 		return this.lanes;

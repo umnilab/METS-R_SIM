@@ -63,7 +63,7 @@ public class CityContext extends DefaultContext<Object> {
 	private void initializeLaneDistance() {
 		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
 			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
-			float distance = 0;
+			double distance = 0;
 			for (int i = 0; i < coords.length - 1; i++) {
 				distance += getDistance(coords[i], coords[i + 1]);
 			}

@@ -802,6 +802,7 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(ev.getDestID());
 		vehicleArray.add(Math.round(ev.getBatteryLevel()*10)/10.0);
 		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10.0);
+		vehicleArray.add(Math.round(ev.getTripNumber()));
 
 		return vehicleArray;
 	}
