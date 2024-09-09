@@ -75,8 +75,8 @@ RH_DEMAND_SHARABLE = false
 RH_DEMAND_FACTOR = 0.1
 
 ### 2. Private vehicle trips
-EV_DEMAND_FILE = data/NYC/demand/private/empty.csv
-GV_DEMAND_FILE = data/NYC/demand/private/empty.csv
+EV_DEMAND_FILE = data/Empty/demand/private/empty.csv
+GV_DEMAND_FILE = data/Empty/demand/private/empty.csv
 
 ## Default bus schedule
 BUS_SCHEDULE = data/NYC/operation/bus_planning/blank.json
@@ -90,7 +90,7 @@ EV_BATTERY = 50
 BUS_BATTERY = 250
 
 ## Event File, specify event like road closure or traffic regulation
-EVENT_FILE = data/NYC/operation/event/empty.csv
+EVENT_FILE = data/Empty/operation/event/empty.csv
 
 ### Check event for every X seconds, unit: second
 EVENT_CHECK_FREQUENCY = 10

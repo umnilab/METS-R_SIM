@@ -96,7 +96,7 @@ public class ElectricVehicle extends Vehicle {
 			
 			// Send V2X data for CAV applications
 			if(GlobalVariables.V2X) {
-				ContextCreator.kafkaManager.bsmProduce(this, this.getCurrentCoord(), this.getVehicleSensorType());
+				ContextCreator.kafkaManager.produceBSM(this, this.getCurrentCoord(), this.getVehicleSensorType());
 			}
 		}
 		super.reportStatus();

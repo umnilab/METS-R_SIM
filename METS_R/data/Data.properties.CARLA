@@ -50,36 +50,36 @@ ROADS_CSV = data/NYC/facility/road/road_fileNYC.csv
 LANES_SHAPEFILE = data/NYC/facility/road/lane_fileNYC.shp
 LANES_CSV = data/NYC/facility/road/lane_fileNYC.csv
 
-## This will override the above network references, example: data/IN/facility/road/indiana-35.net.xml
-NETWORK_FILE = data/CARLA/facility/road/Town05.net.xml
+## This will override the above network references
+NETWORK_FILE = data/CARLA/Town05/facility/road/Town05.net.xml
 
-ZONES_SHAPEFILE = data/CARLA/facility/zone/Town05_centroid.shp
-ZONE_CSV = data/CARLA/facility/zone/Town05_centroid.csv
-CHARGER_SHAPEFILE = data/CARLA/facility/charging_station/Town05_charging_station.shp
-CHARGER_CSV = data/CARLA/facility/charging_station/Town05_charging_station.csv
+ZONES_SHAPEFILE = data/CARLA/Town05/facility/zone/Town05_centroid.shp
+ZONE_CSV = data/CARLA/Town05/facility/zone/Town05_centroid.csv
+CHARGER_SHAPEFILE = data/CARLA/Town05/facility/charging_station/Town05_charging_station.shp
+CHARGER_CSV = data/CARLA/Town05/facility/charging_station/Town05_charging_station.csv
 
 ## INITIAL X and Y for trajectory outputs, used in JsonOutputWriter, for NYC: use -73, 40
 INITIAL_X = 0
 INITIAL_Y = 0
 
 ## Background Traffic
-BT_EVENT_FILE = data/CARLA/operation/speed/empty.csv
-BT_STD_FILE = data/CARLA/operation/speed/empty.csv
+BT_EVENT_FILE = data/Empty/operation/speed/empty.csv
+BT_STD_FILE = data/Empty/operation/speed/empty.csv
 
 ## Travel demand
 ### 1. Ride-hailing (EV taxis) demand
-RH_DEMAND_FILE = data/CARLA/demand/request/blank.json
-RH_WAITING_TIME = data/CARLA/demand/wait/empty.csv
-RH_SHARE_PERCENTAGE = data/CARLA/demand/share/blank.json
+RH_DEMAND_FILE = data/Empty/demand/request/blank.json
+RH_WAITING_TIME = data/Empty/demand/wait/empty.csv
+RH_SHARE_PERCENTAGE = data/Empty/demand/share/blank.json
 RH_DEMAND_SHARABLE = false
 RH_DEMAND_FACTOR = 1
 
 ### 2. Private vehicle trips
-EV_DEMAND_FILE = data/CARLA/demand/private/empty.csv
-GV_DEMAND_FILE = data/CARLA/demand/private/empty.csv
+EV_DEMAND_FILE = data/Empty/demand/private/empty.csv
+GV_DEMAND_FILE = data/Empty/demand/private/empty.csv
 
 ## Default bus schedule
-BUS_SCHEDULE = data/CARLA/operation/bus_planning/blank.json
+BUS_SCHEDULE = data/Empty/operation/bus_planning/blank.json
 
 ## Number of shared vehicles, i.e., EV taxis and EV buses
 NUM_OF_EV = 0
@@ -90,7 +90,7 @@ EV_BATTERY = 50
 BUS_BATTERY = 250
 
 ## Event File, specify event like road closure or traffic regulation
-EVENT_FILE = data/NYC/operation/event/empty.csv
+EVENT_FILE = data/Empty/operation/event/empty.csv
 
 ### Check event for every X seconds, unit: second
 EVENT_CHECK_FREQUENCY = 10

@@ -174,65 +174,77 @@ public class Road {
 			}
 		}
 		
-		if(this.getControlType() == Road.CoSim) {
-			ContextCreator.logger.debug("Skipped vehicle movements for the coSim road with origin ID: " + this.getOrigID());
-			return;
+		/* Log vehicle states */
+		Vehicle currentVehicle = this.firstVehicle();
+		while (currentVehicle != null) {
+			Vehicle nextVehicle = currentVehicle.macroTrailing();
+			currentVehicle.reportStatus();
+			if (tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0) {
+				currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
+															// so we record vehicle location here!
+			}
+			currentVehicle = nextVehicle;
 		}
 
 		/* Vehicle movement */
-		Vehicle currentVehicle = this.firstVehicle();
-		// happened at time t, deciding acceleration and lane changing
-		while (currentVehicle != null) {
-			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			if (tickcount> currentVehicle.getAndSetLastVisitTick(tickcount)) {
-				currentVehicle.calcState();
-				if (tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0) {
-					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
-																// so we record vehicle location here!
-				}
-			}
-			currentVehicle = nextVehicle;
+		if(this.getControlType() == Road.CoSim) {
+			ContextCreator.logger.debug("Skipped vehicle movements for the coSim road with origin ID: " + this.getOrigID());
 		}
-
-		// happened during time t to t + 1, conducting vehicle movements
-		currentVehicle = this.firstVehicle();
-		while (currentVehicle != null) {
-			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been visited yet
-				currentVehicle.move();
-				currentVehicle.updateBatteryLevel(); // Update the energy for each move
-				currentVehicle.reportStatus();
-				currentVehicle.checkAtDestination();
+		else {
+			currentVehicle = this.firstVehicle();
+			// happened at time t, deciding acceleration and lane changing
+			while (currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				if (tickcount> currentVehicle.getAndSetLastVisitTick(tickcount)) {
+					currentVehicle.calcState();
+				}
+				currentVehicle = nextVehicle;
 			}
-			currentVehicle = nextVehicle;
+	
+			// happened during time t to t + 1, conducting vehicle movements
+			currentVehicle = this.firstVehicle();
+			while (currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been visited yet
+					currentVehicle.move();
+					currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				}
+				currentVehicle = nextVehicle;
+			}
 		}
 	}
 	
-	/*
-	 * Insert vehicle to a specific location
-	 * If the to-insert vehicle collide with 
+	/**
+	 * Insert vehicle to a specific location.
+	 * 
+	 * This function would not check the collision issue 
+	 * since it is used for synchronize the vehicle information
+	 * from other sources and the "collision" could just be
+	 * caused by the order of vehicle updates.
 	 */
 	public boolean insertVehicle(Vehicle veh, Lane lane, double dist, double x, double y) {
 		if (veh.getRoad() == this) {
 			if (veh.getLane() == lane) // Case 1, veh's road is this road and this lane, check overtake issue, change its dist
 			{
-				if(veh.leading() != null) {
-					if(veh.leading().getDistance() + veh.leading().length() >= dist) {
-						// Overtaking in the same lane
-						ContextCreator.logger.error("Overtaking " +veh.leading().getID() + " in the same lane, this veh: " + veh.getID() + ", front veh dist: " + veh.leading().getDistance() + ", this veh dist: " + dist);
-						return false;
-					}
-				}
-				if(veh.trailing() != null) {
-					if(veh.trailing().getDistance() <= dist + veh.length()) {
-						// Overtaking in the same lane
-						ContextCreator.logger.error("Overpassing " +veh.trailing().getID() + " in the same lane, this veh: " + veh.getID() + ", behind veh dist: " + veh.trailing().getDistance() + ", this veh dist: " + dist);
-						return false;
-					}
-				}
+//				if(veh.leading() != null) {
+//					if(veh.leading().getDistance() + veh.leading().length() >= dist) {
+//						// Overtaking in the same lane
+//						ContextCreator.logger.error("Overtaking " +veh.leading().getID() + " in the same lane, this veh: " + veh.getID() + ", front veh dist: " + veh.leading().getDistance() + ", this veh dist: " + dist);
+//						return false;
+//					}
+//				}
+//				if(veh.trailing() != null) {
+//					if(veh.trailing().getDistance() <= dist + veh.length()) {
+//						// Overtaking in the same lane
+//						ContextCreator.logger.error("Overpassing " +veh.trailing().getID() + " in the same lane, this veh: " + veh.getID() + ", behind veh dist: " + veh.trailing().getDistance() + ", this veh dist: " + dist);
+//						return false;
+//					}
+//				}
 				veh.setDistance(dist);
 				// Move veh to the x and y location
 				veh.setCurrentCoord(new Coordinate(x, y));
+				// Advance vehicle in the lane
+				veh.advanceInMacroList();
 			}
 			else { // Case 2, veh's road is this road but not the same lane, find the leading and trailing veh
 				Vehicle leadVehicle = null;
@@ -241,18 +253,18 @@ public class Road {
 				Vehicle toCheckVeh = lane.firstVehicle();
 				while (toCheckVeh != null) { // find where to insert the veh
 					 if(toCheckVeh.getDistance()<=dist) {
-						 if(toCheckVeh.getDistance() + toCheckVeh.length() > dist) {
-							 ContextCreator.logger.error("Front collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", front veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
-							 return false;
-						 }
+//						 if(toCheckVeh.getDistance() + toCheckVeh.length() > dist) {
+//							 ContextCreator.logger.error("Front collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", front veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
+//							 return false;
+//						 }
 						 leadVehicle = toCheckVeh;
 						 toCheckVeh = toCheckVeh.trailing();
 					 }
 					 else {
-						 if(toCheckVeh.getDistance() < dist + veh.length()) {
-							 ContextCreator.logger.error("Behind collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", behind veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
-							 return false;
-						 }
+//						 if(toCheckVeh.getDistance() < dist + veh.length()) {
+//							 ContextCreator.logger.error("Behind collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", behind veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
+//							 return false;
+//						 }
 						 lagVehicle = toCheckVeh;
 						 break;
 					 }
@@ -267,10 +279,9 @@ public class Road {
 				veh.advanceInMacroList();
 			}
 			
-			if(dist<=0) { // change road
-				veh.checkAtDestination();
-				veh.changeRoad();
-			}
+//			if(dist<=1e-8) { // change road
+//				veh.changeRoad();
+//			}
 		}
 		else {
 			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) {
@@ -602,7 +613,7 @@ public class Road {
 			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
 			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-				ContextCreator.kafkaManager.linkEnergyProduce(ev.getID(), ev.getVehicleClass(), this.getID(),
+				ContextCreator.kafkaManager.produceLinkEnergy(ev.getID(), ev.getVehicleClass(), this.getID(),
 						ev.getLinkConsume());
 			}
 			ev.resetLinkConsume();
@@ -610,7 +621,7 @@ public class Road {
 			ElectricBus bv = (ElectricBus) v;
 			this.totalEnergy += bv.getLinkConsume();
 			if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-				ContextCreator.kafkaManager.linkEnergyProduce(bv.getID(), bv.getVehicleClass(), this.getID(),
+				ContextCreator.kafkaManager.produceLinkEnergy(bv.getID(), bv.getVehicleClass(), this.getID(),
 						bv.getLinkConsume());
 			}
 			bv.resetLinkConsume();
@@ -671,7 +682,7 @@ public class Road {
 	public void recordTravelTime(Vehicle v) {
 		this.travelTimeHistory_.add(v.getLinkTravelTime());
 		if (GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-			ContextCreator.kafkaManager.linkTravelTimeProduce(v.getID(), v.getVehicleClass(), this.getID(),
+			ContextCreator.kafkaManager.produceLinkTravelTime(v.getID(), v.getVehicleClass(), this.getID(),
 					v.getLinkTravelTime(), this.getLength());
 		}
 		v.resetLinkTravelTime();

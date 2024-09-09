@@ -623,7 +623,7 @@ public class SumoXML {
 	
 	public static void main(String[] args) {
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
-		SumoXML sxml = new SumoXML("data/IN/facility/road/ruralindiana.net.xml");
+		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
 //		SumoXML sxml = new SumoXML("data/CARLA/facility/road/Town05.net.xml");
 		sxml.print();
 	}

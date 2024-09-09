@@ -31,7 +31,7 @@ public class KafkaDataStreamProducer{
 		compService = new ExecutorCompletionService<String>(executorService);
 	}
 	
-	public void bsmProduce(Vehicle vehicle, Coordinate coordinate, int type) {
+	public void produceBSM(Vehicle vehicle, Coordinate coordinate, int type) {
 		BSMDataStream myMessage = new BSMDataStream(vehicle, coordinate, type);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
@@ -42,7 +42,7 @@ public class KafkaDataStreamProducer{
 		compService.submit(sender);
 	}
 	
-	public void linkEnergyProduce(int vid, int vehType, int roadID, double linkEnergy) {
+	public void produceLinkEnergy(int vid, int vehType, int roadID, double linkEnergy) {
 		LinkEnergyDataStream myMessage = new LinkEnergyDataStream(vid, vehType, roadID, linkEnergy);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
@@ -53,7 +53,7 @@ public class KafkaDataStreamProducer{
 		compService.submit(sender);
 	}
 	
-	public void linkTravelTimeProduce(int vid, int vehType, int roadID, double linkTravelTime, double length) {
+	public void produceLinkTravelTime(int vid, int vehType, int roadID, double linkTravelTime, double length) {
 		LinkTravelTimeDataStream myMessage = new LinkTravelTimeDataStream(vid, vehType, roadID, linkTravelTime, length);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();

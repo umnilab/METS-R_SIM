@@ -335,7 +335,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedule.schedule(privateTripLoaderParams, travelDemand, "loadPrivateDemandChunk");
 	}
 	
-
 	// Schedule the event of refreshing road information for routing
 	public void scheduleRoadNetworkRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
@@ -515,6 +514,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		logger.info("Reading property files");
 		readPropertyFile();
 		ContextCreator.mainContext = context;
+		
 		logger.info("Building subcontexts");
 		buildSubContexts();
 
@@ -530,7 +530,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (GlobalVariables.BUS_PLANNING) {
 			scheduleTransitUpdating();
 		}
-				
 		
 		// Set up data collection
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
@@ -582,6 +581,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		return context;
 	}
+	
+	// The reset function
+	public void reset(String propertyFile) {
+		
+	}
+	
 
 	public void printTick() {
 		logger.info("Tick: " + RunEnvironment.getInstance().getCurrentSchedule().getTickCount());

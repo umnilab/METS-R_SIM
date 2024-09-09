@@ -545,7 +545,7 @@ public class Vehicle {
 		double accDist = lane.getLength();
 		for (int i = 0; i < coords.length - 1; i++) {
 			accDist -= distance(coords[i], coords[i + 1]);
-			if (this.distance_ >= accDist) { // Find the first pt in CoordMap that has smaller distance_;
+			if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_, add noise to avoid numerical issue
 				this.setCurrentCoord(coords[i]); // Set current coord
 				double[] distAndAngle = new double[2];
 				distance2(coords[i], coords[i + 1], distAndAngle);
@@ -564,7 +564,7 @@ public class Vehicle {
 			}
 		}
 		if (coordMap.size() == 0) {
-			ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane!");
+			ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
 		}
 	}
 	
@@ -939,20 +939,11 @@ public class Vehicle {
 						this.distance_ -= nextDistance_;
 						this.nextDistance_ = 0;
 						lastStepMove_ = distTravelled;
-						if (this.nextRoad_ != null) { // has next road
-							this.coordMap.add(this.getCurrentCoord()); 
-							if (this.appendToJunction(nextLane_)) { // Vehicle arrived the destination, could be unnecessary
-								current_road.recordEnergyConsumption(this);
-								current_road.recordTravelTime(this);
-							}
-							break;
-						} else { // No next road, the vehicle arrived at the destination
-							current_road.recordEnergyConsumption(this);
-							current_road.recordTravelTime(this);
-							this.coordMap.clear();
-							this.coordMap.add(this.currentCoord_);
-							break;
-						}
+						current_road.recordEnergyConsumption(this);
+						current_road.recordTravelTime(this);
+						this.coordMap.add(this.currentCoord_);
+						this.onLane = false; // add to junction
+						break;
 					} else {
 						this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
 						this.distance_ -= this.nextDistance_;
@@ -1024,38 +1015,40 @@ public class Vehicle {
 	 */
 	public boolean changeRoad() {
 		// Check if the vehicle has reached the destination or not
-		if (this.isReachDest || this.roadPath.size()<2) {
+		if (this.isReachDest) {
 			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
+			this.onLane = false;
 			return true; // Only reach destination once
-		} else if (this.nextRoad_ != null) {
+		} 
+		else if (this.nextRoad_ != null) {
 			// Check if there is enough space in the next road to change to
 			int tickcount = ContextCreator.getCurrentTick();
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			boolean movable = false;
 			if(this.nextRoad_.getID() == this.roadPath.get(1).getID()) { // nextRoad data is consistent
 				switch(nextJunction.getControlType()) {
-				case Junction.NoControl:
-					movable = true;
-					break;
-				case Junction.DynamicSignal:
-					if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+					case Junction.NoControl:
 						movable = true;
-					break;
-				case Junction.StaticSignal:
-					if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+						break;
+					case Junction.DynamicSignal:
+						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+							movable = true;
+						break;
+					case Junction.StaticSignal:
+						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
+							movable = true;
+						break;
+					case Junction.StopSign:
+						if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
+							movable = true;
+						break;
+					case Junction.Yield:
+						if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
+							movable = true;
+						break;
+					default:
 						movable = true;
-					break;
-				case Junction.StopSign:
-					if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
-						movable = true;
-					break;
-				case Junction.Yield:
-					if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
-						movable = true;
-					break;
-				default:
-					movable = true;
-					break;
+						break;
 				}
 			}
 
@@ -1090,14 +1083,17 @@ public class Vehicle {
 					}
 				}
 			}
-			else {
-				// Add to the junction
-				this.onLane = false;
-			}
+			// Fail to enter next link, try again in the next tick
+			this.onLane = false;
+			coordMap.clear();
+			coordMap.add(this.getCurrentCoord()); 
+			return false;
 		}
-		coordMap.clear();
-		coordMap.add(this.getCurrentCoord());// Fail to enter next link, try again in the next tick
-		return false;
+		else {
+//			ContextCreator.logger.info("Vehicle " + this.getID() + " reached dest with dist " + this.distance_ + " roadPath: " + this.roadPath);
+			this.reachDest();
+			return true;
+		}
 	}
 	
 	/**
@@ -1120,15 +1116,6 @@ public class Vehicle {
 
 		} else
 			return 0;
-	}
-	
-	/**
-	 * Check whether the vehicle arrived at (the start point of) the final link
-	 */
-	public void checkAtDestination() {
-		if (this.nextRoad_ == null && !this.atOrigin) {
-			this.reachDest();
-		}
 	}
 	
 	/**
@@ -2128,24 +2115,6 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Get critical lag gap for DLC (discretional lane changing)
-	 * @param pv
-	 * @return double critLag
-	 */
-	public boolean appendToJunction(Lane nextlane) {
-		if (this.isReachDest) {
-			return false;
-		} else { // Want to change to next road
-			coordMap.clear();
-			coordMap.add(this.getCurrentCoord());
-		}
-
-		this.onLane = false;
-
-		return true;
-	}
-	
-	/**
 	 * Whether the vehicle is on a lane
 	 * @return boolean onLane
 	 */
@@ -2226,13 +2195,9 @@ public class Vehicle {
 	 */
 	private void move2(Coordinate origin, Coordinate target, double distanceToTarget, double distanceTravelled) {
 		double p = distanceTravelled / distanceToTarget;
-		if (p < 0 || p > 1) {
-			ContextCreator.logger
-			.error("Vehicle.move2(): Cannot move " + this.getID() + " from road " + this.road + " with p=" + p + " by dist=" + distanceTravelled + ", " + distanceToTarget);
-		}
-		else {
-			this.setCurrentCoord(new Coordinate((1 - p) * origin.x + p * target.x, (1 - p) * origin.y + +p * target.y));
-		}
+		if (p < 0) p = 0;
+		if (p > 1) p = 1;
+		this.setCurrentCoord(new Coordinate((1 - p) * origin.x + p * target.x, (1 - p) * origin.y + +p * target.y));
 	}
 	
 	/**
