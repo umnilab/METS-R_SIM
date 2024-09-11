@@ -58,27 +58,27 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	/* Simulation data */
 	private static int agentID = 0; // Used to generate unique agent id
-	public static double startTime; // Start time of the simulation
+	public static double start_time; // Start time of the simulation
 	public static HashMap<Integer, Double> demand_per_zone = new HashMap<Integer, Double>();
-	public static NetworkEventHandler eventHandler = new NetworkEventHandler(); 
-	public static BackgroundTraffic backgroundTraffic = new BackgroundTraffic();
-	public static TravelDemand travelDemand = new TravelDemand();
-	public static BusSchedule busSchedule = new BusSchedule();
+	public static BackgroundTraffic background_traffic = new BackgroundTraffic();
+	public static TravelDemand travel_demand = new TravelDemand();
+	public static BusSchedule bus_schedule = new BusSchedule();
 	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition); 
 	
 	/* Multi-thread scheduler */
 	public static ThreadedScheduler tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_Partition):null;
 	
 	/* Simulation objects */
-	CityContext cityContext;
-	VehicleContext vehicleContext;
-	DataCollectionContext dataContext;
+	public static CityContext cityContext;
+	public static VehicleContext vehicleContext;
+	public static DataCollectionContext dataContext;
 
 	/* Data communication */
 	// Connection manager maintains the socket server for remote programs
 	// set to be final to avoid further modifications
 	public static final ConnectionManager manager =  GlobalVariables.STANDALONE?null: new ConnectionManager();
 	public static Connection connection = null;
+	public static NetworkEventHandler eventHandler = new NetworkEventHandler(); 
 	public static final StepMessageHandler stepHandler = new StepMessageHandler();
 	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
 	// Kafka manager maintains the resources for sending message to Kafka
@@ -105,11 +105,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	/* Functions */
 	// Reading simulation properties stored at data/Data.properties
-	public Properties readPropertyFile() {
+	public static Properties readPropertyFile(String file_name) {
 		Properties propertiesFile = new Properties();
 		String working_dir = System.getProperty("user.dir");
 		try {
-			propertiesFile.load(new FileInputStream(working_dir + "/data/Data.properties"));
+			propertiesFile.load(new FileInputStream(working_dir + "/data/" + file_name));
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -146,14 +146,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Initializing simulation agents
-	public void buildSubContexts() {
+	public static void buildSubContexts() {
 		// Initialize facilities
-		this.cityContext = new CityContext();
+		cityContext = new CityContext();
 		mainContext.addSubContext(cityContext);
 		
-		this.cityContext.createSubContexts();
-		this.cityContext.buildRoadNetwork();
-		this.cityContext.setNeighboringGraph();
+		cityContext.createSubContexts();
+		cityContext.buildRoadNetwork();
+		cityContext.setNeighboringGraph();
 		// Calculate the demand of each zone
 		double demand_total = 0;
 
@@ -162,7 +162,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			int i = z.getIntegerID();
 			for (Zone z2 : getZoneContext().getAll()) {
 				int j = z2.getIntegerID();
-				demand_from_zone += sumOfArray(travelDemand.getPublicTravelDemand(i, j),
+				demand_from_zone += sumOfArray(travel_demand.getPublicTravelDemand(i, j),
 						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
@@ -172,30 +172,30 @@ public class ContextCreator implements ContextBuilder<Object> {
 				.info("Ridehailing total demand: " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
 
 		// Initialize vehicles
-		this.vehicleContext = new VehicleContext();
+		vehicleContext = new VehicleContext();
 		mainContext.addSubContext(vehicleContext);
 
 		// Create data collector
-		this.dataContext = new DataCollectionContext();
+		dataContext = new DataCollectionContext();
 		mainContext.addSubContext(dataContext);
 
 		// Initialize operational parameters 
 		// Set the bus info in each zone
-		for (ArrayList<Integer> route : busSchedule.getBusSchedule()) {
+		for (ArrayList<Integer> route : bus_schedule.getBusSchedule()) {
 			int i = 0;
 			for (int zoneID : route) {
 				Zone zone = ContextCreator.getZoneContext().get(zoneID);
 				if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
 					for (int destinationID : route) {
 						if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(destinationID)) {
-							zone.setBusInfo(destinationID, busSchedule.getBusGap().get(i));
+							zone.setBusInfo(destinationID, bus_schedule.getBusGap().get(i));
 						}
 					}
 				} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be another
 														// hub)
 					for (int destinationID : route) {
 						if (zone.getIntegerID() != destinationID) {
-							zone.setBusInfo(destinationID, busSchedule.getBusGap().get(i));
+							zone.setBusInfo(destinationID, bus_schedule.getBusGap().get(i));
 						}
 
 					}
@@ -217,7 +217,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	// Create eco-routing candidate path set
 	@SuppressWarnings("unchecked")
-	private void createUCBRoutes() {
+	private static void createUCBRoutes() {
 		cityContext.modifyRoadNetwork(); // This initializes data for path calculation, DO NOT remove it
 		try { // First try to read from the file. If the file does not exist, then create it.
 			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes.ser");
@@ -270,7 +270,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	// Create Bus eco-routing candidate path set
 	@SuppressWarnings("unchecked")
-	private void createUCBBusRoutes() {
+	private static void createUCBBusRoutes() {
 		try { // First try to read from the file. If the file does not exist, then create it.
 			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes_bus.ser");
 			ObjectInputStream in = new ObjectInputStream(fileIn);
@@ -314,9 +314,37 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		ContextCreator.isRouteUCBBusPopulated = true;
 	}
+	
+	// Schedule simulation events
+	public static void scheduleEvents() {
+		schedulePrivateTripLoader();
+		scheduleRoadNetworkRefresh();
+		scheduleFreeFlowSpeedRefresh();
+		scheduleNetworkEventHandling(); // For temporarily alter the link speed
+		
+		// Set up data collection
+		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
+			scheduleDataCollection();
+		}
+
+		// Schedule agent movements
+		if (GlobalVariables.MULTI_THREADING) {
+			scheduleMultiThreadedRoadStep();
+			scheduleMultiThreadedZoneStep();
+			scheduleMultiThreadedSignalStep();
+			scheduleMultiThreadedChargingStationStep();
+		} else {
+			scheduleSequentialRoadStep();
+			scheduleSequentialZoneStep();
+			scheduleSequentialSignalStep();
+			scheduleSequentialChargingStationStep();
+		}
+		
+		logger.info("Events scheduled!");
+	}
 
 	// Schedule the start and the end of the simulation
-	public void scheduleStartAndEnd() {
+	public void scheduleEnd() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
 		logger.info("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
@@ -324,30 +352,28 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedule.schedule(startParams, this, "start");
 		ScheduleParameters endParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(endParams, this, "end");
-
 	}
 	
 	// Schedule the event of loading the demand chunk
-	public void schedulePrivateTripLoader() {
+	public static void schedulePrivateTripLoader() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(0, 
 				(int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
-		schedule.schedule(privateTripLoaderParams, travelDemand, "loadPrivateDemandChunk");
+		schedule.schedule(privateTripLoaderParams, travel_demand, "loadPrivateDemandChunk");
 	}
 	
 	// Schedule the event of refreshing road information for routing
-	public void scheduleRoadNetworkRefresh() {
+	public static void scheduleRoadNetworkRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParamsNW = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL, 3);
 		schedule.schedule(agentParamsNW, cityContext, "modifyRoadNetwork");
-
 	}
 
 	// Schedule the event of updating background speeds/estimated travel time
 	// For each link (per update), background speed serves as the target speed of vehicles, 
 	// which follows a normal distribution.
-	public void scheduleFreeFlowSpeedRefresh() {
+	public static void scheduleFreeFlowSpeedRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
@@ -358,19 +384,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
-	public void scheduleNetworkEventHandling() {
+	public static void scheduleNetworkEventHandling() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
 		schedule.schedule(supplySideEventParams, eventHandler, "checkEvents");
-	}
-	
-	// Schedule the event for bus schedule updates
-	public void scheduleTransitUpdating() {
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters busScheduleParams = ScheduleParameters.createRepeating(0,
-				GlobalVariables.SIMULATION_BUS_REFRESH_INTERVAL, 5);
-		schedule.schedule(busScheduleParams, this, "waitForNewBusSchedule");
 	}
 
 	// Schedule the event for synchronized update
@@ -381,9 +399,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
 	}
 	
-
 	// Schedule the event for vehicle movements (multi-thread)
-	public void scheduleMultiThreadedRoadStep() {
+	public static void scheduleMultiThreadedRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(1, 1, 0);
@@ -408,7 +425,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for vehicle movements (single-thread)
-	public void scheduleSequentialRoadStep() {
+	public static void scheduleSequentialRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParams = ScheduleParameters.createRepeating(1, 1, 0);
 		for (Road r : getRoadContext().getAll()) {
@@ -417,7 +434,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for zone updates (multi-thread)
-	public void scheduleMultiThreadedZoneStep() {
+	public static void scheduleMultiThreadedZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
@@ -430,7 +447,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for zone updates (single-thread)
-	public void scheduleSequentialZoneStep() {
+	public static void scheduleSequentialZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
 		// Schedule the passenger serving events
@@ -449,16 +466,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for charging station updates (multi-thread)
-	public void scheduleMultiThreadedChargingStationStep() {
+	public static void scheduleMultiThreadedChargingStationStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		schedule.schedule(agentParaParams, tscheduler, "paraChargingStationStep");
 	}
 
 	// Schedule the event for  charging station updates (single-thread)
-	public void scheduleSequentialChargingStationStep() {
+	public static void scheduleSequentialChargingStationStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters chargingServeParams = ScheduleParameters.createRepeating(0,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
@@ -468,14 +484,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	// Schedule the event for signal updates (multi-thread)
-	public void scheduleMultiThreadedSignalStep() {
+	public static void scheduleMultiThreadedSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1); 
 		schedule.schedule(agentParaParams, tscheduler, "paraSignalStep");
 	}
 
 	// Schedule the event for charging station updates (single-thread)
-	public void scheduleSequentialSignalStep() {
+	public static void scheduleSequentialSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		for (Signal s : getSignalContext().getAll()) {
 			ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(0, 1);
@@ -484,7 +500,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for data collection
-	public void scheduleDataCollection() {
+	public static void scheduleDataCollection() {
 		int tickDuration = 1;
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
@@ -511,57 +527,30 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	// The main function
 	public Context<Object> build(Context<Object> context) {
+		start_time = System.currentTimeMillis(); // Record the start time of the simulation
+		
 		logger.info("Reading property files");
-		readPropertyFile();
+		readPropertyFile("Data.properties");
 		ContextCreator.mainContext = context;
 		
 		logger.info("Building subcontexts");
 		buildSubContexts();
 
-		// Schedule start and end
 		logger.info("Scheduling events");
-		scheduleStartAndEnd();
-		schedulePrivateTripLoader();
-		scheduleRoadNetworkRefresh();
-		scheduleFreeFlowSpeedRefresh();
-		scheduleNetworkEventHandling(); // For temporarily alter the link speed
-		
-		// Set up bus schedule update
-		if (GlobalVariables.BUS_PLANNING) {
-			scheduleTransitUpdating();
-		}
-		
-		// Set up data collection
-		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
-			scheduleDataCollection();
-		}
-
-		// Schedule agent movements
-		if (GlobalVariables.MULTI_THREADING) {
-			scheduleMultiThreadedRoadStep();
-			scheduleMultiThreadedZoneStep();
-			scheduleMultiThreadedSignalStep();
-			scheduleMultiThreadedChargingStationStep();
-		} else {
-			scheduleSequentialRoadStep();
-			scheduleSequentialZoneStep();
-			scheduleSequentialSignalStep();
-			scheduleSequentialChargingStationStep();
-		}
-		
-		logger.info("Events scheduled!");
+		scheduleEvents();
 
 		agentID = 0;
 		
 		// Send a ready signal (tick 0) in the synchronized mode
 		if(GlobalVariables.SYNCHRONIZED) {
 			// Wait for the connection to be established, and all the pre-required data has been submitted
-			while((ContextCreator.connection == null))
+			while((ContextCreator.connection == null)) {
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
+			}
 			
 			if(GlobalVariables.ENABLE_ECO_ROUTING_EV || GlobalVariables.ENABLE_ECO_ROUTING_BUS){
 				try {
@@ -572,19 +561,60 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 			
 			ContextCreator.connection.sendReadyMessage(); 
+			
+			scheduleNextStepUpdating(); // Schedule synchronized updates
 		}
-		
-		// Schedule synchronized updates
-		if (GlobalVariables.SYNCHRONIZED) {
-			scheduleNextStepUpdating();
+		else {
+			scheduleEnd();
 		}
 
 		return context;
 	}
 	
 	// The reset function
-	public void reset(String propertyFile) {
+	public static void reset(String property_file) {
+		// 1. Load new config from the propertyFile, if not provided, use the default one; 2. Hardcoded the map config; 3. Keep both options
+		logger.info("Reading property files " + property_file);
+		readPropertyFile(property_file);
 		
+		// Reload variables 
+		agg_logger.close();
+		travel_demand.close();
+		
+		agg_logger = new AggregatedLogger();
+		demand_per_zone = new HashMap<Integer, Double>();
+		background_traffic = new BackgroundTraffic();
+		travel_demand = new TravelDemand();
+		bus_schedule = new BusSchedule();
+		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
+		tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_Partition):null;
+		route_UCB = new HashMap<String, List<List<Integer>>>();
+		route_UCB_bus = new HashMap<String, List<List<Integer>>>();
+		isRouteUCBPopulated = false;
+		isRouteUCBBusPopulated = false;
+		receivedNewBusSchedule = false;
+		receivedNextStepCommand = false;
+		routeResult_received = new HashMap<String, Integer>();
+		routeResult_received_bus = new HashMap<String, Integer>();
+		// Regenerate the subcontexts
+		buildSubContexts();
+		
+		// Clear and reinitialize the scheduler
+		RunEnvironment.getInstance().getCurrentSchedule().setFinishing(true);
+		scheduleEvents();
+		
+		agentID = 0;
+		
+		if(GlobalVariables.SYNCHRONIZED) {
+			while((ContextCreator.connection == null)) {
+				try {
+					Thread.sleep(1000);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			ContextCreator.connection.sendReadyMessage();
+		}
 	}
 	
 
@@ -592,22 +622,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		logger.info("Tick: " + RunEnvironment.getInstance().getCurrentSchedule().getTickCount());
 	}
 
-	public static void stopSim(Exception ex, Class<?> clazz) {
-		ISchedule sched = RunEnvironment.getInstance().getCurrentSchedule();
-		sched.setFinishing(true);
-		sched.executeEndActions();
-		logger.info("ContextCreator has been told to stop by  " + clazz.getName() + ex);
-	}
-	
-	public static void start() {
-		startTime = System.currentTimeMillis();
-	}
-
 	// Called by sched.executeEndActions()
 	public static void end() {
-		logger.info("Finished sim: " + (System.currentTimeMillis() - startTime));
+		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
 		agg_logger.close();
-		travelDemand.close();
+		travel_demand.close();
 		// Close the user interface
 		System.exit(0);
 	}

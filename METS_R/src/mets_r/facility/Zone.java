@@ -219,7 +219,7 @@ public class Zone {
 	// Generate EV/GV trips
 	protected void generatePrivateEVTrip() {
 		// Loop over private trip demand
-		for (Entry<Integer, Integer> oneTrip: ContextCreator.travelDemand.getPrivateEVTravelDemand(currentTimeIndex, ID).entrySet()) {
+		for (Entry<Integer, Integer> oneTrip: ContextCreator.travel_demand.getPrivateEVTravelDemand(currentTimeIndex, ID).entrySet()) {
 			ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(oneTrip.getKey());
 			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
 			if(v != null) { // If vehicle exists
@@ -250,7 +250,7 @@ public class Zone {
 	}
 	
 	protected void generatePrivateGVTrip() {
-		for (Entry<Integer, Integer> oneTrip: ContextCreator.travelDemand.getPrivateGVTravelDemand(currentTimeIndex, ID).entrySet()) {
+		for (Entry<Integer, Integer> oneTrip: ContextCreator.travel_demand.getPrivateGVTravelDemand(currentTimeIndex, ID).entrySet()) {
 			Vehicle v = ContextCreator.getVehicleContext().getPrivateGV(oneTrip.getKey());
 			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
 			if(v != null) { // If vehicle exists
@@ -289,7 +289,7 @@ public class Zone {
 		}
 		for (Zone destZone : ContextCreator.getZoneContext().getAll()) {
 			int destination = destZone.getIntegerID();
-			double passRate = ContextCreator.travelDemand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour)
+			double passRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour)
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		    
@@ -297,7 +297,7 @@ public class Zone {
 				passRate *= GlobalVariables.RH_DEMAND_FACTOR;
 				double numToGenerate = Math.floor(passRate)
 						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
-				double sharableRate = ContextCreator.travelDemand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour);
+				double sharableRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getIntegerID(), destination, this.currentHour);
 				if (busReachableZone.contains(destination)) {
 					// No combinational mode like taxi-bus or bus-taxi
 					float threshold = getSplitRatio(destination, false);
@@ -898,7 +898,7 @@ public class Zone {
 	// are usually associate with Zones
 	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
     protected int generateWaitingTimeForTaxi() {
-		return (int) (ContextCreator.travelDemand.getWaitingThreshold(this.currentHour) / GlobalVariables.SIMULATION_STEP_SIZE);
+		return (int) (ContextCreator.travel_demand.getWaitingThreshold(this.currentHour) / GlobalVariables.SIMULATION_STEP_SIZE);
 	}
     
     // Generate passenger waiting time for bus

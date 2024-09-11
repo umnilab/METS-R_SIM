@@ -28,15 +28,17 @@ public class ControlMessageHandler extends MessageHandler {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		try {
 			if(msgType.equals("teleportVeh")) flag = teleportVeh(jsonMsg, jsonAns);
-			if(msgType.equals("controlVeh")) flag = controlVeh(jsonMsg, jsonAns);
-			if(msgType.equals("enterNextRoad")) flag = enterNextRoad(jsonMsg, jsonAns);
-			if(msgType.equals("routingTaxi")) flag = routingTaxi(jsonMsg, jsonAns);
-			if(msgType.equals("routingBus")) flag = routingBus(jsonMsg, jsonAns);
-			if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg, jsonAns);
-			if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg, jsonAns);
-			if(msgType.equals("generateTrip")) flag = generateTrip(jsonMsg, jsonAns);
-			if(msgType.equals("setCoSimRoad")) flag = setCoSimRoad(jsonMsg, jsonAns);
-			if(msgType.equals("releaseCosimRoad")) flag = releaseCosimRoad(jsonMsg, jsonAns);
+			else if(msgType.equals("controlVeh")) flag = controlVeh(jsonMsg, jsonAns);
+			else if(msgType.equals("enterNextRoad")) flag = enterNextRoad(jsonMsg, jsonAns);
+			else if(msgType.equals("routingTaxi")) flag = routingTaxi(jsonMsg, jsonAns);
+			else if(msgType.equals("routingBus")) flag = routingBus(jsonMsg, jsonAns);
+			else if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg, jsonAns);
+			else if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg, jsonAns);
+			else if(msgType.equals("generateTrip")) flag = generateTrip(jsonMsg, jsonAns);
+			else if(msgType.equals("setCoSimRoad")) flag = setCoSimRoad(jsonMsg, jsonAns);
+			else if(msgType.equals("releaseCosimRoad")) flag = releaseCosimRoad(jsonMsg, jsonAns);
+			else if(msgType.equals("reset")) flag = resetSim(jsonMsg, jsonAns);
+			else if(msgType.equals("end")) flag = endSim(jsonMsg, jsonAns);
 			if(flag) {
 				jsonAns.put("TYPE", "CTRL_" + msgType);
 				jsonAns.put("CODE", "OK");
@@ -54,6 +56,20 @@ public class ControlMessageHandler extends MessageHandler {
 		answer = JSONObject.toJSONString(jsonAns);
 		count++;
 		return answer;
+	}
+	
+	private boolean resetSim(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+		// Get data
+		String property_file = jsonMsg.get("propertyFile").toString();
+		// Call the reset function
+		ContextCreator.reset(property_file);
+		return true;
+	}
+	
+	private boolean endSim(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
+		// Call the end function
+		ContextCreator.end();
+		return true;
 	}
 	
 	private boolean setCoSimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
@@ -283,7 +299,7 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 				}
 			}
-			ContextCreator.busSchedule.updateEvent(newhour, newRouteName, newRoutes, newBusNum, newBusGap);
+			ContextCreator.bus_schedule.updateEvent(newhour, newRouteName, newRoutes, newBusNum, newBusGap);
 			ContextCreator.receivedNewBusSchedule = true;
 			return true;
 		}
@@ -309,6 +325,4 @@ public class ControlMessageHandler extends MessageHandler {
 	private boolean sheduleTaxi(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		return true;
 	}
-	
-	
 }

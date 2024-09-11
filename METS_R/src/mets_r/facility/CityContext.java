@@ -639,7 +639,7 @@ public class CityContext extends DefaultContext<Object> {
 			z1.busTravelDistance.clear();
 			z1.nearestZoneWithBus.clear();
 		}
-		for (List<Integer> route : ContextCreator.busSchedule.getBusSchedule()) {
+		for (List<Integer> route : ContextCreator.bus_schedule.getBusSchedule()) {
 			ContextCreator.logger.info(route);
 			// Retrieve stations in order, from hub to other places
 			double travel_distance = 0;

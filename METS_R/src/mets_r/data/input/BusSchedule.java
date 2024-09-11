@@ -187,8 +187,8 @@ public class BusSchedule {
 	}
 
 	public boolean hasSchedule(Integer stop) {
-		if (ContextCreator.busSchedule.pendingSchedules.containsKey(stop)) {
-			return ContextCreator.busSchedule.pendingSchedules.get(stop).size() > 0;
+		if (ContextCreator.bus_schedule.pendingSchedules.containsKey(stop)) {
+			return ContextCreator.bus_schedule.pendingSchedules.get(stop).size() > 0;
 		}
 		return false;
 	}

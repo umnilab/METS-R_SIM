@@ -226,10 +226,10 @@ public class ElectricBus extends ElectricVehicle {
 				if (batteryLevel_ <= lowerBatteryRechargeLevel_) {
 					this.goCharging();
 				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_
-						&& !ContextCreator.busSchedule.hasSchedule(this.busStop.get(0))) {
+						&& !ContextCreator.bus_schedule.hasSchedule(this.busStop.get(0))) {
 					this.goCharging();
 				} else {
-					ContextCreator.busSchedule.popSchedule(this.busStop.get(0), this);
+					ContextCreator.bus_schedule.popSchedule(this.busStop.get(0), this);
 					super.leaveNetwork();
 					this.addPlan(busStop.get(nextStop),
 							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getCoord(),
