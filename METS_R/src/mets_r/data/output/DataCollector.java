@@ -167,10 +167,10 @@ public class DataCollector {
 		this.paused = false;
 		this.collecting = false;
 
-		// Stop the cleanup thread ?
+		// Stop the cleanup thread 
 		this.cleanupTimer.cancel();
 
-		// Tell each of the consumers to stop ?
+		// Tell each of the consumers to stop 
 		for (DataConsumer dc : this.registeredConsumers) {
 			try {
 				dc.stopConsumer();
@@ -218,15 +218,6 @@ public class DataCollector {
 	 * @param tickNumber the number of the time step of the simulation tick.
 	 */
 	public void startTickCollection(int tickNumber) {
-		GlobalVariables.datacollection_start = System.currentTimeMillis();
-
-//        if ((int)tickNumber % 100 == 0) {
-//            // Print a periodic heart-beat debug statement from data buffer
-//            String message = "TICK " + tickNumber + 
-//                             " [" + this.buffer.size() + " ticks in buffer]";
-//            DataCollector.printDebug("CTRL", message);
-//        }
-
 		// Verify the given tick number is valid
 		if (tickNumber < 0 || tickNumber <= this.lastTick) {
 			throw new IllegalArgumentException("Tick number invalid.");
@@ -234,8 +225,6 @@ public class DataCollector {
 
 		// Create the tick snapshot object
 		this.currentSnapshot = new TickSnapshot(tickNumber);
-
-		GlobalVariables.datacollection_total += System.currentTimeMillis() - GlobalVariables.datacollection_start;
 	}
 
 	/**

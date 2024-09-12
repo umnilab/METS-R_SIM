@@ -10,12 +10,14 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Properties;
+
 import javax.measure.unit.NonSI;
 import javax.measure.unit.SI;
 
 import repast.simphony.context.Context;
 import repast.simphony.dataLoader.ContextBuilder;
 import repast.simphony.engine.environment.RunEnvironment;
+import repast.simphony.engine.schedule.ISchedulableAction;
 import repast.simphony.engine.schedule.ISchedule;
 import repast.simphony.engine.schedule.ScheduleParameters;
 import repast.simphony.essentials.RepastEssentials;
@@ -102,6 +104,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// Road collections for co-simulation
 	public static HashMap<String, Road> coSimRoads = new HashMap<String, Road>();
+	
+	/* For enable the reset function*/
+	public static int initTick = 0;
+	private static List<ISchedulableAction> scheduledActions = new ArrayList<ISchedulableAction>();
 	
 	/* Functions */
 	// Reading simulation properties stored at data/Data.properties
@@ -212,6 +218,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
 			createUCBBusRoutes(); // generate Bus eco-routing routes
 		}
+		
+		try {
+			partitioner.first_run();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		
+		dataContext.startCollecting();
 
 	}
 
@@ -346,28 +360,26 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the start and the end of the simulation
 	public void scheduleEnd() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
+//		RunEnvironment.getInstance().endAt(GlobalVariables.SIMULATION_STOP_TIME);
 		logger.info("stop time =  " + GlobalVariables.SIMULATION_STOP_TIME);
-		ScheduleParameters startParams = ScheduleParameters.createOneTime(0, ScheduleParameters.LAST_PRIORITY);
-		schedule.schedule(startParams, this, "start");
-		ScheduleParameters endParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
+		ScheduleParameters endParams = ScheduleParameters.createOneTime(GlobalVariables.SIMULATION_STOP_TIME, ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(endParams, this, "end");
 	}
 	
 	// Schedule the event of loading the demand chunk
 	public static void schedulePrivateTripLoader() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(0, 
+		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(initTick, 
 				(int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
-		schedule.schedule(privateTripLoaderParams, travel_demand, "loadPrivateDemandChunk");
+		scheduledActions.add(schedule.schedule(privateTripLoaderParams, travel_demand, "loadPrivateDemandChunk"));
 	}
 	
 	// Schedule the event of refreshing road information for routing
 	public static void scheduleRoadNetworkRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters agentParamsNW = ScheduleParameters.createRepeating(0,
+		ScheduleParameters agentParamsNW = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL, 3);
-		schedule.schedule(agentParamsNW, cityContext, "modifyRoadNetwork");
+		scheduledActions.add(schedule.schedule(agentParamsNW, cityContext, "modifyRoadNetwork"));
 	}
 
 	// Schedule the event of updating background speeds/estimated travel time
@@ -375,61 +387,56 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// which follows a normal distribution.
 	public static void scheduleFreeFlowSpeedRefresh() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
 		for (Road r : getRoadContext().getObjects(Road.class)) {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
-		schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime");
+		scheduledActions.add(schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"));
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
 	public static void scheduleNetworkEventHandling() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
-		schedule.schedule(supplySideEventParams, eventHandler, "checkEvents");
+		scheduledActions.add(schedule.schedule(supplySideEventParams, eventHandler, "checkEvents"));
 	}
 
 	// Schedule the event for synchronized update
 	public void scheduleNextStepUpdating() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick,
 				1, 6);
-		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
+		scheduledActions.add(schedule.schedule(nextStepParams, this, "waitForNextStepCommand"));
 	}
 	
 	// Schedule the event for vehicle movements (multi-thread)
 	public static void scheduleMultiThreadedRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
-		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(1, 1, 0);
-		schedule.schedule(agentParaParams, tscheduler, "paraRoadStep");
-		
-		// Schedule shutting down the parallel thread pool
-		ScheduleParameters endParallelParams = ScheduleParameters.createAtEnd(1);
-		schedule.schedule(endParallelParams, tscheduler, "shutdownScheduler");
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0);
+		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraRoadStep"));
 
 		// Schedule time counter
-		ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(1,
+		ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(initTick + 1,
 				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 0);
-		schedule.schedule(timerParaParams, tscheduler, "reportTime");
+		scheduledActions.add(schedule.schedule(timerParaParams, tscheduler, "reportTime"));
 
 		// Schedule graph partitioning
 		ScheduleParameters partitionParams = ScheduleParameters.createRepeating(
-				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL,
+				initTick + GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL,
 				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 2);
-		ScheduleParameters initialPartitionParams = ScheduleParameters.createOneTime(0, 2);
-		schedule.schedule(initialPartitionParams, partitioner, "first_run");
-		schedule.schedule(partitionParams, partitioner, "check_run");
+		
+		scheduledActions.add(schedule.schedule(partitionParams, partitioner, "check_run"));
 	}
 
 	// Schedule the event for vehicle movements (single-thread)
 	public static void scheduleSequentialRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters agentParams = ScheduleParameters.createRepeating(1, 1, 0);
+		ScheduleParameters agentParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0);
 		for (Road r : getRoadContext().getAll()) {
-			schedule.schedule(agentParams, r, "step");
+			scheduledActions.add(schedule.schedule(agentParams, r, "step"));
 		}
 	}
 
@@ -437,13 +444,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void scheduleMultiThreadedZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
-		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
-		schedule.schedule(agentParaParams, tscheduler, "paraZoneStep");
+		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraZoneStep"));
 		
-		ScheduleParameters agentParaParams2 = ScheduleParameters.createRepeating(0,
+		ScheduleParameters agentParaParams2 = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
-		schedule.schedule(agentParaParams2, tscheduler, "paraZoneRidehailingStep");
+		scheduledActions.add(schedule.schedule(agentParaParams2, tscheduler, "paraZoneRidehailingStep"));
 	}
 
 	// Schedule the event for zone updates (single-thread)
@@ -451,51 +458,51 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
 		// Schedule the passenger serving events
-		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
 		
-		ScheduleParameters demandServeParams2 = ScheduleParameters.createRepeating(0,
+		ScheduleParameters demandServeParams2 = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
 		
 		for (Zone z : getZoneContext().getAll()) {
-			schedule.schedule(demandServeParams, z, "step");
+			scheduledActions.add(schedule.schedule(demandServeParams, z, "step"));
 		}
 		for (Zone z : getZoneContext().getAll()) {
-			schedule.schedule(demandServeParams2, z, "ridehailingStep");
+			scheduledActions.add(schedule.schedule(demandServeParams2, z, "ridehailingStep"));
 		}
 	}
 
 	// Schedule the event for charging station updates (multi-thread)
 	public static void scheduleMultiThreadedChargingStationStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
-		schedule.schedule(agentParaParams, tscheduler, "paraChargingStationStep");
+		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraChargingStationStep"));
 	}
 
 	// Schedule the event for  charging station updates (single-thread)
 	public static void scheduleSequentialChargingStationStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters chargingServeParams = ScheduleParameters.createRepeating(0,
+		ScheduleParameters chargingServeParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		for (ChargingStation cs : getChargingStationContext().getAll()) {
-			schedule.schedule(chargingServeParams, cs, "step");
+			scheduledActions.add(schedule.schedule(chargingServeParams, cs, "step"));
 		}
 	}
 	
 	// Schedule the event for signal updates (multi-thread)
 	public static void scheduleMultiThreadedSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(0, GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1); 
-		schedule.schedule(agentParaParams, tscheduler, "paraSignalStep");
+		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick, GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1); 
+		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraSignalStep"));
 	}
 
 	// Schedule the event for charging station updates (single-thread)
 	public static void scheduleSequentialSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		for (Signal s : getSignalContext().getAll()) {
-			ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(0, 1);
-			schedule.schedule(signalUpdateParams, s, "step");
+			ScheduleParameters signalUpdateParams = ScheduleParameters.createRepeating(initTick, GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL, 1);
+			scheduledActions.add(schedule.schedule(signalUpdateParams, s, "step"));
 		}
 	}
 
@@ -504,24 +511,17 @@ public class ContextCreator implements ContextBuilder<Object> {
 		int tickDuration = 1;
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-			ScheduleParameters dataStartParams = ScheduleParameters.createOneTime(0,
+			ScheduleParameters tickStartParams = ScheduleParameters.createRepeating(initTick, tickDuration,
 					ScheduleParameters.FIRST_PRIORITY);
-			schedule.schedule(dataStartParams, dataContext, "startCollecting");
+			scheduledActions.add(schedule.schedule(tickStartParams, dataContext, "startTick"));
 
-			ScheduleParameters dataEndParams = ScheduleParameters.createAtEnd(ScheduleParameters.LAST_PRIORITY);
-			schedule.schedule(dataEndParams, dataContext, "stopCollecting");
-
-			ScheduleParameters tickStartParams = ScheduleParameters.createRepeating(0, tickDuration,
-					ScheduleParameters.FIRST_PRIORITY);
-			schedule.schedule(tickStartParams, dataContext, "startTick");
-
-			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(0, tickDuration,
+			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(initTick, tickDuration,
 					ScheduleParameters.LAST_PRIORITY);
-			schedule.schedule(tickEndParams, dataContext, "stopTick");
+			scheduledActions.add(schedule.schedule(tickEndParams, dataContext, "stopTick"));
 
-			ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(0,
+			ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(initTick,
 					GlobalVariables.METRICS_DISPLAY_INTERVAL, 6);
-			schedule.schedule(recordRuntimeParams, dataContext, "displayMetrics");
+			scheduledActions.add(schedule.schedule(recordRuntimeParams, dataContext, "displayMetrics"));
 		}
 	}
 
@@ -529,8 +529,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public Context<Object> build(Context<Object> context) {
 		start_time = System.currentTimeMillis(); // Record the start time of the simulation
 		
-		logger.info("Reading property files");
-		readPropertyFile("Data.properties");
 		ContextCreator.mainContext = context;
 		
 		logger.info("Building subcontexts");
@@ -573,9 +571,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// The reset function
 	public static void reset(String property_file) {
-		// 1. Load new config from the propertyFile, if not provided, use the default one; 2. Hardcoded the map config; 3. Keep both options
-		logger.info("Reading property files " + property_file);
-		readPropertyFile(property_file);
+		logger.info("Reset using the property file: " + property_file);
+		
+		// 0. Stop the data collection
+		dataContext.stopCollecting();
+		
+		// 1. Load new config from the propertyFile
+		GlobalVariables.config = readPropertyFile(property_file);
+		GlobalVariables.reset();
 		
 		// Reload variables 
 		agg_logger.close();
@@ -587,7 +590,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
-		tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_Partition):null;
 		route_UCB = new HashMap<String, List<List<Integer>>>();
 		route_UCB_bus = new HashMap<String, List<List<Integer>>>();
 		isRouteUCBPopulated = false;
@@ -596,11 +598,20 @@ public class ContextCreator implements ContextBuilder<Object> {
 		receivedNextStepCommand = false;
 		routeResult_received = new HashMap<String, Integer>();
 		routeResult_received_bus = new HashMap<String, Integer>();
-		// Regenerate the subcontexts
+		
+		// Regenerate the sub-contexts
 		buildSubContexts();
 		
-		// Clear and reinitialize the scheduler
-		RunEnvironment.getInstance().getCurrentSchedule().setFinishing(true);
+		// Clear and reinitialize the scheduled actions
+		initTick = (int) RepastEssentials.GetTickCount();
+		
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		for(ISchedulableAction scheduledAction : scheduledActions) {
+			schedule.removeAction(scheduledAction);
+		}
+		
+		scheduledActions = new ArrayList<ISchedulableAction>();
+		
 		scheduleEvents();
 		
 		agentID = 0;
@@ -617,14 +628,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 	}
 	
-
-	public void printTick() {
-		logger.info("Tick: " + RunEnvironment.getInstance().getCurrentSchedule().getTickCount());
-	}
-
 	// Called by sched.executeEndActions()
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
+		tscheduler.shutdownScheduler();
+		dataContext.stopCollecting();
 		agg_logger.close();
 		travel_demand.close();
 		// Close the user interface
@@ -743,10 +751,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	public static int getCurrentTick() {
-		return (int) RepastEssentials.GetTickCount();
+		return (int) RepastEssentials.GetTickCount() - initTick;
 	}
 	
 	public static int getNextTick() {
-		return (int) RepastEssentials.GetTickCount() + 1;
+		return (int) RepastEssentials.GetTickCount() + 1 - initTick;
 	}
 }

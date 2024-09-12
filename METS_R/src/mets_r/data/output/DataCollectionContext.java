@@ -54,7 +54,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 
 	public void startTick() {
 		// Get the current tick number from the system
-		int tickNumber = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
+		int tickNumber = (int) ContextCreator.getCurrentTick();
 		// Tell the data framework what tick is starting
 		ContextCreator.dataCollector.startTickCollection(tickNumber);
 	}
