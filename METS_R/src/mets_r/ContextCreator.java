@@ -625,6 +625,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 			}
 			ContextCreator.connection.sendReadyMessage();
+			receivedNextStepCommand = true; // To make the sim to send a wait for command message with tick 0.
 		}
 	}
 	
