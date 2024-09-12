@@ -408,7 +408,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick,
 				1, 6);
-		scheduledActions.add(schedule.schedule(nextStepParams, this, "waitForNextStepCommand"));
+		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
 	}
 	
 	// Schedule the event for vehicle movements (multi-thread)
