@@ -565,7 +565,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		else {
 			scheduleEnd();
 		}
-
+				
 		return context;
 	}
 	
@@ -639,13 +639,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		System.exit(0);
 	}
 	
-	// For traffic signal controls
-	public static void scheduleOneSignalUpdate(Signal s, int startTime) {
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters signalUpdateParams = ScheduleParameters.createOneTime(startTime, 1);
-		schedule.schedule(signalUpdateParams, s, "step");
-	}
-
 	public static int generateAgentID() {
 		return ContextCreator.agentID++;
 	}
