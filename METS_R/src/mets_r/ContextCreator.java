@@ -542,7 +542,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Send a ready signal (tick 0) in the synchronized mode
 		if(GlobalVariables.SYNCHRONIZED) {
 			// Wait for the connection to be established, and all the pre-required data has been submitted
-			while((ContextCreator.connection == null)) {
+			while((connection == null)) {
 				try {
 					Thread.sleep(1000);
 				} catch (InterruptedException e) {
@@ -558,7 +558,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 			}
 			
-			ContextCreator.connection.sendReadyMessage(); 
+			connection.sendReadyMessage(); 
 			
 			scheduleNextStepUpdating(); // Schedule synchronized updates
 		}
@@ -616,17 +616,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		agentID = 0;
 		
-		if(GlobalVariables.SYNCHRONIZED) {
-			while((ContextCreator.connection == null)) {
-				try {
-					Thread.sleep(1000);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-			ContextCreator.connection.sendReadyMessage();
-			receivedNextStepCommand = true; // To make the sim to send a wait for command message with tick 0.
-		}
+		// Send a message to tell the SIM is ready
+		ContextCreator.connection.sendReadyMessage();
+		receivedNextStepCommand = true; // To make the sim to send a wait for command message with tick 0.
 	}
 	
 	// Called by sched.executeEndActions()
