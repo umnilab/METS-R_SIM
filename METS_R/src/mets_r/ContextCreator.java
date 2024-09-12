@@ -135,13 +135,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	public void waitForNextStepCommand() {
-		int tick = ContextCreator.getCurrentTick();
 		prevTime = -10001; // for the first tick
 		while(!receivedNextStepCommand) {
 			try{
 				Thread.sleep(1);
 				if ((System.currentTimeMillis()-prevTime)>10000) {
-					connection.sendStepMessage(tick);
+					connection.sendStepMessage(ContextCreator.getCurrentTick());
 					prevTime = System.currentTimeMillis();
 				}
 			} catch (InterruptedException e) {
@@ -618,7 +617,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		// Send a message to tell the SIM is ready
 		ContextCreator.connection.sendReadyMessage();
-		receivedNextStepCommand = true; // To make the sim to send a wait for command message with tick 0.
 	}
 	
 	// Called by sched.executeEndActions()
