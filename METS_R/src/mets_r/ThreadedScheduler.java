@@ -10,8 +10,6 @@ import mets_r.facility.Zone;
 
 import java.util.*;
 
-import repast.simphony.engine.environment.RunEnvironment;
-
 public class ThreadedScheduler {
 	private ExecutorService executor;
 	private int N_Partition;
@@ -180,7 +178,7 @@ public class ThreadedScheduler {
 	}
 
 	public void reportTime() {
-		ContextCreator.logger.info("Tick:\t" + RunEnvironment.getInstance().getCurrentSchedule().getTickCount()
+		ContextCreator.logger.info("Tick:\t" + ContextCreator.getCurrentTick()
 				+ "\tMin para time:\t" + min_para_time + "\tMax para time\t" + max_para_time + "\tAvg para time:\t"
 				+ avg_para_time + "\tSequential time:\t" + seq_time);
 

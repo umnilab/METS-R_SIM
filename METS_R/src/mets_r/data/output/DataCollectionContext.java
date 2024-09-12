@@ -83,7 +83,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		double battery_mean = 0;
 		double battery_std = 0;
 
-		int currentTick = (int) RunEnvironment.getInstance().getCurrentSchedule().getTickCount();
+		int currentTick = (int) ContextCreator.getCurrentTick();
 
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;

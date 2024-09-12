@@ -536,7 +536,7 @@ public class DataCollector {
 			// policy that data consumers newly registered during the model
 			// run will pick-up from the current simulation position, not
 			// the start of the simulation data.
-			minimumTick = (int) (RunEnvironment.getInstance().getCurrentSchedule().getTickCount() - 1);
+			minimumTick = (int) (ContextCreator.getCurrentTick() - 1);
 		} else if (minimumTick < 0.0) {
 			// At least one of the registered data consumers in the system
 			// has not started yet, so we must keep all the data in the
