@@ -432,8 +432,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleEnd();
 		}
 		
-		reset("Data.properties.CARLA");
-		
 		return context;
 	}
 	
@@ -484,7 +482,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Clear and reinitialize the scheduled actions
 		scheduleEvents();
 		
-//		scheduleNextStepUpdating();
+		scheduleNextStepUpdating();
 	}
 	
 	// Called by sched.executeEndActions()
