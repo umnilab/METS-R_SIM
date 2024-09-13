@@ -273,7 +273,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for synchronized update
 	public void scheduleNextStepUpdating() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, 6);
+		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, ScheduleParameters.LAST_PRIORITY);
 		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
 	}
 	
@@ -382,7 +382,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduledActions.add(schedule.schedule(tickStartParams, dataContext, "startTick"));
 
 			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(initTick, tickDuration,
-					ScheduleParameters.LAST_PRIORITY);
+					-1);
 			scheduledActions.add(schedule.schedule(tickEndParams, dataContext, "stopTick"));
 
 			ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(initTick,

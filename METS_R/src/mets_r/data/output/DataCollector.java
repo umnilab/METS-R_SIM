@@ -233,16 +233,18 @@ public class DataCollector {
 	 * piece of data is available.
 	 */
 	public void stopTickCollection() {
-		// Place the current tick into the buffer if anything was recorded
-		if (!this.currentSnapshot.isEmpty()) {
-			this.buffer.add(this.currentSnapshot);
+		if(this.currentSnapshot != null) {
+			// Place the current tick into the buffer if anything was recorded
+			if (!this.currentSnapshot.isEmpty()) {
+				this.buffer.add(this.currentSnapshot);
+			}
+	
+			// Update the counter of the latest tick buffered
+			this.lastTick = this.currentSnapshot.getTickNumber();
+	
+			// Remove the reference to the current tick snapshot object
+			this.currentSnapshot = null;
 		}
-
-		// Update the counter of the latest tick buffered
-		this.lastTick = this.currentSnapshot.getTickNumber();
-
-		// Remove the reference to the current tick snapshot object
-		this.currentSnapshot = null;
 	}
 
 	/**
