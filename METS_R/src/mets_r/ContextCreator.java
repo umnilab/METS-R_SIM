@@ -432,8 +432,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleEnd();
 		}
 		
-		reset("Data.properties.CARLA");
-		
 		return context;
 	}
 	
@@ -454,6 +452,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(cityContext);
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
+		
+		logger.info("HERE0");
 		
 		// 1. Load new config from the propertyFile
 		GlobalVariables.config = readPropertyFile(property_file);
@@ -478,11 +478,16 @@ public class ContextCreator implements ContextBuilder<Object> {
 		routeResult_received = new HashMap<String, Integer>();
 		routeResult_received_bus = new HashMap<String, Integer>();
 		
+		logger.info("HERE1");
+		
 		// Regenerate the sub-contexts
 		buildSubContexts();
 		
+		logger.info("HERE2");
+		
 		// Clear and reinitialize the scheduled actions
 		scheduleEvents();
+		logger.info("HERE3");
 	}
 	
 	// Called by sched.executeEndActions()
