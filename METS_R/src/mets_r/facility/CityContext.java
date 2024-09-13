@@ -1,5 +1,11 @@
 package mets_r.facility;
 
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -704,5 +710,124 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 		}
+	}
+	
+	// Create eco-routing candidate path set
+	@SuppressWarnings("unchecked")
+	public void createUCBRoutes() {
+		this.modifyRoadNetwork(); // This initializes data for path calculation, DO NOT remove it
+		try { // First try to read from the file. If the file does not exist, then create it.
+			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes.ser");
+			ObjectInputStream in = new ObjectInputStream(fileIn);
+			ContextCreator.route_UCB = (HashMap<String, List<List<Integer>>>) in.readObject();
+			ContextCreator.logger.info("Serialized data is loaded from data/candidate_routes.ser");
+			in.close();
+			fileIn.close();
+		} catch (FileNotFoundException i) {
+			ContextCreator.logger.info("Candidate routes initialization ...");
+			// Loop over all OD pairs, will take several hours
+			for (Zone origin : ContextCreator.getZoneContext().getAll()) {
+				for (Zone destination : ContextCreator.getZoneContext().getAll()) {
+					if (origin.getIntegerID() != destination.getIntegerID()
+							&& (ContextCreator.getZoneContext().HUB_INDEXES.contains(origin.getIntegerID())
+									|| ContextCreator.getZoneContext().HUB_INDEXES
+											.contains(destination.getIntegerID()))) {
+						ContextCreator.logger
+								.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
+						try {
+							List<List<Integer>> candidate_routes = RouteContext.UCBRoute(origin.getCoord(),
+									destination.getCoord());
+							ContextCreator.route_UCB.put(
+									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
+									candidate_routes);
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+			try {
+				FileOutputStream fileOut = new FileOutputStream("data/NYC/candidate_routes.ser");
+				ObjectOutputStream out = new ObjectOutputStream(fileOut);
+				out.writeObject(ContextCreator.route_UCB);
+				out.close();
+				fileOut.close();
+				ContextCreator.logger.info("Serialized data is saved in data/candidate_routes.ser");
+			} catch (IOException o) {
+				o.printStackTrace();
+				return;
+			}
+		} catch (ClassNotFoundException c) {
+			c.printStackTrace();
+			return;
+		} catch (IOException o) {
+			o.printStackTrace();
+			return;
+		}
+		ContextCreator.isRouteUCBPopulated = true;
+	}
+
+	// Create Bus eco-routing candidate path set
+	@SuppressWarnings("unchecked")
+	public void createUCBBusRoutes() {
+		try { // First try to read from the file. If the file does not exist, then create it.
+			FileInputStream fileIn = new FileInputStream("data/NYC/candidate_routes_bus.ser");
+			ObjectInputStream in = new ObjectInputStream(fileIn);
+			ContextCreator.route_UCB_bus = (HashMap<String, List<List<Integer>>>) in.readObject();
+			ContextCreator.logger.info("Serialized data is loaded from data/candidate_routes_bus.ser");
+			in.close();
+			fileIn.close();
+		} catch (FileNotFoundException i) {
+			ContextCreator.logger.info("Candidate routes initialization ...");
+			for (Zone origin : ContextCreator.getZoneContext().getAll()) {
+				for (Zone destination : ContextCreator.getZoneContext().getAll()) {
+					if (origin.getIntegerID() != destination.getIntegerID()) {
+						ContextCreator.logger
+								.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
+						try {
+							ContextCreator.route_UCB_bus.put(
+									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
+									RouteContext.UCBRoute(origin.getCoord(), destination.getCoord()));
+						} catch (Exception e) {
+							e.printStackTrace();
+						}
+					}
+				}
+			}
+			try {
+				FileOutputStream fileOut = new FileOutputStream("data/NYC/candidate_routes_bus.ser");
+				ObjectOutputStream out = new ObjectOutputStream(fileOut);
+				out.writeObject(ContextCreator.route_UCB_bus);
+				out.close();
+				fileOut.close();
+				ContextCreator.logger.info("Serialized data is saved in data/candidate_routes_bus.ser");
+			} catch (IOException o) {
+				o.printStackTrace();
+				return;
+			}
+		} catch (ClassNotFoundException c) {
+			c.printStackTrace();
+			return;
+		} catch (IOException o) {
+			o.printStackTrace();
+			return;
+		}
+		ContextCreator.isRouteUCBBusPopulated = true;
+	}
+	
+	public void waitForNextStepCommand() {
+		long prevTime = -10001; // for the first tick
+		while(!ContextCreator.receivedNextStepCommand) {
+			try{
+				Thread.sleep(1);
+				if ((System.currentTimeMillis()-prevTime)>10000) {
+					ContextCreator.connection.sendStepMessage(ContextCreator.getCurrentTick());
+					prevTime = System.currentTimeMillis();
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		ContextCreator.receivedNextStepCommand = false;
 	}
 }

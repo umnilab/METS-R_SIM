@@ -14,7 +14,6 @@ import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
-import repast.simphony.engine.environment.RunEnvironment;
 
 /**
  * 

@@ -9,7 +9,6 @@ import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricTaxi;
 import repast.simphony.context.DefaultContext;
-import repast.simphony.engine.environment.RunEnvironment;
 
 /**
  * Inherent from A-RESCUE
