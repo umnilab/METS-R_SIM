@@ -271,10 +271,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for synchronized update
-	public static void scheduleNextStepUpdating() {
+	public void scheduleNextStepUpdating() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, 6);
-		scheduledActions.add(schedule.schedule(nextStepParams, cityContext, "waitForNextStepCommand"));
+		scheduledActions.add(schedule.schedule(nextStepParams, this, "waitForNextStepCommand"));
 	}
 	
 	// Schedule the event for vehicle movements (multi-thread)
@@ -432,6 +432,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduleEnd();
 		}
 		
+		reset("Data.properties.CARLA");
+		
 		return context;
 	}
 	
@@ -460,8 +462,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
-		logger.info("INIT TICK" + initTick);
-		
 		agentID = 0;
 		agg_logger = new AggregatedLogger();
 		demand_per_zone = new HashMap<Integer, Double>();
@@ -483,8 +483,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		// Clear and reinitialize the scheduled actions
 		scheduleEvents();
-		
-		scheduleNextStepUpdating();
 	}
 	
 	// Called by sched.executeEndActions()
@@ -496,6 +494,22 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand.close();
 		// Close the user interface
 		System.exit(0);
+	}
+	
+	public void waitForNextStepCommand() {
+		long prevTime = -10001; // for the first tick
+		while(!receivedNextStepCommand) {
+			try{
+				Thread.sleep(1);
+				if ((System.currentTimeMillis()-prevTime)>10000) {
+					connection.sendStepMessage(ContextCreator.getCurrentTick());
+					prevTime = System.currentTimeMillis();
+				}
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
+		}
+		receivedNextStepCommand = false;
 	}
 	
 	public static int generateAgentID() {

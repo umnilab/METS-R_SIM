@@ -814,20 +814,4 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		ContextCreator.isRouteUCBBusPopulated = true;
 	}
-	
-	public void waitForNextStepCommand() {
-		long prevTime = -10001; // for the first tick
-		while(!ContextCreator.receivedNextStepCommand) {
-			try{
-				Thread.sleep(1);
-				if ((System.currentTimeMillis()-prevTime)>10000) {
-					ContextCreator.connection.sendStepMessage(ContextCreator.getCurrentTick());
-					prevTime = System.currentTimeMillis();
-				}
-			} catch (InterruptedException e) {
-				e.printStackTrace();
-			}
-		}
-		ContextCreator.receivedNextStepCommand = false;
-	}
 }
