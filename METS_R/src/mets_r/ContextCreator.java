@@ -274,7 +274,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public void scheduleNextStepUpdating() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, 6);
-		scheduledActions.add(schedule.schedule(nextStepParams, this, "waitForNextStepCommand"));
+		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
 	}
 	
 	// Schedule the event for vehicle movements (multi-thread)
@@ -453,8 +453,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
 		
-		logger.info("HERE0");
-		
 		// 1. Load new config from the propertyFile
 		GlobalVariables.config = readPropertyFile(property_file);
 		GlobalVariables.reset();
@@ -478,16 +476,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		routeResult_received = new HashMap<String, Integer>();
 		routeResult_received_bus = new HashMap<String, Integer>();
 		
-		logger.info("HERE1");
-		
 		// Regenerate the sub-contexts
 		buildSubContexts();
 		
-		logger.info("HERE2");
-		
 		// Clear and reinitialize the scheduled actions
 		scheduleEvents();
-		logger.info("HERE3");
 	}
 	
 	// Called by sched.executeEndActions()
