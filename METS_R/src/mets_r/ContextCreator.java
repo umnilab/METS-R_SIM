@@ -460,6 +460,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
+		logger.info("INIT TICK" + initTick);
+		
 		agentID = 0;
 		agg_logger = new AggregatedLogger();
 		demand_per_zone = new HashMap<Integer, Double>();
