@@ -52,7 +52,10 @@ public class Connection{
 	
 	@OnWebSocketClose
 	public void onClose(int statusCode, String reason) {
+		ConnectionManager.activeSession = null;
 		ContextCreator.logger.info(statusCode + ": " + reason);
+		// Register the connection in ContextCreator
+		ContextCreator.connection = null;
 	}
 
 	@OnWebSocketError
@@ -64,6 +67,15 @@ public class Connection{
 	public void onConnect(Session session) {
 		if (session == null) {
 			return;
+		}
+		
+		if (ConnectionManager.activeSession == null) {
+			ConnectionManager.activeSession = session;
+		}
+		else {
+			// Reject the new connection if there's already one
+            session.close(4000, "Only one connection allowed");
+            return;
 		}
 
 		this.ip = session.getRemoteAddress().getAddress();
@@ -111,6 +123,8 @@ public class Connection{
 		} catch (ParseException e) {
 			e.printStackTrace();
 		} catch (IOException e) {
+			e.printStackTrace();
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 	}

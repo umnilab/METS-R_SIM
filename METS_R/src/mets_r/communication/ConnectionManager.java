@@ -1,9 +1,8 @@
 package mets_r.communication;
 
-import java.util.Vector;
-
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.component.AbstractLifeCycle;
+import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.server.WebSocketHandler;
 import org.eclipse.jetty.websocket.servlet.WebSocketServletFactory;
 
@@ -17,7 +16,7 @@ import mets_r.GlobalVariables;
  * listener through the use of a WebSocket-based connection and the data
  * collection buffer of the simulation.
  * 
- * @author Christopher Thompson
+ * @author Christopher Thompson, Zengxiang Lei
 **/
 
 public class ConnectionManager {
@@ -25,18 +24,14 @@ public class ConnectionManager {
 	/** The server which listens for incoming sockets to create. */
 	private Server server;
 
-	/** The list of connections currently open in the system. */
-	@SuppressWarnings("unused")
-	private Vector<Connection> connections;
+	/** To track the current active connection. */
+	public static Session activeSession = null;
 
 	/**
 	 * Constructs the connection manager system which performs any steps needed to
 	 * build and start the WebSocket listening server within the simulation program.
 	 */
 	public ConnectionManager() {
-		// create the list for holding all the open connections
-		this.connections = new Vector<Connection>();
-
 		// start the server listening for incoming connections
 		Runnable startRunnable = new Runnable() {
 			@Override
@@ -62,6 +57,7 @@ public class ConnectionManager {
 		if (this.server != null) {
 			// The server already exists so check if it is running
 			String serverState = this.server.getState();
+			ContextCreator.logger.info("Server state: " + serverState);
 			if (serverState == null) {
 				// The state is unknown or something weird is happening, so
 				// we will just destroy the existing server and replace it
