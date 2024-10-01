@@ -4,8 +4,11 @@ import java.io.IOException;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.facility.ChargingStation;
 
 /**
  * Electric vehicles
@@ -38,6 +41,8 @@ public class ElectricVehicle extends Vehicle {
 	protected double totalConsume; // Total energy consumption by this vehicle
 	protected double tripConsume; // Energy consumption for the latest accomplished trip
 	protected double linkConsume; // Parameters for storing energy consumptions
+	protected double lowerBatteryRechargeLevel_;
+	protected double higherBatteryRechargeLevel_;
 	
 	// For recording charging behaviors
 	public int chargingTime = 0;
@@ -49,6 +54,8 @@ public class ElectricVehicle extends Vehicle {
 		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
 				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; 
 		this.mass = 1521; // vehicle's mass
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
 	}
 	
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
@@ -67,32 +74,73 @@ public class ElectricVehicle extends Vehicle {
 	
 	@Override
 	public void reachDest() {
-		// Log the trip consume here
-		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
-				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-				+ this.getDepTime() + "," + this.getTripConsume() + ",-1,"
-				+ "0\r\n";
-		try {
-			ContextCreator.agg_logger.ev_logger.write(formated_msg);
-		} catch (IOException e) {
-			e.printStackTrace();
-		}		
-		super.reachDest(); // Update the vehicle status
+		if (this.onChargingRoute_) {
+			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ",4,"
+					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + ",0\r\n";
+			try {
+				ContextCreator.agg_logger.ev_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			super.reachDestButNotLeave(); 
+			super.leaveNetwork(); // remove from the network
+			// Add to the charging station
+			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getID());
+			ChargingStation cs = ContextCreator.getChargingStationContext().get(this.getDestID());
+			cs.receiveEV(this);
+			this.tripConsume = 0;
+		}
+		else {
+			// Log the trip consume here
+			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
+					+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,"
+					+ "0\r\n";
+			try {
+				ContextCreator.agg_logger.ev_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+			if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+					&& batteryLevel_ <= higherBatteryRechargeLevel_)) {
+				super.reachDestButNotLeave(); // Go charging
+				this.goCharging();
+			}
+			else {
+				super.reachDest(); // Update the vehicle status
+			}
+		}
+	}
+	
+	// Find the closest charging station and update the activity plan
+	public void goCharging() {
+		int current_dest_zone = this.getDestID();
+		Coordinate current_dest_coord = ContextCreator.getZoneContext().get(this.getDestID()).getCoord();
+		// Add a charging activity
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
+		this.onChargingRoute_ = true;
+		this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
+		this.setNextPlan();
+		this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
+		this.setState(Vehicle.CHARGING_TRIP);
+		this.departure();
+		ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging");
 	}
 	
 	@Override
 	public void reportStatus() {
 		if(this.getVehicleSensorType() == Vehicle.CV2X || this.getVehicleSensorType() == Vehicle.DSRC ) { 
 			// Record trajectories for debugging energy models
-			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
-					+ "," + this.getRoad().getID() + "," + this.getDistance() + "," + this.currentSpeed() 
-					+ "," + this.currentAcc() + "," + this.batteryLevel_  + "," + this.getTickConsume() 
-					+ "," + this.getMass() + "\r\n";
-			try {
-				ContextCreator.agg_logger.traj_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
-			}
+//			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
+//					+ "," + this.getRoad().getID() + "," + this.getDistance() + "," + this.currentSpeed() 
+//					+ "," + this.currentAcc() + "," + this.batteryLevel_  + "," + this.getTickConsume() 
+//					+ "," + this.getMass() + "\r\n";
+//			try {
+//				ContextCreator.agg_logger.traj_logger.write(formated_msg);
+//			} catch (IOException e) {
+//				e.printStackTrace();
+//			}
 			
 			// Send V2X data for CAV applications
 			if(GlobalVariables.V2X) {

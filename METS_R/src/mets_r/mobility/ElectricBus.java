@@ -53,8 +53,6 @@ public class ElectricBus extends ElectricVehicle {
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
 	private double avgPersonMass_; // average mass of a person in lbs
-	private double lowerBatteryRechargeLevel_;
-	private double higherBatteryRechargeLevel_;
 	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calculation
 	private double mass; // mass of the vehicle in kg
 	
@@ -108,7 +106,8 @@ public class ElectricBus extends ElectricVehicle {
 			batteryLevel_ -= tickEnergy;
 		}
 	}
-
+	
+	@Override
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();

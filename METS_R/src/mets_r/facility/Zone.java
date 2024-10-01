@@ -90,6 +90,10 @@ public class Zone {
 	public int numberOfGeneratedTaxiRequest;
 	public int numberOfGeneratedBusRequest;
 	public int numberOfGeneratedCombinedRequest;
+	public int numberOfGeneratedPrivateEVTrip;
+	public int numberOfGeneratedPrivateGVTrip;
+	public int arrivedPrivateEVTrip;
+	public int arrivedPrivateGVTrip;
 	public int taxiPickupRequest;
 	public int busPickupRequest;
 	public int combinePickupPart1;
@@ -132,6 +136,10 @@ public class Zone {
 		this.numberOfGeneratedTaxiRequest = 0;
 		this.numberOfGeneratedBusRequest = 0;
 		this.numberOfGeneratedCombinedRequest = 0;
+		this.numberOfGeneratedPrivateEVTrip = 0;
+		this.numberOfGeneratedPrivateGVTrip = 0;
+		this.arrivedPrivateEVTrip = 0;
+		this.arrivedPrivateGVTrip = 0;
 		this.taxiPickupRequest = 0;
 		this.busPickupRequest = 0;
 		this.combinePickupPart1 = 0;
@@ -230,6 +238,7 @@ public class Zone {
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
+					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
 				else { // If vehicle is on road
 					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
@@ -244,6 +253,7 @@ public class Zone {
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
+				this.numberOfGeneratedPrivateEVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
 			}
 		}
@@ -261,6 +271,7 @@ public class Zone {
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
+					this.numberOfGeneratedPrivateGVTrip += 1;
 				}
 				else { // If vehicle is on road
 					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
@@ -275,6 +286,7 @@ public class Zone {
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
+				this.numberOfGeneratedPrivateGVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateGV(oneTrip.getKey(), v);
 			}
 		}

@@ -27,8 +27,6 @@ public class ElectricTaxi extends ElectricVehicle {
 	/* Local variables */
 	private int numPeople_; // no of people inside the vehicle
 	private double avgPersonMass_; // average mass of a person in lbs
-	private double lowerBatteryRechargeLevel_;
-	private double higherBatteryRechargeLevel_;
 
 	private int cruisingTime_;
 	
@@ -46,26 +44,12 @@ public class ElectricTaxi extends ElectricVehicle {
 		super(Vehicle.ETAXI, vSensor?Vehicle.CV2X:Vehicle.NONE_OF_THE_ABOVE);
 		this.numPeople_ = 0;
 		this.cruisingTime_ = 0;
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
 		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
 		this.avgPersonMass_ = 60; // kg
 		
 		// Parameters for UCB calculation
 		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
-	}
-
-	// Find the closest charging station and update the activity plan
-	public void goCharging() {
-		int current_dest_zone = this.getDestID();
-		Coordinate current_dest_coord = ContextCreator.getZoneContext().get(this.getDestID()).getCoord();
-		// Add a charging activity
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
-		this.onChargingRoute_ = true;
-		this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
-		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
-		this.setState(Vehicle.CHARGING_TRIP);
-		this.departure();
-		ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging");
 	}
 	
 	// Randomly select a neighboring link and update the activity plan

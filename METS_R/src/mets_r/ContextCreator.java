@@ -499,7 +499,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		while(!receivedNextStepCommand) {
 			try{
 				Thread.sleep(1);
-				if ((System.currentTimeMillis()-prevTime)>10000) {
+				if ((System.currentTimeMillis()-prevTime)>10000 && connection != null) {
 					connection.sendStepMessage(ContextCreator.getCurrentTick());
 					prevTime = System.currentTimeMillis();
 				}
