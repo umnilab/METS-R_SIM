@@ -114,11 +114,11 @@ public class Connection{
 			}
 			else if (msgType[0].equals("CTRL")) {
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
-				if(answer != null) this.answerSender.sendMessage(session, answer);
+				if(answer != null && session != null) this.answerSender.sendMessage(session, answer);
 			}
 			else if(msgType[0].equals("QUERY")){
 				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
-				if(answer != null) this.answerSender.sendMessage(session, answer);
+				if(answer != null && session != null) this.answerSender.sendMessage(session, answer);
 			}
 		} catch (ParseException e) {
 			e.printStackTrace();
@@ -144,4 +144,11 @@ public class Connection{
 			e.printStackTrace();
 		}
 	}
+	
+	public void sendStopMessage() {
+		try {
+			answerSender.sendStopMessage(session);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}	}
 }

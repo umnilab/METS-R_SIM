@@ -68,6 +68,7 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	private boolean endSim(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
 		// Call the end function
+		ContextCreator.connection.sendStopMessage();
 		ContextCreator.end();
 		return true;
 	}

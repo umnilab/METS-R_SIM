@@ -66,4 +66,12 @@ public class AnswerMessageSender extends MessageSender{
 		String message = JSONObject.toJSONString(jsonObj);
 		super.sendMessage(session, message);
 	}
+	
+	public void sendStopMessage(Session session) throws IOException{
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("TYPE", "CTRL_stop");
+		jsonObj.put("CODE", "OK");
+		String message = JSONObject.toJSONString(jsonObj);
+		super.sendMessage(session, message);
+	}
 }
