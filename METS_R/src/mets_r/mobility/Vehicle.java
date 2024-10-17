@@ -223,6 +223,8 @@ public class Vehicle {
 	 * Initialize the vehicle state 
 	 */
 	public void initializePlan(int loc_id, Coordinate location, double d) {
+		// Clear the old plans
+		this.activityPlan.clear();
 		this.setCurrentCoord(location);
 		this.addPlan(loc_id, location, d); 
 		this.addPlan(loc_id, location, d); 
