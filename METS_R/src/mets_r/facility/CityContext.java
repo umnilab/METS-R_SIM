@@ -38,7 +38,8 @@ import repast.simphony.space.graph.RepastEdge;
 public class CityContext extends DefaultContext<Object> {
 	private HashMap<RepastEdge<?>, Integer> edgeRoadID_KeyEdge; // Store the TOIDs of edges (Edge as key)
 	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
-	private HashMap<Coordinate, Road> coordRoad_KeyCoord; // Cache the closest road
+	private HashMap<Coordinate, Road> coordOrigRoad_KeyCoord; // Cache the closest road
+	private HashMap<Coordinate, Road> coordDestRoad_KeyCoord; // Cache the closest road
 	private HashMap<Integer, HashMap<Integer, Road>> nodeIDRoad_KeyNodeID;
 	
 	private Boolean networkInitialized = false;
@@ -47,7 +48,8 @@ public class CityContext extends DefaultContext<Object> {
 		super("CityContext"); // Very important otherwise repast complains
 		this.edgeRoadID_KeyEdge = new HashMap<RepastEdge<?>, Integer>();
 		this.edgeIDEdge_KeyID = new HashMap<Integer, RepastEdge<?>>();
-		this.coordRoad_KeyCoord = new HashMap<Coordinate, Road>();
+		this.coordOrigRoad_KeyCoord = new HashMap<Coordinate, Road>();
+		this.coordDestRoad_KeyCoord = new HashMap<Coordinate, Road>();
 		this.nodeIDRoad_KeyNodeID = new HashMap<Integer, HashMap<Integer, Road>>();
 		
 		/* Create a Network projection for the road network--->Network Projection */
@@ -189,7 +191,6 @@ public class CityContext extends DefaultContext<Object> {
 				// Tell the road object who its junctions are
 				road.setUpStreamJunction(junc1.getID());
 				road.setDownStreamJunction(junc2.getID());
-				this.coordRoad_KeyCoord.put(junc1.getCoord(), road);
 				
 				// Tell the junctions about their road
 				junc1.addDownStreamRoad(road.getID());
@@ -560,40 +561,80 @@ public class CityContext extends DefaultContext<Object> {
 	}
 	
 	// Returns the closest road from the currentLocation 
-	public Road findRoadAtCoordinates(Coordinate coord) throws NullPointerException {
+	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest) throws NullPointerException {
 		if (coord == null) {
 			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
 		
-		if(this.coordRoad_KeyCoord.containsKey(coord)) {
-			return this.coordRoad_KeyCoord.get(coord);
-		}
-		else {
-			GeometryFactory geomFac = new GeometryFactory();
-			Geography<?> roadGeography = ContextCreator.getRoadGeography();
-			// Use a buffer for efficiency
-			Point point = geomFac.createPoint(coord);
-			Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
-			double minDist = Double.MAX_VALUE;
-			Road nearestRoad = null;
-	
-			// New code when nearest road was found based on distance from junction
-			for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				double thisDist = this.getDistance(coord, road.getStartCoord());
-				if (thisDist < minDist) { 
-					minDist = thisDist;
-					nearestRoad = road;
-				}
-			}
-			if (nearestRoad == null) { // for nearRoads
-				ContextCreator.logger.error(
-						"CityContext: findRoadAtCoordinates (Coordinate coord, boolean toDest): ERROR: couldn't find a road at these coordinates:\n\t"
-								+ coord.toString());
+		if(toDest) {
+			if(this.coordDestRoad_KeyCoord.containsKey(coord)) {
+				return this.coordDestRoad_KeyCoord.get(coord);
 			}
 			else {
-				this.coordRoad_KeyCoord.put(coord, nearestRoad);
+				GeometryFactory geomFac = new GeometryFactory();
+				Geography<?> roadGeography = ContextCreator.getRoadGeography();
+				// Use a buffer for efficiency
+				Point point = geomFac.createPoint(coord);
+				Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
+				double minDist = Double.MAX_VALUE;
+				Road nearestRoad = null;
+		
+				// New code when nearest road was found based on distance from junction
+				for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+					double thisDist = this.getDistance(coord, road.getEndCoord());
+					if (thisDist < minDist) { 
+						minDist = thisDist;
+						nearestRoad = road;
+					}
+				}
+				if (nearestRoad == null) { // for nearRoads
+					ContextCreator.logger.error(
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): ERROR: couldn't find a road at these coordinates"
+									+ coord.toString());
+				}
+				else {
+					ContextCreator.logger.info(
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getID() + " at these coordinates"
+									+ coord.toString());
+					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
+				}
+				return nearestRoad;
 			}
-			return nearestRoad;
+		}
+		else {
+			if(this.coordOrigRoad_KeyCoord.containsKey(coord)) {
+				return this.coordOrigRoad_KeyCoord.get(coord);
+			}
+			else {
+				GeometryFactory geomFac = new GeometryFactory();
+				Geography<?> roadGeography = ContextCreator.getRoadGeography();
+				// Use a buffer for efficiency
+				Point point = geomFac.createPoint(coord);
+				Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
+				double minDist = Double.MAX_VALUE;
+				Road nearestRoad = null;
+		
+				// New code when nearest road was found based on distance from junction
+				for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+					double thisDist = this.getDistance(coord, road.getStartCoord());
+					if (thisDist < minDist) { 
+						minDist = thisDist;
+						nearestRoad = road;
+					}
+				}
+				if (nearestRoad == null) { // for nearRoads
+					ContextCreator.logger.error(
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): ERROR: couldn't find a road at these coordinates:\n\t"
+									+ coord.toString());
+				}
+				else {
+					ContextCreator.logger.info(
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getID() + " at these coordinates"
+									+ coord.toString());
+					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
+				}
+				return nearestRoad;
+			}
 		}
 	}
 

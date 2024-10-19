@@ -42,13 +42,13 @@ public class RouteContext {
 	}
 
 	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination, Random rand) {
-		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin);
-		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
+		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin, false);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
 		return shortestPathRoute(originRoad, destRoad, rand);
 	}
 
 	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination, Random rand){
-		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
 		return shortestPathRoute(originRoad, destRoad, rand);
 	}
 	
@@ -57,8 +57,8 @@ public class RouteContext {
 		Coordinate originCoord = origin;
 		Coordinate destCoord = destination;
 
-		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(originCoord);
-		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destCoord);
+		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(originCoord, false);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destCoord, true);
 
 		Node originDownstreamNode = originRoad.getDownStreamNode();
 		Node destUpstreamNode = destRoad.getUpStreamNode();

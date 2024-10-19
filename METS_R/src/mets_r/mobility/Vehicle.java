@@ -214,7 +214,7 @@ public class Vehicle {
 		double duration = next.getDuration();
 		this.deptime = (int) duration;
 		this.destCoord = next.getLocation();
-		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord).getID());
+		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord, true).getID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
 		this.activityPlan.remove(0); // Remove current schedule
 	}
@@ -311,7 +311,7 @@ public class Vehicle {
 		this.numTrips ++;
 		this.isReachDest = false;
 		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
-			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord());
+			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false);
 			// The first list of coordinates for the vehicle to follow
 			Coordinate[] coords = laneGeography.getGeometry(road.firstLane()).getCoordinates();
 			this.setPreviousEpochCoord(coords[0]);
