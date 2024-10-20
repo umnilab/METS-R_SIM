@@ -1062,11 +1062,13 @@ public class Zone {
 	
 	public void addNeighboringLink(int r, boolean goDest) {
 		if(goDest) {
+			ContextCreator.logger.info(this.neighboringArrivalLinks);
 			if(!this.neighboringArrivalLinks.contains(r)) {
 				this.neighboringArrivalLinks.add(r);
 			}
 		}
 		else {
+			ContextCreator.logger.info(this.neighboringDepartureLinks);
 			if(!this.neighboringDepartureLinks.contains(r)) {
 				this.neighboringDepartureLinks.add(r);
 			}
