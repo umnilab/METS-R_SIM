@@ -88,7 +88,7 @@ public class Signal {
     		}
     		this.phaseTick.add(onePhaseTick);
     		
-    		if((tmp >= this.currentTick) && this.state == -1) {
+    		if((tmp > this.currentTick) && this.state == -1) {
     			this.state = index;
     			this.nextUpdateTick = tmp;
     		}

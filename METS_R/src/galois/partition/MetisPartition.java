@@ -147,6 +147,7 @@ public class MetisPartition {
 			totSignal.set(targetInd, totSignal.get(targetInd) + 1);
 		}
 		
+		ContextCreator.logger.info("Signal partition: " + totSignal);
 		for (i = 0; i < this.nPartition; i++) {
 			backgroundLoads.add(totRequest.get(i).intValue() + totCharger.get(i) + totSignal.get(i));
 		}
