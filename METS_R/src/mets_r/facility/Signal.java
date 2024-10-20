@@ -58,7 +58,6 @@ public class Signal {
 	}
 
 	public int getState() {
-		ContextCreator.logger.info("Signal " + this.getID() + " tick: " + this.currentTick + " nextUpdateTick: " + this.nextUpdateTick + " phaseTick: "+ this.phaseTick);
 		return state;
 	}
     

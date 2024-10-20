@@ -188,6 +188,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		try {
 			partitioner.first_run();
+			ContextCreator.logger.info("Reset partitioner");
 		} catch (Exception e) {
 			e.printStackTrace();
 		}

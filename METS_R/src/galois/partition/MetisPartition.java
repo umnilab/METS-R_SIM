@@ -45,18 +45,6 @@ public class MetisPartition {
 
 	public MetisPartition(int nparts) {
 		this.nPartition = nparts;
-		this.partitionedInRoads = new ArrayList<ArrayList<Road>>();
-		this.partitionedBwRoads = new ArrayList<Road>();
-		this.partitionedZones = new ArrayList<ArrayList<Zone>>();
-		this.partitionedChargingStation = new ArrayList<ArrayList<ChargingStation>>();
-		this.partitionedSignals = new ArrayList<ArrayList<Signal>>();
-		for (int i = 0; i < nparts; i++) {
-			partitionedZones.add(new ArrayList<Zone>());
-			partitionedChargingStation.add(new ArrayList<ChargingStation>());
-			partitionedSignals.add(new ArrayList<Signal>());
-		}
-		this.partitionDuration = 0;
-		this.backgroundLoads = new ArrayList<Integer>();
 	}
 
 	public ArrayList<ArrayList<Road>> getPartitionedInRoads() {
@@ -80,18 +68,29 @@ public class MetisPartition {
 	}
 
 	public void first_run() throws NumberFormatException, ExecutionException {
-		int i;
+		this.partitionedInRoads = new ArrayList<ArrayList<Road>>();
+		this.partitionedBwRoads = new ArrayList<Road>();
+		this.partitionedZones = new ArrayList<ArrayList<Zone>>();
+		this.partitionedChargingStation = new ArrayList<ArrayList<ChargingStation>>();
+		this.partitionedSignals = new ArrayList<ArrayList<Signal>>();
+		for (int i = 0; i < this.nPartition; i++) {
+			partitionedZones.add(new ArrayList<Zone>());
+			partitionedChargingStation.add(new ArrayList<ChargingStation>());
+			partitionedSignals.add(new ArrayList<Signal>());
+		}
+		this.partitionDuration = 0;
+		this.backgroundLoads = new ArrayList<Integer>();
 
 		// Partition Zone by prospect demand
 		ArrayList<Double> totRequest = new ArrayList<Double>();
-		for (i = 0; i < this.nPartition; i++) {
+		for (int i = 0; i < this.nPartition; i++) {
 			totRequest.add(0.0);
 		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
-			for (i = 0; i < this.nPartition; i++) {
+			for (int i = 0; i < this.nPartition; i++) {
 				if (minWeight > totRequest.get(i)) {
 					minWeight = totRequest.get(i);
 					targetInd = i;
@@ -106,14 +105,14 @@ public class MetisPartition {
 
 		// Partition Charging stations by num of chargers
 		ArrayList<Integer> totCharger = new ArrayList<Integer>();
-		for (i = 0; i < this.nPartition; i++) {
+		for (int i = 0; i < this.nPartition; i++) {
 			totCharger.add(0);
 		}
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
-			for (i = 0; i < this.nPartition; i++) {
+			for (int i = 0; i < this.nPartition; i++) {
 				if (minWeight > totCharger.get(i)) {
 					minWeight = totCharger.get(i);
 					targetInd = i;
@@ -127,7 +126,7 @@ public class MetisPartition {
 		
 		// Partition Signals by num of signals
 		ArrayList<Integer> totSignal = new ArrayList<Integer>();
-		for (i = 0; i< this.nPartition; i++) {
+		for (int i = 0; i< this.nPartition; i++) {
 			totSignal.add(0);
 		}
 		
@@ -135,7 +134,7 @@ public class MetisPartition {
 			// Find the partition with the lowest weight
 			double minWeight = GlobalVariables.FLT_INF;
 			int targetInd = 0;
-			for (i = 0; i < this.nPartition; i++) {
+			for (int i = 0; i < this.nPartition; i++) {
 				if (minWeight > totSignal.get(i)) {
 					minWeight = totSignal.get(i);
 					targetInd = i;
@@ -147,8 +146,7 @@ public class MetisPartition {
 			totSignal.set(targetInd, totSignal.get(targetInd) + 1);
 		}
 		
-		ContextCreator.logger.info("Signal partition: " + totSignal);
-		for (i = 0; i < this.nPartition; i++) {
+		for (int i = 0; i < this.nPartition; i++) {
 			backgroundLoads.add(totRequest.get(i).intValue() + totCharger.get(i) + totSignal.get(i));
 		}
 		

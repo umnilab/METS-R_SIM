@@ -1037,7 +1037,6 @@ public class Vehicle {
 							movable = true;
 						break;
 					case Junction.StaticSignal:
-						ContextCreator.logger.info(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID()));
 						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 							movable = true;
 						break;
@@ -1054,7 +1053,6 @@ public class Vehicle {
 						break;
 				}
 			}
-			ContextCreator.logger.info("round1: " + movable);
 
 			if(movable) {
 				// Check if the target road has space
