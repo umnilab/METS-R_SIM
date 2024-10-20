@@ -147,8 +147,18 @@ public class CityContext extends DefaultContext<Object> {
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
 				Geometry buffer = point.buffer(searchBuffer); 
+				// add the closest one
+				double min_dist = Double.MAX_VALUE;
+				int roadID = -1;
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					z.addNeighboringLink(r.getID(), false);
+					double dist = this.getDistance(z.getCoord(), r.getStartCoord());
+					if(dist < min_dist) {
+						min_dist = dist;
+						roadID = r.getID();
+					}	
+				}
+				if(roadID >=0) {
+					z.addNeighboringLink(roadID, false);
 				}
 				searchBuffer = searchBuffer * 2;
 			}
@@ -158,8 +168,18 @@ public class CityContext extends DefaultContext<Object> {
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
 				Geometry buffer = point.buffer(searchBuffer); 
+				// add the closest one
+				double min_dist = Double.MAX_VALUE;
+				int roadID = -1;
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					z.addNeighboringLink(r.getID(), true);
+					double dist = this.getDistance(z.getCoord(), r.getEndCoord());
+					if(dist < min_dist) {
+						min_dist = dist;
+						roadID = r.getID();
+					}	
+				}
+				if(roadID >=0) {
+					z.addNeighboringLink(roadID, true);
 				}
 				searchBuffer = searchBuffer * 2;
 			}
@@ -614,9 +634,9 @@ public class CityContext extends DefaultContext<Object> {
 									+ coord.toString());
 				}
 				else {
-					ContextCreator.logger.info(
-							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
-									+ coord.toString());
+//					ContextCreator.logger.info(
+//							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
+//									+ coord.toString());
 					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
 				}
 				return nearestRoad;
@@ -649,9 +669,9 @@ public class CityContext extends DefaultContext<Object> {
 									+ coord.toString());
 				}
 				else {
-					ContextCreator.logger.info(
-							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
-									+ coord.toString());
+//					ContextCreator.logger.info(
+//							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
+//									+ coord.toString());
 					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
 				}
 				return nearestRoad;
