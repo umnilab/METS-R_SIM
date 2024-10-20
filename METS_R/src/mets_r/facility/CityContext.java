@@ -594,7 +594,7 @@ public class CityContext extends DefaultContext<Object> {
 				}
 				else {
 					ContextCreator.logger.info(
-							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getID() + " at these coordinates"
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
 									+ coord.toString());
 					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
 				}
@@ -629,7 +629,7 @@ public class CityContext extends DefaultContext<Object> {
 				}
 				else {
 					ContextCreator.logger.info(
-							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getID() + " at these coordinates"
+							"CityContext: findRoadAtCoordinates (Coordinate coord, boolean " + toDest+ "): Find a road" + nearestRoad.getOrigID() + " at these coordinates"
 									+ coord.toString());
 					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
 				}

@@ -61,6 +61,7 @@ public class Zone {
 	private ConcurrentLinkedQueue<Request> toAddRequestForBus; // demand from integrated services
 	
 	/* Protected variables */
+	protected int ID;
 	protected Coordinate coord;
 	protected Random rand; // Random seed for things other than demand generation
 	protected Random rand_demand_only; // Random seed only for demand generation
@@ -68,7 +69,6 @@ public class Zone {
 	protected Random rand_mode_only; // Random seed only for demand generation
 	protected Random rand_share_only; // Random seed only for demand generation
 	protected Random rand_relocate_only; // Random seed only for demand generation
-	protected int ID;
 	protected Queue<Request> requestInQueueForTaxi; // Nonsharable passenger queue for taxis
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; // Passenger queue for bus
