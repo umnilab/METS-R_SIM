@@ -38,7 +38,7 @@ public class RouteContext {
 		Node originDownstreamNode = originRoad.getDownStreamNode();
 		Node destUpstreamNode = destRoad.getUpStreamNode();
 		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode, rand);
-		printRoute(path);
+//		printRoute(path);
 		return path;
 	}
 

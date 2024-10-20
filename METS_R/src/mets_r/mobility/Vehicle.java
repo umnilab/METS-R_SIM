@@ -1037,6 +1037,7 @@ public class Vehicle {
 							movable = true;
 						break;
 					case Junction.StaticSignal:
+						ContextCreator.logger.info(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID()));
 						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 							movable = true;
 						break;
@@ -1087,7 +1088,6 @@ public class Vehicle {
 				}
 			}
 			
-			ContextCreator.logger.info("round2: " + movable);
 			// Fail to enter next link, try again in the next tick
 			this.onLane = false;
 			coordMap.clear();
