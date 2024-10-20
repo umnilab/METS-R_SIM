@@ -43,8 +43,8 @@ public class Signal {
     public void step2() {
     	this.currentTick += GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL;
     	if(this.currentTick >= this.nextUpdateTick) {
-    		this.state = (this.state + 1) % 3;
-    		this.nextUpdateTick += this.phaseTick.get(this.state);
+    		this.goNextPhase();
+    		this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
     	}
     }
     
@@ -58,6 +58,7 @@ public class Signal {
 	}
 
 	public int getState() {
+		ContextCreator.logger.info("Signal " + this.getID() + " tick: " + this.currentTick + " nextUpdateTick: " + this.nextUpdateTick + " phaseTick: "+ this.phaseTick);
 		return state;
 	}
     
