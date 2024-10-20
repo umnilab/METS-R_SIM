@@ -126,7 +126,7 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		
 		for (Road r: roadGeography.getAllObjects()) {
-			if(r.getNeighboringZone() > 0) {
+			if(r.getNeighboringZone() >= 0) {
 				ContextCreator.getZoneContext().get(r.getNeighboringZone()).addNeighboringLink(r.getID());
 			}
 		}

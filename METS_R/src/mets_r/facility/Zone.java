@@ -233,8 +233,8 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
-					v.initializePlan(this.getIntegerID(), this.sampleCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(oneTrip.getValue(), destZone.sampleCoord(), (int) ContextCreator.getNextTick());
+					v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
+					v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
@@ -248,8 +248,8 @@ public class Zone {
 				// Create vehicle
 				v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
 				// Assign trips
-				v.initializePlan(this.getIntegerID(), this.sampleCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(oneTrip.getValue(), destZone.sampleCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
@@ -266,8 +266,8 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
-					v.initializePlan(this.getIntegerID(), this.sampleCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(oneTrip.getValue(), destZone.sampleCoord(), (int) ContextCreator.getNextTick());
+					v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
+					v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
@@ -281,8 +281,8 @@ public class Zone {
 				// Create vehicle
 				v = new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
 				// Assign trips
-				v.initializePlan(this.getIntegerID(), this.sampleCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(oneTrip.getValue(), destZone.sampleCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
