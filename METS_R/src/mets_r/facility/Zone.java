@@ -73,7 +73,8 @@ public class Zone {
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; // Passenger queue for bus
 	protected List<Integer> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
-	protected List<Integer> neighboringLinks; // Surrounding links for vehicle to cruise if there is no avaiable parking space
+	protected List<Integer> neighboringDepartureLinks; // Surrounding links for vehicle to choose within the origin zone
+	protected List<Integer> neighboringArrivalLinks; // Surrounding links for vehicle to choose within the destination zone
 	// For multi-thread mode
 	protected ConcurrentHashMap<Integer, Integer> nearestZoneWithBus; // For collaborative taxi and transit
 	
@@ -160,7 +161,8 @@ public class Zone {
 		this.busTravelDistance = new ConcurrentHashMap<Integer, Float>();
 		this.nearestZoneWithBus = new ConcurrentHashMap<Integer, Integer>();
 		this.neighboringZones = new ArrayList<Integer>();
-		this.neighboringLinks = new ArrayList<Integer>();
+		this.neighboringDepartureLinks = new ArrayList<Integer>();
+		this.neighboringArrivalLinks = new ArrayList<Integer>();
 		this.toAddRequestForTaxi = new ConcurrentLinkedQueue<Request>();
 		this.toAddRequestForBus = new ConcurrentLinkedQueue<Request>();
 		this.parkingVehicleStock = new AtomicInteger(0); 
@@ -233,8 +235,8 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
-					v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
+					v.initializePlan(this.getIntegerID(), this.sampleCoord(false), (int) ContextCreator.getCurrentTick());
+					v.addPlan(oneTrip.getValue(), destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
@@ -248,8 +250,8 @@ public class Zone {
 				// Create vehicle
 				v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
 				// Assign trips
-				v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(this.getIntegerID(), this.sampleCoord(false), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
@@ -266,8 +268,8 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
-					v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
-					v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
+					v.initializePlan(this.getIntegerID(), this.sampleCoord(false), (int) ContextCreator.getCurrentTick());
+					v.addPlan(oneTrip.getValue(), destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
@@ -281,8 +283,8 @@ public class Zone {
 				// Create vehicle
 				v = new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
 				// Assign trips
-				v.initializePlan(this.getIntegerID(), this.getCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(oneTrip.getValue(), destZone.getCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(this.getIntegerID(), this.sampleCoord(false), (int) ContextCreator.getCurrentTick());
+				v.addPlan(oneTrip.getValue(), destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
@@ -317,12 +319,12 @@ public class Zone {
 						if (rand_mode_only.nextDouble() > threshold) {
 							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
-										destZone.sampleCoord(), true
+										destZone.sampleCoord(true), true
 										); 
 								this.addSharableTaxiPass(new_pass, destination);
 							} else {
-								Request new_pass = new Request(this.ID, destination, this.sampleCoord(), 
-										destZone.sampleCoord(), false
+								Request new_pass = new Request(this.ID, destination, this.sampleCoord(false), 
+										destZone.sampleCoord(true), false
 										); 
 								this.addTaxiPass(new_pass);
 							}
@@ -346,12 +348,12 @@ public class Zone {
 							if (rand_mode_only.nextDouble() > threshold) {
 								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
-											destZone.sampleCoord(),true
+											destZone.sampleCoord(true),true
 											); 
 									this.addSharableTaxiPass(new_pass, destination);
 								} else {
-									Request new_pass = new Request(this.ID, destination, this.sampleCoord(), 
-											destZone.sampleCoord(),false
+									Request new_pass = new Request(this.ID, destination, this.sampleCoord(false), 
+											destZone.sampleCoord(true),false
 											); 
 									this.addTaxiPass(new_pass);
 								}
@@ -367,7 +369,7 @@ public class Zone {
 										ContextCreator.getZoneContext().get(destination).getCoord(),
 										ContextCreator.getNextTick());
 								activityPlan.add(plan2);
-								Request new_pass = new Request(this.ID, this.sampleCoord(), activityPlan); 
+								Request new_pass = new Request(this.ID, this.sampleCoord(false), activityPlan); 
 								this.addTaxiPass(new_pass);
 								this.numberOfGeneratedCombinedRequest += 1;
 							}
@@ -382,12 +384,12 @@ public class Zone {
 							if (rand_mode_only.nextDouble() > threshold) {
 								if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 									Request new_pass = new Request(this.ID, destination, this.getCoord(), 
-											destZone.sampleCoord(),true
+											destZone.sampleCoord(true),true
 											); 
 									this.addSharableTaxiPass(new_pass, destination);
 								} else {
-									Request new_pass = new Request(this.ID, destination, this.sampleCoord(), 
-											destZone.sampleCoord(),false
+									Request new_pass = new Request(this.ID, destination, this.sampleCoord(false), 
+											destZone.sampleCoord(true),false
 											); 
 									this.addTaxiPass(new_pass);
 								}
@@ -400,7 +402,7 @@ public class Zone {
 										ContextCreator.getZoneContext().get(this.nearestZoneWithBus.get(destination)).getCoord(), ContextCreator.getNextTick());
 								activityPlan.add(plan);
 								Plan plan2 = new Plan(destination,
-										destZone.sampleCoord(),
+										destZone.sampleCoord(true),
 										ContextCreator.getNextTick());
 								activityPlan.add(plan2);
 								Request new_pass = new Request(this.ID, this.getCoord(), activityPlan); 
@@ -417,12 +419,12 @@ public class Zone {
 						for (int i = 0; i < numToGenerate; i++) {
 							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 								Request new_pass = new Request(this.ID, destination, this.getCoord(), 
-										destZone.sampleCoord(),true
+										destZone.sampleCoord(true),true
 										); 
 								this.addSharableTaxiPass(new_pass, destination);
 							} else {
-								Request new_pass = new Request(this.ID, destination, this.sampleCoord(), 
-										destZone.sampleCoord(),false
+								Request new_pass = new Request(this.ID, destination, this.sampleCoord(false), 
+										destZone.sampleCoord(true),false
 										); 
 								this.addTaxiPass(new_pass);
 							}
@@ -437,12 +439,12 @@ public class Zone {
 					for (int i = 0; i < numToGenerate; i++) {
 						if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
 							Request new_pass = new Request(this.ID, destination, this.getCoord(), 
-									destZone.sampleCoord(),true
+									destZone.sampleCoord(true),true
 									); 
 							this.addSharableTaxiPass(new_pass, destination);
 						} else {
-							Request new_pass = new Request(this.ID, destination, this.sampleCoord(), 
-									destZone.sampleCoord(),false
+							Request new_pass = new Request(this.ID, destination, this.sampleCoord(false), 
+									destZone.sampleCoord(true),false
 									); 
 							this.addTaxiPass(new_pass);
 						}
@@ -1026,16 +1028,22 @@ public class Zone {
 		return nRequestForBus;
 	}
 	
-	public Coordinate sampleCoord() {
+	public Coordinate sampleCoord(boolean goDest) {
 		if(this.zoneType == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
 			return this.getCoord();
 		}else {
-			return this.getNeighboringCoord(rand_diffusion_only.nextInt(this.getNeighboringLinkSize()));
+			return this.getNeighboringCoord(rand_diffusion_only.nextInt(this.getNeighboringLinkSize(goDest)), goDest);
 		}
 	}
 	
-	public Coordinate getNeighboringCoord(int index) {
-		return ContextCreator.getRoadContext().get(this.getNeighboringLink(index)).getStartCoord();
+	public Coordinate getNeighboringCoord(int index, boolean goDest) {
+		if(goDest) {
+			return ContextCreator.getRoadContext().get(this.getNeighboringLink(index, goDest)).getEndCoord();
+		}
+		else {
+			return ContextCreator.getRoadContext().get(this.getNeighboringLink(index, goDest)).getStartCoord();
+		}
+		
 	}
 
 	public int getIntegerID() {
@@ -1052,18 +1060,35 @@ public class Zone {
 		}
 	}
 	
-	public void addNeighboringLink(int r) {
-		if(!this.neighboringLinks.contains(r)) {
-			this.neighboringLinks.add(r);
+	public void addNeighboringLink(int r, boolean goDest) {
+		if(goDest) {
+			if(!this.neighboringArrivalLinks.contains(r)) {
+				this.neighboringArrivalLinks.add(r);
+			}
+		}
+		else {
+			if(!this.neighboringDepartureLinks.contains(r)) {
+				this.neighboringDepartureLinks.add(r);
+			}
 		}
 	}
 	
-	public int getNeighboringLinkSize() {
-		return this.neighboringLinks.size();
+	public int getNeighboringLinkSize(boolean goDest) {
+		if(goDest) {
+			return this.neighboringArrivalLinks.size();
+		}
+		else {
+			return this.neighboringDepartureLinks.size();
+		}
 	}
 	
-	public int getNeighboringLink(int index) {
-		return this.neighboringLinks.get(index);
+	public int getNeighboringLink(int index, boolean goDest) {
+		if(goDest) {
+			return this.neighboringArrivalLinks.get(index);
+		}
+		else {
+			return this.neighboringDepartureLinks.get(index);
+		}
 	}
 	
 	public Iterable<Integer> getNeighboringZones(){

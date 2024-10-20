@@ -55,9 +55,9 @@ public class ElectricTaxi extends ElectricVehicle {
 	// Randomly select a neighboring link and update the activity plan
 	public void goCruising(Zone z) {
 		// Add a cruising activity
-		Coordinate dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize()));
+		Coordinate dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
 		while(dest == this.getDestCoord()) { // Sample again
-			dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize()));
+			dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
 		}
 		this.addPlan(z.getIntegerID(), dest, ContextCreator.getNextTick());
 		this.setNextPlan();
@@ -209,10 +209,10 @@ public class ElectricTaxi extends ElectricVehicle {
 	@Override
 	public void appendToRoad(Road road) {
 		if(this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP && 
-				road.getNeighboringZone()!=-1 && 
-				this.currentZone != road.getNeighboringZone()) {
-			this.currentZone = road.getNeighboringZone();
-			ContextCreator.getVehicleContext().addRelocationTaxi(this, road.getNeighboringZone());
+				road.getNeighboringZone(true)!=-1 && 
+				this.currentZone != road.getNeighboringZone(true)) {
+			this.currentZone = road.getNeighboringZone(true);
+			ContextCreator.getVehicleContext().addRelocationTaxi(this, road.getNeighboringZone(true));
 		}
 		super.appendToRoad(road);
 	}

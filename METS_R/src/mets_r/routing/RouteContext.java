@@ -38,6 +38,7 @@ public class RouteContext {
 		Node originDownstreamNode = originRoad.getDownStreamNode();
 		Node destUpstreamNode = destRoad.getUpStreamNode();
 		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode, rand);
+		printRoute(path);
 		return path;
 	}
 
@@ -120,7 +121,7 @@ public class RouteContext {
 	public static void printRoute(List<Road> path) {
 		ContextCreator.logger.info("Route:");
 		for (Road r : path) {
-			ContextCreator.logger.info(" " + r.getID());
+			ContextCreator.logger.info(" " + r.getOrigID());
 		}
 	}
 }

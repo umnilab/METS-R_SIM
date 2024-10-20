@@ -116,29 +116,50 @@ public class CityContext extends DefaultContext<Object> {
 			GeometryFactory geomFac = new GeometryFactory();
 			Point point = geomFac.createPoint(z1.getCoord());
 			Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
+			double dist = Double.MAX_VALUE;
 			for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-				double dist = this.getDistance(z1.getCoord(), r.getStartCoord());
-				if(dist < r.getDistToZone()) {
-					r.setNeighboringZone(z1.getID());
-					r.setDistToZone(dist);
+				dist = this.getDistance(z1.getCoord(), r.getStartCoord());
+				if(dist < r.getDistToZone(false)) {
+					r.setNeighboringZone(z1.getID(),false);
+					r.setDistToZone(dist, false);
+				}
+				
+				dist = this.getDistance(z1.getCoord(), r.getEndCoord());
+				if(dist < r.getDistToZone(true)) {
+					r.setNeighboringZone(z1.getID(),true);
+					r.setDistToZone(dist, true);
 				}
 			} 
 		}
 		
 		for (Road r: roadGeography.getAllObjects()) {
-			if(r.getNeighboringZone() >= 0) {
-				ContextCreator.getZoneContext().get(r.getNeighboringZone()).addNeighboringLink(r.getID());
+			if(r.getNeighboringZone(false) >= 0) {
+				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
+			}
+			if(r.getNeighboringZone(true) >= 0) {
+				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
 			}
 		}
 		
 		for (Zone z: ContextCreator.getZoneContext().getAll()) {
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while (z.getNeighboringLinkSize() < 10) { // Take at least 10 neighboring links
+			while (z.getNeighboringLinkSize(false) < 1) { // Take at least 1 neighboring link
 				GeometryFactory geomFac = new GeometryFactory();
 				Point point = geomFac.createPoint(z.getCoord());
 				Geometry buffer = point.buffer(searchBuffer); 
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					z.addNeighboringLink(r.getID());
+					z.addNeighboringLink(r.getID(), false);
+				}
+				searchBuffer = searchBuffer * 2;
+			}
+			
+			searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+			while (z.getNeighboringLinkSize(true) < 1) { // Take at least 1 neighboring link
+				GeometryFactory geomFac = new GeometryFactory();
+				Point point = geomFac.createPoint(z.getCoord());
+				Geometry buffer = point.buffer(searchBuffer); 
+				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+					z.addNeighboringLink(r.getID(), true);
 				}
 				searchBuffer = searchBuffer * 2;
 			}

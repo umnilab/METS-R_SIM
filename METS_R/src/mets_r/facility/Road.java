@@ -52,8 +52,10 @@ public class Road {
 	private ArrayList<Integer> downStreamRoads; // Includes the opposite link in U-turn
 	private int upStreamJunction;
 	private int downStreamJunction;
-	private int neighboringZone;
-	private double distToZone;
+	private int neighboringDepartureZone;
+	private int neighboringArrivalZone;
+	private double distToDepartureZone;
+	private double distToArrivalZone;
 	
 	// For vehicle movement
 	private int lastUpdateHour; // To find the current hour of the simulation
@@ -89,8 +91,10 @@ public class Road {
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeHistory_ = new ConcurrentLinkedQueue<Double>();
-		this.neighboringZone = -1;
-		this.setDistToZone(Double.MAX_VALUE); 
+		this.neighboringDepartureZone = -1;
+		this.neighboringArrivalZone = -1;
+		this.setDistToZone(Double.MAX_VALUE, false);
+		this.setDistToZone(Double.MAX_VALUE, true);
 
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
@@ -688,20 +692,24 @@ public class Road {
 		v.resetLinkTravelTime();
 	}
 
-	public int getNeighboringZone() {
-		return neighboringZone;
+	public int getNeighboringZone(boolean goDest) {
+		if(goDest) return neighboringArrivalZone;
+		else return neighboringDepartureZone;
 	}
 
-	public void setNeighboringZone(int neighboringZone) {
-		this.neighboringZone = neighboringZone;
+	public void setNeighboringZone(int neighboringZone, boolean goDest) {
+		if (goDest) this.neighboringDepartureZone = neighboringArrivalZone;
+		else this.neighboringDepartureZone = neighboringZone;
 	}
 
-	public double getDistToZone() {
-		return distToZone;
+	public double getDistToZone(boolean goDest) {
+		if (goDest) return distToArrivalZone;
+		else return distToDepartureZone;
 	}
 
-	public void setDistToZone(double distToZone) {
-		this.distToZone = distToZone;
+	public void setDistToZone(double distToZone, boolean goDest) {
+		if (goDest) this.distToArrivalZone = distToZone; 
+		else this.distToDepartureZone = distToZone;
 	}
 
 	public int getUpStreamJunction() {
