@@ -135,10 +135,11 @@ public class VehicleRouting {
 				roadPath_.add(currentRoad);
 				for (RepastEdge<Node> edge : shortestPath) {
 					int roadID = ContextCreator.getCityContext().getRoadIDFromEdge(edge);
-					if(roadID > 0) {
+					if(roadID >= 0) {
 						roadPath_.add(ContextCreator.getRoadContext().get(roadID));
 					}
 				}
+				roadPath_.add(destRoad);
 			}
 		}
 		return roadPath_;
