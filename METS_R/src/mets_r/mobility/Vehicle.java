@@ -1053,6 +1053,7 @@ public class Vehicle {
 						break;
 				}
 			}
+			ContextCreator.logger.info("round1: " + movable);
 
 			if(movable) {
 				// Check if the target road has space
@@ -1085,6 +1086,8 @@ public class Vehicle {
 					}
 				}
 			}
+			
+			ContextCreator.logger.info("round2: " + movable);
 			// Fail to enter next link, try again in the next tick
 			this.onLane = false;
 			coordMap.clear();
