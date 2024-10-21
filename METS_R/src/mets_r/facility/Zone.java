@@ -1097,6 +1097,10 @@ public class Zone {
 		return this.neighboringZones;
 	}
 	
+	public int getNeighboringZones(int index){
+		return this.neighboringZones.get(index);
+	}
+	
 	public int getNeighboringZoneSize() {
 		return this.neighboringZones.size();
 	}

@@ -186,11 +186,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 			cityContext.createUCBBusRoutes(); // generate Bus eco-routing routes
 		}
 		
-		try {
-			partitioner.first_run();
-			ContextCreator.logger.info("Reset partitioner");
-		} catch (Exception e) {
-			e.printStackTrace();
+		if(GlobalVariables.MULTI_THREADING) {
+			try {
+				partitioner.first_run();
+				ContextCreator.logger.info("Reset partitioner");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
 		}
 		
 		dataContext.startCollecting();

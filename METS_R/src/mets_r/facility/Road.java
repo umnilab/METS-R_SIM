@@ -256,6 +256,7 @@ public class Road {
 				
 				Vehicle toCheckVeh = lane.firstVehicle();
 				while (toCheckVeh != null) { // find where to insert the veh
+					ContextCreator.logger.info("HERE4");
 					 if(toCheckVeh.getDistance()<=dist) {
 //						 if(toCheckVeh.getDistance() + toCheckVeh.length() > dist) {
 //							 ContextCreator.logger.error("Front collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", front veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);

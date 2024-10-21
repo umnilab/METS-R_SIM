@@ -47,9 +47,9 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 				ChargingStation cs = null;
 				if (result.length == 13) {
 					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[11])),
-							(int) Math.round(Double.parseDouble(result[12]))); // Using customize parameters
+							(int) Math.round(Double.parseDouble(result[12])), (int) Math.round(Double.parseDouble(result[13]))); // Using customize parameters
 				} else if (result.length == 2) {
-					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0);
+					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[1])), 0, 10);
 				} else {
 					ContextCreator.logger.error(
 							"Incorrect format for charging station. The incorrect element is"+ result[0]+","+ result[1]+","+ result[2]);

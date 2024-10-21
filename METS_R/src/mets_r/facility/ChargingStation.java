@@ -25,8 +25,9 @@ public class ChargingStation {
 	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
 	private LinkedList<ElectricVehicle> queueChargingL3; // Car queue waiting for L3 charging
 	private LinkedList<ElectricBus> queueChargingBus; // Bus queue waiting for bus charging
-	private int num2; // Number of L2 chargers
-	private int num3; // Number of L3 chargers
+	private int numL2; // Number of L2 chargers
+	private int numL3; // Number of L3 chargers
+	private int numBusCharger; //Number of Bus chargers
 	private ArrayList<ElectricVehicle> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
 	private ArrayList<ElectricVehicle> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
 	private ArrayList<ElectricBus> chargingBus; // Buses that are charging themselves under the bus chargers
@@ -41,12 +42,14 @@ public class ChargingStation {
 	private static double chargingFeeL3 = 10.0; // Charging price: 10.0 dollars/hour
 	private static float alpha = 10.0f; // Dollars/hour
 
-	public int numChargedVehicle;
-
 	// For thread-safe operation
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3; // Pending Car queue waiting for L3 charging
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
+	
+	// Statistics
+	public int numChargedCar;
+	public int numChargedBus;
 	
 	
 	/**
@@ -54,12 +57,14 @@ public class ChargingStation {
 	 * @param integerID charging station ID
 	 * @param numL2 number of L2 chargers
 	 * @param numL3 number of L3 chargers
+	 * @param numBus number of bus chargers
 	 */
-	public ChargingStation(int integerID, int numL2, int numL3) {
+	public ChargingStation(int integerID, int numL2, int numL3, int numBus) {
 		this.ID = integerID;
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
-		this.num2 = numL2; // Number of level 2 charger
-		this.num3 = numL3; // Number of level 3 charger
+		this.numL2 = numL2; // Number of level 2 chargers
+		this.numL3 = numL3; // Number of level 3 chargers
+		this.numBusCharger = numBus; // Number of bus chargers
 		this.queueChargingL2 = new LinkedList<ElectricVehicle>();
 		this.queueChargingL3 = new LinkedList<ElectricVehicle>();
 		this.queueChargingBus = new LinkedList<ElectricBus>();
@@ -69,7 +74,7 @@ public class ChargingStation {
 		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<ElectricBus>();
-		this.numChargedVehicle = 0;
+		this.numChargedCar = 0;
 	}
 
 	// Step function
@@ -86,21 +91,34 @@ public class ChargingStation {
 	 * @return Number of electric taxis
 	 */
 	public int capacity() {
-		return this.num2 + this.num3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
+		return this.numL2 + this.numL3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
+	}
+	
+	public int capacityBus() {
+		return this.numBusCharger - this.chargingBus.size();
 	}
 
 	public int numL2() {
-		return this.num2;
+		return this.numL2;
 	}
 
 	public int numL3() {
-		return this.num3;
+		return this.numL3;
+	}
+	
+	public int numBusCharger() {
+		return this.numBusCharger;
 	}
 
 	// Function1: busArrive()
 	public void receiveBus(ElectricBus bus) {
 		bus.initialChargingState = bus.getBatteryLevel();
-		this.toAddChargingBus.add(bus);
+		this.numChargedBus += 1;
+		if (numBusCharger >0) this.toAddChargingBus.add(bus);
+		else {
+			this.numChargedBus -= 1;
+			ContextCreator.logger.error("Something went wrong, no bus charger at this station.");
+		}
 	}
 
 	public void processToAddBus() {
@@ -112,8 +130,8 @@ public class ChargingStation {
 	// Function2: vehicleArrive()
 	public void receiveEV(ElectricVehicle ev) {
 		ev.initialChargingState = ev.getBatteryLevel();
-		this.numChargedVehicle += 1;
-		if ((num2 > 0) && (num3 > 0)) {
+		this.numChargedCar += 1;
+		if ((numL2 > 0) && (numL3 > 0)) {
 			double utilityL2 = -alpha * totalTimeL2(ev) / 3600 - chargingCostL2(ev);
 			double utilityL3 = -alpha * totalTimeL3(ev) / 3600 - chargingCostL3(ev);
 			double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
@@ -123,13 +141,13 @@ public class ChargingStation {
 			} else {
 				toAddChargingL3.add(ev);
 			}
-		} else if (num2 > 0) {
+		} else if (numL2 > 0) {
 			toAddChargingL2.add(ev);
-		} else if (num3 > 0) {
+		} else if (numL3 > 0) {
 			toAddChargingL3.add(ev);
 		} else {
-			this.numChargedVehicle -= 1;
-			ContextCreator.logger.error("Something went wrong, no chargers at this station.");
+			this.numChargedCar -= 1;
+			ContextCreator.logger.error("Something went wrong, no car charger at this station.");
 		}
 	}
 
@@ -174,8 +192,8 @@ public class ChargingStation {
 		}
 
 		// The vehicles in the queue enter the charging areas.
-		if (chargingVehicleL2.size() < num2) { // num2: number of L2 charger.
-			int addNumber = Math.min(num2 - chargingVehicleL2.size(), queueChargingL2.size());
+		if (chargingVehicleL2.size() < numL2) { // num2: number of L2 charger.
+			int addNumber = Math.min(numL2 - chargingVehicleL2.size(), queueChargingL2.size());
 			for (int i = 0; i < addNumber; i++) {
 				ElectricVehicle vehicleEnter = queueChargingL2.poll();
 				chargingVehicleL2.add(vehicleEnter); // the vehicle enters the charging areas.
@@ -211,8 +229,8 @@ public class ChargingStation {
 			this.chargingVehicleL3.removeAll(chargingVehicleL3);
 		}
 		// The vehicles in the queue enter the charging areas.
-		if (chargingVehicleL3.size() < num3) { // num3: number of L3 charger.
-			int addNumber = Math.min(num3 - chargingVehicleL3.size(), queueChargingL3.size());
+		if (chargingVehicleL3.size() < numL3) { // num3: number of L3 charger.
+			int addNumber = Math.min(numL3 - chargingVehicleL3.size(), queueChargingL3.size());
 			for (int i = 0; i < addNumber; i++) {
 				ElectricVehicle vehicleEnter = queueChargingL3.poll();
 				chargingVehicleL3.add(vehicleEnter); // the vehicle enters the charging areas.
@@ -250,12 +268,14 @@ public class ChargingStation {
 			this.chargingBus.removeAll(toRemoveBus);
 		}
 		// The buses in the queue enter the charging areas.
-		int addNumber = queueChargingBus.size();
-		for (int i = 0; i < addNumber; i++) {
-			ElectricBus evBus = queueChargingBus.poll();
-			chargingBus.add(evBus); // The vehicle enters the charging areas.
-			for (ElectricBus b : queueChargingBus) {
-				b.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
+		if (chargingBus.size() < numBusCharger) {
+			int addNumber = Math.min(numBusCharger - chargingBus.size(), queueChargingBus.size());
+			for (int i = 0; i < addNumber; i++) {
+				ElectricBus evBus = queueChargingBus.poll();
+				chargingBus.add(evBus); // The vehicle enters the charging areas.
+				for (ElectricBus b : queueChargingBus) {
+					b.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
+				}
 			}
 		}
 	}
@@ -269,7 +289,7 @@ public class ChargingStation {
 		int numWaitingVehicle = queueChargingL2.size(); // Number of vehicles that in the queue.
 		// Assume each charging vehicle needs 20kWh more, each waiting vehicle needs
 		// 40kWh.
-		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL2 * num2); // unit:
+		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL2 * numL2); // unit:
 																														// second
 		double chargingTime = (50.0 - ev.getBatteryLevel()) * 3600 / chargingRateL2;
 		double totalTime = waitingTime + chargingTime;
@@ -292,7 +312,7 @@ public class ChargingStation {
 		int numWaitingVehicle = queueChargingL3.size(); // number of vehicles that in the queue.
 		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs
 		// 40kWh.
-		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL3 * num3); // unit:
+		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL3 * numL3); // unit:
 																														// second
 		double chargingTime = (50.0 - ev.getBatteryLevel()) * 3600 / chargingRateL3;
 		double totalTime = waitingTime + chargingTime;

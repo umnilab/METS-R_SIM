@@ -54,11 +54,22 @@ public class ElectricTaxi extends ElectricVehicle {
 	
 	// Randomly select a neighboring link and update the activity plan
 	public void goCruising(Zone z) {
-		// Add a cruising activity
 		Coordinate dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
-		while(dest == this.getDestCoord()) { // Sample again
-			dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
+		
+		if(z.getNeighboringLinkSize(true) == 1) { // Isolated zone
+			// Sample from the neighboring zone
+			while(dest == this.getDestCoord()) {
+				int neighboringZoneID = z.getNeighboringZones(rand_relocate_only.nextInt(z.getNeighboringZoneSize()));
+				dest = ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringCoord(rand_relocate_only.nextInt(ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLinkSize(true)), true);
+			}
 		}
+		else {
+			while(dest == this.getDestCoord()) { // Sample again
+				dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
+			}
+		}
+		
+	    // Add a cruising activity
 		this.addPlan(z.getIntegerID(), dest, ContextCreator.getNextTick());
 		this.setNextPlan();
 		this.setState(Vehicle.CRUISING_TRIP);

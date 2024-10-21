@@ -144,7 +144,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		}
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
-			numChargedVehicle += cs.numChargedVehicle;
+			numChargedVehicle += cs.numChargedCar;
 		}
 
 		for (ElectricTaxi v : ContextCreator.getVehicleContext().getTaxis()) {
