@@ -145,6 +145,7 @@ public class SumoXML {
 		
 		HashMap<String, String> internalFromLaneConnections;  
 		HashMap<String, String> internalToLaneConnections; 
+		HashMap<String, List<String>> internalFromToLaneConnections;
 		
 		Road currentRoad;
 		Junction currentJunction;
@@ -232,6 +233,7 @@ public class SumoXML {
 			
 			internalFromLaneConnections = new HashMap<String, String>();
 			internalToLaneConnections = new HashMap<String, String>();
+			internalFromToLaneConnections = new HashMap<String, List<String>>();
 			
 			roadLane = new HashMap<Integer, List<Integer>>();
 			signals = new HashMap<Integer, HashMap<Integer, Signal>>();
@@ -388,7 +390,7 @@ public class SumoXML {
 				}
 				if(inInternalRoad) {
 					laneRoadMap.put(attributes.getValue("id"), currentRoadID);
-					isInternalLaneMap.put(attributes.getValue("id"), false);
+					isInternalLaneMap.put(attributes.getValue("id"), true);
 				}
 			}
 			
@@ -447,56 +449,70 @@ public class SumoXML {
 			
 			// handle the connection, note SUMO can include repetitive road connection to encode lane connection
 			if (qName.equalsIgnoreCase("connection")) {
-					String from_road = attributes.getValue("from");
-					String to_road = attributes.getValue("to");
-					
-					String from_lane = from_road + "_" + attributes.getValue("fromLane"); // Important: here I assume the lane id would always be formed as roadid_index. 
-					String to_lane = to_road + "_" + attributes.getValue("toLane");
-					
-					if(isInternalRoadMap.containsKey(from_road) && isInternalRoadMap.containsKey(to_road)) {
-						if((!isInternalRoadMap.get(from_road)) && (!isInternalRoadMap.get(to_road))) { // Case 1, both from road and end road are not internal
-							// find out the junction id, update the road connection and lane connection
-							if(laneIDMap.containsKey(from_lane) && laneIDMap.containsKey(to_lane)) {
-								String via_junction = incLaneJunctionMap.get(from_lane);
-								if(junctionIDMap.containsKey(via_junction)) {
-									int junction_id = junctionIDMap.get(via_junction);
-									int from_road_id = roadIDMap.get(from_road);
-									int to_road_id = roadIDMap.get(to_road);
-									int from_lane_id = laneIDMap.get(from_lane);
-									int to_lane_id = laneIDMap.get(to_lane);
-									if (!roadConnections.containsKey(junction_id)) {
-										roadConnections.put(junction_id, new ArrayList<List<Integer>>());
-										laneConnections.put(junction_id, new ArrayList<List<Integer>>());
+				String from_road = attributes.getValue("from");
+				String to_road = attributes.getValue("to");
+				
+				String from_lane = from_road + "_" + attributes.getValue("fromLane"); // Important: here I assume the lane id would always be formed as roadid_index. 
+				String to_lane = to_road + "_" + attributes.getValue("toLane");
+				
+				if((!isInternalRoadMap.containsKey(from_road)) && (!isInternalRoadMap.containsKey(to_road))) { // Case 1, both from road and end road are not internal
+					// find out the junction id, update the road connection and lane connection
+					if(laneIDMap.containsKey(from_lane) && laneIDMap.containsKey(to_lane)) {
+						String via_junction = incLaneJunctionMap.get(from_lane);
+						if(junctionIDMap.containsKey(via_junction)) {
+							int junction_id = junctionIDMap.get(via_junction);
+							int from_road_id = roadIDMap.get(from_road);
+							int to_road_id = roadIDMap.get(to_road);
+							int from_lane_id = laneIDMap.get(from_lane);
+							int to_lane_id = laneIDMap.get(to_lane);
+							if (!roadConnections.containsKey(junction_id)) {
+								roadConnections.put(junction_id, new ArrayList<List<Integer>>());
+								laneConnections.put(junction_id, new ArrayList<List<Integer>>());
+							}
+							if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+								roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
+								if ((attributes.getValue("tl") != null) && signalIDMap.containsKey(attributes.getValue("tl"))) {
+									// has signal control
+									if(!signals.containsKey(from_road_id)) {
+										signals.put(from_road_id, new HashMap<Integer, Signal>());
 									}
-									if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
-										roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
-										if ((attributes.getValue("tl") != null) && signalIDMap.containsKey(attributes.getValue("tl"))) {
-											// has signal control
-											if(!signals.containsKey(from_road_id)) {
-												signals.put(from_road_id, new HashMap<Integer, Signal>());
-											}
-											signals.get(from_road_id).put(to_road_id, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
-										}
-									}
-									laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
-								}
-								else {
-									ContextCreator.logger.error("Cannot find junction from lane: " + from_lane + " to: "+ to_lane);
+									signals.get(from_road_id).put(to_road_id, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
 								}
 							}
+							laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
 						}
-						else if(isInternalRoadMap.get(from_road) && (!isInternalRoadMap.get(to_road))) { // Case 2, from road is internal, to road is not internal
-							// update the internal to-lane-connection
-							internalToLaneConnections.put(from_lane, to_lane);
+						else {
+							ContextCreator.logger.error("Cannot find junction from lane: " + from_lane + " to: "+ to_lane);
 						}
-						else if((!isInternalRoadMap.get(from_road)) && isInternalRoadMap.get(to_road)) { // Case 3, from road is not internal, to road is internal
-							// update the internal from-road-connection and from-lane-connection
-							internalFromLaneConnections.put(to_lane, from_lane);
-						}
-						else { // Case 4, from and to roads are internal, raise an error
-							ContextCreator.logger.error("Both roads in the connection from: " + from_road + " to: "+ to_road + " are internal roads");
-						}			
 					}
+				}
+				else if(isInternalRoadMap.containsKey(from_road) && (!isInternalRoadMap.containsKey(to_road))) { // Case 2, from road is internal, to road is not internal
+					// check whether from_lane is already used
+					if(internalToLaneConnections.containsKey(from_lane)) {
+						System.out.println("The from lane already exist in internalToLaneConnections!");
+					}
+					// update the internal to-lane-connection
+					internalToLaneConnections.put(from_lane, to_lane);
+				}
+				else if((!isInternalRoadMap.containsKey(from_road)) && isInternalRoadMap.containsKey(to_road)) { // Case 3, from road is not internal, to road is internal
+					if(internalFromLaneConnections.containsKey(to_lane)) {
+						System.out.println("The to lane already exist in internalFromLaneConnections!");
+					}
+					// update the internal from-lane-connection
+					internalFromLaneConnections.put(to_lane, from_lane);
+				}
+				else { // Case 4, from and to roads are internal, raise an error
+					// check whether from_lane is already used
+					if(internalFromToLaneConnections.containsKey(from_lane)) {
+						internalFromToLaneConnections.get(from_lane).add(to_lane);
+					}
+					else {
+						// update the internal from-to-lane-connection
+						ArrayList<String> to_lane_list = new ArrayList<String>();
+						to_lane_list.add(to_lane);
+						internalFromToLaneConnections.put(from_lane, to_lane_list);
+					}
+				}			
 					
 			}
 			
@@ -597,6 +613,37 @@ public class SumoXML {
 							ContextCreator.logger.error("Postprocessing cannot find junction from lane: " + from_lane + " to: "+ to_lane);
 						}
 					}
+					else if(internalFromToLaneConnections.containsKey(internal_lane)) {
+						String from_lane = internalFromLaneConnections.get(internal_lane);
+						List<String> to_lanes = this.findEndLane(internalFromToLaneConnections.get(internal_lane));
+						for(String to_lane: to_lanes) {
+							String from_road = from_lane.substring(0, from_lane.lastIndexOf("_")); 
+							String to_road = to_lane.substring(0, to_lane.lastIndexOf("_"));
+							
+							// find out the junction id, update the road connection and lane connection
+							String via_junction = incLaneJunctionMap.get(from_lane);
+							if(junctionIDMap.containsKey(via_junction)) {
+								int junction_id = junctionIDMap.get(via_junction);
+								int from_road_id = roadIDMap.get(from_road);
+								int to_road_id = roadIDMap.get(to_road);
+								int from_lane_id = laneIDMap.get(from_lane);
+								int to_lane_id = laneIDMap.get(to_lane);
+								if (!roadConnections.containsKey(junction_id)) {
+									roadConnections.put(junction_id, new ArrayList<List<Integer>>());
+									laneConnections.put(junction_id, new ArrayList<List<Integer>>());
+								}
+								if (roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+									roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
+								}
+								if (laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
+									laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
+								}
+							}
+							else {
+								ContextCreator.logger.error("Postprocessing cannot find junction from lane: " + from_lane + " to: "+ to_lane);
+							}
+						}
+					}
 				}
 				
 				// road connection
@@ -614,6 +661,24 @@ public class SumoXML {
 				}
 			}
 		}
+		
+		private List<String> findEndLane(List<String> from_lanes){
+			ArrayList<String> result = new ArrayList<String>();
+			
+			for(String intermediate_from_lane: from_lanes) {
+				if(internalToLaneConnections.containsKey(intermediate_from_lane)) {
+					result.add(internalToLaneConnections.get(intermediate_from_lane));
+				}
+				if(internalFromToLaneConnections.containsKey(intermediate_from_lane)) {
+					List<String> to_lanes = findEndLane(internalFromToLaneConnections.get(intermediate_from_lane));
+					for(String to_lane: to_lanes) {
+						result.add(to_lane);
+					}
+				}
+			}
+			
+			return result;
+		}
 	}
 	
 	public void print() {
@@ -623,8 +688,8 @@ public class SumoXML {
 	
 	public static void main(String[] args) {
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
-		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
-//		SumoXML sxml = new SumoXML("data/CARLA/facility/road/Town05.net.xml");
+//		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
+		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");
 		sxml.print();
 	}
 	
