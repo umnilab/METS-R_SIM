@@ -153,6 +153,9 @@ public class SumoXML {
 		String currentSignal; // only use the id of the tlLogic
 		String currentRoadID; // for building the land-road map
 		
+		String currentFromJunctionID = null; 
+		String currentToJunctionID = null;
+		
 		double currentMaxSpeed = 0;
 		String currentRoadType = null;
 		
@@ -331,6 +334,8 @@ public class SumoXML {
 						int road_id = generateRoadID(attributes.getValue("id"));
 						currentRoad = new Road(road_id);
 						currentRoad.setOrigID(attributes.getValue("id"));
+						currentFromJunctionID = attributes.getValue("from");
+						currentToJunctionID = attributes.getValue("to");
 						ArrayList<Integer> oneRoadLane = new ArrayList<Integer>();
 						roadLane.put(road_id, oneRoadLane);
 						roads.put(road_id, currentRoad);
@@ -377,6 +382,9 @@ public class SumoXML {
 					    	coords.add(coord);
 					    }
 					    currentLane.setCoords(coords);
+					    
+					    intLaneJunctionMap.put(attributes.getValue("id"), currentFromJunctionID);
+					    incLaneJunctionMap.put(attributes.getValue("id"), currentToJunctionID);
 					    
 					    startX += coords.get(0).x;
 					    startY += coords.get(0).y;
@@ -530,6 +538,8 @@ public class SumoXML {
 				currentMaxSpeed = 0;
 			    currentRoad = null;
 			    currentRoadType = null;
+			    currentFromJunctionID = null;
+			    currentToJunctionID = null;
 			    inRoad = false;
 			}
 			
