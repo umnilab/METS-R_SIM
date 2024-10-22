@@ -92,7 +92,7 @@ public class CityContext extends DefaultContext<Object> {
 						z1.addNeighboringZone(z2.getID());
 					}
 				}
-				if (z1.getNeighboringZoneSize() < Math.min(ContextCreator.getZoneGeography().size() - 1, 100)) {
+				if (z1.getNeighboringZoneSize() < Math.min(ContextCreator.getZoneGeography().size() - 1, 8)) {
 					threshold = threshold * 2;
 				} else {
 					flag = false;
