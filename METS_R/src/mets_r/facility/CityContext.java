@@ -297,11 +297,16 @@ public class CityContext extends DefaultContext<Object> {
 					node2.setJunction(j); 
 					// Set the signal
 					if(j.getControlType() == Junction.StaticSignal) {
-						Signal s = sxml.getSignal().get(r1.getID()).get(r2.getID());
-						// Add the signal to SignalContext
-						ContextCreator.getSignalContext().put(s.getID(), s);
-						j.setSignal(r1.getID(), r2.getID(), s);
-						j.setDelay(r1.getID(), r2.getID(), s.getDelay());
+						if(sxml.getSignal().containsKey(r1.getID())) {
+							if(sxml.getSignal().get(r1.getID()).containsKey(r2.getID())) {
+								Signal s = sxml.getSignal().get(r1.getID()).get(r2.getID());
+								// Add the signal to SignalContext
+								ContextCreator.getSignalContext().put(s.getID(), s);
+								j.setSignal(r1.getID(), r2.getID(), s);
+								j.setDelay(r1.getID(), r2.getID(), s.getDelay());
+							}
+						}
+						
 					}
 				}
 		    }
