@@ -126,7 +126,10 @@ public class ElectricVehicle extends Vehicle {
 			this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
 			this.setState(Vehicle.CHARGING_TRIP);
 			this.departure();
-			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging");
+			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");
+		}
+		else {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " cannot find charging station at coordinate: " + this.getCurrentCoord());
 		}
 	}
 	
