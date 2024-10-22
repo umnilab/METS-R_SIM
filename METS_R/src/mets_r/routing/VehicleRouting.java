@@ -141,6 +141,11 @@ public class VehicleRouting {
 				}
 				roadPath_.add(destRoad);
 			}
+			else if(currentRoad.getDownStreamRoads().contains(destRoad.getID())) {
+				roadPath_ = new ArrayList<Road>();
+				roadPath_.add(currentRoad);
+				roadPath_.add(destRoad);
+			}
 		}
 		return roadPath_;
 	}

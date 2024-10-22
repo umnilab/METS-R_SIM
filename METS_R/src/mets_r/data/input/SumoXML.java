@@ -455,7 +455,7 @@ public class SumoXML {
 				String from_lane = from_road + "_" + attributes.getValue("fromLane"); // Important: here I assume the lane id would always be formed as roadid_index. 
 				String to_lane = to_road + "_" + attributes.getValue("toLane");
 				
-				if((!isInternalRoadMap.containsKey(from_road)) && (!isInternalRoadMap.containsKey(to_road))) { // Case 1, both from road and end road are not internal
+				if((!isInternalRoadMap.get(from_road)) && (!isInternalRoadMap.get(to_road))) { // Case 1, both from road and end road are not internal
 					// find out the junction id, update the road connection and lane connection
 					if(laneIDMap.containsKey(from_lane) && laneIDMap.containsKey(to_lane)) {
 						String via_junction = incLaneJunctionMap.get(from_lane);
@@ -486,18 +486,11 @@ public class SumoXML {
 						}
 					}
 				}
-				else if(isInternalRoadMap.containsKey(from_road) && (!isInternalRoadMap.containsKey(to_road))) { // Case 2, from road is internal, to road is not internal
-					// check whether from_lane is already used
-					if(internalToLaneConnections.containsKey(from_lane)) {
-						System.out.println("The from lane already exist in internalToLaneConnections!");
-					}
+				else if(isInternalRoadMap.get(from_road) && (!isInternalRoadMap.get(to_road))) { // Case 2, from road is internal, to road is not internal
 					// update the internal to-lane-connection
 					internalToLaneConnections.put(from_lane, to_lane);
 				}
-				else if((!isInternalRoadMap.containsKey(from_road)) && isInternalRoadMap.containsKey(to_road)) { // Case 3, from road is not internal, to road is internal
-					if(internalFromLaneConnections.containsKey(to_lane)) {
-						System.out.println("The to lane already exist in internalFromLaneConnections!");
-					}
+				else if((!isInternalRoadMap.get(from_road)) && isInternalRoadMap.get(to_road)) { // Case 3, from road is not internal, to road is internal
 					// update the internal from-lane-connection
 					internalFromLaneConnections.put(to_lane, from_lane);
 				}
@@ -602,10 +595,10 @@ public class SumoXML {
 								roadConnections.put(junction_id, new ArrayList<List<Integer>>());
 								laneConnections.put(junction_id, new ArrayList<List<Integer>>());
 							}
-							if (roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+							if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
 								roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
 							}
-							if (laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
+							if (!laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
 								laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
 							}
 						}
@@ -616,6 +609,7 @@ public class SumoXML {
 					else if(internalFromToLaneConnections.containsKey(internal_lane)) {
 						String from_lane = internalFromLaneConnections.get(internal_lane);
 						List<String> to_lanes = this.findEndLane(internalFromToLaneConnections.get(internal_lane));
+						
 						for(String to_lane: to_lanes) {
 							String from_road = from_lane.substring(0, from_lane.lastIndexOf("_")); 
 							String to_road = to_lane.substring(0, to_lane.lastIndexOf("_"));
@@ -632,10 +626,10 @@ public class SumoXML {
 									roadConnections.put(junction_id, new ArrayList<List<Integer>>());
 									laneConnections.put(junction_id, new ArrayList<List<Integer>>());
 								}
-								if (roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+								if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
 									roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
 								}
-								if (laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
+								if (!laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
 									laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
 								}
 							}
@@ -688,8 +682,8 @@ public class SumoXML {
 	
 	public static void main(String[] args) {
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
-//		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
-		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");
+		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
+//		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");
 		sxml.print();
 	}
 	

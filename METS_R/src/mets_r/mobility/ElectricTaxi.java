@@ -202,7 +202,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			this.setShadowImpact();
 			if (this.roadPath == null) {
 				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
-						", destination road " + this.getDestRoadID());
+						", destination road " + this.getDestRoadID()+ ", downstream roads: " + this.getRoad().getDownStreamRoads());
 				this.atOrigin = false;
 				this.nextRoad_ = null;
 			}

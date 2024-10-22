@@ -134,8 +134,10 @@ public class CityContext extends DefaultContext<Object> {
 		
 		for (Road r: roadGeography.getAllObjects()) {
 			if(r.getNeighboringZone(false) >= 0) {
-				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
-				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+				if(r.getDownStreamRoads().size()>0) { // not the deadend
+					ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
+					this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+				}
 			}
 			if(r.getNeighboringZone(true) >= 0) {
 				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
@@ -154,7 +156,7 @@ public class CityContext extends DefaultContext<Object> {
 				int roadID = -1;
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 					double dist = this.getDistance(z.getCoord(), r.getStartCoord());
-					if(dist < min_dist) {
+					if((dist < min_dist) && (r.getDownStreamRoads().size()>0)) {
 						min_dist = dist;
 						roadID = r.getID();
 					}	
@@ -496,6 +498,8 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 		}
+		
+		ContextCreator.logger.info("City initialized!");
 	}
 	
 
@@ -752,7 +756,6 @@ public class CityContext extends DefaultContext<Object> {
 			z1.nearestZoneWithBus.clear();
 		}
 		for (List<Integer> route : ContextCreator.bus_schedule.getBusSchedule()) {
-			ContextCreator.logger.info(route);
 			// Retrieve stations in order, from hub to other places
 			double travel_distance = 0;
 			double travel_time = 0;
