@@ -119,13 +119,15 @@ public class ElectricVehicle extends Vehicle {
 		Coordinate current_dest_coord = ContextCreator.getZoneContext().get(this.getDestID()).getCoord();
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
-		this.onChargingRoute_ = true;
-		this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
-		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
-		this.setState(Vehicle.CHARGING_TRIP);
-		this.departure();
-		ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging");
+		if(cs != null) {
+			this.onChargingRoute_ = true;
+			this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
+			this.setNextPlan();
+			this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
+			this.setState(Vehicle.CHARGING_TRIP);
+			this.departure();
+			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging");
+		}
 	}
 	
 	@Override
