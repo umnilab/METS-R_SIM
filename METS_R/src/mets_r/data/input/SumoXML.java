@@ -136,6 +136,7 @@ public class SumoXML {
 		
 		HashMap<String, String> incLaneJunctionMap; // which lane ends (incoming) to which junction
 		HashMap<String, String> intLaneJunctionMap; // which lane starts (initializing) from which junction
+		HashMap<String, Integer> junctionsRoadMap; // which road ends (incoming) to which junction
 		HashMap<String, String> laneRoadMap;
 		
 		// Handle internal lanes, since METS-R SIM does not consider inner intersection movement
@@ -248,6 +249,7 @@ public class SumoXML {
 			
 			incLaneJunctionMap = new HashMap<String, String>();
 			intLaneJunctionMap = new HashMap<String, String>();
+			junctionsRoadMap = new HashMap<String, Integer>();
 			
 			laneRoadMap = new HashMap<String, String>();
 			isInternalRoadMap = new HashMap<String, Boolean>();
@@ -336,6 +338,7 @@ public class SumoXML {
 						currentRoad.setOrigID(attributes.getValue("id"));
 						currentFromJunctionID = attributes.getValue("from");
 						currentToJunctionID = attributes.getValue("to");
+						junctionsRoadMap.put(currentFromJunctionID+"!"+currentToJunctionID, road_id);
 						ArrayList<Integer> oneRoadLane = new ArrayList<Integer>();
 						roadLane.put(road_id, oneRoadLane);
 						roads.put(road_id, currentRoad);
@@ -392,7 +395,7 @@ public class SumoXML {
 					    endY += coords.get(coords.size()-1).y;
 					    nLane++;
 					    lanes.put(currentLane.getID(), currentLane);
-					    currentRoad.addLane(currentLane, 0); // Add lane to the road, lane from the rightmost to the centered.
+					    currentRoad.addLane(currentLane, 0); // Add lane to the road, lane from the rightmost to the centeriod.
 					}
 				    
 				}
@@ -459,7 +462,7 @@ public class SumoXML {
 			if (qName.equalsIgnoreCase("connection")) {
 				String from_road = attributes.getValue("from");
 				String to_road = attributes.getValue("to");
-				
+
 				String from_lane = from_road + "_" + attributes.getValue("fromLane"); // Important: here I assume the lane id would always be formed as roadid_index. 
 				String to_lane = to_road + "_" + attributes.getValue("toLane");
 				
@@ -656,6 +659,53 @@ public class SumoXML {
 						roads.get(rc.get(0)).addDownStreamRoad(rc.get(1));
 					}
 				}
+				
+				// Add U-turn if road has not downstream road
+				for(String junctions: junctionsRoadMap.keySet()) {
+					String junctions2 = junctions.split("!")[1] + "!" +junctions.split("!")[0];
+					if(junctionsRoadMap.containsKey(junctions2)) {
+						int r = junctionsRoadMap.get(junctions);
+						int r2 = junctionsRoadMap.get(junctions2);
+						if(roads.get(r2).getDownStreamRoads().size() == 0) {
+							int junction_id = junctionIDMap.get(junctions2.split("!")[1]);
+							// get the left most lane
+							int to_road_id = r;
+							int from_road_id = r2;
+							int to_lane_id = roads.get(r).getLane(0).getID();
+							int from_lane_id = roads.get(r2).getLane(0).getID();
+							if (!roadConnections.containsKey(junction_id)) {
+								roadConnections.put(junction_id, new ArrayList<List<Integer>>());
+								laneConnections.put(junction_id, new ArrayList<List<Integer>>());
+							}
+							if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+								roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
+							}
+							if (!laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
+								laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
+							}
+							roads.get(r2).addDownStreamRoad(r);
+						}
+						if(roads.get(r).getDownStreamRoads().size() == 0) {
+							int junction_id = junctionIDMap.get(junctions.split("!")[1]);
+							int from_road_id = r;
+							int to_road_id = r2;
+							int from_lane_id = roads.get(r).getLane(0).getID();
+							int to_lane_id = roads.get(r2).getLane(0).getID();
+							if (!roadConnections.containsKey(junction_id)) {
+								roadConnections.put(junction_id, new ArrayList<List<Integer>>());
+								laneConnections.put(junction_id, new ArrayList<List<Integer>>());
+							}
+							if (!roadConnections.get(junction_id).contains(Arrays.asList(from_road_id,to_road_id))) {
+								roadConnections.get(junction_id).add(Arrays.asList(from_road_id,to_road_id));
+							}
+							if (!laneConnections.get(junction_id).contains(Arrays.asList(from_lane_id, to_lane_id))) {
+								laneConnections.get(junction_id).add(Arrays.asList(from_lane_id, to_lane_id));
+							}
+							roads.get(r).addDownStreamRoad(r2);
+						}
+					}
+				}
+				
 				// lane connection
 				for(List<List<Integer>> lcs: laneConnections.values()) {
 					for(List<Integer> lc: lcs) {
