@@ -30,9 +30,6 @@ public class Signal {
     // Step function
     public void step() {
     	this.currentTick = ContextCreator.getCurrentTick();
-    	if (this.currentTick > this.nextUpdateTick) {
-    		ContextCreator.logger.warn("The signal update is called in a wrong tick, Signal ID:" + this.getID() + " currentTIck:" + this.currentTick + " nextUpdateTick: "+ this.nextUpdateTick);
-    	}
     	if(this.currentTick >= this.nextUpdateTick) {
             this.goNextPhase();
             this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);

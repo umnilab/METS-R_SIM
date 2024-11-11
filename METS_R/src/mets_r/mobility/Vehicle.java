@@ -2212,9 +2212,13 @@ public class Vehicle {
 	 * Manually specify the acceleration
 	 * @param acc
 	 */
-	public void controlVehicleAcc(double acc) {
-		this.accPlan_.push(acc);
-		this.accDecided_ = true;
+	public boolean controlVehicleAcc(double acc) {
+		if(!accDecided_) {
+			this.accPlan_.push(acc);
+			this.accDecided_ = true;
+			return true;
+		}
+		return false;
 	}
 	
 	public int getVehicleClass() {

@@ -1,6 +1,7 @@
 package mets_r.communication;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 
 import org.geotools.geometry.jts.JTS;
@@ -8,10 +9,16 @@ import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.opengis.referencing.operation.TransformException;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.MessageClass.VehIDVehType;
+import mets_r.communication.MessageClass.VehIDVehTypeAcc;
+import mets_r.communication.MessageClass.VehIDVehTypeOrigDest;
+import mets_r.communication.MessageClass.VehIDVehTypeTranRoadIDXYDist;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
@@ -74,157 +81,275 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	private boolean setCoSimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		// Get data
-		String roadID = jsonMsg.get("roadID").toString();
-		// Find road with the orig road ID
-		for(Road r: ContextCreator.getRoadContext().getAll()) {
-			if(r.getOrigID().equals(roadID)) {
-				r.setControlType(Road.CoSim);
-				// Add road to coSim HashMap in the road context
-				ContextCreator.coSimRoads.put(roadID, r);
-				return true;
-			}
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			return false;
 		}
-		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
-		return false;
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    
+		    for(String roadID: IDs) {
+		    	boolean flag = true;
+		    	for (Road r : ContextCreator.getRoadContext().getAll()) {
+					if (r.getOrigID().equals(roadID)) {
+						r.setControlType(Road.CoSim);
+						// Add road to coSim HashMap in the road context
+						ContextCreator.coSimRoads.put(roadID, r);
+						flag = false;
+						jsonData.add("OK");
+					}
+				}
+		    	if(flag) {
+		    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+					jsonData.add("KO");
+		    	}
+				
+		    }
+		    jsonAns.put("DATA", jsonData);
+			return true;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing control: " + e.toString());
+		    return false;
+		}
 	}
 	
 	private boolean releaseCosimRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		// Get data
-		String roadID = jsonMsg.get("roadID").toString();
-		// Find road with the orig road ID
-		for(Road r: ContextCreator.getRoadContext().getAll()) {
-			if(r.getOrigID().equals(roadID)) {
-				r.setControlType(Road.NONE_OF_THE_ABOVE);
-				// Add road to coSim HashMap in the road context
-				ContextCreator.coSimRoads.remove(roadID);
-				return true;
-			}
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			return false;
 		}
-		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
-		return false;
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    
+		    for(String roadID: IDs) {
+		    	boolean flag = true;
+		    	// Find road with the orig road ID
+				for(Road r: ContextCreator.getRoadContext().getAll()) {
+					if(r.getOrigID().equals(roadID)) {
+						r.setControlType(Road.NONE_OF_THE_ABOVE);
+						// Add road to coSim HashMap in the road context
+						ContextCreator.coSimRoads.remove(roadID);
+						flag = false;
+						jsonData.add("OK");
+					}
+				}
+				if(flag) {
+					ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+					jsonData.add("KO");
+				}
+		    }
+			jsonAns.put("DATA", jsonData);
+			return true;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing control: " + e.toString());
+		    return false;
+		}
 	}
 	
     private boolean generateTrip(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-    	// Get data
-    	int vehID = ((Long) jsonMsg.get("vehID")).intValue();
-    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
-    	if(v != null) {
-			if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
-    			ContextCreator.logger.warn("The private EV: " + vehID + " is currently on the road, maybe there are two trips for the same vehicle that are too close?");
-    			return false;
-			}
-    	}
-		else { // If vehicle does not exists, create vehicle
-			v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
-			ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
+    	if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			return false;
 		}
-		
-		// Find the origin and dest zones
-		int originID = ((Long) jsonMsg.get("origin")).intValue();
-		int destID = ((Long) jsonMsg.get("destination")).intValue();
-		Zone originZone = null;
-		Zone destZone = null;
-		
-		if(originID >= 0) {
-			originZone = ContextCreator.getZoneContext().get(originID);
-			if(originZone == null) {
-				ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
-				return false;
-			}
+    	try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeOrigDest>> collectionType = new TypeToken<Collection<VehIDVehTypeOrigDest>>() {};
+		    Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDests = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    for(VehIDVehTypeOrigDest vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
+		    	// Get data
+		    	int vehID = vehIDVehTypeOrigDest.vehID;
+		    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
+		    	if(v != null) {
+					if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
+		    			ContextCreator.logger.warn("The private EV: " + vehID + " is currently on the road, maybe there are two trips for the same vehicle that are too close?");
+		    			jsonData.add("KO");
+		    			continue;
+					}
+		    	}
+				else { // If vehicle does not exists, create vehicle
+					v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+					ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
+				}
+				
+				// Find the origin and dest zones
+				int originID = vehIDVehTypeOrigDest.orig;
+				int destID = vehIDVehTypeOrigDest.dest;
+				Zone originZone = null;
+				Zone destZone = null;
+				
+				if(originID >= 0) {
+					originZone = ContextCreator.getZoneContext().get(originID);
+					if(originZone == null) {
+						ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
+						jsonData.add("KO");
+		    			continue;
+					}
+				}
+				else {
+					// randomly select a zone as origin
+					originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
+					originZone = ContextCreator.getZoneContext().get(originID);
+				}
+				
+				if(destID >= 0) {
+					destZone = ContextCreator.getZoneContext().get(destID);
+					if(destZone == null) {
+						ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
+						jsonData.add("KO");
+		    			continue;
+					}
+				}
+				else {
+					// randomly select a zone as destination
+					destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
+					destZone = ContextCreator.getZoneContext().get(destID);
+				}
+		    			
+				// Assign trips
+				v.initializePlan(originID, originZone.getCoord(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(destID, destZone.getCoord(), (int) ContextCreator.getNextTick());
+				v.setNextPlan();
+				v.setState(Vehicle.PRIVATE_TRIP);
+				v.departure();
+				HashMap<String, Object> record2 = new HashMap<String, Object>();
+				record2.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
+				record2.put("origin", originID);
+				record2.put("destination",destID);
+				jsonData.add(record2);
+		    }
+		    jsonAns.put("DATA", jsonData);
+			return true;
 		}
-		else {
-			// randomly select a zone as origin
-			originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
-			originZone = ContextCreator.getZoneContext().get(originID);
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing control: " + e.toString());
+		    return false;
 		}
-		
-		if(destID >= 0) {
-			destZone = ContextCreator.getZoneContext().get(destID);
-			if(destZone == null) {
-				ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
-				return false;
-			}
-		}
-		else {
-			// randomly select a zone as destination
-			destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
-			destZone = ContextCreator.getZoneContext().get(destID);
-		}
-    			
-		// Assign trips
-		v.initializePlan(originID, originZone.getCoord(), (int) ContextCreator.getCurrentTick());
-		v.addPlan(destID, destZone.getCoord(), (int) ContextCreator.getNextTick());
-		v.setNextPlan();
-		v.setState(Vehicle.PRIVATE_TRIP);
-		v.departure();
-		jsonAns.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
-		jsonAns.put("origin", originID);
-		jsonAns.put("destination",destID);
-		return true;
+
     }
 	
 	// This can be done at t or t+1, directly change the road properties
 	// When perform at t+1 (wait == false), append takes effect immediately
 	private boolean teleportVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		// Get data
-		Vehicle veh = null;
-		if((Boolean) jsonMsg.get("prv")) {
-			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			return false;
 		}
-		else {
-			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
-		}
-		
-		if(veh != null) {
-			Road road = ContextCreator.getRoadContext().get(((Long) jsonMsg.get("roadID")).intValue());
-			Lane lane = ContextCreator.getLaneContext().get(((Long) jsonMsg.get("laneID")).intValue());
-			double dist = (Double) jsonMsg.get("dist");
-			double x = (Double) jsonMsg.get("x");
-			double y = (Double) jsonMsg.get("y");
-			if(road != null && veh != null && lane != null) {
-				// Integrity check
-				if (lane.getRoad() != road.getID()) return false;
-				
-				// Transform coordinates if needed 
-				if(jsonMsg.containsKey("TRAN") && (Boolean) jsonMsg.get("TRAN")) {
-					Coordinate coord = new Coordinate();
-					coord.x = x;
-					coord.y = y;
-					coord.z = 0;
-					try {
-						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-						x = coord.x;
-						y = coord.y;
-					} catch (TransformException e) {
-						ContextCreator.logger.error("Coordinates transformation failed, input x: " + x + " y:" + y);
-						e.printStackTrace();
-					}
+    	try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>> collectionType = new TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>>() {};
+		    Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTranRoadIDXYDists = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    
+		    for(VehIDVehTypeTranRoadIDXYDist vehIDVehTypeTranRoadIDXYDist: vehIDVehTypeTranRoadIDXYDists) {
+		    	// Get data
+				Vehicle veh = null;
+				if(vehIDVehTypeTranRoadIDXYDist.vehType) {
+					veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
+				}
+				else {
+					veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
 				}
 				
-				// Update its location in the target link and target lane
-				return road.insertVehicle(veh, lane, dist, x, y);
-			}
+				if(veh != null) {
+					Road road = ContextCreator.getRoadContext().get(vehIDVehTypeTranRoadIDXYDist.roadID);
+					Lane lane = ContextCreator.getLaneContext().get(vehIDVehTypeTranRoadIDXYDist.laneID);
+					double dist = vehIDVehTypeTranRoadIDXYDist.dist;
+					double x = vehIDVehTypeTranRoadIDXYDist.x;
+					double y = vehIDVehTypeTranRoadIDXYDist.y;
+					if(road != null && veh != null && lane != null) {
+						// Integrity check
+						if (lane.getRoad() == road.getID()) {
+							// Transform coordinates if needed 
+							if(vehIDVehTypeTranRoadIDXYDist.transformCoord) {
+								Coordinate coord = new Coordinate();
+								coord.x = x;
+								coord.y = y;
+								coord.z = 0;
+								try {
+									JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+									x = coord.x;
+									y = coord.y;
+								} catch (TransformException e) {
+									ContextCreator.logger.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+									e.printStackTrace();
+								}
+							}
+						
+						
+						// Update its location in the target link and target lane
+							if(road.insertVehicle(veh, lane, dist, x, y)) jsonData.add("OK");
+							else jsonData.add("KO");
+						}
+						else jsonData.add("KO");
+					}
+					else {
+						jsonData.add("KO");
+					}
+				}
+				else {
+					jsonData.add("KO");
+				}
+		    }
+			jsonAns.put("DATA", jsonData);
+			return true;
 		}
-		// Send back the fail feedback message
-		return false;
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing control: " + e.toString());
+		    return false;
+		}
 	}
 	
 	// This need to be made at t, and takes effect during t to t+1
 	// This essentially alternate the acceleration decisions
 	private boolean controlVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		// Get vehicle
-		Vehicle veh = null;
-		if((Boolean) jsonMsg.get("prv")) {
-			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			return false;
 		}
-		else {
-			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
+    	try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeAcc>> collectionType = new TypeToken<Collection<VehIDVehTypeAcc>>() {};
+		    Collection<VehIDVehTypeAcc> vehIDVehTypeAccs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    
+		    for (VehIDVehTypeAcc vehIDVehTypeAcc: vehIDVehTypeAccs) {
+		    	// Get vehicle
+				Vehicle veh = null;
+				if(vehIDVehTypeAcc.vehType) {
+					veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeAcc.vehID);
+				}
+				else {
+					veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeAcc.vehID);
+				}
+				double acc = vehIDVehTypeAcc.acc;
+				// Register its acceleration
+				if(veh.controlVehicleAcc(acc)) {
+					jsonData.add("OK");
+				}
+				else jsonData.add("KO");
+				return true;
+		    }
+		    jsonAns.put("DATA", jsonData);
+			return true;
 		}
-		double acc = (Double) jsonMsg.get("acc");
-		// Register its acceleration
-		veh.controlVehicleAcc(acc);
-		return true;
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing control: " + e.toString());
+		    return false;
+		}
 	}
 
 	private boolean routingTaxi(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
@@ -308,18 +433,43 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	private boolean enterNextRoad(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		Vehicle veh = null;
-		if((Boolean) jsonMsg.get("prv")) {
-			veh = ContextCreator.getVehicleContext().getPrivateVehicle(((Long) jsonMsg.get("vehID")).intValue());
-		}
-		else {
-			veh = ContextCreator.getVehicleContext().getPublicVehicle(((Long) jsonMsg.get("vehID")).intValue());
-		}
-		if(veh != null) {
-			return veh.changeRoad();
-		}
-		else {
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
 			return false;
+		}
+    	try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehType>> collectionType = new TypeToken<Collection<VehIDVehType>>() {};
+		    Collection<VehIDVehType> vehIDVehTypes = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    
+		    for(VehIDVehType vehIDVehType: vehIDVehTypes) {
+		    	Vehicle veh = null;
+				if(vehIDVehType.vehType) {
+					veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehType.vehID);
+				}
+				else {
+					veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehType.vehID);
+				}
+				if(veh != null) {
+					if(veh.changeRoad()) {
+						jsonData.add("OK");
+					}
+					else {
+						jsonData.add("KO");
+					}
+				}
+				else {
+					jsonData.add("KO");
+				}
+		    }
+			jsonAns.put("DATA", jsonData);
+			return true;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return false;
 		}
 	}
 	

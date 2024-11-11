@@ -36,5 +36,6 @@
 	<classpathentry exported="true" kind="con" path="GROOVY_DSL_SUPPORT"/>
 	<classpathentry exported="true" kind="lib" path="lib/kafka-clients-3.7.0.jar"/>
 	<classpathentry exported="true" kind="lib" path="lib/slf4j-api-2.0.12.jar"/>
+	<classpathentry kind="lib" path="lib/gson-2.11.0.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

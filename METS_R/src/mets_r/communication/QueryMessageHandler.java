@@ -1,11 +1,14 @@
 package mets_r.communication;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 
 import org.json.simple.JSONObject;
 
+import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
@@ -18,6 +21,7 @@ import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
+import mets_r.communication.MessageClass.*;
 
 public class QueryMessageHandler extends MessageHandler {
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -53,62 +57,75 @@ public class QueryMessageHandler extends MessageHandler {
 	public String getVehicle(JSONObject jsonMsg) {
 		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_vehicle");
 			jsonObj.put("public_vids", ContextCreator.getVehicleContext().getPublicVehicleIDList());
 			jsonObj.put("private_vids", ContextCreator.getVehicleContext().getPrivateVehicleIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-			
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		if(jsonMsg.containsKey("PRV")) {
-			Vehicle vehicle;
-			if((Boolean) jsonMsg.get("PRV")) {
-				vehicle = ContextCreator.getVehicleContext().getPrivateVehicle(id);
-			}
-			else {
-				vehicle = ContextCreator.getVehicleContext().getPublicVehicle(id);
-			}
-			if(vehicle != null) {
-				Coordinate coord;
-				if(jsonMsg.containsKey("TRAN") && (Boolean) jsonMsg.get("TRAN")) {
-					coord= vehicle.getCurrentCoord(SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+		
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeTran>> collectionType = new TypeToken<Collection<VehIDVehTypeTran>>() {};
+			Collection<VehIDVehTypeTran> vehIDVehTypeTrans = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			jsonObj.put("TYPE", "ANS_vehicle");
+			// Process the query one by one
+			for(VehIDVehTypeTran record: vehIDVehTypeTrans) {
+				int id = record.vehID;
+				Vehicle vehicle;
+				if(record.vehType) {
+					vehicle = ContextCreator.getVehicleContext().getPrivateVehicle(id);
 				}
 				else {
-					coord= vehicle.getCurrentCoord();
+					vehicle = ContextCreator.getVehicleContext().getPublicVehicle(id);
 				}
-				// Display coordMap
-//				ContextCreator.logger.info("VID: " + vehicle.getID() + " coord: " + vehicle.getCurrentCoord() + " coord2: " + coord);
-//				vehicle.printCoordMap();
-//				ContextCreator.logger.info("Lane ID:" + vehicle.getLane().getID() + " " + vehicle.getLane().getCoords());
-				jsonObj.put("TYPE", "ANS_vehicle");
-				jsonObj.put("ID", vehicle.getID());
-				jsonObj.put("v_type", vehicle.getVehicleClass());
-				jsonObj.put("state", vehicle.getState());
-				jsonObj.put("x", coord.x);
-				jsonObj.put("y", coord.y);
-				jsonObj.put("bearing", vehicle.getBearing());
-				jsonObj.put("acc", vehicle.currentAcc());
-				jsonObj.put("speed", vehicle.currentSpeed());
-				jsonObj.put("origin", vehicle.getOriginID());
-				jsonObj.put("dest", vehicle.getDestID());
-				jsonObj.put("on_road", vehicle.isOnRoad());
-				jsonObj.put("on_lane", vehicle.isOnLane());
-				// if vehicle is on road
-				if(vehicle.isOnLane()) {
-//					jsonObj.put("current_route", vehicle.getRoute());
-					jsonObj.put("road", vehicle.getRoad().getID());
-					jsonObj.put("lane", vehicle.getLane().getID());
-					jsonObj.put("speed_limit", vehicle.getRoad().getSpeedLimit());
-					jsonObj.put("dist", vehicle.getDistance());
+				if(vehicle != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					Coordinate coord;
+					if(record.transformCoord) {
+						coord= vehicle.getCurrentCoord(SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					}
+					else {
+						coord= vehicle.getCurrentCoord();
+					}			
+					record2.put("ID", vehicle.getID());
+					record2.put("v_type", vehicle.getVehicleClass());
+					record2.put("state", vehicle.getState());
+					record2.put("x", coord.x);
+					record2.put("y", coord.y);
+					record2.put("bearing", vehicle.getBearing());
+					record2.put("acc", vehicle.currentAcc());
+					record2.put("speed", vehicle.currentSpeed());
+					record2.put("origin", vehicle.getOriginID());
+					record2.put("dest", vehicle.getDestID());
+					record2.put("on_road", vehicle.isOnRoad());
+					record2.put("on_lane", vehicle.isOnLane());
+					// if vehicle is on road
+					if(vehicle.isOnLane()) {
+						record2.put("current_route", vehicle.getRoute());
+						record2.put("road", vehicle.getRoad().getID());
+						record2.put("lane", vehicle.getLane().getID());
+						record2.put("speed_limit", vehicle.getRoad().getSpeedLimit());
+						record2.put("dist", vehicle.getDistance());
+					}
+					jsonData.add(record2);
 				}
-				
-				String answer = JSONObject.toJSONString(jsonObj);
-				return answer;
+				else {
+					jsonData.add("KO");
+				}
 			}
+			jsonObj.put("DATA", jsonData);
+			String answer = JSONObject.toJSONString(jsonObj);
+			return answer;
 		}
-	    return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query" + e.toString());
+		    return "KO";
+		}
+	    
 	}
 	
 	// 0. Mapping CARLA ROAD to METS-R Road (coSimRoads, id: CARLA/SUMO road ID, value: METS-R road)
@@ -144,177 +161,245 @@ public class QueryMessageHandler extends MessageHandler {
 		return answer;
 	}
 	
-	public String getPrivateVehicle(JSONObject jsonMsg) {
-		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
-		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
-			jsonObj.put("TYPE", "ANS_privateVehicle");
-			jsonObj.put("id_list", ContextCreator.getVehicleContext().getPrivateVehicleIDList());
-			String answer = JSONObject.toJSONString(jsonObj);
-			return answer;
-		}
-			
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		Vehicle vehicle = ContextCreator.getVehicleContext().getPrivateVehicle(id);
-
-		if(vehicle != null) {
-			jsonObj.put("TYPE", "ANS_privateVehicle");
-			jsonObj.put("ID", id); // Note here the id should not be vehicle.getID()
-			jsonObj.put("v_type", vehicle.getVehicleClass());
-			jsonObj.put("state", vehicle.getState());
-			jsonObj.put("x", vehicle.getCurrentCoord().x);
-			jsonObj.put("y", vehicle.getCurrentCoord().y);
-			jsonObj.put("bearing", vehicle.getBearing());
-			jsonObj.put("acc", vehicle.currentAcc());
-			jsonObj.put("speed", vehicle.currentSpeed());
-			jsonObj.put("origin", vehicle.getOriginID());
-			jsonObj.put("dest", vehicle.getDestID());
-			jsonObj.put("on_road", vehicle.isOnRoad());
-			String answer = JSONObject.toJSONString(jsonObj);
-			return answer;
-		}
-		else return "KO";
-	}
-	
 	public String getBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_bus");
 			jsonObj.put("id_list", ContextCreator.getVehicleContext().getBusIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		ElectricBus bus = ContextCreator.getVehicleContext().getBus(id);
-		if(bus != null) {
-			jsonObj.put("TYPE", "ANS_bus");
-			jsonObj.put("ID", bus.getID());
-			jsonObj.put("route", bus.getRouteID());
-			jsonObj.put("current_stop",bus.getCurrentStop());
-			jsonObj.put("pass_num", bus.getPassNum());
-			jsonObj.put("battery_state", bus.getBatteryLevel());	
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_bus");
+		    
+		    for(int id: IDs) {
+		    	ElectricBus bus = ContextCreator.getVehicleContext().getBus(id);
+				if(bus != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", bus.getID());
+					record2.put("route", bus.getRouteID());
+					record2.put("current_stop",bus.getCurrentStop());
+					record2.put("pass_num", bus.getPassNum());
+					record2.put("battery_state", bus.getBatteryLevel());	
+					jsonData.add(record2);
+				}
+				else {
+					jsonData.add("KO");
+				}
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}		
 	}
 	
 	public String getTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_taxi");
 			jsonObj.put("id_list", ContextCreator.getVehicleContext().getTaxiIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		ElectricTaxi taxi = ContextCreator.getVehicleContext().getTaxi(id);
-		if (taxi != null) {
-			jsonObj.put("TYPE", "ANS_taxi");
-			jsonObj.put("ID", taxi.getID());
-			jsonObj.put("state", taxi.getState());
-			jsonObj.put("x", taxi.getCurrentCoord().x);
-			jsonObj.put("y", taxi.getCurrentCoord().y);
-			jsonObj.put("origin", taxi.getOriginID());
-			jsonObj.put("dest", taxi.getDestID());
-			jsonObj.put("pass_num", taxi.getNumPeople());
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_taxi");
+		    
+		    for(int id: IDs) {
+		    	ElectricTaxi taxi = ContextCreator.getVehicleContext().getTaxi(id);
+				if (taxi != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", taxi.getID());
+					record2.put("state", taxi.getState());
+					record2.put("x", taxi.getCurrentCoord().x);
+					record2.put("y", taxi.getCurrentCoord().y);
+					record2.put("origin", taxi.getOriginID());
+					record2.put("dest", taxi.getDestID());
+					record2.put("pass_num", taxi.getNumPeople());
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}
 	}
 	
 	public String getRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_road");
 			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		Road road = ContextCreator.getRoadContext().get(id);
-		if (road != null) {
-			jsonObj.put("TYPE", "ANS_road");
-			jsonObj.put("ID", road.getID());
-			jsonObj.put("r_type", road.getRoadType());
-			jsonObj.put("num_veh", road.getVehicleNum());
-			jsonObj.put("speed_limit", road.getSpeedLimit());
-			jsonObj.put("avg_travel_time", road.getTravelTime());
-			jsonObj.put("length", road.getLength());
-			jsonObj.put("energy_consumed", road.getTotalEnergy());
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_road");
+		    
+		    
+		    for(int id: IDs) {
+		    	Road road = ContextCreator.getRoadContext().get(id);
+				if (road != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("TYPE", "ANS_road");
+					record2.put("ID", road.getID());
+					record2.put("r_type", road.getRoadType());
+					record2.put("num_veh", road.getVehicleNum());
+					record2.put("speed_limit", road.getSpeedLimit());
+					record2.put("avg_travel_time", road.getTravelTime());
+					record2.put("length", road.getLength());
+					record2.put("energy_consumed", road.getTotalEnergy());
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}
 	}
 	
 	public String getZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_zone");
 			jsonObj.put("id_list", ContextCreator.getZoneContext().getIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		Zone zone = ContextCreator.getZoneContext().get(id);
-		if (zone != null) {
-			jsonObj.put("TYPE", "ANS_zone");
-			jsonObj.put("ID", zone.getID());
-			jsonObj.put("z_type", zone.getZoneType());
-			jsonObj.put("taxi_demand", zone.getTaxiPassengerNum());
-			jsonObj.put("bus_demand", zone.getBusPassengerNum());
-			jsonObj.put("veh_stock", zone.getVehicleStock());
-			jsonObj.put("x", zone.getCoord().x);
-			jsonObj.put("y", zone.getCoord().y);
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_zone");
+		    
+		    for(int id: IDs) {
+		    	Zone zone = ContextCreator.getZoneContext().get(id);
+				if (zone != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", zone.getID());
+					record2.put("z_type", zone.getZoneType());
+					record2.put("taxi_demand", zone.getTaxiPassengerNum());
+					record2.put("bus_demand", zone.getBusPassengerNum());
+					record2.put("veh_stock", zone.getVehicleStock());
+					record2.put("x", zone.getCoord().x);
+					record2.put("y", zone.getCoord().y);
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}
 	}
 	
 	public String getSignal(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_signal");
 			jsonObj.put("id_list", ContextCreator.getSignalContext().getIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		Signal signal = ContextCreator.getSignalContext().get(id);
-		if (signal != null) {
-			jsonObj.put("TYPE", "ANS_signal");
-			jsonObj.put("ID", signal.getID());
-			jsonObj.put("state", signal.getState());
-			jsonObj.put("nex_state", signal.getNextState());
-			jsonObj.put("next_update_time", signal.getNextUpdateTick());
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_signal");
+		    
+		    for(int id: IDs) {
+		    	Signal signal = ContextCreator.getSignalContext().get(id);
+				if (signal != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", signal.getID());
+					record2.put("state", signal.getState());
+					record2.put("nex_state", signal.getNextState());
+					record2.put("next_update_time", signal.getNextUpdateTick());
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}
 	}
 	
 	public String getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("ID")) {
+		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_chargingStation");
 			jsonObj.put("id_list", ContextCreator.getChargingStationContext().getIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		int id = ((Long) jsonMsg.get("ID")).intValue();
-		ChargingStation cs = ContextCreator.getChargingStationContext().get(id);
-		if (cs != null) {
-			jsonObj.put("TYPE", "ANS_chargingStation");	
-			jsonObj.put("ID", cs.getID());
-			jsonObj.put("num_available_charger", cs.capacity());	
-			jsonObj.put("x", cs.getCoord().x);
-			jsonObj.put("y", cs.getCoord().y);
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    jsonObj.put("TYPE", "ANS_chargingStation");
+		    
+		    for(int id: IDs) {
+		    	ChargingStation cs = ContextCreator.getChargingStationContext().get(id);
+				if (cs != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", cs.getID());
+					record2.put("num_available_charger", cs.capacity());	
+					record2.put("x", cs.getCoord().x);
+					record2.put("y", cs.getCoord().y);
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}
-		else return "KO";
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    return "KO";
+		}
 	}
 }
