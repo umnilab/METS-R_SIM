@@ -81,7 +81,7 @@ public class Road {
 	// Road constructor
 	public Road(int id) {
 		this.ID = id;
-		this.origID = "";
+		this.origID = Integer.toString(id);
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = new AtomicInteger(0);
 		this.speedLimit_ = 31.2928; // m/s, 70 mph

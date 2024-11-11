@@ -88,21 +88,18 @@ public class ControlMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
-		    Collection<String> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
 		    for(String roadID: IDs) {
-		    	boolean flag = true;
-		    	for (Road r : ContextCreator.getRoadContext().getAll()) {
-					if (r.getOrigID().equals(roadID)) {
-						r.setControlType(Road.CoSim);
-						// Add road to coSim HashMap in the road context
-						ContextCreator.coSimRoads.put(roadID, r);
-						flag = false;
-						jsonData.add("OK");
-					}
-				}
-		    	if(flag) {
+		    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+		    	if(r != null) {
+		    		r.setControlType(Road.CoSim);
+					// Add road to coSim HashMap in the road context
+					ContextCreator.coSimRoads.put(roadID, r);
+					jsonData.add("OK");
+		    	}
+		    	else {
 		    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
 					jsonData.add("KO");
 		    	}
@@ -126,25 +123,21 @@ public class ControlMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
-		    Collection<String> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
 		    for(String roadID: IDs) {
-		    	boolean flag = true;
-		    	// Find road with the orig road ID
-				for(Road r: ContextCreator.getRoadContext().getAll()) {
-					if(r.getOrigID().equals(roadID)) {
-						r.setControlType(Road.NONE_OF_THE_ABOVE);
-						// Add road to coSim HashMap in the road context
-						ContextCreator.coSimRoads.remove(roadID);
-						flag = false;
-						jsonData.add("OK");
-					}
-				}
-				if(flag) {
-					ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+		    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+		    	if(r != null) {
+		    		r.setControlType(Road.NONE_OF_THE_ABOVE);
+					// Remove road from coSim HashMap in the ContextCreator
+					ContextCreator.coSimRoads.remove(roadID);
+					jsonData.add("OK");
+		    	}
+		    	else {
+		    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
 					jsonData.add("KO");
-				}
+		    	}
 		    }
 			jsonAns.put("DATA", jsonData);
 			return true;
@@ -164,7 +157,7 @@ public class ControlMessageHandler extends MessageHandler {
     	try {
 			Gson gson = new Gson();
 			TypeToken<Collection<VehIDVehTypeOrigDest>> collectionType = new TypeToken<Collection<VehIDVehTypeOrigDest>>() {};
-		    Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDests = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    for(VehIDVehTypeOrigDest vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
 		    	// Get data
@@ -249,7 +242,7 @@ public class ControlMessageHandler extends MessageHandler {
     	try {
 			Gson gson = new Gson();
 			TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>> collectionType = new TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>>() {};
-		    Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTranRoadIDXYDists = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTranRoadIDXYDists = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
 		    for(VehIDVehTypeTranRoadIDXYDist vehIDVehTypeTranRoadIDXYDist: vehIDVehTypeTranRoadIDXYDists) {
@@ -322,7 +315,7 @@ public class ControlMessageHandler extends MessageHandler {
     	try {
 			Gson gson = new Gson();
 			TypeToken<Collection<VehIDVehTypeAcc>> collectionType = new TypeToken<Collection<VehIDVehTypeAcc>>() {};
-		    Collection<VehIDVehTypeAcc> vehIDVehTypeAccs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<VehIDVehTypeAcc> vehIDVehTypeAccs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
 		    for (VehIDVehTypeAcc vehIDVehTypeAcc: vehIDVehTypeAccs) {
@@ -440,7 +433,7 @@ public class ControlMessageHandler extends MessageHandler {
     	try {
 			Gson gson = new Gson();
 			TypeToken<Collection<VehIDVehType>> collectionType = new TypeToken<Collection<VehIDVehType>>() {};
-		    Collection<VehIDVehType> vehIDVehTypes = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<VehIDVehType> vehIDVehTypes = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
 		    for(VehIDVehType vehIDVehType: vehIDVehTypes) {

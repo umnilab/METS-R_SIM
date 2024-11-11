@@ -68,7 +68,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<VehIDVehTypeTran>> collectionType = new TypeToken<Collection<VehIDVehTypeTran>>() {};
-			Collection<VehIDVehTypeTran> vehIDVehTypeTrans = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+			Collection<VehIDVehTypeTran> vehIDVehTypeTrans = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 			jsonObj.put("TYPE", "ANS_vehicle");
 			// Process the query one by one
@@ -172,7 +172,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_bus");
 		    
@@ -213,7 +213,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_taxi");
 		    
@@ -254,7 +254,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_road");
 		    
@@ -297,7 +297,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_zone");
 		    
@@ -338,7 +338,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_signal");
 		    
@@ -376,7 +376,7 @@ public class QueryMessageHandler extends MessageHandler {
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson((String) jsonMsg.get("DATA"), collectionType.getType());
+		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    jsonObj.put("TYPE", "ANS_chargingStation");
 		    

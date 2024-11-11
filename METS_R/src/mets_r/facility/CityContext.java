@@ -41,6 +41,7 @@ public class CityContext extends DefaultContext<Object> {
 	private HashMap<Coordinate, Road> coordOrigRoad_KeyCoord; // Cache the closest road
 	private HashMap<Coordinate, Road> coordDestRoad_KeyCoord; // Cache the closest road
 	private HashMap<Integer, HashMap<Integer, Road>> nodeIDRoad_KeyNodeID;
+	private HashMap<String, Integer> origRoadID_RoadID;
 	
 	private Boolean networkInitialized = false;
           
@@ -51,6 +52,7 @@ public class CityContext extends DefaultContext<Object> {
 		this.coordOrigRoad_KeyCoord = new HashMap<Coordinate, Road>();
 		this.coordDestRoad_KeyCoord = new HashMap<Coordinate, Road>();
 		this.nodeIDRoad_KeyNodeID = new HashMap<Integer, HashMap<Integer, Road>>();
+		this.origRoadID_RoadID = new HashMap<String, Integer>();
 		
 		/* Create a Network projection for the road network--->Network Projection */
 		NetworkFactory netFac = NetworkFactoryFinder.createNetworkFactory(new HashMap<String, Object>());
@@ -346,6 +348,7 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
 			r.sortLanes();
+			origRoadID_RoadID.put(r.getOrigID(), r.getID());
 		}
 		// Complete the lane connection
 		// 1. handle the case when road is connected but there is no lane connection (U turn)
@@ -717,6 +720,13 @@ public class CityContext extends DefaultContext<Object> {
 			if(this.nodeIDRoad_KeyNodeID.get(node1).containsKey(node2)) {
 				return this.nodeIDRoad_KeyNodeID.get(node1).get(node2);
 			}
+		}
+		return null;
+	}
+	
+	public Road findRoadWithOrigID(String origID) {
+		if(this.origRoadID_RoadID.containsKey(origID)) {
+			return ContextCreator.getRoadContext().get(this.origRoadID_RoadID.get(origID));
 		}
 		return null;
 	}
