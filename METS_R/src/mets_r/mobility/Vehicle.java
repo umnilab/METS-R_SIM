@@ -1439,7 +1439,6 @@ public class Vehicle {
 		    if(this.vehicleClass == Vehicle.GV)
 		    	ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
 			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
-			
 		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
@@ -1452,6 +1451,13 @@ public class Vehicle {
 	 *  Call when arriving the destination but not leave the network
 	 */
 	public void reachDestButNotLeave() {
+		if(this.getState() == Vehicle.PRIVATE_TRIP) {
+			if(this.vehicleClass == Vehicle.EV)
+				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
+		    if(this.vehicleClass == Vehicle.GV)
+		    	ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
+			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive
