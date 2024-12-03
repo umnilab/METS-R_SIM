@@ -515,18 +515,23 @@ public class Vehicle {
 	 */
 	public void insertToLane(Lane plane, Vehicle leadVehicle, Vehicle lagVehicle) {
 		if (leadVehicle != null) {
-			this.leading_ = leadVehicle;
-			this.leading_.trailing(this);
+			this.leading(leadVehicle);
+			if(this.leading_!=null) this.leading_.trailing(this);
+			else plane.firstVehicle(this);
 			if (lagVehicle != null) {
-				this.trailing_ = lagVehicle;
-				this.trailing_.leading(this);
+				this.trailing(lagVehicle);
+				if(this.trailing_!=null) this.trailing_.leading(this);
+				else plane.lastVehicle(this);
 			} else {
 				plane.lastVehicle(this);
 			}
 		} else if (lagVehicle != null) {
 			plane.firstVehicle(this);
-			this.trailing_ = lagVehicle;
-			this.trailing_.leading(this);
+			this.trailing(lagVehicle);
+			if(this.trailing_!=null) this.trailing_.leading(this);
+			else {
+				plane.lastVehicle(this);
+			}
 		} else {
 			plane.firstVehicle(this);
 			plane.lastVehicle(this);
@@ -1197,10 +1202,8 @@ public class Vehicle {
 	 * @param v New front vehicle
 	 */
 	public void leading(Vehicle v) {
-		if (v != null)
-			this.leading_ = v;
-		else
-			this.leading_ = null;
+		if(v == this) this.leading_ = null;
+		else this.leading_ = v;
 	}
 	
 	/**
@@ -1215,10 +1218,8 @@ public class Vehicle {
 	 * @param v New behind vehicle
 	 */
 	public void trailing(Vehicle v) {
-		if (v != null)
-			this.trailing_ = v;
-		else
-			this.trailing_ = null;
+		if(v == this) this.trailing_ = null;
+		else this.trailing_ = v;
 	}
 	
 	/**
