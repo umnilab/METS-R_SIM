@@ -235,7 +235,6 @@ public class Road {
 		else {
 			veh.removeFromLane();
 			veh.removeFromMacroList();
-			veh.appendToLane(lane);
 			veh.appendToRoad(this);
 			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
 			{
