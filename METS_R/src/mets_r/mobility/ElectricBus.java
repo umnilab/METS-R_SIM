@@ -130,6 +130,7 @@ public class ElectricBus extends ElectricVehicle {
 			super.setNextRoad();
 		}
 		else {
+			this.atOrigin = false;
 			// Clear legacy impact
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
@@ -146,14 +147,11 @@ public class ElectricBus extends ElectricVehicle {
 			if (this.roadPath == null) {
 				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
 						", destination road " + this.getDestRoadID()+ ", downstream roads: " + this.getRoad().getDownStreamRoads());
-				this.atOrigin = false;
 				this.nextRoad_ = null;
 			}
 			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
-				this.atOrigin = false;
 				this.nextRoad_ = null;
 			} else {
-				this.atOrigin = false;
 				this.nextRoad_ = roadPath.get(1);
 				this.assignNextLane();
 			}

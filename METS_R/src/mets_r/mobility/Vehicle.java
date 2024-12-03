@@ -249,12 +249,7 @@ public class Vehicle {
 			this.destinationID = dest_id;
 			this.destCoord = location;
 			// Reroute it
-			List<Road> tempPath = RouteContext.shortestPathRoute(this.getRoad(),location,this.rand_route_only); // Recalculate the route
-			this.clearShadowImpact();
-			// Set new route
-			this.roadPath = tempPath;
-			this.setShadowImpact();
-			this.setNextRoad();
+			this.rerouteAndSetNextRoad();
 			return true;
 		}
 		else {
@@ -321,7 +316,7 @@ public class Vehicle {
 			road.addVehicleToPendingQueue(this);
 		}
 		else { // The vehicle is on road, we just need to reroute it
-			this.setNextRoad(); // refresh the CoordMap
+			this.rerouteAndSetNextRoad(); // refresh the CoordMap
 		}
 	}
 
@@ -457,25 +452,32 @@ public class Vehicle {
 				this.assignNextLane();
 			}
 		} else {
-			// Clear legacy impact
-			this.clearShadowImpact();
-			this.roadPath = new ArrayList<Road>();
-			this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destCoord, this.rand_route_only); // K-shortest path or shortest path
-			this.setShadowImpact();
-			if (this.roadPath == null) {
-				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
-						", destination road " + this.getDestRoadID() + ", downstream roads: " + this.getRoad().getDownStreamRoads());
-				this.atOrigin = false;
-				this.nextRoad_ = null;
-			}
-			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
-				this.atOrigin = false;
-				this.nextRoad_ = null;
-			} else {
-				this.atOrigin = false;
-				this.nextRoad_ = roadPath.get(1);
-				this.assignNextLane();
-			}
+			this.rerouteAndSetNextRoad();
+		}
+	}
+	
+	/**
+	 * Reroute the vehicle in the middle of the road
+	 */
+	public void rerouteAndSetNextRoad() {
+		// Vehicle departured
+		this.atOrigin = false;
+		// Clear legacy impact
+		this.clearShadowImpact();
+		this.roadPath = new ArrayList<Road>();
+		this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destCoord, this.rand_route_only); // K-shortest path or shortest path
+		this.setShadowImpact();
+		if (this.roadPath == null) {
+			ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
+					", destination road " + this.getDestRoadID() + ", downstream roads: " + this.getRoad().getDownStreamRoads());
+			this.nextRoad_ = null;
+		}
+		else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
+			this.nextRoad_ = null;
+		} else {
+			
+			this.nextRoad_ = roadPath.get(1);
+			this.assignNextLane();
 		}
 	}
 	
@@ -1074,12 +1076,7 @@ public class Vehicle {
 							this.removeFromMacroList();
 							this.appendToLane(dnlane);
 							this.appendToRoad(ContextCreator.getRoadContext().get(dnlane.getRoad()));
-							this.clearShadowImpact();
-							// Set new route
-							this.roadPath = tempPath;
-							this.setShadowImpact();
-							this.nextRoad_ = this.roadPath.get(1);
-							this.assignNextLane();
+							this.rerouteAndSetNextRoad();
 							return true;
 						}
 					}

@@ -60,6 +60,21 @@ public class MessageClass{
 	    }
 	}
 	
+	class VehIDVehTypeOrigRoadDestRoad {
+	    int vehID;
+	    boolean vehType;
+	    String origRoad;
+	    String destRoad;
+	
+	    // Constructor
+	    public VehIDVehTypeOrigRoadDestRoad(int vehID, boolean vehType, String orig, String dest) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.origRoad = orig;
+	        this.destRoad = dest;
+	    }
+	}
+	
 	class VehIDVehTypeTranRoadIDXYDist {
 	    int vehID;
 	    boolean vehType;

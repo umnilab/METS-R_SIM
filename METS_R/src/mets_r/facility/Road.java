@@ -228,76 +228,47 @@ public class Road {
 	 */
 	public boolean insertVehicle(Vehicle veh, Lane lane, double dist, double x, double y) {
 		if (veh.getRoad() == this) {
-			if (veh.getLane() == lane) // Case 1, veh's road is this road and this lane, check overtake issue, change its dist
-			{
-//				if(veh.leading() != null) {
-//					if(veh.leading().getDistance() + veh.leading().length() >= dist) {
-//						// Overtaking in the same lane
-//						ContextCreator.logger.error("Overtaking " +veh.leading().getID() + " in the same lane, this veh: " + veh.getID() + ", front veh dist: " + veh.leading().getDistance() + ", this veh dist: " + dist);
-//						return false;
-//					}
-//				}
-//				if(veh.trailing() != null) {
-//					if(veh.trailing().getDistance() <= dist + veh.length()) {
-//						// Overtaking in the same lane
-//						ContextCreator.logger.error("Overpassing " +veh.trailing().getID() + " in the same lane, this veh: " + veh.getID() + ", behind veh dist: " + veh.trailing().getDistance() + ", this veh dist: " + dist);
-//						return false;
-//					}
-//				}
-				veh.setDistance(dist);
-				// Move veh to the x and y location
-				veh.setCurrentCoord(new Coordinate(x, y));
-				// Advance vehicle in the lane
-				veh.advanceInMacroList();
+			if (veh.getLane() == lane) { // Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
+				veh.removeFromLane(); // Remove the vehicle from the current lane
 			}
-			else { // Case 2, veh's road is this road but not the same lane, find the leading and trailing veh
-				Vehicle leadVehicle = null;
-				Vehicle lagVehicle = null;
-				
-				Vehicle toCheckVeh = lane.firstVehicle();
-				while (toCheckVeh != null) { // find where to insert the veh
-					ContextCreator.logger.info("HERE4");
-					 if(toCheckVeh.getDistance()<=dist) {
-//						 if(toCheckVeh.getDistance() + toCheckVeh.length() > dist) {
-//							 ContextCreator.logger.error("Front collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", front veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
-//							 return false;
-//						 }
-						 leadVehicle = toCheckVeh;
-						 toCheckVeh = toCheckVeh.trailing();
-					 }
-					 else {
-//						 if(toCheckVeh.getDistance() < dist + veh.length()) {
-//							 ContextCreator.logger.error("Behind collision during lane changing between " + toCheckVeh.getID() + " and " + veh.getID() + ", behind veh dist: " + toCheckVeh.getDistance() + ", this veh dist: " + dist);
-//							 return false;
-//						 }
-						 lagVehicle = toCheckVeh;
-						 break;
-					 }
-				}
-				veh.removeFromLane();
-				veh.setDistance(dist);
-				// Move veh to the x and y location
-				veh.setCurrentCoord(new Coordinate(x, y));
-				veh.insertToLane(lane, leadVehicle, lagVehicle);
-					
-				// Insert the veh to the prop macroList loc, find the macroleading and trailing veh
-				veh.advanceInMacroList();
-			}
-			
-//			if(dist<=1e-8) { // change road
-//				veh.changeRoad();
-//			}
 		}
 		else {
-			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) {
-				veh.changeRoad();
+			veh.removeFromLane();
+			veh.removeFromMacroList();
+			veh.appendToLane(lane);
+			veh.appendToRoad(this);
+			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
+			{
+				veh.setNextRoad();
 			}
-			else {
-				ContextCreator.logger.error("Veh " + veh.getID() + "is on road " + veh.getRoad().getID() + " is not " + this.getID());
-				return false;
+			else { // Case 3: veh enter the road not in its planned route
+				veh.rerouteAndSetNextRoad();
 			}
 		}
 		
+		// Move veh to the x and y location
+		veh.setCurrentCoord(new Coordinate(x, y));
+		veh.setDistance(dist); // NOTE: here the dist and (x,y) might be inconsistent, a better implementation is possible
+		
+		// Insert veh to the lane's linkedList
+		Vehicle leadVehicle = null;
+		Vehicle lagVehicle = null;
+		
+		Vehicle toCheckVeh = lane.firstVehicle();
+		while (toCheckVeh != null) { // find where to insert the veh
+			 if(toCheckVeh.getDistance() <= dist) {
+				 leadVehicle = toCheckVeh;
+				 toCheckVeh = toCheckVeh.trailing();
+			 }
+			 else {
+				 lagVehicle = toCheckVeh;
+				 break;
+			 }
+		}
+		veh.insertToLane(lane, leadVehicle, lagVehicle);
+			
+		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
+		veh.advanceInMacroList();
 		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
 		return true;
 	}
