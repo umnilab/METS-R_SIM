@@ -952,6 +952,7 @@ public class Vehicle {
 						current_road.recordTravelTime(this);
 						this.coordMap.add(this.currentCoord_);
 						this.onLane = false; // add to junction
+						this.distance_ = -0.1;
 						break;
 					} else {
 						this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
@@ -975,8 +976,8 @@ public class Vehicle {
 		}
 		
 		// Update the position of vehicles, 0<=distance_<=lane.length()
-		if (distance_ < 0) {
-			distance_ = 0;
+		if (this.distance_ < 0 && this.isOnLane()) {
+			this.distance_ = 0;
 		}
 		if (lastStepMove_ > 0.001) {
 			this.accummulatedDistance_ += lastStepMove_; // Record the moved distance
@@ -1825,7 +1826,6 @@ public class Vehicle {
 			} else
 				this.changeLane(plane, null, null);
 		}
-
 	}
 
 	/**
@@ -1981,7 +1981,6 @@ public class Vehicle {
 		else {
 			lagGap = this.lane.getLength() - this.distFraction() * plane.getLength();
 		}
-			
 		return lagGap;
 	}
 
