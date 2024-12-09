@@ -250,10 +250,6 @@ public class Road {
 			}
 		}
 		
-		// Move veh to the x and y location
-		veh.setCurrentCoord(new Coordinate(x, y));
-		veh.setDistance(dist); // NOTE: here the dist and (x,y) might be inconsistent, a better implementation is possible
-		
 		// Insert veh to the lane's linkedList
 		Vehicle leadVehicle = null;
 		Vehicle lagVehicle = null;
@@ -274,6 +270,10 @@ public class Road {
 			 }
 		}
 		veh.insertToLane(lane, leadVehicle, lagVehicle);
+		
+		// Move veh to the x and y location
+		veh.setCurrentCoord(new Coordinate(x, y));
+		veh.setDistance(dist); // NOTE: here the dist and (x,y) might be inconsistent, a better implementation is possible
 			
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
