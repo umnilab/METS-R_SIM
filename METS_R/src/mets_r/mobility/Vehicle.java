@@ -881,7 +881,7 @@ public class Vehicle {
 		accRate_ = accPlan_.pop();
 		
 		/* Sanity check */
-		if (distance_ < 0 || Double.isNaN(distance_))
+		if (distance_ < -0.1 || Double.isNaN(distance_))
 			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
 		if (currentSpeed_ < 0 || Double.isNaN(currentSpeed_))
 			ContextCreator.logger.error("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
