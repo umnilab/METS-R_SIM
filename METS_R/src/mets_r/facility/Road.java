@@ -269,12 +269,12 @@ public class Road {
 				 break;
 			 }
 		}
-		veh.insertToLane(lane, leadVehicle, lagVehicle);
 		
 		// Move veh to the x and y location
 		veh.setCurrentCoord(new Coordinate(x, y));
 		veh.setDistance(dist); // NOTE: here the dist and (x,y) might be inconsistent, a better implementation is possible
-			
+		
+		veh.insertToLane(lane, leadVehicle, lagVehicle);
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
 		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
