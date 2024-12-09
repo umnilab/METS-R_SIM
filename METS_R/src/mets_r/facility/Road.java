@@ -227,10 +227,15 @@ public class Road {
 	 * caused by the order of vehicle updates.
 	 */
 	public boolean insertVehicle(Vehicle veh, Lane lane, double dist, double x, double y) {
-		if (veh.getRoad() == this) {
-			if (veh.getLane() == lane) { // Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
-				veh.removeFromLane(); // Remove the vehicle from the current lane
+		if (veh.getRoad() == this && veh.getLane() == lane) {// Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
+			if(lane.firstVehicle() == veh) { // Edge case, vehicle is the first vehicle in this lane
+				veh.setCurrentCoord(new Coordinate(x, y));
+				veh.setDistance(dist);
+				veh.advanceInMacroList();
+				veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
+				return true;
 			}
+			veh.removeFromLane(); // Just remove the vehicle from the current lane
 		}
 		else {
 			veh.removeFromLane();
@@ -255,6 +260,10 @@ public class Road {
 		
 		Vehicle toCheckVeh = lane.firstVehicle();
 		while (toCheckVeh != null) { // find where to insert the veh
+			 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
+			 if(toCheckVeh.getDistance() == dist) {
+				 dist = dist + 0.01; // add a tiny value to the distance of the to-insert vehicle
+			 }
 			 if(toCheckVeh.getDistance() < dist) {
 				 leadVehicle = toCheckVeh;
 				 toCheckVeh = toCheckVeh.trailing();

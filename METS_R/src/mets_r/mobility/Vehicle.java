@@ -881,7 +881,7 @@ public class Vehicle {
 		accRate_ = accPlan_.pop();
 		
 		/* Sanity check */
-		if (distance_ < -0.1 || Double.isNaN(distance_))
+		if (distance_ < 0 || Double.isNaN(distance_))
 			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
 		if (currentSpeed_ < 0 || Double.isNaN(currentSpeed_))
 			ContextCreator.logger.error("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
@@ -952,7 +952,6 @@ public class Vehicle {
 						current_road.recordTravelTime(this);
 						this.coordMap.add(this.currentCoord_);
 						this.onLane = false; // add to junction
-						this.distance_ = -0.1;
 						break;
 					} else {
 						this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
@@ -976,7 +975,7 @@ public class Vehicle {
 		}
 		
 		// Update the position of vehicles, 0<=distance_<=lane.length()
-		if (this.distance_ < 0 && this.isOnLane()) {
+		if (this.distance_ < 0) {
 			this.distance_ = 0;
 		}
 		if (lastStepMove_ > 0.001) {
