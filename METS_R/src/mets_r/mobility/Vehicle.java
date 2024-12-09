@@ -1166,10 +1166,16 @@ public class Vehicle {
 	 * @param v New front vehicle
 	 */
 	public void macroLeading(Vehicle v) {
-		if (v != null)
-			this.macroLeading_ = v;
-		else
+		if(v == null) this.macroLeading_ = null;
+		else if(v == this) {
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the macroleading with distance" + this.distance_);
 			this.macroLeading_ = null;
+		}
+		else if(v.distance_ >= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistance() +" to the macroleading of the vehicle with distance " + this.distance_);
+			this.leading_ = null;
+		}
+		else this.macroLeading_ = v;
 	}
 	
 	/**
@@ -1184,10 +1190,16 @@ public class Vehicle {
 	 * @param v New behind vehicle
 	 */
 	public void macroTrailing(Vehicle v) {
-		if (v != null)
-			this.macroTrailing_ = v;
-		else
+		if(v == null) this.macroTrailing_ = null;
+		else if(v == this) {
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the macrotrailing with distance" + this.distance_);
 			this.macroTrailing_ = null;
+		}
+		else if(v.getDistance() <= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistance() +" to the marotrailing of the vehicle with distance " + this.distance_);
+			this.macroTrailing_ = null;
+		}
+		else this.macroTrailing_ = v;
 	}
 	
 	/**
@@ -1202,7 +1214,15 @@ public class Vehicle {
 	 * @param v New front vehicle
 	 */
 	public void leading(Vehicle v) {
-		if(v == this) this.leading_ = null;
+		if(v == null) this.leading_ = null;
+		else if(v == this) {
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the leading with distance" + this.distance_);
+			this.leading_ = null;
+		}
+		else if(v.distance_ >= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistance() +" to the leading of the vehicle with distance " + this.distance_);
+			this.leading_ = null;
+		}
 		else this.leading_ = v;
 	}
 	
@@ -1218,7 +1238,15 @@ public class Vehicle {
 	 * @param v New behind vehicle
 	 */
 	public void trailing(Vehicle v) {
-		if(v == this) this.trailing_ = null;
+		if(v == null) this.trailing_ = null;
+		else if(v == this) {
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the trailing with distance" + this.distance_);
+			this.trailing_ = null;
+		}
+		else if(v.getDistance() <= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistance() +" to the trailing of the vehicle with distance " + this.distance_);
+			this.trailing_ = null;
+		}
 		else this.trailing_ = v;
 	}
 	

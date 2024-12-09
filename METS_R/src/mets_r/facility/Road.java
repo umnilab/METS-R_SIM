@@ -255,7 +255,7 @@ public class Road {
 		
 		Vehicle toCheckVeh = lane.firstVehicle();
 		while (toCheckVeh != null) { // find where to insert the veh
-			 if(toCheckVeh.getDistance() <= dist) {
+			 if(toCheckVeh.getDistance() < dist) {
 				 leadVehicle = toCheckVeh;
 				 toCheckVeh = toCheckVeh.trailing();
 			 }
