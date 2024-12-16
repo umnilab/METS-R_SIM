@@ -187,7 +187,7 @@ public class CityContext extends DefaultContext<Object> {
 				}
 				if(roadID >=0) {
 					z.addNeighboringLink(roadID, true);
-					this.coordOrigRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getEndCoord(), ContextCreator.getRoadContext().get(roadID));
+					this.coordDestRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getEndCoord(), ContextCreator.getRoadContext().get(roadID));
 				}
 				searchBuffer = searchBuffer * 2;
 			}
