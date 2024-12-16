@@ -212,8 +212,8 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 		    			
 				// Assign trips
-				v.initializePlan(originID, originZone.getCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(destID, destZone.getCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(originID, originZone.sampleCoord(false), (int) ContextCreator.getCurrentTick());
+				v.addPlan(destID, destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
