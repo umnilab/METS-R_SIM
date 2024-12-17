@@ -132,14 +132,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 		for (Zone z : getZoneContext().getAll()) {
 			double demand_from_zone = 0;
-			int i = z.getIntegerID();
+			int i = z.getID();
 			for (Zone z2 : getZoneContext().getAll()) {
-				int j = z2.getIntegerID();
+				int j = z2.getID();
 				demand_from_zone += sumOfArray(travel_demand.getPublicTravelDemand(i, j),
 						GlobalVariables.HOUR_OF_DEMAND - 1);
 			}
 			demand_total += demand_from_zone;
-			demand_per_zone.put(z.getIntegerID(), demand_from_zone);
+			demand_per_zone.put(z.getID(), demand_from_zone);
 		}
 		ContextCreator.logger
 				.info("Ridehailing total demand: " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
@@ -167,7 +167,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be another
 														// hub)
 					for (int destinationID : route) {
-						if (zone.getIntegerID() != destinationID) {
+						if (zone.getID() != destinationID) {
 							zone.setBusInfo(destinationID, bus_schedule.getBusGap().get(i));
 						}
 

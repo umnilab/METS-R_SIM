@@ -124,12 +124,14 @@ public class CityContext extends DefaultContext<Object> {
 				if(dist < r.getDistToZone(false)) {
 					r.setNeighboringZone(z1.getID(),false);
 					r.setDistToZone(dist, false);
+					z1.setClosestRoad(r.getID(), false);
 				}
 				
 				dist = this.getDistance(z1.getCoord(), r.getEndCoord());
 				if(dist < r.getDistToZone(true)) {
 					r.setNeighboringZone(z1.getID(),true);
 					r.setDistToZone(dist, true);
+					z1.setClosestRoad(r.getID(), true);
 				}
 			} 
 		}
@@ -155,7 +157,7 @@ public class CityContext extends DefaultContext<Object> {
 				Geometry buffer = point.buffer(searchBuffer); 
 				// add the closest one
 				double min_dist = Double.MAX_VALUE;
-				int roadID = -1;
+				Integer roadID = null;
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 					double dist = this.getDistance(z.getCoord(), r.getStartCoord());
 					if((dist < min_dist) && (r.getDownStreamRoads().size()>0)) {
@@ -163,7 +165,8 @@ public class CityContext extends DefaultContext<Object> {
 						roadID = r.getID();
 					}	
 				}
-				if(roadID >=0) {
+				if(roadID != null) {
+					z.setClosestRoad(roadID, false);
 					z.addNeighboringLink(roadID, false);
 					this.coordOrigRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getStartCoord(), ContextCreator.getRoadContext().get(roadID));
 				}
@@ -177,7 +180,7 @@ public class CityContext extends DefaultContext<Object> {
 				Geometry buffer = point.buffer(searchBuffer); 
 				// add the closest one
 				double min_dist = Double.MAX_VALUE;
-				int roadID = -1;
+				Integer roadID = null;
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 					double dist = this.getDistance(z.getCoord(), r.getEndCoord());
 					if(dist < min_dist) {
@@ -185,7 +188,8 @@ public class CityContext extends DefaultContext<Object> {
 						roadID = r.getID();
 					}	
 				}
-				if(roadID >=0) {
+				if(roadID != null) {
+					z.setClosestRoad(roadID, true);
 					z.addNeighboringLink(roadID, true);
 					this.coordDestRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getEndCoord(), ContextCreator.getRoadContext().get(roadID));
 				}
@@ -791,14 +795,14 @@ public class CityContext extends DefaultContext<Object> {
 								travel_time += r.getTravelTime();
 							}
 						}
-						if (hub.busTravelDistance.containsKey(z2.getIntegerID())) {
-							hub.busTravelDistance.put(z2.getIntegerID(),
-									Math.min(hub.busTravelDistance.get(z2.getIntegerID()), (float) travel_distance));
-							hub.busTravelTime.put(z2.getIntegerID(),
-									Math.min(hub.busTravelTime.get(z2.getIntegerID()), (float) travel_time));
+						if (hub.busTravelDistance.containsKey(z2.getID())) {
+							hub.busTravelDistance.put(z2.getID(),
+									Math.min(hub.busTravelDistance.get(z2.getID()), (float) travel_distance));
+							hub.busTravelTime.put(z2.getID(),
+									Math.min(hub.busTravelTime.get(z2.getID()), (float) travel_time));
 						} else {
-							hub.busTravelDistance.put(z2.getIntegerID(), (float) travel_distance);
-							hub.busTravelTime.put(z2.getIntegerID(), (float) travel_time);
+							hub.busTravelDistance.put(z2.getID(), (float) travel_distance);
+							hub.busTravelTime.put(z2.getID(), (float) travel_time);
 						}
 						z1 = z2;
 					}
@@ -818,14 +822,14 @@ public class CityContext extends DefaultContext<Object> {
 								travel_time += r.getTravelTime();
 							}
 						}
-						if (z1.busTravelDistance.containsKey(hub.getIntegerID())) {
-							z1.busTravelDistance.put(hub.getIntegerID(),
-									Math.min(z1.busTravelDistance.get(hub.getIntegerID()), (float) travel_distance));
-							z1.busTravelTime.put(hub.getIntegerID(),
-									Math.min(z1.busTravelTime.get(hub.getIntegerID()), (float) travel_time));
+						if (z1.busTravelDistance.containsKey(hub.getID())) {
+							z1.busTravelDistance.put(hub.getID(),
+									Math.min(z1.busTravelDistance.get(hub.getID()), (float) travel_distance));
+							z1.busTravelTime.put(hub.getID(),
+									Math.min(z1.busTravelTime.get(hub.getID()), (float) travel_time));
 						} else {
-							z1.busTravelDistance.put(hub.getIntegerID(), (float) travel_distance);
-							z1.busTravelTime.put(hub.getIntegerID(), (float) travel_time);
+							z1.busTravelDistance.put(hub.getID(), (float) travel_distance);
+							z1.busTravelTime.put(hub.getID(), (float) travel_time);
 						}
 						z2 = z1;
 						ContextCreator.logger.debug(z1.busTravelDistance);
@@ -852,17 +856,17 @@ public class CityContext extends DefaultContext<Object> {
 			// Loop over all OD pairs, will take several hours
 			for (Zone origin : ContextCreator.getZoneContext().getAll()) {
 				for (Zone destination : ContextCreator.getZoneContext().getAll()) {
-					if (origin.getIntegerID() != destination.getIntegerID()
-							&& (ContextCreator.getZoneContext().HUB_INDEXES.contains(origin.getIntegerID())
+					if (origin.getID() != destination.getID()
+							&& (ContextCreator.getZoneContext().HUB_INDEXES.contains(origin.getID())
 									|| ContextCreator.getZoneContext().HUB_INDEXES
-											.contains(destination.getIntegerID()))) {
+											.contains(destination.getID()))) {
 						ContextCreator.logger
-								.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
+								.info("Creating routes: " + origin.getID() + "," + destination.getID());
 						try {
 							List<List<Integer>> candidate_routes = RouteContext.UCBRoute(origin.getCoord(),
 									destination.getCoord());
 							ContextCreator.route_UCB.put(
-									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
+									Integer.toString(origin.getID()) + "," + destination.getID(),
 									candidate_routes);
 						} catch (Exception e) {
 							e.printStackTrace();
@@ -905,12 +909,12 @@ public class CityContext extends DefaultContext<Object> {
 			ContextCreator.logger.info("Candidate routes initialization ...");
 			for (Zone origin : ContextCreator.getZoneContext().getAll()) {
 				for (Zone destination : ContextCreator.getZoneContext().getAll()) {
-					if (origin.getIntegerID() != destination.getIntegerID()) {
+					if (origin.getID() != destination.getID()) {
 						ContextCreator.logger
-								.info("Creating routes: " + origin.getIntegerID() + "," + destination.getIntegerID());
+								.info("Creating routes: " + origin.getID() + "," + destination.getID());
 						try {
 							ContextCreator.route_UCB_bus.put(
-									Integer.toString(origin.getIntegerID()) + "," + destination.getIntegerID(),
+									Integer.toString(origin.getID()) + "," + destination.getID(),
 									RouteContext.UCBRoute(origin.getCoord(), destination.getCoord()));
 						} catch (Exception e) {
 							e.printStackTrace();

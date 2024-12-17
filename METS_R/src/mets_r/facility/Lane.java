@@ -60,11 +60,19 @@ public class Lane {
 	
 
 	public Coordinate getStartCoord() {
-		return this.coords.get(0);
+		Coordinate coord = new Coordinate();
+		Coordinate first_coord = this.coords.get(0);
+		coord.x = first_coord.x;
+		coord.y = first_coord.y;
+		return coord;
 	}
 	
 	public Coordinate getEndCoord() {
-		return this.coords.get(this.coords.size()-1);
+		Coordinate coord = new Coordinate();
+		Coordinate first_coord = this.coords.get(this.coords.size()-1);
+		coord.x = first_coord.x;
+		coord.y = first_coord.y;
+		return coord;
 	}
 	
 	public void setCoords(ArrayList<Coordinate> coords) {
@@ -72,7 +80,27 @@ public class Lane {
 	}
 	
 	public ArrayList<Coordinate> getCoords() {
-		return this.coords;
+		// Deep copy to avoid being modified somewhere
+		ArrayList<Coordinate> res = new ArrayList<Coordinate>();
+		for(Coordinate coord: this.coords) {
+			Coordinate coord2 = new Coordinate();
+			coord2.x = coord.x;
+			coord2.y = coord.y;
+			coord2.z = coord.z;
+			res.add(coord2);
+		}
+		return res;
+	}
+	
+	public ArrayList<ArrayList<Double>> getXYList(){
+		ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
+		for(Coordinate coord: this.coords) {
+			ArrayList<Double> xy = new ArrayList<Double>();
+			xy.add(coord.x);
+			xy.add(coord.y);
+			res.add(xy);
+		}
+		return res;
 	}
 
 	public void setLength(double length) {

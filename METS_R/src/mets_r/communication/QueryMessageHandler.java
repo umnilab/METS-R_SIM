@@ -98,12 +98,6 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bearing", vehicle.getBearing());
 					record2.put("acc", vehicle.currentAcc());
 					record2.put("speed", vehicle.currentSpeed());
-					record2.put("origin", vehicle.getOriginID());
-					record2.put("dest", vehicle.getDestID());
-					if(vehicle.getNextRoad() != null)
-						record2.put("next_road", vehicle.getNextRoad().getOrigID());
-					else
-						record2.put("next_road", null);
 					// if vehicle is on road
 					if(vehicle.isOnLane()) {
 						record2.put("road", vehicle.getRoad().getID());

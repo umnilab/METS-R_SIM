@@ -108,7 +108,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			numArrivedPrivateEVTrip += z.arrivedPrivateEVTrip;
 			numArrivedPrivateGVTrip += z.arrivedPrivateGVTrip;
 
-			String formatted_msg2 = currentTick + "," + z.getIntegerID() + "," + z.getTaxiPassengerNum() + ","
+			String formatted_msg2 = currentTick + "," + z.getID() + "," + z.getTaxiPassengerNum() + ","
 					+ z.getBusPassengerNum() + "," + z.getVehicleStock() + "," + z.numberOfGeneratedTaxiRequest + ","
 					+ z.numberOfGeneratedBusRequest + "," + z.numberOfGeneratedCombinedRequest + ","
 					+ z.taxiPickupRequest + "," + z.busPickupRequest + "," + z.combinePickupPart1 + ","

@@ -6,8 +6,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
-import com.vividsolutions.jts.geom.Coordinate;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
@@ -54,23 +52,23 @@ public class ElectricTaxi extends ElectricVehicle {
 	
 	// Randomly select a neighboring link and update the activity plan
 	public void goCruising(Zone z) {
-		Coordinate dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
+		int dest = z.getNeighboringLink(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
 		
 		if(z.getNeighboringLinkSize(true) == 1) { // Isolated zone
 			// Sample from the neighboring zone
-			while(dest == this.getDestCoord()) {
+			while(dest == this.getDestRoadID()) {
 				int neighboringZoneID = z.getNeighboringZones(rand_relocate_only.nextInt(z.getNeighboringZoneSize()));
-				dest = ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringCoord(rand_relocate_only.nextInt(ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLinkSize(true)), true);
+				dest = ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLink(rand_relocate_only.nextInt(ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLinkSize(true)), true);
 			}
 		}
 		else {
-			while(dest == this.getDestCoord()) { // Sample again
-				dest = z.getNeighboringCoord(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
+			while(dest == this.getDestRoadID()) { // Sample again
+				dest = z.getNeighboringLink(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
 			}
 		}
 		
 	    // Add a cruising activity
-		this.addPlan(z.getIntegerID(), dest, ContextCreator.getNextTick());
+		this.addPlan(z.getID(), dest, ContextCreator.getNextTick());
 		this.setNextPlan();
 		this.setState(Vehicle.CRUISING_TRIP);
 		this.departure();
@@ -158,7 +156,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					ContextCreator.getNextTick());
 			
 			for (Request p : plist) {
-				this.addPlan(p.getDestination(),
+				this.addPlan(p.getDestZone(),
 						p.getDestCoord(),
 						ContextCreator.getNextTick());
 				this.servedPass += 1;
@@ -273,7 +271,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					// generate a pass and add it to the corresponding zone
 					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
 					p.moveToNextActivity();
-					if (z.busReachableZone.contains(p.getDestination())) {
+					if (z.busReachableZone.contains(p.getDestZone())) {
 						z.insertBusPass(p); // if bus can reach the destination
 					} else {
 						z.insertTaxiPass(p); // this is called when we dynamically update bus schedules
@@ -293,7 +291,7 @@ public class ElectricTaxi extends ElectricVehicle {
 						this.goCharging();
 					}
 					else { // join the current zone
-						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
+						ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).add(this);
 						if(z.getCapacity() > 0) { // Has capacity
 							z.addOneParkingVehicle();
 		                	this.getParked(z);
@@ -316,7 +314,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				if(this.cruisingTime_ <= GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME) {
 					if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 							&& batteryLevel_ <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
-						ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).remove(this);
+						ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).remove(this);
 						this.goCharging();
 					}
 					else {
@@ -347,7 +345,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					this.goCharging();
 				}
 				else { // join the current zone
-					ContextCreator.getVehicleContext().getVehiclesByZone(z.getIntegerID()).add(this);
+					ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).add(this);
 					if(z.getCapacity() > 0) { // Has capacity
 	                	z.addOneParkingVehicle();
 	    				this.getParked(z);

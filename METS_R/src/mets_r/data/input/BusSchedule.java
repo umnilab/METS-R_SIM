@@ -130,7 +130,7 @@ public class BusSchedule {
 																	// another hub)
 								for (long destinationID : route) {
 									if(locationIDMap.containsKey(destinationID)) {
-										if (zone.getIntegerID() != locationIDMap.get(destinationID)) {
+										if (zone.getID() != locationIDMap.get(destinationID)) {
 											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
 										}
 									}	

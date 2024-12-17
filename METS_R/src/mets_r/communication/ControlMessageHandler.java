@@ -42,8 +42,8 @@ public class ControlMessageHandler extends MessageHandler {
 			else if(msgType.equals("routingBus")) flag = routingBus(jsonMsg, jsonAns);
 			else if(msgType.equals("scheduleBus")) flag = scheduleBus(jsonMsg, jsonAns);
 			else if(msgType.equals("scheduleTaxi")) flag = sheduleTaxi(jsonMsg, jsonAns);
-			else if(msgType.equals("generateTrip")) flag = generateTrip(jsonMsg, jsonAns);
-			else if(msgType.equals("generateTripBwRoads")) flag = generateTripBwRoads(jsonMsg, jsonAns);
+			else if(msgType.equals("gen Trip")) flag = generateTrip(jsonMsg, jsonAns);
+			else if(msgType.equals("genTripBwRoads")) flag = generateTripBwRoads(jsonMsg, jsonAns);
 			else if(msgType.equals("setCoSimRoad")) flag = setCoSimRoad(jsonMsg, jsonAns);
 			else if(msgType.equals("releaseCosimRoad")) flag = releaseCosimRoad(jsonMsg, jsonAns);
 			else if(msgType.equals("reset")) flag = resetSim(jsonMsg, jsonAns);
@@ -99,11 +99,24 @@ public class ControlMessageHandler extends MessageHandler {
 		    		r.setControlType(Road.CoSim);
 					// Add road to coSim HashMap in the road context
 					ContextCreator.coSimRoads.put(roadID, r);
-					jsonData.add("OK");
+					// Also output the lane information for computing the co-simulation area
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", roadID);
+					record2.put("STATUS", "OK");
+					ArrayList<Object> centerLines = new ArrayList<Object>();
+					for(Lane l: r.getLanes()) {
+						centerLines.add(l.getXYList());
+					}
+					
+					record2.put("center_lines", centerLines);
+					jsonData.add(record2);
 		    	}
 		    	else {
 		    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
-					jsonData.add("KO");
+		    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", roadID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
 		    	}
 				
 		    }
@@ -134,11 +147,17 @@ public class ControlMessageHandler extends MessageHandler {
 		    		r.setControlType(Road.NONE_OF_THE_ABOVE);
 					// Remove road from coSim HashMap in the ContextCreator
 					ContextCreator.coSimRoads.remove(roadID);
-					jsonData.add("OK");
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", roadID);
+		    		record2.put("STATUS", "OK");
+					jsonData.add(record2);
 		    	}
 		    	else {
 		    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
-					jsonData.add("KO");
+		    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", roadID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
 		    	}
 		    }
 			jsonAns.put("DATA", jsonData);
@@ -168,7 +187,10 @@ public class ControlMessageHandler extends MessageHandler {
 		    	if(v != null) {
 					if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
 		    			ContextCreator.logger.warn("The private EV: " + vehID + " is currently on the road, maybe there are two trips for the same vehicle that are too close?");
-		    			jsonData.add("KO");
+		    			HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
 		    			continue;
 					}
 		    	}
@@ -187,7 +209,10 @@ public class ControlMessageHandler extends MessageHandler {
 					originZone = ContextCreator.getZoneContext().get(originID);
 					if(originZone == null) {
 						ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
-						jsonData.add("KO");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
 		    			continue;
 					}
 				}
@@ -201,7 +226,10 @@ public class ControlMessageHandler extends MessageHandler {
 					destZone = ContextCreator.getZoneContext().get(destID);
 					if(destZone == null) {
 						ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
-						jsonData.add("KO");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
 		    			continue;
 					}
 				}
@@ -212,13 +240,14 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 		    			
 				// Assign trips
-				v.initializePlan(originID, originZone.sampleCoord(false), (int) ContextCreator.getCurrentTick());
-				v.addPlan(destID, destZone.sampleCoord(true), (int) ContextCreator.getNextTick());
+				v.initializePlan(originID, originZone.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
+				v.addPlan(destID, destZone.getClosestRoad(true), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
 				HashMap<String, Object> record2 = new HashMap<String, Object>();
 				record2.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
+				record2.put("STATUS", "OK");
 				record2.put("origin", originID);
 				record2.put("destination",destID);
 				jsonData.add(record2);
@@ -250,7 +279,10 @@ public class ControlMessageHandler extends MessageHandler {
 		    	if(v != null) {
 					if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
 		    			ContextCreator.logger.warn("The private EV: " + vehID + " is currently on the road, maybe there are two trips for the same vehicle that are too close?");
-		    			jsonData.add("KO");
+		    			HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
 		    			continue;
 					}
 		    	}
@@ -268,7 +300,10 @@ public class ControlMessageHandler extends MessageHandler {
 				originRoad = ContextCreator.getCityContext().findRoadWithOrigID(originID);
 				if(originRoad == null) {
 					ContextCreator.logger.warn("Cannot find the origin road with ID: " + originID);
-					jsonData.add("KO");
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", vehID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
 	    			continue;
 				}
 				
@@ -276,7 +311,10 @@ public class ControlMessageHandler extends MessageHandler {
 				destRoad = ContextCreator.getCityContext().findRoadWithOrigID(destID);
 				if(destRoad == null) {
 					ContextCreator.logger.warn("Cannot find the dest road with ID: " + destID);
-					jsonData.add("KO");
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", vehID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
 	    			continue;
 				}
 	    			
@@ -284,14 +322,15 @@ public class ControlMessageHandler extends MessageHandler {
 	    		int destZoneID = destRoad.getNeighboringZone(true);
 		    			
 				// Assign trips
-				v.initializePlan(originZoneID, originRoad.getStartCoord(), (int) ContextCreator.getCurrentTick());
-				v.addPlan(destZoneID, destRoad.getEndCoord(), (int) ContextCreator.getNextTick());
+				v.initializePlan(originZoneID, originRoad.getID(), (int) ContextCreator.getCurrentTick());
+				v.addPlan(destZoneID, destRoad.getID(), (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
 				HashMap<String, Object> record2 = new HashMap<String, Object>();
 				record2.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
-				record2.put("origin", originID);
+	    		record2.put("STATUS", "OK");
+	    		record2.put("origin", originID);
 				record2.put("destination",destID);
 				jsonData.add(record2);
 		    }
@@ -308,7 +347,7 @@ public class ControlMessageHandler extends MessageHandler {
 	// This can be done at t or t+1, directly change the road properties
 	// When perform at t+1 (wait == false), append takes effect immediately
 	private boolean teleportVeh(JSONObject jsonMsg, HashMap<String, Object> jsonAns) {
-		if(!jsonMsg.containsKey("DATA")) {
+		if(!jsonMsg.containsKey("DATA")) { 
 			jsonAns.put("WARN", "No DATA field found in the control message");
 			return false;
 		}
@@ -354,18 +393,20 @@ public class ControlMessageHandler extends MessageHandler {
 							}
 						
 							// Update its location in the target link and target lane
-							if(road.insertVehicle(veh, lane, dist, x, y)) jsonData.add("OK");
-							else jsonData.add("KO");
+							if(road.insertVehicle(veh, lane, dist, x, y)) {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+					    		record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
+					    		record2.put("STATUS", "OK");
+								jsonData.add(record2);
+								continue;
+							}
 						}
-						else jsonData.add("KO");
-					}
-					else {
-						jsonData.add("KO");
 					}
 				}
-				else {
-					jsonData.add("KO");
-				}
+				HashMap<String, Object> record2 = new HashMap<String, Object>();
+	    		record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
+	    		record2.put("STATUS", "KO");
+				jsonData.add(record2);
 		    }
 			jsonAns.put("DATA", jsonData);
 			return true;
@@ -402,10 +443,17 @@ public class ControlMessageHandler extends MessageHandler {
 				double acc = vehIDVehTypeAcc.acc;
 				// Register its acceleration
 				if(veh.controlVehicleAcc(acc)) {
-					jsonData.add("OK");
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", vehIDVehTypeAcc.vehID);
+		    		record2.put("STATUS", "OK");
+					jsonData.add(record2);
 				}
-				else jsonData.add("KO");
-				return true;
+				else{
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", vehIDVehTypeAcc.vehID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
+				}
 		    }
 		    jsonAns.put("DATA", jsonData);
 			return true;
@@ -518,15 +566,17 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 				if(veh != null) {
 					if(veh.changeRoad()) {
-						jsonData.add("OK");
-					}
-					else {
-						jsonData.add("KO");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDVehType.vehID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
+						continue;
 					}
 				}
-				else {
-					jsonData.add("KO");
-				}
+				HashMap<String, Object> record2 = new HashMap<String, Object>();
+	    		record2.put("ID", vehIDVehType.vehID);
+	    		record2.put("STATUS", "KO");
+				jsonData.add(record2);
 		    }
 			jsonAns.put("DATA", jsonData);
 			return true;

@@ -210,7 +210,7 @@ public class Vehicle {
 	public void setNextPlan() {
 		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
-		this.destinationID = next.getDestID();
+		this.destinationID = next.getDestZoneID();
 		double duration = next.getDuration();
 		this.deptime = (int) duration;
 		this.destCoord = next.getLocation();
@@ -222,32 +222,33 @@ public class Vehicle {
 	/**
 	 * Initialize the vehicle state 
 	 */
-	public void initializePlan(int loc_id, Coordinate location, double d) {
+	public void initializePlan(int loc_id, int road_id, double d) {
+		Road road = ContextCreator.getRoadContext().get(road_id);
 		// Clear the old plans
 		this.activityPlan.clear();
-		this.setCurrentCoord(location);
-		this.addPlan(loc_id, location, d); 
-		this.addPlan(loc_id, location, d); 
+		this.setCurrentCoord(road.getStartCoord());
+		this.addPlan(loc_id, road_id, d); 
+		this.addPlan(loc_id, road_id, d); 
 		this.setNextPlan(); // This will set the origin to 0 and dest to loc_id
-		this.addPlan(loc_id, location, d);
+		this.addPlan(loc_id, road_id, d);
 		this.setNextPlan(); // This will set the origin to the loc_id
 	}
 	
 	/**
 	 * Modify the current destination zone and location of the vehicle
 	 * @param dest_id Target zone ID
-	 * @param location Target location
+	 * @param dest_road Target road
 	 * @return
 	 */
-	public boolean modifyPlan(int dest_id, Coordinate location) {
+	public boolean modifyPlan(int dest_id, Road road) {
 		if(this.isOnRoad()) {
 			if(this.activityPlan.size() > 1) {
 				ContextCreator.logger.error("Something went wrong, cannot modify the vehicle with multiple plans");
 			}
 			this.activityPlan.clear();
-			this.addPlan(dest_id, location, ContextCreator.getNextTick());
+			this.addPlan(dest_id, road.getID(), ContextCreator.getNextTick());
 			this.destinationID = dest_id;
-			this.destCoord = location;
+			this.destCoord = road.getEndCoord();
 			// Reroute it
 			this.rerouteAndSetNextRoad();
 			return true;
@@ -1346,11 +1347,34 @@ public class Vehicle {
 	/**
 	 * Add a new plan to the end of the plan list
 	 * @param dest_id Destination zone ID
+	 * @param road_id Destination road ID
+	 * @param location Destination location
+	 * @param d Departure time
+	 */
+	public void addPlan(int dest_id, int road_id, Coordinate location, double d) {
+		Plan p = new Plan(dest_id, road_id, location, d);
+		this.activityPlan.add(p);
+	}
+	
+	/**
+	 * Add a new plan to the end of the plan list
+	 * @param dest_id Destination zone ID
+	 * @param  road_id Destination road ID
+	 * @param d Departure time
+	 */
+	public void addPlan(int dest_id, int road_id, double d) {
+		Plan p = new Plan(dest_id, road_id, d);
+		this.activityPlan.add(p);
+	}
+	
+	/**
+	 * Add a new plan to the end of the plan list
+	 * @param dest_id Destination zone ID
 	 * @param location Destination location
 	 * @param d Departure time
 	 */
 	public void addPlan(int dest_id, Coordinate location, double d) {
-		Plan p = new Plan(dest_id, location, d);
+		Plan p = new Plan(dest_id, ContextCreator.getCityContext().findRoadAtCoordinates(location, true).getID(), location, d);
 		this.activityPlan.add(p);
 	}
 	

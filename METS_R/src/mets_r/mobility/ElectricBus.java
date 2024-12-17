@@ -254,10 +254,10 @@ public class ElectricBus extends ElectricVehicle {
 		Zone arrivedZone = ContextCreator.getZoneContext().get(this.getNextStopZoneID());
 		ArrayList<Request> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat - this.passNum, busStop);
 		for (Request p : passOnBoard) {
-			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestination()),
-					destinationDemandOnBus.get(this.stopBus.get(p.getDestination())) + 1);
+			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestZone()),
+					destinationDemandOnBus.get(this.stopBus.get(p.getDestZone())) + 1);
 			if (p.lenOfActivity() > 1) {
-				this.passengerWithAdditionalActivityOnBus.get(this.stopBus.get(p.getDestination())).add(p);
+				this.passengerWithAdditionalActivityOnBus.get(this.stopBus.get(p.getDestZone())).add(p);
 			}
 		}
 		this.served_pass += passOnBoard.size();

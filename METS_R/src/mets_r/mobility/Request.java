@@ -17,35 +17,35 @@ public class Request {
 	private int ID;
 	private int origin;
 	private int destination;
-	private Coordinate originCoord;
-	private Coordinate destCoord;
+	private int originRoad;
+	private int destRoad;
 	private int maxWaitingTime;
 	private int currentWaitingTime;
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
 	
-	public Request(int origin, int destination, Coordinate originCoord, Coordinate destCoord, Boolean willingToShare){
+	public Request(int origin, int destination, int originRoad, int destRoad, Boolean willingToShare){
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
 		this.destination = destination;
-		this.originCoord = originCoord;
-		this.destCoord = destCoord;
+		this.originRoad = originRoad;
+		this.destRoad = destRoad;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;
 		this.willingToShare = willingToShare;
 	}
 	
-	public Request(int origin,  Coordinate originCoord, Queue<Plan> activityPlan){
+	public Request(int origin, int originRoad, Queue<Plan> activityPlan){
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = activityPlan;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
 		this.currentWaitingTime = 0;	
 		this.willingToShare = false;
 		this.origin = origin;
-		this.originCoord = originCoord;
-		this.destination = activityPlan.peek().getDestID();
-		this.destCoord = activityPlan.peek().getLocation();
+		this.originRoad = originRoad;
+		this.destination = activityPlan.peek().getDestZoneID();
+		this.destRoad = activityPlan.peek().getDestRoadID();
 	}
 	
 	public void waitNextTime(int waitingTime){
@@ -82,20 +82,27 @@ public class Request {
 		this.destination = destination;
 	}
 	
-	public int getOrigin(){
+	public int getOriginZone(){
 		return this.origin;
 	}
 	
-	public int getDestination(){
+	public int getDestZone(){
 		return this.destination;
 	}
 	
+	public int getOriginRoad(){
+		return this.originRoad;
+	}
+	
+	public int getDestRoad(){
+		return this.destRoad;
+	}
 	public Coordinate getOriginCoord(){
-		return this.originCoord;
+		return ContextCreator.getRoadContext().get(this.originRoad).getStartCoord();
 	}
 	
 	public Coordinate getDestCoord(){
-		return this.destCoord;
+		return ContextCreator.getRoadContext().get(this.destRoad).getEndCoord();
 	}
 	
 	public Queue<Plan> getActivityPlan(){
@@ -105,11 +112,11 @@ public class Request {
 	public void moveToNextActivity() {
 		this.currentWaitingTime = 0; // reset the waiting time
 		Plan prevPlan = this.activityPlan.poll();
-		this.origin = prevPlan.getDestID();
-		this.originCoord = prevPlan.getLocation();
+		this.origin = prevPlan.getDestZoneID();
+		this.originRoad = prevPlan.getDestRoadID();
 		Plan currPlan = this.activityPlan.peek();
-		this.destination = currPlan.getDestID();
-		this.destCoord = currPlan.getLocation();
+		this.destination = currPlan.getDestZoneID();
+		this.destRoad = currPlan.getDestRoadID();
 	}
 	
 	public int lenOfActivity(){

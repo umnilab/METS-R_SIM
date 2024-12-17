@@ -69,7 +69,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		double demand_total = 0;
 		for (Zone z: zoneGeography.getAllObjects()) {
 			if(z.getCapacity()>0) {
-				demand_total += ContextCreator.demand_per_zone.get(z.getIntegerID());
+				demand_total += ContextCreator.demand_per_zone.get(z.getID());
 			}
 		}
 		// Generate the vehicles in other zones
@@ -78,7 +78,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
 			if(z.getCapacity()>0) {
 				int vehicle_num_to_generate = (int) Math
-						.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getIntegerID()) / demand_total);
+						.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getID()) / demand_total);
 				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
 				vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 				num_total -= vehicle_num_to_generate;
@@ -90,14 +90,14 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);																				// first plan
 					this.add(v);
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
-					v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
+					v.initializePlan(z.getID(), z.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
 					total_vehicles += 1;
 					this.taxiMap.put(v.getID(), v);
 					tmpQueue.add(v);
 				}
 				z.addParkingVehicleStock(vehicle_num_to_generate);
 			}
-			this.availableTaxiMap.put(z.getIntegerID(), tmpQueue);
+			this.availableTaxiMap.put(z.getID(), tmpQueue);
 		}
 		
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
@@ -112,10 +112,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 						else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
 						this.add(v);
 						ContextCreator.logger.debug("Vehicle:" + i + " generated");
-						v.initializePlan(z.getIntegerID(), z.getCoord(), (int) ContextCreator.getCurrentTick());
+						v.initializePlan(z.getID(), z.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
 						total_vehicles += 1;
 						this.taxiMap.put(v.getID(), v);
-						this.availableTaxiMap.get(z.getIntegerID()).add(v);
+						this.availableTaxiMap.get(z.getID()).add(v);
 					}
 					z.addParkingVehicleStock(vehicle_num_to_generate);
 				}
@@ -148,12 +148,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				for (int j = 0; j < num_per_hub; j++) {
 					ElectricBus b;
 					b = new ElectricBus(-1, route, next_departure_time);
-					b.addPlan(z.getIntegerID(), z.getCoord(), ContextCreator.getCurrentTick());
+					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick());
 					this.add(b);
 					b.setCurrentCoord(z.getCoord());
-					b.addPlan(z.getIntegerID(), z.getCoord(), ContextCreator.getCurrentTick());
+					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick());
 					b.setNextPlan();
-					b.addPlan(z.getIntegerID(), z.getCoord(), next_departure_time); // Initialize the first plan
+					b.addPlan(z.getID(), z.getClosestRoad(false), next_departure_time); // Initialize the first plan
 					b.setNextPlan();
 					b.departure();
 					next_departure_time += vehicle_gap;
