@@ -63,15 +63,15 @@ public class MessageClass{
 	class VehIDVehTypeOrigRoadDestRoad {
 	    int vehID;
 	    boolean vehType;
-	    String origRoad;
-	    String destRoad;
+	    String orig;
+	    String dest;
 	
 	    // Constructor
 	    public VehIDVehTypeOrigRoadDestRoad(int vehID, boolean vehType, String orig, String dest) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
-	        this.origRoad = orig;
-	        this.destRoad = dest;
+	        this.orig = orig;
+	        this.dest = dest;
 	    }
 	}
 	

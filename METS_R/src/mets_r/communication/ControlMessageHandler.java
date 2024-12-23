@@ -292,8 +292,8 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 				
 				// Find the origin and dest zones
-				String originID = vehIDVehTypeOrigDest.origRoad;
-				String destID = vehIDVehTypeOrigDest.destRoad;
+				String originID = vehIDVehTypeOrigDest.orig;
+				String destID = vehIDVehTypeOrigDest.dest;
 				Road originRoad = null;
 				Road destRoad = null;
 				
