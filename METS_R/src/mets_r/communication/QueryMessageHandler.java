@@ -242,6 +242,7 @@ public class QueryMessageHandler extends MessageHandler {
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("TYPE", "ANS_road");
 			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
 			String answer = JSONObject.toJSONString(jsonObj);
 			return answer;
 		}

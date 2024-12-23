@@ -2,6 +2,8 @@ package mets_r.facility;
 
 import java.io.File;
 import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -101,5 +103,13 @@ public class RoadContext extends FacilityContext<Road> {
 		r.setDownStreamJunction(Integer.parseInt(att[5]));
 		r.setLength(Double.parseDouble(att[18]));
 		return r;
+	}
+	
+	public List<String> getOrigIDList(){
+		List<String> facilityIDList = new ArrayList<String>();
+		for(Road r: this.getAll()) {
+			facilityIDList.add(r.getOrigID());
+		}	
+		return facilityIDList;
 	}
 }
