@@ -34,15 +34,15 @@ public class ElectricVehicle extends Vehicle {
 	public static double Pconst = 1500; // energy consumption by auxiliary accessories
 
 	// Local variables
-	protected double batteryLevel_; // current battery level
+	protected double batteryLevel_; // current battery level, unite KWh
 	protected double mass; // mass of the vehicle in kg
 	protected boolean onChargingRoute_ = false;
 	protected double tickConsume; // Energy consumption per tick, for verifying the energy model
 	protected double totalConsume; // Total energy consumption by this vehicle
 	protected double tripConsume; // Energy consumption for the latest accomplished trip
 	protected double linkConsume; // Parameters for storing energy consumptions
-	protected double lowerBatteryRechargeLevel_;
-	protected double higherBatteryRechargeLevel_;
+	protected double lowerBatteryRechargeLevel_; // unit: kwh
+	protected double higherBatteryRechargeLevel_; // unit: kwh
 	
 	// For recording charging behaviors
 	public int chargingTime = 0;
@@ -159,6 +159,10 @@ public class ElectricVehicle extends Vehicle {
 		return batteryLevel_;
 	}
 	
+	public void setBatteryLevel(double bt) {
+		this.batteryLevel_ = bt;
+	}
+	
 	public double getMass() {
 		return 1.05 * mass;
 	}
@@ -251,5 +255,13 @@ public class ElectricVehicle extends Vehicle {
 		this.setNextPlan(); // Return to where it was before goCharging
 		this.setState(Vehicle.NONE_OF_THE_ABOVE);
 		this.departure(); 
+	}
+	
+	public void setLowerBatteryRechargeLevel(double bt) {
+		this.lowerBatteryRechargeLevel_ = bt;
+	}
+	
+	public void setHigherBatteryRechargeLevel(double bt) {
+		this.higherBatteryRechargeLevel_ = bt;
 	}
 }

@@ -77,6 +77,7 @@ RH_DEMAND_FACTOR = 1
 ### 2. Private vehicle trips
 EV_DEMAND_FILE = data/Empty/demand/private/empty.csv
 GV_DEMAND_FILE = data/Empty/demand/private/empty.csv
+EV_CHARGING_PREFERENCE = data/Empty/operation/charging_preference/empty.csv
 
 ## Default bus schedule
 BUS_SCHEDULE = data/Empty/operation/bus_planning/blank.json

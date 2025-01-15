@@ -247,6 +247,14 @@ public class Zone {
 			else { // If vehicle does not exists
 				// Create vehicle
 				v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+				// Update its state via configuration
+				ArrayList<Double> vehConfig = ContextCreator.travel_demand.getEVChargingPreference(oneTrip.getKey());
+				if(vehConfig!= null) {
+					v.setBatteryLevel(vehConfig.get(0));
+					v.setLowerBatteryRechargeLevel(vehConfig.get(1));
+					v.setHigherBatteryRechargeLevel(vehConfig.get(2));
+				}
+				
 				// Assign trips
 				v.initializePlan(this.getID(), this.sampleRoad(false), (int) ContextCreator.getCurrentTick());
 				v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());

@@ -104,6 +104,7 @@ public class GlobalVariables {
 		BT_STD_FILE = loadConfig("BT_STD_FILE");
 		EV_DEMAND_FILE = loadConfig("EV_DEMAND_FILE");
 		GV_DEMAND_FILE = loadConfig("GV_DEMAND_FILE");
+		EV_CHARGING_PREFERENCE = loadConfig("EV_CHARGING_PREFERENCE");
 		RH_DEMAND_FILE = loadConfig("RH_DEMAND_FILE");
 		RH_WAITING_TIME = loadConfig("RH_WAITING_TIME");
 		RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");
@@ -353,6 +354,8 @@ public class GlobalVariables {
 	// Travel demand
 	public static String EV_DEMAND_FILE = loadConfig("EV_DEMAND_FILE");
 	public static String GV_DEMAND_FILE = loadConfig("GV_DEMAND_FILE");
+	public static String EV_CHARGING_PREFERENCE = loadConfig("EV_CHARGING_PREFERENCE");
+	
 	public static String RH_DEMAND_FILE = loadConfig("RH_DEMAND_FILE");
 	public static String RH_WAITING_TIME = loadConfig("RH_WAITING_TIME");
 	public static String RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");

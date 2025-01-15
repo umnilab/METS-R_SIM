@@ -24,6 +24,8 @@ import org.json.simple.parser.JSONParser;
 public class TravelDemand {
 	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateEVTravelDemand; // The outer key is departure time, the inner key is vid
 	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateGVTravelDemand;
+	private HashMap<Integer, ArrayList<Double>> privateEVChargingPreference;
+	
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> publicTravelDemand; // The outer key is the origin and the
 																				// inner key is the destination
 	private List<Integer> waitingThreshold;
@@ -32,13 +34,15 @@ public class TravelDemand {
 	private BufferedReader privateEVTripReader;
 	private BufferedReader privateGVTripReader;
 	
-	private int hour;
+	private BufferedReader privateEVChargingPreferenceReader;
 	
+	private int hour;
 
 	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
 		privateEVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
 		privateGVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
+		privateEVChargingPreference = new HashMap<Integer, ArrayList<Double>>();
 		publicTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
 		sharePercentage = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
@@ -48,19 +52,42 @@ public class TravelDemand {
 			readSharePercentFile();
 		}
 		
+		readPrivateDemandFile();
+		
+		
+		hour = 0;
+	}
+	
+	public void readPrivateDemandFile() {
 		try {
 			privateEVTripReader = new BufferedReader(new FileReader(GlobalVariables.EV_DEMAND_FILE));
 			privateGVTripReader = new BufferedReader(new FileReader(GlobalVariables.GV_DEMAND_FILE));
+			privateEVChargingPreferenceReader =  new BufferedReader(new FileReader(GlobalVariables.EV_CHARGING_PREFERENCE));
 			
 			// skip the first line
 			privateEVTripReader.readLine();
 			privateGVTripReader.readLine();
+			privateEVChargingPreferenceReader.readLine();
+			
+			
+			String line = privateEVChargingPreferenceReader.readLine();
+			while(line != null) {
+				String[] result = line.split(",");
+				int vehID = Integer.parseInt(result[0]);
+				ArrayList<Double> vehConfig = new ArrayList<Double>();
+				vehConfig.add(Double.parseDouble(result[1]));
+				vehConfig.add(Double.parseDouble(result[2]));
+				vehConfig.add(Double.parseDouble(result[3]));
+				
+				privateEVChargingPreference.put(vehID, vehConfig);
+				
+				line = privateEVChargingPreferenceReader.readLine();
+			}
 			
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 		
-		hour = 0;
 	}
 
 	@SuppressWarnings("unchecked")
@@ -98,6 +125,7 @@ public class TravelDemand {
 		// Add the logger
 		int ev_trip_number = 0;
 		int gv_trip_number = 0;
+		
 		// clear the previous chunk
 		Iterator<Map.Entry<Integer, HashMap<Integer, ArrayList<Integer>>>> iter = this.privateGVTravelDemand.entrySet().iterator();
 	    while (iter.hasNext()) {
@@ -247,6 +275,13 @@ public class TravelDemand {
 			}
 		}
 		return result;
+	}
+	
+	public ArrayList<Double> getEVChargingPreference(int vehID){
+		if(privateEVChargingPreference.containsKey(vehID))
+			return privateEVChargingPreference.get(vehID);
+		else
+			return null;
 	}
 	
 	public HashMap<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {

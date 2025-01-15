@@ -48,7 +48,8 @@ public class Reflection {
     return getPackageAnnotation(className, annotationClass) != null;
   }
 
-  public static <A extends Annotation> A getPackageAnnotation(String className, Class<A> annotationClass) {
+  @SuppressWarnings("deprecation")
+public static <A extends Annotation> A getPackageAnnotation(String className, Class<A> annotationClass) {
     Class<?> classClass = null;
     try {
       classClass = Class.forName(className);
@@ -79,6 +80,7 @@ public class Reflection {
    * @param className the fully qualified name of the class
    * @return          an instance of the class
    */
+@SuppressWarnings("deprecation")
 public static Object createObject(String className) {
     Object object = null;
     try {
