@@ -19,12 +19,12 @@ import java.util.*;
  **/
 
 public class BackgroundTraffic {
-	private TreeMap<Integer, ArrayList<Double>> backgroundSpeed;
-	private TreeMap<Integer, ArrayList<Double>> backgroundSpeedStd;
+	private TreeMap<String, ArrayList<Double>> backgroundSpeed;
+	private TreeMap<String, ArrayList<Double>> backgroundSpeedStd;
 
 	public BackgroundTraffic() {
-		backgroundSpeed = new TreeMap<Integer, ArrayList<Double>>();
-		backgroundSpeedStd = new TreeMap<Integer, ArrayList<Double>>();
+		backgroundSpeed = new TreeMap<String, ArrayList<Double>>();
+		backgroundSpeedStd = new TreeMap<String, ArrayList<Double>>();
 		readEventFile();
 		readStdFile();
 	}
@@ -34,7 +34,7 @@ public class BackgroundTraffic {
 		File bteventFile = new File(GlobalVariables.BT_EVENT_FILE);
 		CSVReader csvreader = null;
 		String[] nextLine;
-		int roadID = 0;
+		String roadID;
 
 		try {
 			csvreader = new CSVReader(new FileReader(bteventFile));
@@ -49,7 +49,7 @@ public class BackgroundTraffic {
 				} else {
 					ArrayList<Double> value = new ArrayList<Double>(
 							Collections.nCopies(GlobalVariables.HOUR_OF_SPEED, 0.0d));
-					roadID = (int) (Float.parseFloat(nextLine[0]));
+					roadID = nextLine[0];
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
@@ -67,7 +67,7 @@ public class BackgroundTraffic {
 		File bteventFile = new File(GlobalVariables.BT_STD_FILE);
 		CSVReader csvreader = null;
 		String[] nextLine;
-		int roadID = 0;
+		String roadID;
 		try {
 			csvreader = new CSVReader(new FileReader(bteventFile));
 			// This is used to avoid reading the header (Data is assumed to
@@ -81,7 +81,7 @@ public class BackgroundTraffic {
 				} else {
 					ArrayList<Double> value = new ArrayList<Double>(
 							Collections.nCopies(GlobalVariables.HOUR_OF_SPEED, 0.0d));
-					roadID = (int) (Float.parseFloat(nextLine[0]));
+					roadID = nextLine[0];
 					for (int i = 0; i < GlobalVariables.HOUR_OF_SPEED; i++) {
 						value.set(i, Double.parseDouble(nextLine[i + 1]));
 					}
@@ -95,7 +95,7 @@ public class BackgroundTraffic {
 		}
 	}
 	
-	public double getBackgroundTraffic(int ID, int hour) {
+	public double getBackgroundTraffic(String ID, int hour) {
 		if(backgroundSpeed.containsKey(ID)) {
 			if(backgroundSpeed.get(ID).size()>hour)
 				return backgroundSpeed.get(ID).get(hour); 
@@ -105,7 +105,7 @@ public class BackgroundTraffic {
 		return -1;
 	}
 
-	public double getBackgroundTrafficStd(int ID, int hour) {
+	public double getBackgroundTrafficStd(String ID, int hour) {
 		if(backgroundSpeedStd.containsKey(ID)) {
 			if(backgroundSpeedStd.get(ID).size()>hour)
 				return backgroundSpeedStd.get(ID).get(hour); 

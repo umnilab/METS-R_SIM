@@ -585,7 +585,7 @@ public class Road {
 		// each hour set events
 		if (this.lastUpdateHour < hour) {
 			for(Lane lane: this.getLanes()) {
-				double new_speed = ContextCreator.background_traffic.getBackgroundTraffic(this.ID, hour);
+				double new_speed = ContextCreator.background_traffic.getBackgroundTraffic(this.origID, hour);
 				if(new_speed > 0) lane.setSpeed(new_speed * 0.44694);
 			}
 			
