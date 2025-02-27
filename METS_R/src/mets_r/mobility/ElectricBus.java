@@ -145,8 +145,6 @@ public class ElectricBus extends ElectricVehicle {
 			}
 			this.setShadowImpact();
 			if (this.roadPath == null) {
-				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
-						", destination road " + this.getDestRoadID()+ ", downstream roads: " + this.getRoad().getDownStreamRoads());
 				this.nextRoad_ = null;
 			}
 			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction

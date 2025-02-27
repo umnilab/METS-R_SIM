@@ -469,8 +469,6 @@ public class Vehicle {
 		this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destCoord, this.rand_route_only); // K-shortest path or shortest path
 		this.setShadowImpact();
 		if (this.roadPath == null) {
-			ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
-					", destination road " + this.getDestRoadID() + ", downstream roads: " + this.getRoad().getDownStreamRoads());
 			this.nextRoad_ = null;
 		}
 		else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction

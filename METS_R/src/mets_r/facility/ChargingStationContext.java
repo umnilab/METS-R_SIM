@@ -45,7 +45,7 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 				// To support two formats, one with detailed charging station specifications,
 				// one just has ID and num of chargers
 				ChargingStation cs = null;
-				if (result.length == 6) {
+				if (result.length >= 6) {
 					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[3])),
 							(int) Math.round(Double.parseDouble(result[4])), (int) Math.round(Double.parseDouble(result[5]))); // Using customize parameters
 				} 

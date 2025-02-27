@@ -20,7 +20,6 @@ import mets_r.facility.ChargingStation;
 public class ElectricVehicle extends Vehicle {
 	/* Constant */
 	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-	public static double batteryCapacity = GlobalVariables.EV_BATTERY; // the storedEnergy is 50 kWh.
 	
 	// Parameters for Fiori (2016) model
 	public static double p0 = 1.2256;
@@ -34,6 +33,7 @@ public class ElectricVehicle extends Vehicle {
 	public static double Pconst = 1500; // energy consumption by auxiliary accessories
 
 	// Local variables
+	protected double batteryCapacity; // the storedEnergy is 50 kWh.
 	protected double batteryLevel_; // current battery level, unite KWh
 	protected double mass; // mass of the vehicle in kg
 	protected boolean onChargingRoute_ = false;
@@ -51,11 +51,12 @@ public class ElectricVehicle extends Vehicle {
 	
 	public ElectricVehicle(int vType, int vSensor) {
 		super(vType, vSensor);
-		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY
-				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * GlobalVariables.EV_BATTERY; 
+		this.batteryCapacity = GlobalVariables.EV_BATTERY;
+		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * this.batteryCapacity
+				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * this.batteryCapacity; 
 		this.mass = 1521; // vehicle's mass
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * this.batteryCapacity;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * this.batteryCapacity;
 	}
 	
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
@@ -155,14 +156,6 @@ public class ElectricVehicle extends Vehicle {
 		super.reportStatus();
 	}
 
-	public double getBatteryLevel() {
-		return batteryLevel_;
-	}
-	
-	public void setBatteryLevel(double bt) {
-		this.batteryLevel_ = bt;
-	}
-	
 	public double getMass() {
 		return 1.05 * mass;
 	}
@@ -257,11 +250,29 @@ public class ElectricVehicle extends Vehicle {
 		this.departure(); 
 	}
 	
+	public double getBatteryLevel() {
+		return batteryLevel_;
+	}
+	
+	// Set the battery level, unit: % of the total capacity
+	public void setBatteryLevel(double bt) {
+		this.batteryLevel_ = Math.max(0.0, Math.min(1.0, bt / 100.0)) * this.batteryCapacity;
+	}
+	
+	
 	public void setLowerBatteryRechargeLevel(double bt) {
-		this.lowerBatteryRechargeLevel_ = bt;
+		this.lowerBatteryRechargeLevel_ = bt / 100.0 * this.batteryCapacity;
 	}
 	
 	public void setHigherBatteryRechargeLevel(double bt) {
-		this.higherBatteryRechargeLevel_ = bt;
+		this.higherBatteryRechargeLevel_ = bt / 100.0 * this.batteryCapacity;
+	}
+	
+	public void setBatteryCapacity(double bc) {
+		this.batteryCapacity = bc;
+	}
+	
+	public double getBatteryCapacity() {
+		return this.batteryCapacity;
 	}
 }

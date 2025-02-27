@@ -241,18 +241,19 @@ public class Zone {
 					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
 				else { // If vehicle is on road
-					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
 				}
 			}
 			else { // If vehicle does not exists
 				// Create vehicle
 				v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
 				// Update its state via configuration
-				ArrayList<Double> vehConfig = ContextCreator.travel_demand.getEVChargingPreference(oneTrip.getKey());
+				ArrayList<Double> vehConfig = ContextCreator.travel_demand.getPrivateEVProfile(oneTrip.getKey());
 				if(vehConfig!= null) {
-					v.setBatteryLevel(vehConfig.get(0));
-					v.setLowerBatteryRechargeLevel(vehConfig.get(1));
-					v.setHigherBatteryRechargeLevel(vehConfig.get(2));
+					v.setBatteryCapacity(vehConfig.get(0));
+					v.setBatteryLevel(vehConfig.get(1));
+					v.setLowerBatteryRechargeLevel(vehConfig.get(2));
+					v.setHigherBatteryRechargeLevel(vehConfig.get(3));
 				}
 				
 				// Assign trips
@@ -282,7 +283,7 @@ public class Zone {
 					this.numberOfGeneratedPrivateGVTrip += 1;
 				}
 				else { // If vehicle is on road
-					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is currently on the road at time index"+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
 				}
 			}
 			else { // If vehicle does not exists

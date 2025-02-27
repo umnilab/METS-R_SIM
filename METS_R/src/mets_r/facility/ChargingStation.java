@@ -135,6 +135,7 @@ public class ChargingStation {
 			double utilityL2 = -alpha * totalTimeL2(ev) / 3600 - chargingCostL2(ev);
 			double utilityL3 = -alpha * totalTimeL3(ev) / 3600 - chargingCostL3(ev);
 			double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
+			ContextCreator.logger.info("Share of L2 in ID " + this.getID() + " is " + shareOfL2);
 			double random = rand.nextDouble();
 			if (random < shareOfL2) {
 				toAddChargingL2.add(ev);
@@ -165,14 +166,14 @@ public class ChargingStation {
 		if (chargingVehicleL2.size() > 0) { // the number of vehicles that are at chargers.
 			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
 			for (ElectricVehicle ev : chargingVehicleL2) {
-				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel(); // the maximal battery
+				double maxChargingDemand = ev.getBatteryCapacity() - ev.getBatteryLevel(); // the maximal battery
 																								// level is 50.0kWh
 
 				// double maxChargingSupply = chargingRateL2/3600.0 *
 				// GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
 				// *GlobalVariables.SIMULATION_STEP_SIZE; // the maximal charging supply(kWh)
 				// within every 100 ticks.
-				double C_car = GlobalVariables.EV_BATTERY;
+				double C_car = ev.getBatteryCapacity();
 				double SOC_i = ev.getBatteryLevel() / C_car;
 				double P = chargingRateL2;
 				double t = GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
@@ -185,6 +186,7 @@ public class ChargingStation {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
 					// add vehicle to departureQueue of corresponding road
+					ContextCreator.logger.info("L2 charging finished!");
 					ev.finishCharging(this.getID(), "L2");
 				}
 			}
@@ -209,9 +211,9 @@ public class ChargingStation {
 		if (chargingVehicleL3.size() > 0) { // the number of vehicles that are at chargers.
 			ArrayList<ElectricVehicle> toRemoveVeh = new ArrayList<ElectricVehicle>();
 			for (ElectricVehicle ev : chargingVehicleL3) {
-				double maxChargingDemand = GlobalVariables.EV_BATTERY - ev.getBatteryLevel(); // the maximal battery
+				double maxChargingDemand = ev.getBatteryCapacity() - ev.getBatteryLevel(); // the maximal battery
 																								// level is 50.0kWh
-				double C_car = GlobalVariables.EV_BATTERY;
+				double C_car = ev.getBatteryCapacity();
 				double SOC_i = ev.getBatteryLevel() / C_car;
 				double P = chargingRateL3;
 				double t = GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
@@ -223,6 +225,7 @@ public class ChargingStation {
 				} else {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
+					ContextCreator.logger.info("L3 charging finished!");
 					ev.finishCharging(this.getID(), "L3");
 				}
 			}
@@ -287,18 +290,17 @@ public class ChargingStation {
 	public double totalTimeL2(ElectricVehicle ev) { // hour
 		int numChargingVehicle = chargingVehicleL2.size(); // Number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL2.size(); // Number of vehicles that in the queue.
-		// Assume each charging vehicle needs 20kWh more, each waiting vehicle needs
-		// 40kWh.
+		// Assume each charging vehicle needs 20kWh more, each waiting vehicle needs 40kWh.
 		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL2 * numL2); // unit:
 																														// second
-		double chargingTime = (50.0 - ev.getBatteryLevel()) * 3600 / chargingRateL2;
+		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) * 3600 / chargingRateL2;
 		double totalTime = waitingTime + chargingTime;
 		return totalTime;
 	}
 
 	// The charging price of using L2 charger.
 	public double chargingCostL2(ElectricVehicle ev) {
-		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL2; // unit: hour
+		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL2; // unit: hour
 		double price = chargingTime * chargingFeeL2; // unit: dollar
 		return price;
 	}
@@ -306,22 +308,21 @@ public class ChargingStation {
 	// Estimate the total time of using L3 charger.
 	// It consists of two parts: waiting time and charging time.
 	// Waiting time is equal to total charging demand in front of the vehicle
-	// divided by the maximal L2 charging supply.//
+	// divided by the maximal L3 charging supply.//
 	public double totalTimeL3(ElectricVehicle ev) { // hour
 		int numChargingVehicle = chargingVehicleL3.size(); // number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL3.size(); // number of vehicles that in the queue.
-		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs
-		// 40kWh.
+		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs 40kWh.
 		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) * 3600.0 / (chargingRateL3 * numL3); // unit:
 																														// second
-		double chargingTime = (50.0 - ev.getBatteryLevel()) * 3600 / chargingRateL3;
+		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) * 3600 / chargingRateL3;
 		double totalTime = waitingTime + chargingTime;
 		return totalTime;
 	}
 
-	// The charging price of using L2 chager.
+	// The charging price of using L3 chager.
 	public double chargingCostL3(ElectricVehicle ev) {
-		double chargingTime = (50.0 - ev.getBatteryLevel()) / chargingRateL3; // unit: hour
+		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL3; // unit: hour
 		double price = chargingTime * chargingFeeL3; // unit: dollar
 		return price;
 	}
@@ -333,21 +334,43 @@ public class ChargingStation {
 	public Coordinate getCoord() {
 		return ContextCreator.getChargingStationGeography().getGeometry(this).getCentroid().getCoordinate();
 	}
-
-	// Nonlinear charging model
-	// SOC_i, SOC_f:State of charge,[0,1]; C: total battery capacity(kWh),
-	// P:charging power(kW),t:actual charging time(hour)
-	public double nonlinearCharging(double SOC_i, double C, double P, double t) {
-		double y = SOC_i;
-		double beta = P / C;
-		double A = (64 * Math.pow(y, 3) / 27 - 5 * y / 2) / Math.pow(beta, 3);
-		double B = Math.sqrt((320 * Math.pow(y, 4) / 9 - 1525 * y * y / 12 + 125) / Math.pow(beta, 6));
-		double t_star = Math.cbrt(A + B) + Math.cbrt(A - B) + 4 * y / (3 * beta);
-		double t_2 = t_star + t;
-		double SOC_f = Math.min(1.0, beta * t_2 * (beta * beta * t_2 * t_2 + 15) / (2 * beta * beta * t_2 * t_2 + 15));
-		ContextCreator.logger.debug("Charging test1!" + y + " " + beta + " " + t_star + " " + t + " " + SOC_f);
-		ContextCreator.logger
-				.debug("Charging test2!" + Math.cbrt(A + B) + " " + Math.cbrt(A - B) + " " + 4 * y / (3 * beta));
-		return SOC_f;
-	}
+	
+	 /**
+     * Computes the final state of charge (SoC_f) based on an initial SoC (SOC_i),
+     * battery capacity (C), charging power (P), and a charging time (t in hours),
+     * using the corrected nonlinear charging model.
+     *
+     * @param SOC_i initial state of charge [0,1]
+     * @param C     total battery capacity (kWh)
+     * @param P     charging power (kW)
+     * @param t     incremental charging time (hours)
+     * @return SOC_f final state of charge [0,1]
+     */
+    public static double nonlinearCharging(double SOC_i, double C, double P, double t) {
+        // Remaining capacity fraction to be charged.
+        double y = 1.0 - Math.max(SOC_i, 0);
+        double beta = P / C;
+        
+        // Compute A and B using y.
+        double A = (64 * Math.pow(y, 3) / 27 - 5 * y / 2) / Math.pow(beta, 3);
+        double B = Math.sqrt((320 * Math.pow(y, 4) / 9 - 1525 * Math.pow(y, 2) / 12 + 125) / Math.pow(beta, 6));
+        
+        // Compute t_star (baseline offset time based on current remaining capacity y)
+        double t_star = Math.cbrt(A + B) + Math.cbrt(A - B) + 4 * y / (3 * beta);
+        double t_total = t_star + t; // effective time after adding the incremental period
+        
+        // Define the cumulative charging function F(t)
+        // F(t) = beta*t*(beta^2*t^2+15) / (2*beta^2*t^2+15)
+        double F_t_total = beta * t_total * (beta * beta * Math.pow(t_total, 2) + 15)
+                           / (2 * beta * beta * Math.pow(t_total, 2) + 15);
+        double F_t_star  = beta * t_star * (beta * beta * Math.pow(t_star, 2) + 15)
+                           / (2 * beta * beta * Math.pow(t_star, 2) + 15);
+        
+        // Compute the incremental charged fraction during time t.
+        double incremental = F_t_total - F_t_star;
+        
+        // Update the final SoC ensuring it does not exceed 1.0.
+        double SOC_f = Math.min(1.0, SOC_i + y * incremental);
+        return SOC_f;
+    }
 }

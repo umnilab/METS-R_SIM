@@ -42,8 +42,6 @@ public class ElectricTaxi extends ElectricVehicle {
 		super(Vehicle.ETAXI, vSensor?Vehicle.CV2X:Vehicle.NONE_OF_THE_ABOVE);
 		this.numPeople_ = 0;
 		this.cruisingTime_ = 0;
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * GlobalVariables.EV_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * GlobalVariables.EV_BATTERY;
 		this.avgPersonMass_ = 60; // kg
 		
 		// Parameters for UCB calculation
@@ -200,8 +198,6 @@ public class ElectricTaxi extends ElectricVehicle {
 			
 			this.setShadowImpact();
 			if (this.roadPath == null) {
-				ContextCreator.logger.error("Routing fails with origin: " + this.getRoad().getID() + ", destination " + this.getDestCoord() + 
-						", destination road " + this.getDestRoadID()+ ", downstream roads: " + this.getRoad().getDownStreamRoads());
 				this.nextRoad_ = null;
 			}
 			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
