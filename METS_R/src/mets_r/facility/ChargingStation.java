@@ -367,10 +367,11 @@ public class ChargingStation {
                            / (2 * beta * beta * Math.pow(t_star, 2) + 15);
         
         // Compute the incremental charged fraction during time t.
+        double minDeltaSOC = 0.001 * beta; // Set the min deltaSoC
         double incremental = F_t_total - F_t_star;
         
         // Update the final SoC ensuring it does not exceed 1.0.
-        double SOC_f = Math.min(1.0, SOC_i + y * incremental);
+        double SOC_f = Math.min(1.0, SOC_i + Math.max(y * incremental, minDeltaSOC));
         return SOC_f;
     }
 }
