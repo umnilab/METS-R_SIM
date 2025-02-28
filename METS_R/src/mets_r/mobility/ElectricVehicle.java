@@ -103,6 +103,7 @@ public class ElectricVehicle extends Vehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			this.tripConsume = 0;
 			if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 					&& batteryLevel_ <= higherBatteryRechargeLevel_)) {
 				super.reachDestButNotLeave(); // Go charging

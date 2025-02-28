@@ -560,13 +560,18 @@ public class CityContext extends DefaultContext<Object> {
 		Point point = geomFac.createPoint(coord);
 		Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
 		double minDist = Double.MAX_VALUE;
+		boolean hasL3 = false;
 		ChargingStation nearestChargingStation = null;
 		int num_tried = 0;
 		while (nearestChargingStation == null && num_tried < 5) {
 			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
 				double thisDist = this.getDistance(coord, cs.getCoord());
-				if ((thisDist < minDist) && (cs.capacity() > 0)) {
+				// Sort by two keys (whether there are L3 charger, distance)
+				if ((((cs.numL3() > 0) && !hasL3) || 
+						(((cs.numL3() > 0) == hasL3) && (thisDist < minDist))) && 
+						(cs.capacity() > 0)) {
 					minDist = thisDist;
+					hasL3 = (cs.numL3() > 0);
 					nearestChargingStation = cs;
 				}
 			}
@@ -578,8 +583,12 @@ public class CityContext extends DefaultContext<Object> {
 			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
 					ChargingStation.class)) {
 				double thisDist = this.getDistance(coord, cs.getCoord());
-				if ((thisDist < minDist) && (cs.numL2() > 0 || cs.numL3() > 0)) {
+				
+				// Sort by two keys (whether there are L3 charger, distance)
+				if (((cs.numL3() > 0) && !hasL3) || 
+						(((cs.numL3() > 0) == hasL3) && (minDist > thisDist) && (cs.numL2() > 0 || cs.numL3() > 0))) {
 					minDist = thisDist;
+					hasL3 = (cs.numL3() > 0);
 					nearestChargingStation = cs;
 				}
 			}
@@ -589,7 +598,6 @@ public class CityContext extends DefaultContext<Object> {
 					"CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
 							+ coord.toString());
 		}
-
 		return nearestChargingStation;
 	}
 

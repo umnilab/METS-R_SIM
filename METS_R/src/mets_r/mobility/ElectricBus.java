@@ -34,7 +34,6 @@ public class ElectricBus extends ElectricVehicle {
 	public static double A = 6.93; // frontal area of the vehicle
 	public static double cd = 0.68; // draft coefficient
 	public static double Pconst = 5500; // energy consumption by auxiliary accessories
-	public static double batteryCapacity = GlobalVariables.BUS_BATTERY; // the storedEnergy is 250 kWh.
 	
 	/* Local variables */
 	private int routeID;
@@ -85,10 +84,11 @@ public class ElectricBus extends ElectricVehicle {
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
 		this.numSeat = 40;
-		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY
-				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * GlobalVariables.BUS_BATTERY; // unit:kWh
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * GlobalVariables.BUS_BATTERY;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_HIGH * GlobalVariables.BUS_BATTERY;
+		this.batteryCapacity = GlobalVariables.BUS_BATTERY;
+		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * this.batteryCapacity
+				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * this.batteryCapacity; // unit:kWh
+		this.lowerBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * this.batteryCapacity;
+		this.higherBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_HIGH *this.batteryCapacity;
 		this.mass = 18000.0; // the weight of bus is 18t.
 		this.mass_ = mass * 1.05;
 		this.avgPersonMass_ = 180.0;
