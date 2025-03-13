@@ -32,6 +32,19 @@ public class MessageClass{
 	    }
 	}
 	
+	class VehIDVehTypeSensorType {
+	    int vehID;
+	    boolean vehType;
+	    int sensorType;
+	
+	    // Constructor
+	    public VehIDVehTypeSensorType(int vehID, boolean vehType, int sensorType) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.sensorType = sensorType;
+	    }
+	}
+	
 	class VehIDVehTypeAcc {
 	    int vehID;
 	    boolean vehType;

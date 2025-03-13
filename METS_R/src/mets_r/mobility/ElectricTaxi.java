@@ -23,16 +23,17 @@ import util.Pair;
 
 public class ElectricTaxi extends ElectricVehicle {
 	/* Local variables */
-	private int numPeople_; // no of people inside the vehicle
+	private int passNum; // no of people inside the vehicle
 	private double avgPersonMass_; // average mass of a person in lbs
 
 	private int cruisingTime_;
 	
+	private Queue<Request> toBoardRequests;
+	private Queue<Request> onBoardRequests;
+	
 	/* Public variables */
 	// For operational features
-	public Queue<Request> passengerWithAdditionalActivityOnTaxi;
 	public int currentZone;
-	
 	// Service metrics
 	public int servedPass = 0;
 	// Parameter to show which route has been chosen in eco-routing.
@@ -40,12 +41,12 @@ public class ElectricTaxi extends ElectricVehicle {
 
 	public ElectricTaxi(boolean vSensor) {
 		super(Vehicle.ETAXI, vSensor?Vehicle.CV2X:Vehicle.NONE_OF_THE_ABOVE);
-		this.numPeople_ = 0;
+		this.passNum = 0;
 		this.cruisingTime_ = 0;
 		this.avgPersonMass_ = 60; // kg
 		
-		// Parameters for UCB calculation
-		this.passengerWithAdditionalActivityOnTaxi = new LinkedList<Request>();
+		this.toBoardRequests = new LinkedList<Request>();
+		this.onBoardRequests = new LinkedList<Request>();
 	}
 	
 	// Randomly select a neighboring link and update the activity plan
@@ -78,7 +79,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 		+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 		+ this.getDepTime() + "," + this.getTripConsume() + "," + this.routeChoice + ","
-		+ this.getNumPeople()+ "\r\n";
+		+ this.getPassNum()+ "\r\n";
 		try {
 			ContextCreator.agg_logger.ev_logger.write(formated_msg);
 		} catch (IOException e) {
@@ -114,20 +115,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		this.setState(Vehicle.PARKING);
 	}
 
-	@Override
-	public void updateBatteryLevel() {
-		double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
-		tickConsume = tickEnergy;
-		linkConsume += tickEnergy; // Update energy consumption on current link
-		totalConsume += tickEnergy;
-		tripConsume += tickEnergy;
-		batteryLevel_ -= tickEnergy;
-	}
-
 	// Relocate vehicle
-	/**
-	 * @param p
-	 */
 	public void relocation(int orginID, int destinationID) {
 		if(this.getState() == Vehicle.CRUISING_TRIP) {
 			this.stopCruising();
@@ -139,27 +127,23 @@ public class ElectricTaxi extends ElectricVehicle {
 		// Add vehicle to newqueue of corresponding road
 		this.departure();
 	}
-
-	/**
-	 * @param list of passengers
-	 */
+	
+	// Serve passengers in an order specified by a list, assuming all passengers are picked at the same place
 	public void servePassenger(List<Request> plist) {
 		if (!plist.isEmpty()) {
 			if(this.getState() == Vehicle.CRUISING_TRIP) {
 				this.stopCruising();
 			}
 			// Dispatch the vehicle to serve the request
-			this.addPlan(this.getDestID(),
-					plist.get(0).getOriginCoord(),
-					ContextCreator.getNextTick());
-			
-			for (Request p : plist) {
-				this.addPlan(p.getDestZone(),
-						p.getDestCoord(),
+			for (Request p: plist) {
+				this.toBoardRequests.add(p);
+				this.addPlan(this.getOriginID(),
+						p.getOriginCoord(),
 						ContextCreator.getNextTick());
-				this.servedPass += 1;
-				this.setNumPeople(this.getNumPeople() + 1);
+				this.servedPass += p.getNumPeople();
+				this.passNum = this.getPassNum() + p.getNumPeople();
 			}
+			
 			this.setNextPlan();
 			this.setState(Vehicle.PICKUP_TRIP);
 			// Add vehicle to new queue of corresponding road
@@ -226,7 +210,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		if (this.onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ",4,"
 					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getNumPeople() + "\r\n";
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
 			try {
 				ContextCreator.agg_logger.ev_logger.write(formated_msg);
 			} catch (IOException e) {
@@ -245,7 +229,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 				+ this.getDepTime() + "," + this.getTripConsume() + "," + this.routeChoice + ","
-				+ this.getNumPeople()+ "\r\n";
+				+ this.getPassNum()+ "\r\n";
 				try {
 					ContextCreator.agg_logger.ev_logger.write(formated_msg);
 				} catch (IOException e) {
@@ -260,22 +244,35 @@ public class ElectricTaxi extends ElectricVehicle {
 			
 			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
-				this.setNumPeople(this.getNumPeople() - 1); // passenger arrived
+				Request arrived_request = this.onBoardRequests.poll();
+				this.passNum = this.passNum - arrived_request.getNumPeople(); // passenger arrived
 				z.taxiServedRequest += 1;
 				// if pass need to take the bus to complete his or her trip
-				if (this.passengerWithAdditionalActivityOnTaxi.size() > 0) {
+				if(arrived_request.lenOfActivity() >= 2){
 					// generate a pass and add it to the corresponding zone
-					Request p = this.passengerWithAdditionalActivityOnTaxi.poll();
-					p.moveToNextActivity();
-					if (z.busReachableZone.contains(p.getDestZone())) {
-						z.insertBusPass(p); // if bus can reach the destination
+					arrived_request.moveToNextActivity();
+					if (z.busReachableZone.contains(arrived_request.getDestZone())) {
+						z.insertBusPass(arrived_request); // if bus can reach the destination
 					} else {
-						z.insertTaxiPass(p); // this is called when we dynamically update bus schedules
+						z.insertTaxiPass(arrived_request); // this is called when we dynamically update bus schedules
+					}
+				} else {
+					arrived_request.arriveTIme = ContextCreator.getCurrentTick();
+					// Log the request information here
+					String formated_msg = ContextCreator.getCurrentTick() + "," + arrived_request.getID() + ","
+							+ arrived_request.getOriginZone() + "," + arrived_request.getDestZone() + ","
+							+ arrived_request.getNumPeople() + "," + arrived_request.generationTime + ","
+							+ arrived_request.matchedTime + "," + arrived_request.pickupTime + ","
+							+ arrived_request.arriveTIme + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
+					try {
+						ContextCreator.agg_logger.request_logger.write(formated_msg);
+					} catch (IOException e) {
+						e.printStackTrace();
 					}
 				}
-				
+
 				z.removeFutureSupply();
-				if (this.getNumPeople() > 0) { // keep serving more passengers
+				if (this.onBoardRequests.size() > 0) { // keep serving more passengers
 					// super.leaveNetwork();  // Leave network to drop-off passengers
 					this.setNextPlan();
 					ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
@@ -302,7 +299,16 @@ public class ElectricTaxi extends ElectricVehicle {
 			}
 			else if(this.getState() == Vehicle.PICKUP_TRIP){
 				// super.leaveNetwork(); // Leave network to pickup passengers
-				this.setState(Vehicle.OCCUPIED_TRIP);
+				// Assume no waiting time for picking up, modify this line if you want to count the waiting time
+				Request pickedup_request = this.toBoardRequests.poll();
+				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
+				this.onBoardRequests.add(pickedup_request);
+				this.addPlan(pickedup_request.getDestZone(),
+						pickedup_request.getDestCoord(),
+							ContextCreator.getNextTick());
+				if(this.toBoardRequests.size() == 0) {
+					this.setState(Vehicle.OCCUPIED_TRIP);
+				}
 				this.setNextPlan();
 				this.departure();
 			}
@@ -360,17 +366,13 @@ public class ElectricTaxi extends ElectricVehicle {
 		}
 	}
 
-	public int getNumPeople() {
-		return numPeople_;
-	}
-
-	public void setNumPeople(int numPeople) {
-		numPeople_ = numPeople;
+	public int getPassNum() {
+		return passNum;
 	}
 	
 	@Override
 	public double getMass() {
-		return 1.05 * mass + numPeople_ * avgPersonMass_;
+		return 1.05 * mass + passNum * avgPersonMass_;
 	}
 	
 	@Override

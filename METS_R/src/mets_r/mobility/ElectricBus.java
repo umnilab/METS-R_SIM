@@ -3,7 +3,6 @@ package mets_r.mobility;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.Dictionary;
 import java.util.Hashtable;
 import java.util.LinkedList;
@@ -40,7 +39,6 @@ public class ElectricBus extends ElectricVehicle {
 	private int passNum;
 	private int numSeat; // Capacity of the bus.
 	private int nextStop; // nextStop =i means the i-th entry of ArrayList<Integer> busStop.
-							// i=0,1,2,...,17.
 	private ArrayList<Integer> busStop;
 	// Each entry represents a bus stop (zone) along the bus route.
 	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
@@ -48,7 +46,9 @@ public class ElectricBus extends ElectricVehicle {
 	// Timetable variable here, the next departure time
 	private int nextDepartureTime;
 	
-	private ArrayList<Integer> destinationDemandOnBus; // The destination distribution of passengers on the bus now.
+	private ArrayList<Queue<Request>> toBoardRequests; // The pickup stop array
+	private ArrayList<Queue<Request>> onBoardRequests; // The drop-off stop array
+	
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
 	private double avgPersonMass_; // average mass of a person in lbs
@@ -56,9 +56,6 @@ public class ElectricBus extends ElectricVehicle {
 	private double mass; // mass of the vehicle in kg
 	
 	/* Public variables */
-	// For operational features
-	public ArrayList<Queue<Request>> passengerWithAdditionalActivityOnBus;
-	
 	// Service metrics
 	public int served_pass = 0;
 	
@@ -76,10 +73,13 @@ public class ElectricBus extends ElectricVehicle {
 			stopBus.put(route.get(i), i);
 		}
 		this.nextDepartureTime = nextDepartureTime;
-		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
-		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Request>>();
+		this.toBoardRequests = new ArrayList<Queue<Request>>();
 		for (int i = 0; i < route.size(); i++) {
-			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Request>());
+			this.toBoardRequests.add(new LinkedList<Request>());
+		}
+		this.onBoardRequests = new ArrayList<Queue<Request>>();
+		for (int i = 0; i < route.size(); i++) {
+			this.onBoardRequests.add(new LinkedList<Request>());
 		}
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
@@ -199,21 +199,10 @@ public class ElectricBus extends ElectricVehicle {
 			this.tripConsume = 0;
 
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
-			this.setPassNum(this.getPassNum() - this.destinationDemandOnBus.get(nextStop % busStop.size()));
-			ContextCreator.getZoneContext().get(
-					this.getDestID()).busServedRequest += this.destinationDemandOnBus.get(nextStop % busStop.size());
-			this.destinationDemandOnBus.set(nextStop % busStop.size(), 0);
-
-			if (this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size()).size() > 0) {
-				for (Request p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size())
-						.poll(); !this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size())
-								.isEmpty(); p = this.passengerWithAdditionalActivityOnBus.get(nextStop % busStop.size())
-										.poll()) {
-					p.moveToNextActivity();
-					ContextCreator.getZoneContext().get(this.getDestID()).insertTaxiPass(p);
-				}
-			}
 			
+			
+			// Passenger drop off
+			int delay = this.dropOffPassenger(nextStop % this.busStop.size());
 			super.reachDestButNotLeave(); // Update the vehicle status
 			// Decide the next step
 			if (nextStop == busStop.size() || this.routeID == -1) { // arrive at the last stop
@@ -234,7 +223,13 @@ public class ElectricBus extends ElectricVehicle {
 				}
 			} else {
 				// Passengers get on board
-				this.servePassenger();
+				// ServePassengerByBus
+				Zone arrivedZone = ContextCreator.getZoneContext().get(this.busStop.get(this.nextStop));
+				delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
+				for(Request p: this.toBoardRequests.get(this.nextStop  )) {
+					this.pickUpPassenger(p);
+				}
+				
 				this.nextStop = nextStop + 1;
 				// Head to the next Stop
 				int destZoneID = busStop.get(nextStop % busStop.size());
@@ -246,32 +241,52 @@ public class ElectricBus extends ElectricVehicle {
 			ContextCreator.logger.debug("Bus " + this.ID + " has arrive the next station: " + nextStop);
 		}
 	}
-
-	private void servePassenger() {
-		// ServePassengerByBus
-		Zone arrivedZone = ContextCreator.getZoneContext().get(this.getNextStopZoneID());
-		ArrayList<Request> passOnBoard = arrivedZone.servePassengerByBus(this.numSeat - this.passNum, busStop);
-		for (Request p : passOnBoard) {
-			this.destinationDemandOnBus.set(this.stopBus.get(p.getDestZone()),
-					destinationDemandOnBus.get(this.stopBus.get(p.getDestZone())) + 1);
-			if (p.lenOfActivity() > 1) {
-				this.passengerWithAdditionalActivityOnBus.get(this.stopBus.get(p.getDestZone())).add(p);
+	
+	
+	// To add delay in boarding or taking off the bus, modify the following functions
+	public int pickUpPassenger(Request p) {
+		this.onBoardRequests.get(this.stopBus.get(p.getDestZone())).add(p);
+		p.pickupTime = ContextCreator.getCurrentTick();
+		this.served_pass += p.getNumPeople();
+		this.passNum = this.getPassNum() + p.getNumPeople();
+		if(this.passNum > this.numSeat) {
+			ContextCreator.logger.error("Bus " + this.getID() + " has " + this.passNum + " passengers which exceed its capacity " + this.numSeat);
+		}
+		return 0;
+	}
+	
+	public int dropOffPassenger(int stopIndex) {
+		for(Request arrived_request: this.onBoardRequests.get(stopIndex)) {
+			this.passNum = this.passNum - arrived_request.getNumPeople();
+			if(arrived_request.lenOfActivity() >= 2){
+				// generate a pass and add it to the corresponding zone
+				arrived_request.moveToNextActivity();
+				ContextCreator.getZoneContext().get(this.busStop.get(stopIndex)).insertTaxiPass(arrived_request);
+			}
+			else {
+				arrived_request.arriveTIme = ContextCreator.getCurrentTick();
+				// Log the request information here
+				String formated_msg = ContextCreator.getCurrentTick() + "," + arrived_request.getID() + ","
+						+ arrived_request.getOriginZone() + "," + arrived_request.getDestZone() + ","
+						+ arrived_request.getNumPeople() + "," + arrived_request.generationTime + ","
+						+ arrived_request.matchedTime + "," + arrived_request.pickupTime + ","
+						+ arrived_request.arriveTIme + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
+				try {
+					ContextCreator.agg_logger.request_logger.write(formated_msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 		}
-		this.served_pass += passOnBoard.size();
-		this.setPassNum(this.getPassNum() + passOnBoard.size());
+		return 0;
 	}
 
 	public int getPassNum() {
 		return this.passNum;
 	}
 
-	public void setPassNum(int numPeople) {
-		this.passNum = numPeople;
-	}
-
-	public int getNextStopZoneID() {
-		return busStop.get(nextStop);
+	public int getNextStopIndex() {
+		return this.nextStop;
 	}
 	
 	public int getCurrentStop() {
@@ -284,6 +299,15 @@ public class ElectricBus extends ElectricVehicle {
 
 	public double getMass() {
 		return this.mass_ + this.avgPersonMass_ * passNum;
+	}
+	
+	public int remainingCapacity() {
+		return this.numSeat - this.passNum;
+	}
+	
+	// return the list of stops (Zones) to be visited by this bus
+	public List<Integer> getBusStops(){
+		return new ArrayList<Integer>(this.busStop);
 	}
 	
 	@Override
@@ -304,7 +328,8 @@ public class ElectricBus extends ElectricVehicle {
 		this.departure();
 		
 	}
-
+	
+	// Change the entire route
 	public void updateSchedule(int newID, ArrayList<Integer> newRoute, ArrayList<Integer> departureTime) {
 		if (newID == -1) {
 			this.routeID = -1;
@@ -322,12 +347,22 @@ public class ElectricBus extends ElectricVehicle {
 		}
 		this.nextStop = 0;
 
-		this.passengerWithAdditionalActivityOnBus = new ArrayList<Queue<Request>>();
+		this.toBoardRequests = new ArrayList<Queue<Request>>();
 		for (int i = 0; i < this.busStop.size(); i++) {
-			this.passengerWithAdditionalActivityOnBus.add(new LinkedList<Request>());
+			this.toBoardRequests.add(new LinkedList<Request>());
 		}
-		this.destinationDemandOnBus = new ArrayList<Integer>(Collections.nCopies(this.busStop.size(), 0));
-		this.setPassNum(0);
+		this.onBoardRequests = new ArrayList<Queue<Request>>();
+		for (int i = 0; i < this.busStop.size(); i++) {
+			this.onBoardRequests.add(new LinkedList<Request>());
+		}
+		
+		this.passNum = 0;
+	}
+
+	
+	// Add a stop without changing the entire route
+	public void insertStop() {
+		
 	}
 
 }

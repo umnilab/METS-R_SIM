@@ -25,6 +25,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Plan;
@@ -485,9 +486,11 @@ public class Zone {
 		if (this.sharableRequestForTaxi.size() > 0) {
 			for (Queue<Request> passQueue : this.sharableRequestForTaxi.values()) {
 				if (passQueue.size() > 0) {
-					int pass_num = passQueue.size();
+					int pass_num = 0;
+					for(Request p: passQueue) {
+						pass_num  = pass_num + p.getNumPeople();
+					}
 					int v_num = this.getVehicleStock();
-					v_num = (int) Math.min(Math.ceil(pass_num / 4.0), v_num);
 					for (int i = 0; i < v_num; i++) {
 						ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.ID).poll();
 						if (v != null) {
@@ -500,24 +503,29 @@ public class Zone {
 								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
 							ArrayList<Request> tmp_pass = new ArrayList<Request>();
-							for (int j = 0; j < Math.min(4 , pass_num); j++) { // Vehicle capacity is 4
+							while(v.getPassNum() + passQueue.peek().getNumPeople() <= 4) {
 								Request p = passQueue.poll();
 								tmp_pass.add(p);
 								// Record served passengers
+								p.matchedTime = ContextCreator.getCurrentTick();
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
 								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
+								pass_num = pass_num - tmp_pass.size();
+								if(passQueue.peek() == null) break;
 							}
 							v.servePassenger(tmp_pass);
 							// Update future supply of the target zone
 							ContextCreator.getZoneContext().get(tmp_pass.get(0).getDestZone()).addFutureSupply();
-							pass_num = pass_num - tmp_pass.size();
+							if(pass_num == 0) break;
+							
 						}
 					}
 				}
 			}
 		}
-
+		
+		// Then serve non-sharable requests
 		int curr_size = this.requestInQueueForTaxi.size();
 		for (int i = 0; i < curr_size; i++) {
 			ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.ID).poll();
@@ -531,9 +539,7 @@ public class Zone {
 				else {
 					ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 				}
-				
 				if (current_taxi_pass.lenOfActivity() > 1) {
-					v.passengerWithAdditionalActivityOnTaxi.add(current_taxi_pass);
 					this.combinePickupPart1 += 1;
 				} else if (current_taxi_pass.lenOfActivity() == 0) {
 					this.taxiPickupRequest += 1;
@@ -542,6 +548,7 @@ public class Zone {
 					// trip
 					this.combinePickupPart2 += 1;
 				}
+				current_taxi_pass.matchedTime = ContextCreator.getCurrentTick();
 				v.servePassenger(Arrays.asList(current_taxi_pass));
 				// Update future supply of the target zone
 				ContextCreator.getZoneContext().get(current_taxi_pass.getDestZone()).addFutureSupply();
@@ -553,33 +560,45 @@ public class Zone {
 			}
 		}
 	}	
+	
 	// Serve passenger using Bus
-	public ArrayList<Request> servePassengerByBus(int maxPassNum, ArrayList<Integer> busStop) {
-		ArrayList<Request> passOnBoard = new ArrayList<Request>();
+	public int servePassengerByBus(ElectricBus b) {
+		int maxPassNum = b.remainingCapacity();
+		List<Integer> busStop = b.getBusStops();
+		ArrayList<Request> passToServe = new ArrayList<Request>();
+		int numPeople = 0;
+		
 		for (Request p : this.requestInQueueForBus) { // If there are passengers
 			if (busStop.contains(p.getDestZone())) {
-				if (passOnBoard.size() >= maxPassNum) {
-					break;
-				} else { // passenger get on board
-					passOnBoard.add(p);
-					this.busServedPassWaitingTime += p.getCurrentWaitingTime();
-					if (p.lenOfActivity() > 1) {
-						this.combinePickupPart1 += 1;
-					} else if (p.lenOfActivity() == 1) { // count it only when the last trip starts
-						this.combinePickupPart2 += 1;
-					} else if (p.lenOfActivity() == 0) {
-						this.busPickupRequest += 1;
+				int stopIndex = busStop.indexOf(p.getDestZone());
+				if (stopIndex >= b.getNextStopIndex() || stopIndex == 0) {
+					if (numPeople + p.getNumPeople() > maxPassNum) {
+						break;
+					} else { 
+						// passenger get on board
+						passToServe.add(p);
+						numPeople = numPeople + p.getNumPeople();
+						p.matchedTime = ContextCreator.getCurrentTick();
+						b.pickUpPassenger(p);
+						this.busServedPassWaitingTime += p.getCurrentWaitingTime();
+						if (p.lenOfActivity() > 1) {
+							this.combinePickupPart1 += 1;
+						} else if (p.lenOfActivity() == 1) { // count it only when the last trip starts
+							this.combinePickupPart2 += 1;
+						} else if (p.lenOfActivity() == 0) {
+							this.busPickupRequest += 1;
+						}
 					}
 				}
 			}
 		}
-		this.nRequestForBus -= passOnBoard.size();
-		this.requestInQueueForBus.removeAll(passOnBoard);
-		return passOnBoard;
+		this.nRequestForBus -= passToServe.size();
+		this.requestInQueueForBus.removeAll(passToServe);
+		return 0;
 	}
 
 	// Relocate when the vehicleStock is negative
-	// There are two implementations: 1. Using myopic info; 2. Using future estimation (PROACTIVE_RELOCATION).
+	// There are two implementations: 1. Using Myopic info; 2. Using future estimation (PROACTIVE_RELOCATION).
 	protected void relocateTaxi() {
 		// Decide the number of relocated vehicle with the precaution on potential
 		// future vehicle shortage/overflow

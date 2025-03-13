@@ -35,14 +35,17 @@ import repast.simphony.space.gis.Geography;
 
 public class Vehicle {
 	/* Constants */
+	// VehicleType
 	public final static int GV = 0; // Private gasoline vehicle
 	public final static int ETAXI = 1;
 	public final static int EBUS = 2;
 	public final static int EV = 3; // Private electric vehicle
 	
+	//SensorType
 	public final static int DSRC = 0;
 	public final static int CV2X = 1;
 	
+	//TripType
 	public final static int PARKING = 0;
 	public final static int OCCUPIED_TRIP = 1;
 	public final static int INACCESSIBLE_RELOCATION_TRIP = 2; // For designated relocation tasks, vehicles will not be															
@@ -52,7 +55,6 @@ public class Vehicle {
 	public final static int CRUISING_TRIP = 5;
 	public final static int PICKUP_TRIP = 6;
 	public final static int ACCESSIBLE_RELOCATION_TRIP = 7; // Vehicles are available to the zone that they travel through
-	
 	public final static int PRIVATE_TRIP = 8;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
@@ -213,6 +215,18 @@ public class Vehicle {
 		this.destinationID = next.getDestZoneID();
 		double duration = next.getDuration();
 		this.deptime = (int) duration;
+		this.destCoord = next.getLocation();
+		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord, true).getID());
+		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
+		this.activityPlan.remove(0); // Remove current schedule
+	}
+	
+	public void setNextPlan(int delay) { // departure time is right away after a specific delay 
+		Plan next = this.activityPlan.get(1);
+		this.originID = this.destinationID;
+		this.destinationID = next.getDestZoneID();
+		double duration = next.getDuration();
+		this.deptime = Math.max((int) duration, ContextCreator.getCurrentTick() + delay);
 		this.destCoord = next.getLocation();
 		this.setDestRoadID(ContextCreator.getCityContext().findRoadAtCoordinates(this.destCoord, true).getID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
@@ -2279,6 +2293,10 @@ public class Vehicle {
 	
 	public int getVehicleSensorType() {
 		return this.vehicleSensorType;
+	}
+	
+	public void setVehicleSensorType(int sensorType) {
+		this.vehicleSensorType = sensorType;
 	}
 	
 	/**

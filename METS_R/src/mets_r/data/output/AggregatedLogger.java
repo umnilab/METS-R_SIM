@@ -18,7 +18,7 @@ public class AggregatedLogger {
 	public BufferedWriter network_logger; // Road network vehicle logger
 	public BufferedWriter zone_logger; // Zone logger
 	public BufferedWriter charger_logger; // Charger logger
-//	public BufferedWriter traj_logger; // Trajectory logger
+	public BufferedWriter request_logger; // Request logger
 	
 	public AggregatedLogger() {
 		String outDir = GlobalVariables.AGG_DEFAULT_PATH;
@@ -101,16 +101,16 @@ public class AggregatedLogger {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-//		try {
-//			FileWriter fw = new FileWriter(outpath + File.separatorChar + "TrajLog-" + timestamp + ".csv", false);
-//			traj_logger = new BufferedWriter(fw);
-//			traj_logger
-//					.write("tick,vehicleID,vehicleState,linkID,distToJunction,speed,acc,batteryLevel,tickConsume,totalMass");
-//			traj_logger.newLine();
-//			traj_logger.flush();
-//		} catch (IOException e) {
-//			e.printStackTrace();
-//		}
+		try {
+			FileWriter fw = new FileWriter(outpath + File.separatorChar + "RequestLog-" + timestamp + ".csv", false);
+			request_logger = new BufferedWriter(fw);
+			request_logger
+					.write("tick,requestID,originZone,destZone,numPeople,generationTime,matchedTime,pickupTime,arriveTime,vehID,vehType"); 
+			request_logger.newLine();
+			request_logger.flush();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 	
 	public void flush() {
@@ -121,7 +121,7 @@ public class AggregatedLogger {
 			network_logger.flush();
 			zone_logger.flush();
 			charger_logger.flush();
-//			traj_logger.flush();
+			request_logger.flush();
 		}
 		catch (IOException e) {
 			e.printStackTrace();
@@ -136,14 +136,14 @@ public class AggregatedLogger {
 			network_logger.flush();
 			zone_logger.flush();
 			charger_logger.flush();
-//			traj_logger.flush();
+			request_logger.flush();
 			ev_logger.close();
 			bus_logger.close();
 			link_logger.close();
 			network_logger.close();
 			zone_logger.close();
 			charger_logger.close();
-//			traj_logger.close();
+			request_logger.close();
 		}
 		catch (IOException e) {
 			e.printStackTrace();

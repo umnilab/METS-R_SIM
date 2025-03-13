@@ -21,8 +21,15 @@ public class Request {
 	private int destRoad;
 	private int maxWaitingTime;
 	private int currentWaitingTime;
+	private int numPeople;
 	private Boolean willingToShare;
 	private Queue<Plan> activityPlan;
+	
+	// public variables for data collection
+	public int generationTime;
+	public int matchedTime;
+	public int pickupTime;
+	public int arriveTIme;
 	
 	public Request(int origin, int destination, int originRoad, int destRoad, Boolean willingToShare){
 		this.ID = ContextCreator.generateAgentID();
@@ -34,7 +41,26 @@ public class Request {
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;
 		this.willingToShare = willingToShare;
+		this.numPeople = 1;
+		
+		this.generationTime = ContextCreator.getCurrentTick();
 	}
+	
+	public Request(int origin, int destination, int originRoad, int destRoad, Boolean willingToShare, int numPeople){
+		this.ID = ContextCreator.generateAgentID();
+		this.activityPlan = new LinkedList<Plan>();
+		this.origin = origin;
+		this.destination = destination;
+		this.originRoad = originRoad;
+		this.destRoad = destRoad;
+		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
+		this.currentWaitingTime = 0;
+		this.willingToShare = willingToShare;
+		this.numPeople = numPeople;
+		
+		this.generationTime = ContextCreator.getCurrentTick();
+	}
+	
 	
 	public Request(int origin, int originRoad, Queue<Plan> activityPlan){
 		this.ID = ContextCreator.generateAgentID();
@@ -46,6 +72,25 @@ public class Request {
 		this.originRoad = originRoad;
 		this.destination = activityPlan.peek().getDestZoneID();
 		this.destRoad = activityPlan.peek().getDestRoadID();
+		this.numPeople = 1;
+		
+		this.generationTime = ContextCreator.getCurrentTick();
+	}
+	
+	
+	public Request(int origin, int originRoad, int numPeople, Queue<Plan> activityPlan){
+		this.ID = ContextCreator.generateAgentID();
+		this.activityPlan = activityPlan;
+		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
+		this.currentWaitingTime = 0;	
+		this.willingToShare = false;
+		this.origin = origin;
+		this.originRoad = originRoad;
+		this.destination = activityPlan.peek().getDestZoneID();
+		this.destRoad = activityPlan.peek().getDestRoadID();
+		this.numPeople = numPeople;
+		
+		this.generationTime = ContextCreator.getCurrentTick();
 	}
 	
 	public void waitNextTime(int waitingTime){
@@ -138,5 +183,9 @@ public class Request {
 
 	public int getID() {
 		return ID;
+	}
+	
+	public int getNumPeople() {
+		return numPeople;
 	}
 }

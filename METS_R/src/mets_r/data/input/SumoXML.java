@@ -747,7 +747,8 @@ public class SumoXML {
 	}
 	
 	public static void main(String[] args) {
-		SumoXML sxml = new SumoXML("data/UA/facility/road/nema.net.xml");
+		SumoXML sxml = new SumoXML("data/Birmingham/facility/road/birmingham_filtered_connected.net.xml");
+//		SumoXML sxml = new SumoXML("data/UA/facility/road/nema.net.xml");
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
 //		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
 //		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");

@@ -99,7 +99,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static volatile boolean isRouteUCBPopulated = false;
 	public static volatile boolean isRouteUCBBusPopulated = false;
 	public static volatile boolean receivedNewBusSchedule = false;
-	public static volatile boolean receivedNextStepCommand = false;
+	
+	
+	public static volatile int waitNextStepCommand = -1;
 	
 	/* For enable the reset function*/
 	public static int initTick = 0;
@@ -475,7 +477,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		isRouteUCBPopulated = false;
 		isRouteUCBBusPopulated = false;
 		receivedNewBusSchedule = false;
-		receivedNextStepCommand = false;
+		waitNextStepCommand = -1;
 		routeResult_received = new HashMap<String, Integer>();
 		routeResult_received_bus = new HashMap<String, Integer>();
 		
@@ -499,7 +501,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	public void waitForNextStepCommand() {
 		long prevTime = -10001; // for the first tick
-		while(!receivedNextStepCommand) {
+		while(waitNextStepCommand == 0) {
 			try{
 				Thread.sleep(1);
 				if ((System.currentTimeMillis()-prevTime)>10000 && connection != null) {
@@ -510,7 +512,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				e.printStackTrace();
 			}
 		}
-		receivedNextStepCommand = false;
+		waitNextStepCommand -= 1;
 	}
 	
 	public static int generateAgentID() {
