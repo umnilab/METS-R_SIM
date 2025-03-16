@@ -33,7 +33,7 @@ public class Road {
 	public final static int Ramp = 9;
 	public final static int U_Turn = 13;
 	
-	public final static int CoSim = 1;
+	public final static int COSIM = 1;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 	
@@ -191,7 +191,7 @@ public class Road {
 		}
 
 		/* Vehicle movement */
-		if(this.getControlType() == Road.CoSim) {
+		if(this.getControlType() == Road.COSIM) {
 			ContextCreator.logger.debug("Skipped vehicle movements for the coSim road with origin ID: " + this.getOrigID());
 		}
 		else {
@@ -219,33 +219,75 @@ public class Road {
 	}
 	
 	/**
-	 * Insert vehicle to a specific location.
+	 * Teleport vehicle for co-simulation
 	 * 
 	 * This function would not check the collision issue 
 	 * since it is used for synchronize the vehicle information
 	 * from other sources and the "collision" could just be
 	 * caused by the order of vehicle updates.
 	 */
-	public boolean insertVehicle(Vehicle veh, Lane lane, double dist, double x, double y) {
-		if (veh.getRoad() == this) {// Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
-			if(veh.getLane() == lane && lane.firstVehicle() == veh) { // Edge case, vehicle is the first vehicle in this lane
+	public boolean teleportVehicle(Vehicle veh, double x, double y) { 
+		if (this.getControlType() == Road.COSIM) {// Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
+			if (veh.getRoad() == this) {
 				veh.setCurrentCoord(new Coordinate(x, y));
-				veh.setDistance(dist);
-				veh.advanceInMacroList();
 				veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
 				return true;
 			}
-			veh.removeFromLane(); // Just remove the vehicle from the current lane
+			else {
+				veh.removeFromLane();
+				veh.removeFromMacroList();
+				veh.appendToRoad(this);
+				if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
+				{
+					veh.setNextRoad();
+				}
+				else { // Case 3: veh enter the road not in its planned route
+					veh.rerouteAndSetNextRoad();
+				}
+				veh.setCurrentCoord(new Coordinate(x, y));
+				veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
+				return true;
+			}
+		}
+		else {
+			return false;
+		}
+	}
+	
+	/**
+	 * Teleport vehicle for trace-based replay
+	 * 
+	 * This function would not check the collision issue 
+	 * since it is used for synchronize the vehicle information
+	 * from other sources and the "collision" could just be
+	 * caused by the order of vehicle updates.
+	 */
+	public boolean teleportVehicle(Vehicle veh, Lane lane, double dist) { 
+		if (veh.getRoad() == this) {
+			if(veh.getLane() == lane) { // Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
+				// Update x, y based on the new dist
+				double dx = veh.getDistanceToNextJunction() - dist;
+				if(dx > 0) {
+					veh.updateCoordByDx(dx);
+					veh.setDistanceToNextJunction(dist);
+					veh.advanceInMacroList();
+					veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
+				}
+				return true;
+			}
+			else{ // Case 1, veh's road is this road and but not this lane
+				veh.removeFromLane(); // Just remove the vehicle from the current lane
+			}
 		}
 		else {
 			veh.removeFromLane();
 			veh.removeFromMacroList();
 			veh.appendToRoad(this);
-			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
+			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 3, veh enter the next road in its planned route
 			{
 				veh.setNextRoad();
 			}
-			else { // Case 3: veh enter the road not in its planned route
+			else { // Case 4: veh enter the road not in its planned route
 				veh.rerouteAndSetNextRoad();
 			}
 		}
@@ -257,10 +299,10 @@ public class Road {
 		Vehicle toCheckVeh = lane.firstVehicle();
 		while (toCheckVeh != null) { // find where to insert the veh
 			 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
-			 if(toCheckVeh.getDistance() == dist) {
+			 if(toCheckVeh.getDistanceToNextJunction() == dist) {
 				 dist = dist + 0.01; // add a tiny value to the distance of the to-insert vehicle
 			 }
-			 if(toCheckVeh.getDistance() < dist) {
+			 if(toCheckVeh.getDistanceToNextJunction() < dist) {
 				 leadVehicle = toCheckVeh;
 				 toCheckVeh = toCheckVeh.trailing();
 			 }
@@ -271,10 +313,9 @@ public class Road {
 		}
 		
 		// Move veh to the x and y location
-		veh.setCurrentCoord(new Coordinate(x, y));
-		veh.setDistance(dist); // NOTE: here the dist and (x,y) might be inconsistent, a better implementation is possible
-		
+		veh.setDistanceToNextJunction(dist);
 		veh.insertToLane(lane, leadVehicle, lagVehicle);
+		
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
 		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());

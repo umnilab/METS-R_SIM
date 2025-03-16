@@ -58,59 +58,101 @@ public class MessageClass{
 	    }
 	}
 	
-	class VehIDVehTypeOrigDest {
-	    int vehID;
-	    boolean vehType;
-	    int orig;
-	    int dest;
-	
-	    // Constructor
-	    public VehIDVehTypeOrigDest(int vehID, boolean vehType, int orig, int dest) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.orig = orig;
-	        this.dest = dest;
-	    }
-	}
-	
-	class VehIDVehTypeOrigRoadDestRoad {
-	    int vehID;
-	    boolean vehType;
-	    String orig;
-	    String dest;
-	
-	    // Constructor
-	    public VehIDVehTypeOrigRoadDestRoad(int vehID, boolean vehType, String orig, String dest) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.orig = orig;
-	        this.dest = dest;
-	    }
-	}
-	
-	class VehIDVehTypeTranRoadIDXYDist {
+	class VehIDVehTypeTranRoadIDXY {
 	    int vehID;
 	    boolean vehType;
 	    boolean transformCoord;
-	    int roadID;
-	    int laneID;
+	    String roadID;
 	    double x;
 	    double y;
-	    double dist;
-	
+
 	    // Constructor
-	    public VehIDVehTypeTranRoadIDXYDist(int vehID, boolean vehType, boolean transformCoord, 
-	                                          int roadID, int laneID, double x, double y, double dist) {
+	    public VehIDVehTypeTranRoadIDXY(int vehID, boolean vehType, boolean transformCoord, 
+	                                          String roadID, double x, double y) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
 	        this.transformCoord = transformCoord;
 	        this.roadID = roadID;
-	        this.laneID = laneID;
 	        this.x = x;
 	        this.y = y;
+	    }
+	}
+	
+	class VehIDVehTypeRoadLaneDist {
+	    int vehID;
+	    boolean vehType;
+	    String roadID;
+	    int laneID;
+	    double dist;
+
+	    // Constructor
+	    public VehIDVehTypeRoadLaneDist(int vehID, boolean vehType, String roadID, int laneID, double dist) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.roadID = roadID;
+	        this.laneID = laneID;
 	        this.dist = dist;
 	    }
 	}
+	
+    class VehIDOrigDestNum{
+    	int vehID;
+    	int orig;
+    	int dest;
+    	int num;
+    	
+    	// Constructor
+    	public VehIDOrigDestNum(int vehID, int orig, int dest, int num) {
+    		this.vehID = vehID;
+    		this.orig = orig;
+    		this.dest = dest;
+    		this.num = num;
+    	}
+    }
+    
+    class VehIDOrigRoadDestRoadNum{
+    	int vehID;
+    	String orig;
+    	String dest;
+    	int num;
+    	
+    	// Constructor
+    	public VehIDOrigRoadDestRoadNum(int vehID, String orig, String dest, int num) {
+    		this.vehID = vehID;
+    		this.orig = orig;
+    		this.dest = dest;
+    		this.num = num;
+    	}
+    }
+    
+    class ZoneIDOrigDestNum{
+    	int zoneID;
+    	int dest;
+    	int num;
+    	
+    	// Constructor
+    	public ZoneIDOrigDestNum(int zoneID, int dest, int num) {
+    		this.zoneID = zoneID;
+    		this.dest = dest;
+    		this.num = num;
+    	}
+    }
+    
+    class ZoneIDOrigRoadDestRoadNum{
+    	int zoneID;
+    	String orig;
+    	String dest;
+    	int num;
+    	
+    	// Constructor
+    	public ZoneIDOrigRoadDestRoadNum(int zoneID, String orig, String dest, int num) {
+    		this.zoneID = zoneID;
+    		this.orig = orig;
+    		this.dest = dest;
+    		this.num = num;
+    	}
+    }
+	
 	
 	public static void main(String[] args) {
 		Gson gson = new Gson();
@@ -164,29 +206,78 @@ public class MessageClass{
         TypeToken<Collection<VehIDVehTypeAcc>> collectionType4 = new TypeToken<Collection<VehIDVehTypeAcc>>() {};
         Collection<VehIDVehTypeAcc> vehIDVehTypeAcc2 = gson.fromJson(json, collectionType4.getType());  // Deserialize
         System.out.println("Deserialized VehIDVehTypeAcc: " + vehIDVehTypeAcc2);
+        
+        // VehIDVehTypeSensorType
+        Collection<VehIDVehTypeSensorType> vehIDVehTypeSensorTypes = new ArrayList<>();
+        vehIDVehTypeSensorTypes.add(messageClass.new VehIDVehTypeSensorType(0, true, 1));
+        vehIDVehTypeSensorTypes.add(messageClass.new VehIDVehTypeSensorType(1, false, 2));
 
-        // Serialize and deserialize a collection of VehIDVehTypeOrigDest objects
-        Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDest = new ArrayList<>();
-        vehIDVehTypeOrigDest.add(messageClass.new VehIDVehTypeOrigDest(0, true, 1, 100));
-        vehIDVehTypeOrigDest.add(messageClass.new VehIDVehTypeOrigDest(1, false, 200, 300));
+        json = gson.toJson(vehIDVehTypeSensorTypes);
+        System.out.println("Serialized VehIDVehTypeSensorTypes: " + json);
 
-        json = gson.toJson(vehIDVehTypeOrigDest);  // Serialize to JSON
-        System.out.println("Serialized VehIDVehTypeOrigDest: " + json);
+        TypeToken<Collection<VehIDVehTypeSensorType>> collectionType5 = new TypeToken<Collection<VehIDVehTypeSensorType>>() {};
+        Collection<VehIDVehTypeSensorType> vehIDVehTypeSensorTypes2 = gson.fromJson(json, collectionType5.getType());
+        System.out.println("Deserialized VehIDVehTypeSensorTypes: " + vehIDVehTypeSensorTypes2);
 
-        TypeToken<Collection<VehIDVehTypeOrigDest>> collectionType5 = new TypeToken<Collection<VehIDVehTypeOrigDest>>() {};
-        Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDest2 = gson.fromJson(json, collectionType5.getType());  // Deserialize
-        System.out.println("Deserialized VehIDVehTypeOrigDest: " + vehIDVehTypeOrigDest2);
+        
+        // VehIDVehTypeTranRoadIDXY
+        Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYs = new ArrayList<>();
+        vehIDVehTypeTranRoadIDXYs.add(messageClass.new VehIDVehTypeTranRoadIDXY(0, true, true, "101", 12.34, 56.78));
+        vehIDVehTypeTranRoadIDXYs.add(messageClass.new VehIDVehTypeTranRoadIDXY(1, false, false, "102", 90.12, 34.56));
 
-        // Serialize and deserialize a collection of VehIDVehTypeTransRoadIDXYDist objects
-        Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTransRoadIDXYDist = new ArrayList<>();
-        vehIDVehTypeTransRoadIDXYDist.add(messageClass.new VehIDVehTypeTranRoadIDXYDist(0, true, false, 101, 1, 12.34, 56.78, 100.5));
-        vehIDVehTypeTransRoadIDXYDist.add(messageClass.new VehIDVehTypeTranRoadIDXYDist(1, false, true, 102, 2, 23.45, 67.89, 200.5));
+        json = gson.toJson(vehIDVehTypeTranRoadIDXYs);
+        System.out.println("Serialized VehIDVehTypeTranRoadIDXY: " + json);
 
-        json = gson.toJson(vehIDVehTypeTransRoadIDXYDist);  // Serialize to JSON
-        System.out.println("Serialized VehIDVehTypeTransRoadIDXYDist: " + json);
+        TypeToken<Collection<VehIDVehTypeTranRoadIDXY>> collectionType6 = new TypeToken<Collection<VehIDVehTypeTranRoadIDXY>>() {};
+        Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYs2 = gson.fromJson(json, collectionType6.getType());
+        System.out.println("Deserialized VehIDVehTypeTranRoadIDXY: " + vehIDVehTypeTranRoadIDXYs2);
 
-        TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>> collectionType6 = new TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>>() {};
-        Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTransRoadIDXYDist2 = gson.fromJson(json, collectionType6.getType());  // Deserialize
-        System.out.println("Deserialized VehIDVehTypeTransRoadIDXYDist: " + vehIDVehTypeTransRoadIDXYDist2);
+        // VehIDOrigDestNum
+        Collection<VehIDOrigDestNum> vehIDOrigDestNums = new ArrayList<>();
+        vehIDOrigDestNums.add(messageClass.new VehIDOrigDestNum(0, 100, 200, 10));
+        vehIDOrigDestNums.add(messageClass.new VehIDOrigDestNum(1, 101, 201, 20));
+
+        json = gson.toJson(vehIDOrigDestNums);
+        System.out.println("Serialized VehIDOrigDestNum: " + json);
+
+        TypeToken<Collection<VehIDOrigDestNum>> collectionType7 = new TypeToken<Collection<VehIDOrigDestNum>>() {};
+        Collection<VehIDOrigDestNum> vehIDOrigDestNums2 = gson.fromJson(json, collectionType7.getType());
+        System.out.println("Deserialized VehIDOrigDestNum: " + vehIDOrigDestNums2);
+
+        // VehIDOrigRoadDestRoadNum
+        Collection<VehIDOrigRoadDestRoadNum> vehIDOrigRoadDestRoadNums = new ArrayList<>();
+        vehIDOrigRoadDestRoadNums.add(messageClass.new VehIDOrigRoadDestRoadNum(0, "A", "B", 5));
+        vehIDOrigRoadDestRoadNums.add(messageClass.new VehIDOrigRoadDestRoadNum(1, "C", "D", 15));
+
+        json = gson.toJson(vehIDOrigRoadDestRoadNums);
+        System.out.println("Serialized VehIDOrigRoadDestRoadNum: " + json);
+
+        TypeToken<Collection<VehIDOrigRoadDestRoadNum>> collectionType8 = new TypeToken<Collection<VehIDOrigRoadDestRoadNum>>() {};
+        Collection<VehIDOrigRoadDestRoadNum> vehIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType8.getType());
+        System.out.println("Deserialized VehIDOrigRoadDestRoadNum: " + vehIDOrigRoadDestRoadNums2);
+
+        // ZoneIDOrigDestNum
+        Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums = new ArrayList<>();
+        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestNum(10, 300, 3));
+        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestNum(11, 301, 4));
+
+        json = gson.toJson(zoneIDOrigDestNums);
+        System.out.println("Serialized ZoneIDOrigDestNum: " + json);
+
+        TypeToken<Collection<ZoneIDOrigDestNum>> collectionType9 = new TypeToken<Collection<ZoneIDOrigDestNum>>() {};
+        Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums2 = gson.fromJson(json, collectionType9.getType());
+        System.out.println("Deserialized ZoneIDOrigDestNum: " + zoneIDOrigDestNums2);
+
+        // ZoneIDOrigRoadDestRoadNum
+        Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums = new ArrayList<>();
+        zoneIDOrigRoadDestRoadNums.add(messageClass.new ZoneIDOrigRoadDestRoadNum(10, "ZoneA", "ZoneB", 7));
+        zoneIDOrigRoadDestRoadNums.add(messageClass.new ZoneIDOrigRoadDestRoadNum(11, "ZoneC", "ZoneD", 8));
+
+        json = gson.toJson(zoneIDOrigRoadDestRoadNums);
+        System.out.println("Serialized ZoneIDOrigRoadDestRoadNum: " + json);
+
+        TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>> collectionType10 = new TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>>() {};
+        Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType10.getType());
+        System.out.println("Deserialized ZoneIDOrigRoadDestRoadNum: " + zoneIDOrigRoadDestRoadNums2);
 	}
 }

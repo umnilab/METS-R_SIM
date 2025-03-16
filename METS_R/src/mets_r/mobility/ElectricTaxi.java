@@ -128,7 +128,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		this.departure();
 	}
 	
-	// Serve passengers in an order specified by a list, assuming all passengers are picked at the same place
+	// Serve passengers in an order specified by a list
 	public void servePassenger(List<Request> plist) {
 		if (!plist.isEmpty()) {
 			if(this.getState() == Vehicle.CRUISING_TRIP) {
@@ -144,13 +144,15 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.passNum = this.getPassNum() + p.getNumPeople();
 			}
 			
-			this.setNextPlan();
-			this.setState(Vehicle.PICKUP_TRIP);
-			// Add vehicle to new queue of corresponding road
-			this.departure();
-			
+			if((this.getState() != Vehicle.PICKUP_TRIP) && (this.getState() != Vehicle.OCCUPIED_TRIP)){
+				this.setNextPlan();
+				this.setState(Vehicle.PICKUP_TRIP);
+				// Add vehicle to new queue of corresponding road
+				this.departure();
+			}
 		}
 	}
+	
 	
 	@Override
 	public void setNextRoad() {

@@ -15,17 +15,23 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.MessageClass.VehIDOrigDestNum;
+import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
-import mets_r.communication.MessageClass.VehIDVehTypeOrigDest;
-import mets_r.communication.MessageClass.VehIDVehTypeOrigRoadDestRoad;
+import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
-import mets_r.communication.MessageClass.VehIDVehTypeTranRoadIDXYDist;
+import mets_r.communication.MessageClass.VehIDVehTypeTranRoadIDXY;
+import mets_r.communication.MessageClass.ZoneIDOrigDestNum;
+import mets_r.communication.MessageClass.ZoneIDOrigRoadDestRoadNum;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
 
 public class ControlMessageHandler extends MessageHandler {
@@ -33,19 +39,25 @@ public class ControlMessageHandler extends MessageHandler {
 	public ControlMessageHandler() {
 		messageHandlers.put("end", this::endSim);
 		messageHandlers.put("reset", this::resetSim);
-		messageHandlers.put("teleportVeh", this::teleportVeh);
+		messageHandlers.put("teleportCoSimVeh", this::teleportCoSimVeh);
+		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
 		messageHandlers.put("controlVeh", this::controlVeh);
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("routingTaxi", this::routingTaxi);
 		messageHandlers.put("routingBus", this::routingBus);
         messageHandlers.put("scheduleBus", this::scheduleBus);
-        messageHandlers.put("scheduleTaxi", this::sheduleTaxi);
+        messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
+        messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
+        messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
+        messageHandlers.put("addBusRequests", this::addBusRequests);
+        messageHandlers.put("addTaxiRequests", this::addTaxiRequests);
+        messageHandlers.put("addTaxiReqBwRoads", this::addTaxiReqBwRoads);
         messageHandlers.put("generateTrip", this::generateTrip);
         messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
         messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
         messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
         messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
-        messageHandlers.put("updateSignal", this::updateSignal);
+//        messageHandlers.put("updateSignal", this::updateSignal);
         
 	}
 	
@@ -103,7 +115,7 @@ public class ControlMessageHandler extends MessageHandler {
 			    for(String roadID: IDs) {
 			    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
 			    	if(r != null) {
-			    		r.setControlType(Road.CoSim);
+			    		r.setControlType(Road.COSIM);
 						// Add road to coSim HashMap in the road context
 						ContextCreator.coSimRoads.put(roadID, r);
 						// Also output the lane information for computing the co-simulation area
@@ -183,6 +195,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	// Generate trip for private vehicles
     private HashMap<String, Object> generateTrip(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
     	if(!jsonMsg.containsKey("DATA")) {
@@ -192,10 +205,10 @@ public class ControlMessageHandler extends MessageHandler {
     	else {
 	    	try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeOrigDest>> collectionType = new TypeToken<Collection<VehIDVehTypeOrigDest>>() {};
-			    Collection<VehIDVehTypeOrigDest> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
+			    Collection<VehIDOrigDestNum> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 			    ArrayList<Object> jsonData = new ArrayList<Object>();
-			    for(VehIDVehTypeOrigDest vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
+			    for(VehIDOrigDestNum vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
 			    	// Get data
 			    	int vehID = vehIDVehTypeOrigDest.vehID;
 			    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
@@ -279,6 +292,7 @@ public class ControlMessageHandler extends MessageHandler {
     	return jsonAns;
     }
     
+    // Generate trip between roads for private vehicles
     private HashMap<String, Object> generateTripBwRoads(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
     	if(!jsonMsg.containsKey("DATA")) {
@@ -288,10 +302,10 @@ public class ControlMessageHandler extends MessageHandler {
     	else {
 	    	try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeOrigRoadDestRoad>> collectionType = new TypeToken<Collection<VehIDVehTypeOrigRoadDestRoad>>() {};
-			    Collection<VehIDVehTypeOrigRoadDestRoad> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<VehIDOrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<VehIDOrigRoadDestRoadNum>>() {};
+			    Collection<VehIDOrigRoadDestRoadNum> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 			    ArrayList<Object> jsonData = new ArrayList<Object>();
-			    for(VehIDVehTypeOrigRoadDestRoad vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
+			    for(VehIDOrigRoadDestRoadNum vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
 			    	// Get data
 			    	int vehID = vehIDVehTypeOrigDest.vehID;
 			    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
@@ -365,9 +379,64 @@ public class ControlMessageHandler extends MessageHandler {
     	return jsonAns;
     }
 	
-	// This can be done at t or t+1, directly change the road properties
-	// When perform at t+1 (wait == false), append takes effect immediately
-	private HashMap<String, Object> teleportVeh(JSONObject jsonMsg) {
+    private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg){
+    	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) { 
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+	    	try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDVehTypeRoadLaneDist>> collectionType = new TypeToken<Collection<VehIDVehTypeRoadLaneDist>>() {
+				};
+				Collection<VehIDVehTypeRoadLaneDist> vehIDVehTypeRoadLaneDists = gson
+						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+
+				for (VehIDVehTypeRoadLaneDist vehIDVehTypeRoadLaneDist : vehIDVehTypeRoadLaneDists) {
+					// Get data
+					Vehicle veh = null;
+					if (vehIDVehTypeRoadLaneDist.vehType) {
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeRoadLaneDist.vehID);
+					} else {
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeRoadLaneDist.vehID);
+					}
+
+					if (veh != null) {
+						Road road = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoadLaneDist.roadID);
+						if (road != null && veh != null) {
+							if(road.getNumberOfLanes() > vehIDVehTypeRoadLaneDist.laneID) {
+								Lane lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
+								// Update its location in the target link and target lane
+								if (road.teleportVehicle(veh, lane, vehIDVehTypeRoadLaneDist.dist)) {
+									HashMap<String, Object> record2 = new HashMap<String, Object>();
+									record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
+									record2.put("STATUS", "OK");
+									jsonData.add(record2);
+									continue;
+								}
+							}
+						}
+					}
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
+					record2.put("STATUS", "KO");
+					jsonData.add(record2);
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+    }
+	
+	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) { 
 			jsonAns.put("WARN", "No DATA field found in the control message");
@@ -376,61 +445,59 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 	    	try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>> collectionType = new TypeToken<Collection<VehIDVehTypeTranRoadIDXYDist>>() {};
-			    Collection<VehIDVehTypeTranRoadIDXYDist> vehIDVehTypeTranRoadIDXYDists = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-			    ArrayList<Object> jsonData = new ArrayList<Object>();
-			    
-			    for(VehIDVehTypeTranRoadIDXYDist vehIDVehTypeTranRoadIDXYDist: vehIDVehTypeTranRoadIDXYDists) {
-			    	// Get data
+				TypeToken<Collection<VehIDVehTypeTranRoadIDXY>> collectionType = new TypeToken<Collection<VehIDVehTypeTranRoadIDXY>>() {
+				};
+				Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYDists = gson
+						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+
+				for (VehIDVehTypeTranRoadIDXY vehIDVehTypeTranRoadIDXYDist : vehIDVehTypeTranRoadIDXYDists) {
+					// Get data
 					Vehicle veh = null;
-					if(vehIDVehTypeTranRoadIDXYDist.vehType) {
+					if (vehIDVehTypeTranRoadIDXYDist.vehType) {
 						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
-					}
-					else {
+					} else {
 						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
 					}
-					
-					if(veh != null) {
-						Road road = ContextCreator.getRoadContext().get(vehIDVehTypeTranRoadIDXYDist.roadID);
-						Lane lane = ContextCreator.getLaneContext().get(vehIDVehTypeTranRoadIDXYDist.laneID);
-						double dist = vehIDVehTypeTranRoadIDXYDist.dist;
+
+					if (veh != null) {
+						Road road = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeTranRoadIDXYDist.roadID);
 						double x = vehIDVehTypeTranRoadIDXYDist.x;
 						double y = vehIDVehTypeTranRoadIDXYDist.y;
-						if(road != null && veh != null && lane != null) {
-							// Integrity check
-							if (lane.getRoad() == road.getID()) {
-								// Transform coordinates if needed 
-								if(vehIDVehTypeTranRoadIDXYDist.transformCoord) {
-									Coordinate coord = new Coordinate();
-									coord.x = x;
-									coord.y = y;
-									coord.z = 0;
-									try {
-										JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-										x = coord.x;
-										y = coord.y;
-									} catch (TransformException e) {
-										ContextCreator.logger.error("Coordinates transformation failed, input x: " + x + " y:" + y);
-										e.printStackTrace();
-									}
+						if (road != null && veh != null) {
+							// Transform coordinates if needed
+							if (vehIDVehTypeTranRoadIDXYDist.transformCoord) {
+								Coordinate coord = new Coordinate();
+								coord.x = x;
+								coord.y = y;
+								coord.z = 0;
+								try {
+									JTS.transform(coord, coord,
+											SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+									x = coord.x;
+									y = coord.y;
+								} catch (TransformException e) {
+									ContextCreator.logger
+											.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+									e.printStackTrace();
 								}
-							
-								// Update its location in the target link and target lane
-								if(road.insertVehicle(veh, lane, dist, x, y)) {
-									HashMap<String, Object> record2 = new HashMap<String, Object>();
-						    		record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
-						    		record2.put("STATUS", "OK");
-									jsonData.add(record2);
-									continue;
-								}
+							}
+
+							// Update its location in the target link and target lane
+							if (road.teleportVehicle(veh, x, y)) {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+								record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
+								record2.put("STATUS", "OK");
+								jsonData.add(record2);
+								continue;
 							}
 						}
 					}
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-		    		record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
-		    		record2.put("STATUS", "KO");
+					record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
+					record2.put("STATUS", "KO");
 					jsonData.add(record2);
-			    }
+				}
 				jsonAns.put("DATA", jsonData);
 				jsonAns.put("CODE", "OK");
 			}
@@ -680,20 +747,304 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	// Taxi dispatching
-	private HashMap<String, Object> sheduleTaxi(JSONObject jsonMsg) {
+	// Find a taxi, add a pickup trip and a request
+	// If not departure, make it departure
+	private HashMap<String, Object> dispatchTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		jsonAns.put("CODE", "OK");
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
+				Collection<VehIDOrigDestNum> vehIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(VehIDOrigDestNum vehIDOrigDestNum: vehIDOrigDestNums) {
+					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigDestNum.vehID);
+					Zone z1 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.orig);
+					Zone z2 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.dest);
+					if(veh != null && z1 != null && z2 != null) {
+						// generate request
+						ArrayList<Request> plist = new ArrayList<Request>();
+						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, vehIDOrigDestNum.num);
+						if(veh.getState() == Vehicle.PARKING) {
+							z1.removeOneParkingVehicle();
+						}else if(veh.getState() == Vehicle.CRUISING_TRIP) {
+							z1.removeOneCruisingVehicle();
+						}
+						p.matchedTime = ContextCreator.getCurrentTick();
+						z1.taxiPickupRequest += 1;
+						plist.add(p);
+						veh.servePassenger(plist);
+					}
+					else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDOrigDestNum.vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	private HashMap<String, Object> dispTaxiBwRoads(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDOrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<VehIDOrigRoadDestRoadNum>>() {};
+				Collection<VehIDOrigRoadDestRoadNum> vehIDOrigRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(VehIDOrigRoadDestRoadNum vehIDOrigRoadDestRoadNum: vehIDOrigRoadDestRoadNums) {
+					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigRoadDestRoadNum.vehID);
+					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.orig);
+					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.dest);
+					if(veh != null && r1 != null && r2 != null) {
+						// generate request
+						ArrayList<Request> plist = new ArrayList<Request>();
+						Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
+						Request p = new Request(r1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, vehIDOrigRoadDestRoadNum.num);
+						
+						if(veh.getState() == Vehicle.PARKING) {
+							z1.removeOneParkingVehicle();
+						}else if(veh.getState() == Vehicle.CRUISING_TRIP) {
+							z1.removeOneCruisingVehicle();
+						}
+						p.matchedTime = ContextCreator.getCurrentTick();
+						z1.taxiPickupRequest += 1;
+						
+						plist.add(p);
+						veh.servePassenger(plist);
+					}
+					else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Taxi dispatching
+	// Find a zone, add a request
+	private HashMap<String, Object> addTaxiRequests(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<ZoneIDOrigDestNum>> collectionType = new TypeToken<Collection<ZoneIDOrigDestNum>>() {};
+				Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(ZoneIDOrigDestNum zoneIDOrigDestNum: zoneIDOrigDestNums) {
+					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.zoneID);
+					Zone z2 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.dest);
+					if(z1 != null && z2 != null) {
+						// generate request
+						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, zoneIDOrigDestNum.num);
+						z1.insertTaxiPass(p);
+					}
+					else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	private HashMap<String, Object> addTaxiReqBwRoads(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>>() {};
+				Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(ZoneIDOrigRoadDestRoadNum zoneIDOrigRoadDestRoadNum: zoneIDOrigRoadDestRoadNums) {
+					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigRoadDestRoadNum.zoneID);
+					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(zoneIDOrigRoadDestRoadNum.orig);
+					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(zoneIDOrigRoadDestRoadNum.dest);
+					if(z1 != null && r1 != null && r2 != null) {
+						// generate request
+						Request p = new Request(z1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, zoneIDOrigRoadDestRoadNum.num);
+						z1.insertTaxiPass(p);
+					}
+					else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigRoadDestRoadNum.zoneID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
 		return jsonAns;
 	}
 	
 	// Bus
-	
-	
-	// Traffic signal
-	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
+	private HashMap<String, Object> assignRequestToBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		jsonAns.put("CODE", "OK");
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
+				Collection<VehIDOrigDestNum> vehIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(VehIDOrigDestNum vehIDOrigDestNum: vehIDOrigDestNums) {
+					ElectricBus veh = (ElectricBus) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigDestNum.vehID);
+					Zone z1 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.orig);
+					Zone z2 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.dest);
+					if(veh != null && z1 != null && z2 != null) {
+						// generate request
+						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, vehIDOrigDestNum.num);
+						p.matchedTime = ContextCreator.getCurrentTick();
+						
+						if(veh.addToBoardPass(p)) {
+							z1.busPickupRequest += 1;
+							continue;
+						}
+					}
+		    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+		    		record2.put("ID", vehIDOrigDestNum.vehID);
+		    		record2.put("STATUS", "KO");
+					jsonData.add(record2);
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
 		return jsonAns;
 	}
+	
+	// Bus
+	private HashMap<String, Object> addBusRequests(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<ZoneIDOrigDestNum>> collectionType = new TypeToken<Collection<ZoneIDOrigDestNum>>() {};
+				Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(ZoneIDOrigDestNum zoneIDOrigDestNum: zoneIDOrigDestNums) {
+					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.zoneID);
+					Zone z2 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.dest);
+					if(z1 != null && z2 != null) {
+						// generate request
+						Request p = new Request(z1.getID(), z2.getID(), z1.getClosestRoad(false), z1.getClosestRoad(true), false, zoneIDOrigDestNum.num);
+						z1.insertBusPass(p);
+					}
+					else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+
+	// Traffic signal
+//	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
+//		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+//		if(!jsonMsg.containsKey("DATA")) {
+//			jsonAns.put("WARN", "No DATA field found in the control message");
+//			jsonAns.put("CODE", "KO");
+//		}
+//		else {
+//			try {
+//				
+//			}
+//			catch (Exception e) {
+//			    // Log error and return KO in case of exception
+//			    ContextCreator.logger.error("Error processing query: " + e.toString());
+//			    jsonAns.put("CODE", "KO");
+//			}
+//		}
+//		return jsonAns;
+//	}
 	
 }

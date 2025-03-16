@@ -7,6 +7,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 
+
 public class Junction {
 	/* Constants */
 	public final static int NoControl = 0;

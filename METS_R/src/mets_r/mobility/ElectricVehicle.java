@@ -147,7 +147,7 @@ public class ElectricVehicle extends Vehicle {
 	}
 
 	public double getMass() {
-		return 1.05 * mass;
+		return 1.05 * mass; // 1.05 for compensating potential passengers and supplies
 	}
 	
 	public double getLinkConsume() {

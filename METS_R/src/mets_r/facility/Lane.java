@@ -186,7 +186,7 @@ public class Lane {
 			dlane = ContextCreator.getLaneContext().get(downStreamLanes.get(i));
 			pv = dlane.lastVehicle_;
 			if (pv != null) {
-				dis = dlane.getLength() - (pv.getDistance() + pv.length());
+				dis = dlane.getLength() - (pv.getDistanceToNextJunction() + pv.length());
 				if (dis < mindis) {
 					mindis = dis;
 					last = pv;

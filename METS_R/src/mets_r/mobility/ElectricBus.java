@@ -200,13 +200,27 @@ public class ElectricBus extends ElectricVehicle {
 
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
 			
-			
 			// Passenger drop off
 			int delay = this.dropOffPassenger(nextStop % this.busStop.size());
 			super.reachDestButNotLeave(); // Update the vehicle status
 			// Decide the next step
 			if (nextStop == busStop.size() || this.routeID == -1) { // arrive at the last stop
 				this.routeID = -1; // Clear the previous route ID
+				for(Queue<Request> ps: this.toBoardRequests) {
+					for(Request unserved_pass: ps) {
+						String formated_msg = ContextCreator.getCurrentTick() + "," + unserved_pass.getID() + ","
+								+ unserved_pass.getOriginZone() + "," + unserved_pass.getDestZone() + ","
+								+ unserved_pass.getNumPeople() + "," + unserved_pass.generationTime + ","
+								+ unserved_pass.matchedTime + "," + -1 + ","
+								+ -1 + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
+						try {
+							ContextCreator.agg_logger.request_logger.write(formated_msg);
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
+					}
+				}
+				
 				if (batteryLevel_ <= lowerBatteryRechargeLevel_) {
 					this.goCharging();
 				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_
@@ -226,7 +240,7 @@ public class ElectricBus extends ElectricVehicle {
 				// ServePassengerByBus
 				Zone arrivedZone = ContextCreator.getZoneContext().get(this.busStop.get(this.nextStop));
 				delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
-				for(Request p: this.toBoardRequests.get(this.nextStop  )) {
+				for(Request p: this.toBoardRequests.get(this.nextStop)) {
 					this.pickUpPassenger(p);
 				}
 				
@@ -279,6 +293,18 @@ public class ElectricBus extends ElectricVehicle {
 			}
 		}
 		return 0;
+	}
+	
+	public boolean addToBoardPass(Request p) {
+		if(busStop.contains(p.getDestZone()) &&  busStop.contains(p.getOriginZone())) {
+			int stopIndex = busStop.indexOf(p.getDestZone());
+			int stopIndex2 = busStop.indexOf(p.getOriginZone());
+			if ((stopIndex >= this.getNextStopIndex() && stopIndex2 >= this.getNextStopIndex()-1) || stopIndex == 0) {
+				this.toBoardRequests.get(stopIndex2).add(p);
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public int getPassNum() {
@@ -361,8 +387,8 @@ public class ElectricBus extends ElectricVehicle {
 
 	
 	// Add a stop without changing the entire route
-	public void insertStop() {
-		
-	}
+//	public void insertStop() {
+//		
+//	}
 
 }

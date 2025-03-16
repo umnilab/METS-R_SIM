@@ -573,9 +573,7 @@ public class Vehicle {
 				distance2(coords[i], coords[i + 1], distAndAngle);
 				double distToMove = distAndAngle[0] - (this.distance_ - accDist);
 				if (distToMove > 0) {
-					move2(coords[i], coords[i + 1], distAndAngle[0], distToMove); // Update
-					// vehicle
-					// location
+					move2(coords[i], coords[i + 1], distAndAngle[0], distToMove); // Update vehicle location
 				}
 				this.nextDistance_ = (this.distance_ - accDist);
 				this.bearing_ = distAndAngle[1];
@@ -788,12 +786,12 @@ public class Vehicle {
 		if (front != null && front.getLane() != null) { /* vehicle ahead */
 			if (this.lane.getID() == front.getLane().getID()) { /* same lane */
 				if (front.isOnLane()) {
-					headwayDistance = this.distance_ - front.getDistance() - front.length();
+					headwayDistance = this.distance_ - front.getDistanceToNextJunction() - front.length();
 				} else { // Front vehicle is entering the intersection, i.e., at the stop line
 					headwayDistance = this.distance_ - front.length();
 				}
 			} else { /* different lane */
-				headwayDistance = this.distance_ +  front.getLane().getLength() - front.getDistance(); // front
+				headwayDistance = this.distance_ +  front.getLane().getLength() - front.getDistanceToNextJunction(); // front
 																												// vehicle
 																												// is in
 																												// the
@@ -901,33 +899,30 @@ public class Vehicle {
 		if (Double.isNaN(accRate_))
 			ContextCreator.logger.error("Vehicle.move(): accRate_=" + accRate_ + " " + this);
 		
-		Road current_road = this.road;
 		this.endTime++;
 		this.linkTravelTime++;
 		
 		double lastStepMove_ = 0;
 		
 		if (!this.isOnLane()) {   // Case 1: At an intersection
+			Road r = this.getRoad(); 
 			if (!this.changeRoad()) { // False means the vehicle cannot enter the next road
 				lastStepMove_ = 0;
 				this.currentSpeed_ = 0.0f;
 				this.accRate_ = 0.0f;
 				this.movingFlag = false;
 			} else { // Successfully entered the next road
-				current_road.recordEnergyConsumption(this);
-				current_road.recordTravelTime(this);
-				lastStepMove_ = distance_; // update the lastStepMove and accumulatedDistance
+				r.recordEnergyConsumption(this); // Log the info of travel time and energy consumption
+				r.recordTravelTime(this);
+				lastStepMove_ = distance_; // Update the lastStepMove and accumulatedDistance
 				this.movingFlag = true;
 			}
 		}
 		else {
 			double dx = 0; // Travel distance calculated by physics
-			boolean travelledMaxDist = false; // True when traveled with maximum distance (=dx).
-			double distTravelled = 0; // The distance traveled so far.
-			double oldv = currentSpeed_; // Speed at the beginning
-			double step = GlobalVariables.SIMULATION_STEP_SIZE;
-
 			// Calculate the actual speed and acceleration
+			double step = GlobalVariables.SIMULATION_STEP_SIZE;
+			
 			double dv = Math.max(accRate_ * step, -currentSpeed_); // Change of speed, no back up allowed
 			if (dv + currentSpeed_ > 0) { // Still moving at the end of the cycle
 				dx = currentSpeed_ * step + 0.5f * dv * step;
@@ -942,49 +937,8 @@ public class Vehicle {
 			double gap = gapDistance(this.vehicleAhead());
 			dx = Math.min(dx, gap); // no trespass
 
-			// Actual acceleration rate applied in last time interval.
-			accRate_ =  Math.max(this.maxDeceleration_, 2.0f * (dx - oldv * step) / (step * step));
-
-			// Update speed
-			currentSpeed_ =  Math.max(currentSpeed_ + accRate_ * step, 0);
-
 			// Update vehicle coords
-			double[] distAndAngle = new double[2];
-			
-			while (!travelledMaxDist) {
-				// If we can get all the way to the next coords on the route then, just go there
-				if (distTravelled + nextDistance_ <= dx + 1e-3) { // Add a small value since the nextDistance_ might be a tiny but non-zero value
-					distTravelled += nextDistance_;
-					this.setCurrentCoord(this.coordMap.get(0));
-					this.coordMap.remove(0);
-					if (this.coordMap.isEmpty()) {
-						this.distance_ -= nextDistance_;
-						this.nextDistance_ = 0;
-						lastStepMove_ = distTravelled;
-						current_road.recordEnergyConsumption(this);
-						current_road.recordTravelTime(this);
-						this.coordMap.add(this.currentCoord_);
-						this.onLane = false; // add to junction
-						break;
-					} else {
-						this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
-						this.distance_ -= this.nextDistance_;
-						this.nextDistance_ = distAndAngle[0];
-						this.bearing_ = distAndAngle[1];
-					}
-				}
-				// Otherwise move as far as we can 
-				else {
-					double distToMove = dx - distTravelled;;
-					if(distToMove > 0) {
-						this.distance_ -=  distToMove;
-						move2(this.getCurrentCoord(), this.coordMap.get(0), nextDistance_, distToMove);
-						this.nextDistance_ -= distToMove;
-					}
-					lastStepMove_ =  dx;
-					travelledMaxDist = true;
-				}
-			}
+			lastStepMove_ = updateCoordByDx(dx);
 		}
 		
 		// Update the position of vehicles, 0<=distance_<=lane.length()
@@ -1005,6 +959,52 @@ public class Vehicle {
 			ContextCreator.logger.error("Something went wrong, the trailing vehicle is itslef!");
 		}
 		this.advanceInMacroList(); // If the vehicle travel too fast, it will change the marcroList of the road.
+	}
+	
+	public double updateCoordByDx(double dx) {
+		double lastStepMove = 0;
+		boolean travelledMaxDist = false; // True when traveled with maximum distance (=dx).
+		double distTravelled = 0; // The distance traveled so far.
+		double oldv = currentSpeed_; // Speed at the beginning
+		double step = GlobalVariables.SIMULATION_STEP_SIZE;
+		accRate_ =  Math.max(this.maxDeceleration_, 2.0f * (dx - oldv * step) / (step * step));
+		currentSpeed_ =  Math.max(currentSpeed_ + accRate_ * step, 0);
+		// Update vehicle coords
+		double[] distAndAngle = new double[2];
+		
+		while (!travelledMaxDist) {
+			// If we can get all the way to the next coords on the route then, just go there
+			if (distTravelled + nextDistance_ <= dx + 1e-3) { // Add a small value since the nextDistance_ might be a tiny but non-zero value
+				distTravelled += nextDistance_;
+				this.setCurrentCoord(this.coordMap.get(0));
+				this.coordMap.remove(0);
+				if (this.coordMap.isEmpty()) {
+					this.distance_ -= nextDistance_;
+					this.nextDistance_ = 0;
+					lastStepMove = distTravelled;
+					this.coordMap.add(this.currentCoord_);
+					this.onLane = false; // add to junction
+					break;
+				} else {
+					this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
+					this.distance_ -= this.nextDistance_;
+					this.nextDistance_ = distAndAngle[0];
+					this.bearing_ = distAndAngle[1];
+				}
+			}
+			// Otherwise move as far as we can 
+			else {
+				double distToMove = dx - distTravelled;;
+				if(distToMove > 0) {
+					this.distance_ -=  distToMove;
+					move2(this.getCurrentCoord(), this.coordMap.get(0), nextDistance_, distToMove);
+					this.nextDistance_ -= distToMove;
+				}
+				lastStepMove =  dx;
+				travelledMaxDist = true;
+			}
+		}
+		return lastStepMove;
 	}
 	
 	/**
@@ -1076,26 +1076,53 @@ public class Vehicle {
 
 			if(movable) {
 				// Check if the target road has space
-				if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
-					this.removeFromLane();
-					this.removeFromMacroList();
-					this.appendToLane(nextLane_);
-					this.appendToRoad(nextRoad_);
-					this.setNextRoad();
-					return true;
-				}
-				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
-					for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
-						Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
-						List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
-								ContextCreator.getRoadContext().get(this.getDestRoadID()), this.rand_route_only); // Recalculate the route
-						if (tempPath != null && tempPath.size()>=2 && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
+				if(this.nextRoad_.getControlType() == Road.COSIM) {
+					// For cosim road, get the last vehicle, check whether the distance is greater than 1.2 * this.length
+					Vehicle lastVeh = nextLane_.lastVehicle();
+					if((lastVeh == null) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) {
+						this.removeFromLane();
+						this.removeFromMacroList();
+						this.appendToLane(nextLane_);
+						this.appendToRoad(nextRoad_);
+						this.setNextRoad();
+						return true;
+					}
+					else {
+						Coordinate c1 = lastVeh.getCurrentCoord();
+						// Get dist between the coord and the begining coord of the lane
+						Coordinate c2 = nextLane_.getStartCoord();
+						if((ContextCreator.getCityContext().getDistance(c1, c2) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))){
 							this.removeFromLane();
 							this.removeFromMacroList();
-							this.appendToLane(dnlane);
-							this.appendToRoad(ContextCreator.getRoadContext().get(dnlane.getRoad()));
-							this.rerouteAndSetNextRoad();
+							this.appendToLane(nextLane_);
+							this.appendToRoad(nextRoad_);
+							this.setNextRoad();
 							return true;
+						}
+					}
+				}
+				else {
+					if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
+						this.removeFromLane();
+						this.removeFromMacroList();
+						this.appendToLane(nextLane_);
+						this.appendToRoad(nextRoad_);
+						this.setNextRoad();
+						return true;
+					}
+					else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
+						for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
+							Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
+							List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
+									ContextCreator.getRoadContext().get(this.getDestRoadID()), this.rand_route_only); // Recalculate the route
+							if (tempPath != null && tempPath.size()>=2 && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
+								this.removeFromLane();
+								this.removeFromMacroList();
+								this.appendToLane(dnlane);
+								this.appendToRoad(ContextCreator.getRoadContext().get(dnlane.getRoad()));
+								this.rerouteAndSetNextRoad();
+								return true;
+							}
 						}
 					}
 				}
@@ -1107,7 +1134,7 @@ public class Vehicle {
 			coordMap.add(this.getCurrentCoord()); 
 			return false;
 		}
-		else {
+		else { // Vehicle has no next road to visit, meaning it arrived its destination
 //			ContextCreator.logger.info("Vehicle " + this.getID() + " reached dest with dist " + this.distance_ + " roadPath: " + this.roadPath);
 			this.reachDest();
 			return true;
@@ -1185,7 +1212,7 @@ public class Vehicle {
 			this.macroLeading_ = null;
 		}
 		else if(v.distance_ >= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistance() +" to the macroleading of the vehicle with distance " + this.distance_);
+			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistanceToNextJunction() +" to the macroleading of the vehicle with distance " + this.distance_);
 			this.leading_ = null;
 		}
 		else this.macroLeading_ = v;
@@ -1208,8 +1235,8 @@ public class Vehicle {
 			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the macrotrailing with distance" + this.distance_);
 			this.macroTrailing_ = null;
 		}
-		else if(v.getDistance() <= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistance() +" to the marotrailing of the vehicle with distance " + this.distance_);
+		else if(v.getDistanceToNextJunction() <= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistanceToNextJunction() +" to the marotrailing of the vehicle with distance " + this.distance_);
 			this.macroTrailing_ = null;
 		}
 		else this.macroTrailing_ = v;
@@ -1233,7 +1260,7 @@ public class Vehicle {
 			this.leading_ = null;
 		}
 		else if(v.distance_ >= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistance() +" to the leading of the vehicle with distance " + this.distance_);
+			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistanceToNextJunction() +" to the leading of the vehicle with distance " + this.distance_);
 			this.leading_ = null;
 		}
 		else this.leading_ = v;
@@ -1256,8 +1283,8 @@ public class Vehicle {
 			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the trailing with distance" + this.distance_);
 			this.trailing_ = null;
 		}
-		else if(v.getDistance() <= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistance() +" to the trailing of the vehicle with distance " + this.distance_);
+		else if(v.getDistanceToNextJunction() <= this.distance_) {
+			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistanceToNextJunction() +" to the trailing of the vehicle with distance " + this.distance_);
 			this.trailing_ = null;
 		}
 		else this.trailing_ = v;
@@ -1284,14 +1311,14 @@ public class Vehicle {
 	/**
 	 * Get distance to the next intersection
 	 */
-	public double getDistance() {
+	public double getDistanceToNextJunction() {
 		return distance_;
 	}
 	
 	/**
 	 * Set distance to the next intersection
 	 */
-	public void setDistance(double distance) {
+	public void setDistanceToNextJunction(double distance) {
 		this.distance_ = distance;
 	}
 	
@@ -1974,7 +2001,7 @@ public class Vehicle {
 	public double leadGap(Vehicle leadVehicle, Lane plane) {
 		double leadGap = 0;
 		if (leadVehicle != null) {
-			leadGap = this.distFraction() * plane.getLength() - leadVehicle.getDistance() - leadVehicle.length(); // leadGap>=-leadVehicle.length()
+			leadGap = this.distFraction() * plane.getLength() - leadVehicle.getDistanceToNextJunction() - leadVehicle.length(); // leadGap>=-leadVehicle.length()
 		} else {
 			leadGap = this.distFraction() * plane.getLength();
 		}
@@ -2012,7 +2039,7 @@ public class Vehicle {
 	public double lagGap(Vehicle lagVehicle, Lane plane) {
 		double lagGap = 0;
 		if (lagVehicle != null)
-			lagGap = lagVehicle.getDistance() - this.distFraction() * plane.getLength() - this.length();
+			lagGap = lagVehicle.getDistanceToNextJunction() - this.distFraction() * plane.getLength() - this.length();
 		else {
 			lagGap = this.lane.getLength() - this.distFraction() * plane.getLength();
 		}
