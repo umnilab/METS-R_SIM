@@ -101,7 +101,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static volatile boolean receivedNewBusSchedule = false;
 	
 	
-	public static volatile int waitNextStepCommand = -1;
+	public static volatile int waitNextStepCommand = GlobalVariables.SYNCHRONIZED?0:-1;
 	
 	/* For enable the reset function*/
 	public static int initTick = 0;
@@ -477,7 +477,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		isRouteUCBPopulated = false;
 		isRouteUCBBusPopulated = false;
 		receivedNewBusSchedule = false;
-		waitNextStepCommand = -1;
+		waitNextStepCommand = 0;
 		routeResult_received = new HashMap<String, Integer>();
 		routeResult_received_bus = new HashMap<String, Integer>();
 		
