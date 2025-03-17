@@ -959,7 +959,7 @@ public class ControlMessageHandler extends MessageHandler {
 					Zone z2 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.dest);
 					if(veh != null && z1 != null && z2 != null) {
 						// generate request
-						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, vehIDOrigDestNum.num);
+						Request p = new Request(z1.getID(), z2.getID(), z1.getClosestRoad(false), z1.getClosestRoad(true), false, vehIDOrigDestNum.num);
 						p.matchedTime = ContextCreator.getCurrentTick();
 						
 						if(veh.addToBoardPass(p)) {

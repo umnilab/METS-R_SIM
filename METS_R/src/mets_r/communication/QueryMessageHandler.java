@@ -224,16 +224,16 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 		try {
 			Gson gson = new Gson();
-			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		      
-		    for(int id: IDs) {
-		    	Road road = ContextCreator.getRoadContext().get(id);
+		    for(String id: IDs) {
+		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(id);
 				if (road != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("TYPE", "ANS_road");
-					record2.put("ID", road.getID());
+					record2.put("ID", road.getOrigID());
 					record2.put("r_type", road.getRoadType());
 					record2.put("num_veh", road.getVehicleNum());
 					record2.put("speed_limit", road.getSpeedLimit());
