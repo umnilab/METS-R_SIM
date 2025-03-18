@@ -235,41 +235,43 @@ public class ControlMessageHandler extends MessageHandler {
 					
 					if(originID >= 0) {
 						originZone = ContextCreator.getZoneContext().get(originID);
-						if(originZone == null) {
-							ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("ID", vehID);
-				    		record2.put("STATUS", "KO");
-							jsonData.add(record2);
-			    			continue;
-						}
+						
 					}
 					else {
 						// randomly select a zone as origin
 						originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
 						originZone = ContextCreator.getZoneContext().get(originID);
 					}
+					if(originZone == null) {
+						ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+		    			continue;
+					}
 					
 					if(destID >= 0) {
 						destZone = ContextCreator.getZoneContext().get(destID);
-						if(destZone == null) {
-							ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("ID", vehID);
-				    		record2.put("STATUS", "KO");
-							jsonData.add(record2);
-			    			continue;
-						}
+						
 					}
 					else {
 						// randomly select a zone as destination
 						destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
 						destZone = ContextCreator.getZoneContext().get(destID);
+					} 
+					if(destZone == null) {
+						ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+		    			continue;
 					}
 			    			
 					// Assign trips
-					v.initializePlan(originID, originZone.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
-					v.addPlan(destID, destZone.getClosestRoad(true), (int) ContextCreator.getNextTick());
+					v.initializePlan(originID, originZone.sampleRoad(false), (int) ContextCreator.getCurrentTick());
+					v.addPlan(destID, destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
