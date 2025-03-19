@@ -152,7 +152,7 @@ public class Road {
 			int departTime = v.getDepTime();
 			if (v.closeToRoad(this) == 1 && tickcount >= departTime) {
 				// check whether the origin is the destination
-				if (v.getOriginCoord() == v.getDestCoord()) {
+				if (v.getOriginCoord() == v.getDestCoord() || (v.getState() == Vehicle.BUS_TRIP || (v.getOriginID() == v.getDestID()))) { 
 					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
 					v.reachDest();
 				} else if (v.enterNetwork(this)) {

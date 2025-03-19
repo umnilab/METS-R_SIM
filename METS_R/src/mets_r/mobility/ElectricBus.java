@@ -43,8 +43,9 @@ public class ElectricBus extends ElectricVehicle {
 	// Each entry represents a bus stop (zone) along the bus route.
 	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
 	private Dictionary<Integer, Integer> stopBus; // Reverse table for track the zone in the busStop;
-	// Timetable variable here, the next departure time
-	private int nextDepartureTime;
+	// Timetable variable here, and the next departure time
+	private ArrayList<Integer> departureTime;
+	
 	
 	private ArrayList<Queue<Request>> toBoardRequests; // The pickup stop array
 	private ArrayList<Queue<Request>> onBoardRequests; // The drop-off stop array
@@ -64,7 +65,7 @@ public class ElectricBus extends ElectricVehicle {
 	
 
 	// Constructor
-	public ElectricBus(int routeID, ArrayList<Integer> route, int nextDepartureTime) {
+	public ElectricBus(int routeID, ArrayList<Integer> route, ArrayList<Integer> departureTime) {
 		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
 		this.routeID = routeID;
 		this.busStop = route;
@@ -72,7 +73,7 @@ public class ElectricBus extends ElectricVehicle {
 		for (int i = 0; i < route.size(); i++) {
 			stopBus.put(route.get(i), i);
 		}
-		this.nextDepartureTime = nextDepartureTime;
+		this.departureTime = new ArrayList<Integer>();
 		this.toBoardRequests = new ArrayList<Queue<Request>>();
 		for (int i = 0; i < route.size(); i++) {
 			this.toBoardRequests.add(new LinkedList<Request>());
@@ -231,7 +232,7 @@ public class ElectricBus extends ElectricVehicle {
 					super.leaveNetwork();
 					this.addPlan(busStop.get(nextStop),
 							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getCoord(),
-							Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
+							Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop)));
 					this.setNextPlan();
 					this.departure();
 				}
@@ -248,7 +249,7 @@ public class ElectricBus extends ElectricVehicle {
 				// Head to the next Stop
 				int destZoneID = busStop.get(nextStop % busStop.size());
 				this.addPlan(destZoneID, ContextCreator.getZoneContext().get(destZoneID).getCoord(),
-						Math.max((int) ContextCreator.getNextTick(), nextDepartureTime));
+						Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop-1)));
 				this.setNextPlan();
 				this.departure();
 			}
@@ -360,8 +361,7 @@ public class ElectricBus extends ElectricVehicle {
 		if (newID == -1) {
 			this.routeID = -1;
 			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
-			this.nextDepartureTime = (int) (ContextCreator.getCurrentTick()
-					+ 600 / GlobalVariables.SIMULATION_STEP_SIZE); // Wait for 1 min
+			this.departureTime = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
 		} else {
 			this.routeID = newID;
 			this.busStop = newRoute;
@@ -369,7 +369,7 @@ public class ElectricBus extends ElectricVehicle {
 			for (int i = 0; i < this.busStop.size(); i++) {
 				this.stopBus.put(this.busStop.get(i), i);
 			}
-			this.nextDepartureTime = departureTime.get(0);
+			this.departureTime = departureTime;
 		}
 		this.nextStop = 0;
 

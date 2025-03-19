@@ -1046,11 +1046,11 @@ public class Zone {
 		return this.futureSupply.get();
 	}
 	
-	public int getTaxiPassengerNum() {
+	public int getTaxiRequestNum() {
 		return nRequestForTaxi;
 	}
 
-	public int getBusPassengerNum() {
+	public int getBusRequestNum() {
 		return nRequestForBus;
 	}
 	

@@ -138,28 +138,22 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		try {
 			for (int startZone :  ContextCreator.getZoneContext().HUB_INDEXES) {
 				ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));
-				int vehicle_gap = Math.round(60 / GlobalVariables.SIMULATION_STEP_SIZE); // Ticks between two
-																							// consecutive bus
 				// GeometryFactory fac = new GeometryFactory();
-				// Decide the next departure time
-				int next_departure_time = 0;
+				// Decide the next departure time 
+				ArrayList<Integer> departure_time = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
 				// Generate vehicle_num buses for the corresponding route
 				Zone z = ContextCreator.getZoneContext().get(route.get(0));
 				for (int j = 0; j < num_per_hub; j++) {
 					ElectricBus b;
-					b = new ElectricBus(-1, route, next_departure_time);
+					b = new ElectricBus(-1, route,  departure_time);
 					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick());
 					this.add(b);
 					b.setCurrentCoord(z.getCoord());
 					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick());
 					b.setNextPlan();
-					b.addPlan(z.getID(), z.getClosestRoad(false), next_departure_time); // Initialize the first plan
+					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick()); // Initialize the first plan
 					b.setNextPlan();
 					b.departure();
-					next_departure_time += vehicle_gap;
-					if (next_departure_time > 3600 / GlobalVariables.SIMULATION_STEP_SIZE) {
-						next_departure_time = 0;
-					}
 					this.busMap.put(b.getID(), b);
 				}
 			}

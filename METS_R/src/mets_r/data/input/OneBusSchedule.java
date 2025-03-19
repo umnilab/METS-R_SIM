@@ -11,8 +11,7 @@ public class OneBusSchedule {
 		this.routeID = routeID;
 		this.busRoute = busRoute;
 		this.departureTime = new ArrayList<Integer>();
-		for (@SuppressWarnings("unused")
-		int stop : busRoute) {
+		for (int i=0; i<busRoute.size(); i++) {
 			this.departureTime.add(departureTime);
 		}
 	}

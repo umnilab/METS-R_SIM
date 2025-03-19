@@ -159,7 +159,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("route", bus.getRouteID());
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
-					record2.put("battery_state", bus.getBatteryLevel());	
+					record2.put("battery_state", bus.getBatteryLevel());
+					record2.put("stop_list", bus.getRoute());
 					jsonData.add(record2);
 				}
 				else {
@@ -273,8 +274,8 @@ public class QueryMessageHandler extends MessageHandler {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", zone.getID());
 					record2.put("z_type", zone.getZoneType());
-					record2.put("taxi_demand", zone.getTaxiPassengerNum());
-					record2.put("bus_demand", zone.getBusPassengerNum());
+					record2.put("taxi_demand", zone.getTaxiRequestNum());
+					record2.put("bus_demand", zone.getBusRequestNum());
 					record2.put("veh_stock", zone.getVehicleStock());
 					record2.put("x", zone.getCoord().x);
 					record2.put("y", zone.getCoord().y);
