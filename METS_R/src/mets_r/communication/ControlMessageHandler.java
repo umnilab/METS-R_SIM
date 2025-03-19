@@ -781,6 +781,11 @@ public class ControlMessageHandler extends MessageHandler {
 						z1.taxiPickupRequest += 1;
 						plist.add(p);
 						veh.servePassenger(plist);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDOrigDestNum.vehID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -835,6 +840,11 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						plist.add(p);
 						veh.servePassenger(plist);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -878,6 +888,11 @@ public class ControlMessageHandler extends MessageHandler {
 						// generate request
 						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, zoneIDOrigDestNum.num);
 						z1.insertTaxiPass(p);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -920,6 +935,11 @@ public class ControlMessageHandler extends MessageHandler {
 						// generate request
 						Request p = new Request(z1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, zoneIDOrigRoadDestRoadNum.num);
 						z1.insertTaxiPass(p);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigRoadDestRoadNum.zoneID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -966,6 +986,11 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						if(veh.addToBoardPass(p)) {
 							z1.busPickupRequest += 1;
+							
+							HashMap<String, Object> record2 = new HashMap<String, Object>();
+				    		record2.put("ID", vehIDOrigDestNum.vehID);
+				    		record2.put("STATUS", "OK");
+							jsonData.add(record2);
 							continue;
 						}
 					}
@@ -1008,6 +1033,11 @@ public class ControlMessageHandler extends MessageHandler {
 						// generate request
 						Request p = new Request(z1.getID(), z2.getID(), z1.getClosestRoad(false), z1.getClosestRoad(true), false, zoneIDOrigDestNum.num);
 						z1.insertBusPass(p);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
