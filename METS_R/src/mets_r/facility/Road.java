@@ -300,7 +300,7 @@ public class Road {
 		while (toCheckVeh != null) { // find where to insert the veh
 			 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
 			 if(toCheckVeh.getDistanceToNextJunction() == dist) {
-				 dist = dist + 0.01; // add a tiny value to the distance of the to-insert vehicle
+				 dist = dist + 0.01; // edge case add a tiny value to the distance of the to-insert vehicle
 			 }
 			 if(toCheckVeh.getDistanceToNextJunction() < dist) {
 				 leadVehicle = toCheckVeh;

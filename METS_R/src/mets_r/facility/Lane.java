@@ -231,10 +231,6 @@ public class Lane {
 		return connectLane;
 	}
 
-	public int index() {
-		return this.index;
-	}
-
 	// Return number of vehicles
 	public int nVehicles() {
 		return nVehicles_.get();
