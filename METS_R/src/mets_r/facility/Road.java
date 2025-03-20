@@ -264,30 +264,18 @@ public class Road {
 	 */
 	public boolean teleportVehicle(Vehicle veh, Lane lane, double dist) { 
 		if (veh.getRoad() == this) {
-			if(veh.getLane() == lane) { // Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
-				// Update x, y based on the new dist
-				double dx = veh.getDistanceToNextJunction() - dist;
-				if(dx > 0) {
-					veh.updateCoordByDx(dx);
-					veh.setDistanceToNextJunction(dist);
-					veh.advanceInMacroList();
-					veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
-				}
-				return true;
-			}
-			else{ // Case 1, veh's road is this road and but not this lane
-				veh.removeFromLane(); // Just remove the vehicle from the current lane
-			}
+			//Case 1, veh's road is this road, (important) will ignore collision issue and change its loc
+			veh.removeFromLane(); // Just remove the vehicle from the current lane
 		}
 		else {
 			veh.removeFromLane();
 			veh.removeFromMacroList();
 			veh.appendToRoad(this);
-			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 3, veh enter the next road in its planned route
+			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
 			{
 				veh.setNextRoad();
 			}
-			else { // Case 4: veh enter the road not in its planned route
+			else { // Case 3: veh enter the road not in its planned route
 				veh.rerouteAndSetNextRoad();
 			}
 		}
