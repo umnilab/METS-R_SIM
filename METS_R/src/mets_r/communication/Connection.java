@@ -35,9 +35,6 @@ public class Connection{
 	private QueryMessageHandler queryHandler;
 	private StepMessageSender stepSender;
 	private AnswerMessageSender answerSender;
-	
-	public static int prevTick = -1; // for tracking the step function
-	public static int prevHour = -1; // for tracking the latest hour that the bus schedule is processed
 
 	public Connection() {
 		// increment our instance counter and save this object's number

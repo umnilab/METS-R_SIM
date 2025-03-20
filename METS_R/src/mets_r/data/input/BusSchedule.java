@@ -30,14 +30,12 @@ public class BusSchedule {
 	// For storing the schedule
 	private ArrayList<Integer> routeName;
 	private ArrayList<ArrayList<Integer>> busRoute;
-	private ArrayList<Integer> busNum;
+	private ArrayList<Integer> busNum; // how many rounds in total
 	private ArrayList<Integer> busGap; // in minute
 	private Map<Long, Integer> locationIDMap;
 
 	// For updating the schedule
 	private ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
-
-	private int currentHour = -1;
 
 	public BusSchedule() {
 		routeName = new ArrayList<Integer>();
@@ -95,61 +93,65 @@ public class BusSchedule {
 		ContextCreator.logger.info("Loaded bus schedule from offline files.");
 	}
 
-	// For changing bus route schedule
-	public void updateEvent(int newHour, ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes,
+	// For adding bus routes
+	public void insertNewRoutes(ArrayList<Integer> newRouteName, ArrayList<ArrayList<Integer>> newRoutes,
 			ArrayList<Integer> newBusNum, ArrayList<Integer> newBusGap) {
-		if (currentHour < newHour) {
-			currentHour = newHour;
-			routeName = newRouteName;
-			busNum = newBusNum;
-			busGap = newBusGap;
-
-			for (Zone z : ContextCreator.getZoneContext().getAll()) {
-				z.busReachableZone.clear(); // clear the bus info
-				z.busGap.clear();
-			}
-			busRoute.clear();
+		
+		for (ArrayList<Integer> route : newRoutes) {
+			int i = 0;
+			ArrayList<Integer> oneRoute = new ArrayList<Integer>();
+			int oneBusNum = newBusNum.get(i);
+			int oneBusGap = newBusGap.get(i);
 			
-			for (ArrayList<Integer> route : newRoutes) {
-				int i = 0;
-				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
-				if (busNum.get(i) > 0) {
-					for (long zoneID : route) {
-						if(locationIDMap.containsKey(zoneID)){
-							oneRoute.add(locationIDMap.get(zoneID));
-							Zone zone = ContextCreator.getZoneContext().get(locationIDMap.get(zoneID));
-							if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
-								for (long destinationID : route) {
-									if(locationIDMap.containsKey(destinationID)) {
-										if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
-											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
-										}
+			if (oneBusNum > 0) {
+				for (long zoneID : route) {
+					if(locationIDMap.containsKey(zoneID)){
+						oneRoute.add(locationIDMap.get(zoneID));
+						Zone zone = ContextCreator.getZoneContext().get(locationIDMap.get(zoneID));
+						if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
+							for (long destinationID : route) {
+								if(locationIDMap.containsKey(destinationID)) {
+									if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(locationIDMap.get(destinationID))) {
+										zone.setBusInfo(locationIDMap.get(destinationID), oneBusGap);
 									}
 								}
-							} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be
-																	// another hub)
-								for (long destinationID : route) {
-									if(locationIDMap.containsKey(destinationID)) {
-										if (zone.getID() != locationIDMap.get(destinationID)) {
-											zone.setBusInfo(locationIDMap.get(destinationID), this.busGap.get(i));
-										}
-									}	
-								}
+							}
+						} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be
+																// another hub)
+							for (long destinationID : route) {
+								if(locationIDMap.containsKey(destinationID)) {
+									if (zone.getID() != locationIDMap.get(destinationID)) {
+										zone.setBusInfo(locationIDMap.get(destinationID), oneBusGap);
+									}
+								}	
 							}
 						}
 					}
 				}
-				busRoute.add(oneRoute);
-				i += 1;
 			}
-			ContextCreator.logger.info(busRoute);
-			for (Zone z : ContextCreator.getZoneContext().getAll()) {
-				// Deal with the remaining passengers for buses in each zone
-				z.reSplitPassengerDueToBusRescheduled();
-			}
-
-			this.processSchedule();
+			busNum.add(oneBusNum);
+			busGap.add(oneBusGap);
+			busRoute.add(oneRoute);
+			routeName.add(newRouteName.get(i));
+			i += 1;
 		}
+		ContextCreator.logger.info(busRoute);
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			// Deal with the remaining passengers for buses in each zone
+			z.reSplitPassengerDueToBusRescheduled();
+		}
+
+		this.processSchedule();
+	}
+	
+	// For adding bus schedules
+	public void insertNewSchedule(int routeName, ArrayList<Integer> oneBusRoute, ArrayList<Integer> departTime) {
+		int startZone = oneBusRoute.get(0);
+		if (!pendingSchedules.containsKey(startZone)) {
+			pendingSchedules.put(startZone, new PriorityQueue<OneBusSchedule>(new The_Comparator()));
+		}
+		OneBusSchedule obs = new OneBusSchedule(routeName, oneBusRoute, departTime);
+		pendingSchedules.get(startZone).add(obs);
 	}
 
 	// Translate bus route into bus schedules
@@ -161,9 +163,8 @@ public class BusSchedule {
 			if (!pendingSchedules.containsKey(startZone)) {
 				pendingSchedules.put(startZone, new PriorityQueue<OneBusSchedule>(new The_Comparator()));
 			}
-			for (int j = 0; j < this.busNum.get(i); j++) {
-				Integer depTime = (int) (currentHour * 3600 / GlobalVariables.SIMULATION_STEP_SIZE
-						+ j * this.busGap.get(i) * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
+			for (int j = 0; j < this.busNum.get(i); j++) { 
+				int depTime = (int) (j * this.busGap.get(i) * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
 				OneBusSchedule obs = new OneBusSchedule(this.routeName.get(i), this.busRoute.get(i), depTime);
 				pendingSchedules.get(startZone).add(obs);
 			}
@@ -175,7 +176,7 @@ public class BusSchedule {
 			// Update bus schedule
 			if (this.pendingSchedules.get(startZone).size() > 0) {
 				if (this.pendingSchedules.get(startZone).peek().departureTime
-						.get(0) < (ContextCreator.getCurrentTick() + 3600 / GlobalVariables.SIMULATION_STEP_SIZE)) {
+						.get(0) < (ContextCreator.getCurrentTick() + 600 / GlobalVariables.SIMULATION_STEP_SIZE)) {
 					OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
 					b.updateSchedule(obs.routeID, obs.busRoute, obs.departureTime);
 					return;

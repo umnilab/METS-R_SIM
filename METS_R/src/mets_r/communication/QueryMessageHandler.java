@@ -160,7 +160,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
 					record2.put("battery_state", bus.getBatteryLevel());
-					record2.put("stop_list", bus.getRoute());
+					record2.put("stop_list", bus.getBusStops());
 					jsonData.add(record2);
 				}
 				else {

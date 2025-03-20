@@ -488,6 +488,17 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduleEvents();
 	}
 	
+	// The save function
+	public static void save() {
+		
+	}
+	
+	// The load function
+	public static void load() {
+		
+	}
+	
+	
 	// Called by sched.executeEndActions()
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
