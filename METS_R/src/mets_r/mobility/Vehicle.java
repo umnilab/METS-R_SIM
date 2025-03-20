@@ -561,7 +561,6 @@ public class Vehicle {
 	 * @param lane Target lane of this vehicle
 	 */
 	private void updateCoordMap(Lane lane) {
-		this.distance_ = this.distFraction() * lane.getLength();
 		Coordinate[] coords = laneGeography.getGeometry(lane).getCoordinates();
 		coordMap.clear();
 		double accDist = lane.getLength();
@@ -1843,6 +1842,7 @@ public class Vehicle {
 		 * target lanes. and also the lead and lag vehicle have to update its leading
 		 * and trailing.
 		 */
+		this.distance_ = this.distFraction() * plane.getLength();
 		this.insertToLane(plane, leadVehicle, lagVehicle);
 	}
 
