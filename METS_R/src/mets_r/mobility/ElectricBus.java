@@ -360,7 +360,7 @@ public class ElectricBus extends ElectricVehicle {
 	public void updateSchedule(int newID, ArrayList<Integer> newRoute, ArrayList<Integer> departureTime) {
 		if (newID == -1) {
 			this.routeID = -1;
-			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(0)));
+			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(this.busStop.size()-1)));
 			this.departureTime = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
 		} else {
 			this.routeID = newID;
