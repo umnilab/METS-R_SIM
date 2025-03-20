@@ -516,7 +516,7 @@ public class Zone {
 							}
 							v.servePassenger(tmp_pass);
 							// Update future supply of the target zone
-							ContextCreator.getZoneContext().get(tmp_pass.get(tmp_pass.size()-1).getDestZone()).addFutureSupply();
+							ContextCreator.getZoneContext().get(tmp_pass.get(0).getDestZone()).addFutureSupply();
 							if(pass_num == 0) break;
 							
 						}

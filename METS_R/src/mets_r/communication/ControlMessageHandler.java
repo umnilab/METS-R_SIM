@@ -772,6 +772,7 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 						p.matchedTime = ContextCreator.getCurrentTick();
 						z1.taxiPickupRequest += 1;
+						z2.addFutureSupply();
 						plist.add(p);
 						veh.servePassenger(plist);
 						
@@ -821,7 +822,9 @@ public class ControlMessageHandler extends MessageHandler {
 						// generate request
 						ArrayList<Request> plist = new ArrayList<Request>();
 						Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
-						Request p = new Request(r1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, vehIDOrigRoadDestRoadNum.num);
+						Zone z2 = ContextCreator.getZoneContext().get(r2.getNeighboringZone(true));
+						
+						Request p = new Request(z1.getID(),z2.getID(), r1.getID(), r2.getID(), false, vehIDOrigRoadDestRoadNum.num);
 						
 						if(veh.getState() == Vehicle.PARKING) {
 							z1.removeOneParkingVehicle();
@@ -830,6 +833,7 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 						p.matchedTime = ContextCreator.getCurrentTick();
 						z1.taxiPickupRequest += 1;
+						z2.addFutureSupply();
 						
 						plist.add(p);
 						veh.servePassenger(plist);
