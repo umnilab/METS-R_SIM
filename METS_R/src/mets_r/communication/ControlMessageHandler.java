@@ -43,8 +43,6 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
 		messageHandlers.put("controlVeh", this::controlVeh);
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
-		messageHandlers.put("routingTaxi", this::routingTaxi);
-		messageHandlers.put("routingBus", this::routingBus);
         messageHandlers.put("scheduleBus", this::scheduleBus);
         messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
         messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
@@ -57,6 +55,9 @@ public class ControlMessageHandler extends MessageHandler {
         messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
         messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
         messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
+//        messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
+//        messageHandlers.put("updateBusRoute", this::updateBusRoute);
+//        messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
 //        messageHandlers.put("updateSignal", this::updateSignal);
         
 	}
@@ -562,88 +563,6 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		return jsonAns;
 	}
-
-	private HashMap<String, Object> routingTaxi(JSONObject jsonMsg) {
-		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		HashMap<String, Integer> res = new HashMap<String, Integer>();
-		ContextCreator.logger.info("Received route result!");
-		JSONArray list_OD = (JSONArray) jsonMsg.get("OD");
-		JSONArray list_result = (JSONArray) jsonMsg.get("result");
-		for (int index = 0; index < list_OD.size(); index++) {
-			Long result = (Long) list_result.get(index);
-			int result_int = result.intValue();
-			String OD = (String) list_OD.get(index);
-			res.put(OD, result_int);
-		}
-		ContextCreator.routeResult_received = res;
-		jsonAns.put("CODE", "OK");
-		return jsonAns;
-	}
-	
-	private HashMap<String, Object> routingBus(JSONObject jsonMsg) {
-		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		HashMap<String, Integer> res = new HashMap<String, Integer>();
-		ContextCreator.logger.info("Received bus route result!");
-		JSONArray list_OD = (JSONArray) jsonMsg.get("BOD");
-		JSONArray list_result = (JSONArray) jsonMsg.get("result");
-		for (int index = 0; index < list_OD.size(); index++) {
-			Long result = (Long) list_result.get(index);
-			int result_int = result.intValue();
-			String OD = (String) list_OD.get(index);
-			res.put(OD, result_int);
-		}
-		ContextCreator.routeResult_received_bus = res;
-		jsonAns.put("CODE", "OK");
-		return jsonAns;
-	}
-	
-	// TODO: Rewrite this function 
-	private HashMap<String, Object> scheduleBus(JSONObject jsonMsg) {
-		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		ContextCreator.logger.info("Received bus schedules!");
-		JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
-		JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
-		JSONArray list_gap = (JSONArray) jsonMsg.get("Bus_gap");
-		JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
-
-		int array_size = list_num.size();
-		ArrayList<Integer> newRouteName = new ArrayList<Integer>(array_size);
-		ArrayList<Integer> newBusNum = new ArrayList<Integer>(array_size);
-		ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
-		ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
-		for (int index = 0; index < list_num.size(); index++) {
-			int bus_num_int = 0;
-			if (list_num.get(index) instanceof Number) {
-				bus_num_int = ((Number) list_num.get(index)).intValue();
-			}
-			if (bus_num_int > 0) {
-				// Verify the data, the last stop ID should be the same as the first one
-				@SuppressWarnings("unchecked")
-				ArrayList<Long> route = (ArrayList<Long>) list_route.get(index);
-				if (route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
-					newBusNum.add(bus_num_int);
-					Double gap = (Double) list_gap.get(index);
-					int gap_int = gap.intValue(); // in minutes
-					newBusGap.add(gap_int);
-					Long routename = (Long) list_routename.get(index);
-					int list_routename_int = routename.intValue();
-					newRouteName.add(list_routename_int);
-					int route_size = route.size() - 1;
-					ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
-					for (int index_route = 0; index_route < route_size; index_route++) {
-						int route_int_i = route.get(index_route).intValue();
-						route_int.add(route_int_i);
-					}
-					newRoutes.add(route_int);
-				}
-			}
-		}
-		ContextCreator.bus_schedule.insertNewRoutes(newRouteName, newRoutes, newBusNum, newBusGap);
-		ContextCreator.receivedNewBusSchedule = true;
-		jsonAns.put("CODE", "OK");
-		
-		return jsonAns;
-	}
 	
 	private HashMap<String, Object> enterNextRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -958,7 +877,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Bus
+	// Assign request to a specific bus
 	private HashMap<String, Object> assignRequestToBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1009,7 +928,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Bus
+	// Add a bus request in a zone
 	private HashMap<String, Object> addBusRequests(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1055,25 +974,134 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		return jsonAns;
 	}
+	
+	// TODO: Rewrite this function 
+	private HashMap<String, Object> scheduleBus(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		ContextCreator.logger.info("Received bus schedules!");
+		JSONArray list_routename = (JSONArray) jsonMsg.get("Bus_routename");
+		JSONArray list_route = (JSONArray) jsonMsg.get("Bus_route");
+		JSONArray list_gap = (JSONArray) jsonMsg.get("Bus_gap");
+		JSONArray list_num = (JSONArray) jsonMsg.get("Bus_num");
 
+		int array_size = list_num.size();
+		ArrayList<Integer> newRouteName = new ArrayList<Integer>(array_size);
+		ArrayList<Integer> newBusNum = new ArrayList<Integer>(array_size);
+		ArrayList<Integer> newBusGap = new ArrayList<Integer>(array_size);
+		ArrayList<ArrayList<Integer>> newRoutes = new ArrayList<ArrayList<Integer>>(array_size);
+		for (int index = 0; index < list_num.size(); index++) {
+			int bus_num_int = 0;
+			if (list_num.get(index) instanceof Number) {
+				bus_num_int = ((Number) list_num.get(index)).intValue();
+			}
+			if (bus_num_int > 0) {
+				// Verify the data, the last stop ID should be the same as the first one
+				@SuppressWarnings("unchecked")
+				ArrayList<Long> route = (ArrayList<Long>) list_route.get(index);
+				if (route.get(0).intValue() == route.get(route.size() - 1).intValue()) {
+					newBusNum.add(bus_num_int);
+					Double gap = (Double) list_gap.get(index);
+					int gap_int = gap.intValue(); // in minutes
+					newBusGap.add(gap_int);
+					Long routename = (Long) list_routename.get(index);
+					int list_routename_int = routename.intValue();
+					newRouteName.add(list_routename_int);
+					int route_size = route.size() - 1;
+					ArrayList<Integer> route_int = new ArrayList<Integer>(route_size);
+					for (int index_route = 0; index_route < route_size; index_route++) {
+						int route_int_i = route.get(index_route).intValue();
+						route_int.add(route_int_i);
+					}
+					newRoutes.add(route_int);
+				}
+			}
+		}
+		ContextCreator.bus_schedule.insertNewRoutes(newRouteName, newRoutes, newBusNum, newBusGap);
+		jsonAns.put("CODE", "OK");
+		
+		return jsonAns;
+	}
+	
+	
+	// Place holders for APIs to be implemented
 	// Traffic signal
-//	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
-//		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-//		if(!jsonMsg.containsKey("DATA")) {
-//			jsonAns.put("WARN", "No DATA field found in the control message");
-//			jsonAns.put("CODE", "KO");
-//		}
-//		else {
-//			try {
-//				
-//			}
-//			catch (Exception e) {
-//			    // Log error and return KO in case of exception
-//			    ContextCreator.logger.error("Error processing query: " + e.toString());
-//			    jsonAns.put("CODE", "KO");
-//			}
-//		}
-//		return jsonAns;
-//	}
+	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Route for one vehicle trip
+	private HashMap<String, Object> updateVehicleRoute(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Route for one bus
+	private HashMap<String, Object> updateBusRoute(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Weight for online shortest path
+	private HashMap<String, Object> updateEdgeWeight(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
 	
 }

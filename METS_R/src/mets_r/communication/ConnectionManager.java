@@ -116,12 +116,6 @@ public class ConnectionManager {
 
 		// Start the server listening
 		try {
-			if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-				while (!ContextCreator.isRouteUCBMapPopulated());
-			}
-			if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-				while (!ContextCreator.isRouteUCBBusMapPopulated());
-			}
 			this.server.start();
 			ConnectionManager.printDebug("CTRL", "Started.");
 		} catch (Exception e) {

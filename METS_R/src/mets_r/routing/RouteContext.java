@@ -1,6 +1,5 @@
 package mets_r.routing;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -8,9 +7,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
-import mets_r.GlobalVariables;
 import mets_r.facility.*;
-import util.Pair;
 
 public class RouteContext {
 	public static GeometryFactory geomFac; // Used for creating Geometries
@@ -38,7 +35,6 @@ public class RouteContext {
 		Node originDownstreamNode = originRoad.getDownStreamNode();
 		Node destUpstreamNode = destRoad.getUpStreamNode();
 		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode, rand);
-//		printRoute(path);
 		return path;
 	}
 
@@ -51,71 +47,6 @@ public class RouteContext {
 	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination, Random rand){
 		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
 		return shortestPathRoute(originRoad, destRoad, rand);
-	}
-	
-	public static List<List<Integer>> UCBRoute(Coordinate origin, Coordinate destination) throws Exception {
-		// Resolve the origin and destination road and junctions
-		Coordinate originCoord = origin;
-		Coordinate destCoord = destination;
-
-		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(originCoord, false);
-		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destCoord, true);
-
-		Node originDownstreamNode = originRoad.getDownStreamNode();
-		Node destUpstreamNode = destRoad.getUpStreamNode();
-		
-		List<List<Road>> paths = vbr.computeKRoute(GlobalVariables.NUM_CANDIDATE_ROUTES, originRoad, destRoad,
-				originDownstreamNode, destUpstreamNode);
-		// Transform the paths into a list of link_ids
-		List<List<Integer>> result = new ArrayList<List<Integer>>();
-		for (List<Road> path : paths) {
-			result.add(new ArrayList<Integer>());
-			for (Road road : path) {	
-				result.get(result.size() - 1).add(road.getID());
-			}
-		}
-		return result;
-	}
-
-	// Use ecoRoute to decide route
-	public static Pair<List<Road>, Integer> ecoRoute(Road originRoad, int origin, int destination) {
-		String key = Integer.toString(origin) + ',' + destination;
-		if (!ContextCreator.routeResult_received.containsKey(key)) {
-			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
-		}
-		int choice = ContextCreator.routeResult_received.get(key);
-		if (choice < 0) {
-			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
-		}
-		List<Integer> path = (ContextCreator.route_UCB.get(key)).get(choice);
-		// Return a list of link
-		List<Road> result = new ArrayList<Road>();
-		for (int link_id : path) {
-			result.add(ContextCreator.getRoadContext().get(link_id));
-		}
-		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
-		return final_result;
-	}
-
-	// Use ecoRoute to decide route, uncommented this if you want to test eco-routing for buses
-	public static Pair<List<Road>, Integer> ecoRouteBus(Road originRoad, int origin, int destination) {
-		String key = Integer.toString(origin) + ',' + destination;
-		if (!ContextCreator.routeResult_received_bus.containsKey(key)) {
-			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
-		}
-		int choice = ContextCreator.routeResult_received_bus.get(key);
-		if (choice < 0) {
-			return new Pair<>(new ArrayList<Road>(), -1); // Empty route
-		}
-		List<Integer> path = (ContextCreator.route_UCB_bus.get(key)).get(choice);
-
-		// Return a list of link
-		List<Road> result = new ArrayList<Road>();
-		for (int link_id : path) {
-			result.add(ContextCreator.getRoadContext().get(link_id));
-		}
-		Pair<List<Road>, Integer> final_result = new Pair<>(result, choice);
-		return final_result;
 	}
 
 	public static void printRoute(List<Road> path) {

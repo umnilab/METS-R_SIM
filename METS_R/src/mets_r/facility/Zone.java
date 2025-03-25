@@ -242,7 +242,9 @@ public class Zone {
 					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
 				else { // If vehicle is on road
-					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , added destination to its to-be-visited queue");
+					v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
+					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
 			}
 			else { // If vehicle does not exists
@@ -284,7 +286,9 @@ public class Zone {
 					this.numberOfGeneratedPrivateGVTrip += 1;
 				}
 				else { // If vehicle is on road
-					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , maybe there are two trips for the same vehicle that are too close?");
+					ContextCreator.logger.warn("The private GV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , added destination to its to-be-visited queue");
+					v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
+					this.numberOfGeneratedPrivateGVTrip += 1;
 				}
 			}
 			else { // If vehicle does not exists

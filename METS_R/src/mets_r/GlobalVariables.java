@@ -131,11 +131,6 @@ public class GlobalVariables {
 		BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 		PROACTIVE_RELOCATION = Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
 
-		// Eco-routing Parameters
-		ENABLE_ECO_ROUTING_EV = Boolean.valueOf(loadConfig("ECO_ROUTING_EV"));
-		ENABLE_ECO_ROUTING_BUS = Boolean.valueOf(loadConfig("ECO_ROUTING_BUS"));
-		NUM_CANDIDATE_ROUTES = Integer.valueOf(loadConfig("NUM_CANDIDATE_ROUTES"));
-
 		// Vehicle charging
 		PROACTIVE_CHARGING = Boolean.valueOf(loadConfig("PROACTIVE_CHARGING"));
 		RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("RECHARGE_LEVEL_LOW"));
@@ -379,11 +374,6 @@ public class GlobalVariables {
 	public static boolean COLLABORATIVE_EV = Boolean.valueOf(loadConfig("COLLABORATIVE_EV"));
 	public static boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 	public static boolean PROACTIVE_RELOCATION = Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
-
-	// Eco-routing Parameters
-	public static boolean ENABLE_ECO_ROUTING_EV = Boolean.valueOf(loadConfig("ECO_ROUTING_EV"));
-	public static boolean ENABLE_ECO_ROUTING_BUS = Boolean.valueOf(loadConfig("ECO_ROUTING_BUS"));
-	public static int NUM_CANDIDATE_ROUTES = Integer.valueOf(loadConfig("NUM_CANDIDATE_ROUTES"));
 
 	// Vehicle charging
 	public static boolean PROACTIVE_CHARGING = Boolean.valueOf(loadConfig("PROACTIVE_CHARGING"));

@@ -34,6 +34,9 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("zone", this::getZone);
         messageHandlers.put("signal", this::getSignal);
         messageHandlers.put("chargingStation", this::getChargingStation);
+//        messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
+//        messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
+//        messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -363,4 +366,73 @@ public class QueryMessageHandler extends MessageHandler {
 		    return jsonObj;
 		}
 	}
+	
+	// Place holders for APIs to be implemented
+	public HashMap<String, Object> getRoutesBwCoords(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			// DO something when no parameter is provided
+			return jsonObj;
+		}
+		try {
+			// Load the parameter
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    // Obtain the query results
+		    
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
+	
+	public HashMap<String, Object> getRoutesBwRoads(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			// DO something when no parameter is provided
+			return jsonObj;
+		}
+		try {
+			// Load the parameter
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    // Obtain the query results
+		    
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
+	
+	public HashMap<String, Object> getEdgeWeight(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			// DO something when no parameter is provided
+			return jsonObj;
+		}
+		try {
+			// Load the parameter
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		    // Obtain the query results
+		    
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
+	
+	
 }

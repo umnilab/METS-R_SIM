@@ -44,6 +44,7 @@ public class Vehicle {
 	//SensorType
 	public final static int DSRC = 0;
 	public final static int CV2X = 1;
+	public final static int MOBILEDEVICE = 2;
 	
 	//TripType
 	public final static int PARKING = 0;
@@ -1526,7 +1527,15 @@ public class Vehicle {
 				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
 		    if(this.vehicleClass == Vehicle.GV)
 		    	ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
-			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+		    
+		    if(this.activityPlan.size() >= 2) {
+		    	this.reachDestButNotLeave();
+		    	this.setNextPlan();
+		    	this.departure();
+		    }
+		    else{
+		    	this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+		    }
 		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
@@ -1539,13 +1548,6 @@ public class Vehicle {
 	 *  Call when arriving the destination but not leave the network
 	 */
 	public void reachDestButNotLeave() {
-		if(this.getState() == Vehicle.PRIVATE_TRIP) {
-			if(this.vehicleClass == Vehicle.EV)
-				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
-		    if(this.vehicleClass == Vehicle.GV)
-		    	ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
-			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
-		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive

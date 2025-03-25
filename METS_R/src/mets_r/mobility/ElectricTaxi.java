@@ -12,7 +12,6 @@ import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.routing.RouteContext;
-import util.Pair;
 
 /**
  * Electric taxis
@@ -164,11 +163,6 @@ public class ElectricTaxi extends ElectricVehicle {
 			// Clear legacy impact
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
-			if (!ContextCreator.routeResult_received.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-				Pair<List<Road>, Integer> route_result = RouteContext.ecoRoute(this.getRoad(), this.getOriginID(), this.getDestID());
-				this.roadPath = route_result.getFirst();
-				this.routeChoice = route_result.getSecond();
-			}
 			
 			// Compute new route if eco-routing is not used
 			if (this.roadPath == null || this.roadPath.isEmpty()) {

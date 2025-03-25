@@ -10,7 +10,6 @@ import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import mets_r.ContextCreator;
-import mets_r.GlobalVariables;
 
 /**
  * When a request from a remote program for a network connection is received,
@@ -84,18 +83,6 @@ public class Connection{
 
 		// Register the connection in ContextCreator
 		ContextCreator.connection = this;
-
-		try {
-			if (GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-				answerSender.sendCandidateRoutesForTaxi(this.session);
-			}
-			if (GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-				answerSender.sendCandidateRoutesForBus(this.session);
-			}
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		
 	}
 
 	@OnWebSocketMessage

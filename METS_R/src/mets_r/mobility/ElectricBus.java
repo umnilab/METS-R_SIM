@@ -17,7 +17,6 @@ import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.routing.RouteContext;
-import util.Pair;
 
 /**
  * Electric buses
@@ -135,11 +134,7 @@ public class ElectricBus extends ElectricVehicle {
 			// Clear legacy impact
 			this.clearShadowImpact();
 			this.roadPath = new ArrayList<Road>();
-			if (!ContextCreator.routeResult_received_bus.isEmpty() && GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-				Pair<List<Road>, Integer> route_result = RouteContext.ecoRouteBus(this.getRoad(), this.getOriginID(), this.getDestID());
-				this.roadPath = route_result.getFirst();
-				this.routeChoice = route_result.getSecond();
-			}
+			
 			// Compute new route if eco-routing is not used or the OD pair is uncovered
 			if (this.roadPath == null || this.roadPath.isEmpty()) {
 				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path

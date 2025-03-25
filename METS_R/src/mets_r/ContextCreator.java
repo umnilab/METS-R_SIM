@@ -82,25 +82,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Data collector gather tick by tick tickSnapshot and provide it to data consumers
 	public static final DataCollector dataCollector = new DataCollector();
 	
-	// Candidate path sets for eco-routing, 
-	// id: origin-destination pair, value: npaths
-	public static HashMap<String, List<List<Integer>>> route_UCB = new HashMap<String, List<List<Integer>>>();
-	public static HashMap<String, List<List<Integer>>> route_UCB_bus = new HashMap<String, List<List<Integer>>>();
-	
-	// Route results received from RemoteDataClient
-	public static HashMap<String, Integer> routeResult_received = new HashMap<String, Integer>();
-	public static HashMap<String, Integer> routeResult_received_bus = new HashMap<String, Integer>();
-	
 	// Road collections for co-simulation
 	public static HashMap<String, Road> coSimRoads = new HashMap<String, Road>();
 	
 	/* Synchronize mode flags */
 	// Volatile for thread-read-safe 
-	public static volatile boolean isRouteUCBPopulated = false;
-	public static volatile boolean isRouteUCBBusPopulated = false;
-	public static volatile boolean receivedNewBusSchedule = false;
-	
-	
 	public static volatile int waitNextStepCommand = GlobalVariables.SYNCHRONIZED?0:-1;
 	
 	/* For enable the reset function*/
@@ -180,13 +166,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		
 		cityContext.modifyRoadNetwork(); // This initializes data for path calculation, DO NOT remove it
-		if(GlobalVariables.ENABLE_ECO_ROUTING_EV) {
-			cityContext.createUCBRoutes(); // generate eco-routing routes
-		}
-
-		if(GlobalVariables.ENABLE_ECO_ROUTING_BUS) {
-			cityContext.createUCBBusRoutes(); // generate Bus eco-routing routes
-		}
 		
 		if(GlobalVariables.MULTI_THREADING) {
 			try {
@@ -421,14 +400,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 			}
 			
-			if(GlobalVariables.ENABLE_ECO_ROUTING_EV || GlobalVariables.ENABLE_ECO_ROUTING_BUS){
-				try {
-					Thread.sleep(10000); // Wait another 10s for synchronizing the eco-routing data
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
-			}
-			
 			connection.sendReadyMessage(); 
 			
 			scheduleNextStepUpdating(); // Schedule synchronized updates
@@ -472,14 +443,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
-		route_UCB = new HashMap<String, List<List<Integer>>>();
-		route_UCB_bus = new HashMap<String, List<List<Integer>>>();
-		isRouteUCBPopulated = false;
-		isRouteUCBBusPopulated = false;
-		receivedNewBusSchedule = false;
 		waitNextStepCommand = 0;
-		routeResult_received = new HashMap<String, Integer>();
-		routeResult_received_bus = new HashMap<String, Integer>();
 		
 		// Regenerate the sub-contexts
 		buildSubContexts();
@@ -541,14 +505,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			res += arrayList.get(i);
 		}
 		return res;
-	}
-
-	public static boolean isRouteUCBMapPopulated() {
-		return ContextCreator.isRouteUCBPopulated;
-	}
-
-	public static boolean isRouteUCBBusMapPopulated() {
-		return ContextCreator.isRouteUCBBusPopulated;
 	}
 	
 	public static VehicleContext getVehicleContext() {
