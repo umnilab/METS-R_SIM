@@ -346,7 +346,7 @@ public class ElectricBus extends ElectricVehicle {
 		}
 		this.onChargingRoute_ = false;
 		this.setNextPlan();
-		this.setState(Vehicle.BUS_TRIP);
+		this.setState(Vehicle.CHARGING_RETURN_TRIP);
 		this.departure();
 		
 	}

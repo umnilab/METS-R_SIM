@@ -236,7 +236,7 @@ public class ElectricVehicle extends Vehicle {
 
 		this.onChargingRoute_ = false;
 		this.setNextPlan(); // Return to where it was before goCharging
-		this.setState(Vehicle.NONE_OF_THE_ABOVE);
+		this.setState(Vehicle.CHARGING_RETURN_TRIP);
 		this.departure(); 
 	}
 	

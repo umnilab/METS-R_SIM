@@ -57,6 +57,7 @@ public class Vehicle {
 	public final static int PICKUP_TRIP = 6;
 	public final static int ACCESSIBLE_RELOCATION_TRIP = 7; // Vehicles are available to the zone that they travel through
 	public final static int PRIVATE_TRIP = 8;
+	public final static int CHARGING_RETURN_TRIP = 9;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 	
@@ -1522,20 +1523,35 @@ public class Vehicle {
 	 *  Call when arriving the destination
 	 */
 	public void reachDest() {
-		if(this.getState() == Vehicle.PRIVATE_TRIP) {
-			if(this.vehicleClass == Vehicle.EV)
+		if(this.vehicleClass == Vehicle.EV ) {
+			if(this.getState() == Vehicle.PRIVATE_TRIP) {
 				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
-		    if(this.vehicleClass == Vehicle.GV)
-		    	ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
-		    
-		    if(this.activityPlan.size() >= 2) {
+			}
+			if(this.activityPlan.size() >= 2) {
+		    	this.vehicleState = Vehicle.PRIVATE_TRIP;
 		    	this.reachDestButNotLeave();
 		    	this.setNextPlan();
 		    	this.departure();
+		    	return;
 		    }
-		    else{
-		    	this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+			else {
+				this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+			}
+		}
+		if(this.vehicleClass == Vehicle.GV) {
+			if(this.getState() == Vehicle.PRIVATE_TRIP) {
+				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
+			}
+			if(this.activityPlan.size() >= 2) {
+		    	this.vehicleState = Vehicle.PRIVATE_TRIP;
+		    	this.reachDestButNotLeave();
+		    	this.setNextPlan();
+		    	this.departure();
+		    	return;
 		    }
+			else {
+				this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+			}
 		}
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
