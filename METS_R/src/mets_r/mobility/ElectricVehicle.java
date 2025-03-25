@@ -104,13 +104,24 @@ public class ElectricVehicle extends Vehicle {
 				e.printStackTrace();
 			}
 			this.tripConsume = 0;
-			if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+			this.reachDestButNotLeave();
+			
+			if(this.getState() == Vehicle.PRIVATE_TRIP) {
+				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
+			}
+			if(this.activityPlan.size() >= 2) { 
+		    	this.vehicleState = Vehicle.PRIVATE_TRIP;
+		    	this.setNextPlan();
+		    	this.departure();
+		    }
+			else if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 					&& batteryLevel_ <= higherBatteryRechargeLevel_)) {
 				super.reachDestButNotLeave(); // Go charging
 				this.goCharging();
 			}
 			else {
-				super.reachDest(); // Update the vehicle status
+				this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+				this.leaveNetwork();
 			}
 		}
 	}
@@ -118,7 +129,7 @@ public class ElectricVehicle extends Vehicle {
 	// Find the closest charging station and update the activity plan
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
-		Coordinate current_dest_coord = ContextCreator.getZoneContext().get(this.getDestID()).getCoord();
+		Coordinate current_dest_coord = this.getDestCoord();
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
 		if(cs != null) {
@@ -157,10 +168,6 @@ public class ElectricVehicle extends Vehicle {
 	// Reset link consume once a EV has passed a link
 	public void resetLinkConsume() {
 		this.linkConsume = 0;
-	}
-
-	public boolean onChargingRoute() {
-		return this.onChargingRoute_;
 	}
 
 	// Charge the battery.

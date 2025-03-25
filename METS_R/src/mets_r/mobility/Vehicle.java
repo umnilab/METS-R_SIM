@@ -94,9 +94,10 @@ public class Vehicle {
 	private Lane lane;
 	
 	// Vehicle class, status, and sensorType
-	private int vehicleClass; 
-	private int vehicleSensorType;
-	private int vehicleState; 
+	protected int vehicleState; 
+	protected int vehicleClass; 
+	protected int vehicleSensorType;
+	
 	
 	// For vehicle based routing
 	private List<Coordinate> coordMap;
@@ -113,7 +114,7 @@ public class Vehicle {
 	// For adaptive network partitioning
 	private int Nshadow; // Number of current shadow roads in the path
 	private ArrayList<Road> futureRoutingRoad;
-	private ArrayList<Plan> activityPlan; // A set of zone for the vehicle to visit
+	protected ArrayList<Plan> activityPlan; // A set of zone for the vehicle to visit
 	
 	// For calculating vehicle coordinates
 	GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
@@ -1523,41 +1524,19 @@ public class Vehicle {
 	 *  Call when arriving the destination
 	 */
 	public void reachDest() {
-		if(this.vehicleClass == Vehicle.EV ) {
-			if(this.getState() == Vehicle.PRIVATE_TRIP) {
-				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateEVTrip += 1;
-			}
-			if(this.activityPlan.size() >= 2) {
-		    	this.vehicleState = Vehicle.PRIVATE_TRIP;
-		    	this.reachDestButNotLeave();
-		    	this.setNextPlan();
-		    	this.departure();
-		    	return;
-		    }
-			else {
-				this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
-			}
+		this.reachDestButNotLeave();
+		if(this.getState() == Vehicle.PRIVATE_TRIP) {
+			ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
 		}
-		if(this.vehicleClass == Vehicle.GV) {
-			if(this.getState() == Vehicle.PRIVATE_TRIP) {
-				ContextCreator.getZoneContext().get(this.getDestID()).arrivedPrivateGVTrip += 1;
-			}
-			if(this.activityPlan.size() >= 2) {
-		    	this.vehicleState = Vehicle.PRIVATE_TRIP;
-		    	this.reachDestButNotLeave();
-		    	this.setNextPlan();
-		    	this.departure();
-		    	return;
-		    }
-			else {
-				this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
-			}
+		if(this.activityPlan.size() >= 2) {
+	    	this.vehicleState = Vehicle.PRIVATE_TRIP;
+	    	this.setNextPlan();
+	    	this.departure();
+	    }
+		else {
+			this.vehicleState = Vehicle.NONE_OF_THE_ABOVE;
+			this.leaveNetwork();
 		}
-		this.isReachDest = true;
-		this.accummulatedDistance_ = 0;
-		// Vehicle arrive
-		this.endTime = ContextCreator.getCurrentTick();
-		this.leaveNetwork();
 	}
 	
 	/**
