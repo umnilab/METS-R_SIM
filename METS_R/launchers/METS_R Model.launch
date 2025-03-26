@@ -37,5 +37,5 @@
     <stringAttribute key="org.eclipse.jdt.launching.MODULE_NAME" value="METS_R"/>
     <stringAttribute key="org.eclipse.jdt.launching.PROGRAM_ARGUMENTS" value="&quot;${workspace_loc:METS_R}/mets_r.rs&quot;"/>
     <stringAttribute key="org.eclipse.jdt.launching.PROJECT_ATTR" value="METS_R"/>
-    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="--add-exports java.base/jdk.internal.ref=ALL-UNNAMED&#13;&#10;-Xss128M &#13;&#10;-Xms256M &#13;&#10;-Xmx20G"/>
+    <stringAttribute key="org.eclipse.jdt.launching.VM_ARGUMENTS" value="-Xss128M &#13;&#10;-Xms256M &#13;&#10;-Xmx20G"/>
 </launchConfiguration>
