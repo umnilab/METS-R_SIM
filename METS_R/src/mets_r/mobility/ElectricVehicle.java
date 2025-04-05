@@ -248,7 +248,11 @@ public class ElectricVehicle extends Vehicle {
 	}
 	
 	public double getBatteryLevel() {
-		return batteryLevel_;
+		return this.batteryLevel_;
+	}
+	
+	public double getSoC() {
+		return this.batteryLevel_/this.batteryCapacity;
 	}
 	
 	// Set the battery level, unit: % of the total capacity

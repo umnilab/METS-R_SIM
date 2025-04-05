@@ -44,7 +44,13 @@ public class ChargingStation {
 	// We assume the electricity price in L2 charging station is 0.20 dollar per kWh, in L3 0.30 dollar per kWh
 	private static double chargingFeeL2 = 2.0; // Charging price: 2.0 dollars/hour
 	private static double chargingFeeL3 = 30.0; // Charging price: 30.0 dollars/hour
-	private static float alpha = 5.0f; // Value of time: dollars/hour
+	
+	// Weights in the utility functions
+	private static float C0 = -1.265f;//
+	private static float alpha = -0.96f; // Value of waiting time: dollars/hour
+	private static float beta = -0.324f;
+	private static float gamma = -2.16f; // Value of L3 charging time: dollars/hour
+	private static float C1 = 0.776f;
 
 	// For thread-safe operation
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
@@ -137,8 +143,8 @@ public class ChargingStation {
 		ev.initialChargingState = ev.getBatteryLevel();
 		this.numChargedCar += 1;
 		if ((numL2 > 0) && (numL3 > 0)) {
-			double utilityL2 = -alpha * totalTimeL2(ev) - chargingCostL2(ev);
-			double utilityL3 = -alpha * totalTimeL3(ev) - chargingCostL3(ev);
+			double utilityL2 = C0 + alpha * waitingTimeL2() + beta * chargingTimeL2(ev) * chargingFeeL2 + C1 * (ev.getSoC() > 0.8 ? 1 : 0);
+			double utilityL3 = alpha* waitingTimeL3() + beta * chargingTimeL3(ev) * chargingFeeL3 + gamma * chargingTimeL3(ev);
 			double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
 			double random = rand.nextDouble();
 			if (random < shareOfL2) {
@@ -284,47 +290,26 @@ public class ChargingStation {
 		}
 	}
 
-	// Estimate the total time of using L2 charger.
-	// It consists of two parts: waiting time and charging time.
-	// Waiting time is equal to total charging demand in front of the vehicle
-	// divided by the maximal L2 charging supply.//
-	public double totalTimeL2(ElectricVehicle ev) { // hour
+	// Estimating time of using L2, L3 charger. Unite: hour
+	public double chargingTimeL2(ElectricVehicle ev) {
+		return (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL2;
+	}
+	
+	public double waitingTimeL2() {
 		int numChargingVehicle = chargingVehicleL2.size(); // Number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL2.size(); // Number of vehicles that in the queue.
-		// Assume each charging vehicle needs 20kWh more, each waiting vehicle needs 40kWh.
-		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) / (chargingRateL2 * numL2); // unit:
-																														// second
-		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL2;
-		double totalTime = waitingTime + chargingTime;
-		return totalTime;
+		return (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) / (chargingRateL2 * numL2);
 	}
-
-	// The charging price of using L2 charger.
-	public double chargingCostL2(ElectricVehicle ev) {
-		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL2; // unit: hour
-		double price = chargingTime * chargingFeeL2; // unit: dollar
-		return price;
+	
+    public double chargingTimeL3(ElectricVehicle ev) {
+    	return (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL3;
 	}
-
-	// Estimate the total time of using L3 charger.
-	// It consists of two parts: waiting time and charging time.
-	// Waiting time is equal to total charging demand in front of the vehicle
-	// divided by the maximal L3 charging supply.//
-	public double totalTimeL3(ElectricVehicle ev) { // hour
+	
+	public double waitingTimeL3() {
 		int numChargingVehicle = chargingVehicleL3.size(); // number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL3.size(); // number of vehicles that in the queue.
 		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs 40kWh.
-		double waitingTime = (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) / (chargingRateL3 * numL3); 
-		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL3;
-		double totalTime = waitingTime + chargingTime;
-		return totalTime;
-	}
-
-	// The charging price of using L3 chager.
-	public double chargingCostL3(ElectricVehicle ev) {
-		double chargingTime = (ev.getBatteryCapacity() - ev.getBatteryLevel()) / chargingRateL3; // unit: hour
-		double price = chargingTime * chargingFeeL3; // unit: dollar
-		return price;
+		return (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) / (chargingRateL3 * numL3); 
 	}
 
 	public int getID() {
