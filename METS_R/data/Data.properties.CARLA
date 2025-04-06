@@ -103,11 +103,6 @@ COLLABORATIVE_EV = false
 BUS_PLANNING = false
 PROACTIVE_RELOCATION = true
 
-## Ecorouting Parameters
-ECO_ROUTING_EV = false
-ECO_ROUTING_BUS = false
-NUM_CANDIDATE_ROUTES = 20
-
 ## Vehicle charging
 PROACTIVE_CHARGING = false
 RECHARGE_LEVEL_LOW = 0.2
