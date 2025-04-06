@@ -177,7 +177,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		
 		dataContext.startCollecting();
-
 	}
 	
 	// Schedule simulation events

@@ -126,12 +126,30 @@ public class ElectricVehicle extends Vehicle {
 		}
 	}
 	
+	// Decide which charger to select
+	public int decideChargerType() {
+		double utilityL2 = GlobalVariables.CHARGING_UTILITY_C0 + 
+				GlobalVariables.CHARGING_UTILITY_BETA * ChargingStation.chargingTimeL2(this) * GlobalVariables.CHARGING_FEE_L2 + 
+				GlobalVariables.CHARGING_UTILITY_C1 * (this.getSoC() > 0.8 ? 1 : 0);
+		double utilityL3 =  GlobalVariables.CHARGING_UTILITY_BETA * ChargingStation.chargingTimeL3(this) * GlobalVariables.CHARGING_FEE_DCFC + 
+				GlobalVariables.CHARGING_UTILITY_GAMMA * ChargingStation.chargingTimeL3(this);
+		
+		double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
+		double random = rand.nextDouble();
+		if (random < shareOfL2) {
+			return ChargingStation.L2;
+		} else {
+			return ChargingStation.L3;
+		}
+	}
+	
 	// Find the closest charging station and update the activity plan
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();
 		// Add a charging activity
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord());
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+				this.decideChargerType());
 		if(cs != null) {
 			this.onChargingRoute_ = true;
 			this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());

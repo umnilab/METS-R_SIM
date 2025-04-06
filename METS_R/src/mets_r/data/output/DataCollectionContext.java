@@ -131,9 +131,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
 
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
 			vehicleOnRoad += r.getVehicleNum();
-			if (r.getTotalEnergy() > 0) {
-				String formated_msg = currentTick + "," + r.getID() + "," + r.getTotalFlow() + ","
-						+ r.getTotalEnergy();
+			int currentFlow =  r.getAndResetCurrentFlow();
+			if (currentFlow > 0) {
+				String formated_msg = currentTick + "," + r.getID() + "," + currentFlow + ","
+						+ r.getAndResetCurrentEnergy();
 				try {
 					ContextCreator.agg_logger.link_logger.write(formated_msg);
 					ContextCreator.agg_logger.link_logger.newLine();

@@ -1979,7 +1979,7 @@ public class Vehicle {
 		double minLead_ = GlobalVariables.MIN_LEAD;
 		double betaLead01 = GlobalVariables.betaLeadMLC01;
 		double betaLead02 = GlobalVariables.betaLeadMLC02;
-		double gama = GlobalVariables.gama;
+		double gama = GlobalVariables.MLCgamma;
 		if (leadVehicle != null)
 			critLead = minLead_ + (betaLead01 * this.currentSpeed()
 					+ betaLead02 * (this.currentSpeed() - leadVehicle.currentSpeed()))
@@ -2015,7 +2015,7 @@ public class Vehicle {
 		double critLag = 0;
 		double betaLag01 = GlobalVariables.betaLagMLC01;
 		double betaLag02 = GlobalVariables.betaLagMLC02;
-		double gama = GlobalVariables.gama;
+		double gama = GlobalVariables.MLCgamma;
 		double minLag_ = GlobalVariables.MIN_LAG;
 		if (lagVehicle != null) {
 			critLag = minLag_

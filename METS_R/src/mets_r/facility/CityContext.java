@@ -541,11 +541,29 @@ public class CityContext extends DefaultContext<Object> {
 		return edge;
 	}
 
-	// Returns the closest charging station from the currentLocation
-	public ChargingStation findNearestChargingStation(Coordinate coord) throws NullPointerException {
+	// Returns the closest charging station which has available chargers with specified charger type from the current location
+	public ChargingStation findNearestChargingStation(Coordinate coord, int chargerType) throws NullPointerException {
 		if (coord == null) {
 			throw new NullPointerException(
 					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
+		}
+		
+		if(ContextCreator.getChargingStationContext().numCharger(chargerType) == 0){ // No such charger
+			switch(chargerType) {
+			  case ChargingStation.L2:
+				  if(ContextCreator.getChargingStationContext().numCharger(ChargingStation.L3) > 0){
+					  chargerType = ChargingStation.L3;
+					  break;
+				  }
+			  case ChargingStation.L3:
+				  if(ContextCreator.getChargingStationContext().numCharger(ChargingStation.L2) > 0){
+					  chargerType = ChargingStation.L2;
+					  break;
+				  }
+			  default:
+				  ContextCreator.logger.error("No charging station with type " + chargerType +" (0-L2, 1-DCFC, 2-BUS)");
+				  return null;
+			}
 		}
 
 		GeometryFactory geomFac = new GeometryFactory();
@@ -554,19 +572,17 @@ public class CityContext extends DefaultContext<Object> {
 		Point point = geomFac.createPoint(coord);
 		Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
 		double minDist = Double.MAX_VALUE;
-		boolean hasL3 = false;
 		ChargingStation nearestChargingStation = null;
 		int num_tried = 0;
 		while (nearestChargingStation == null && num_tried < 5) {
 			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
-				double thisDist = this.getDistance(coord, cs.getCoord());
-				// Sort by two keys (whether there are L3 charger, distance)
-				if ((((cs.numL3() > 0) && !hasL3) || 
-						(((cs.numL3() > 0) == hasL3) && (thisDist < minDist))) && 
-						(cs.capacity() > 0)) {
-					minDist = thisDist;
-					hasL3 = (cs.numL3() > 0);
-					nearestChargingStation = cs;
+				boolean hasCharger = cs.numCharger(chargerType) > 0;
+				if (hasCharger && (cs.capacity() > 0)) {
+					double thisDist = this.getDistance(coord, cs.getCoord());
+					if(thisDist < minDist) {
+						minDist = thisDist;
+						nearestChargingStation = cs;
+					}
 				}
 			}
 			num_tried += 1;
@@ -576,57 +592,13 @@ public class CityContext extends DefaultContext<Object> {
 		if (nearestChargingStation == null) { // Cannot find instant available charger, go the closest one and wait there
 			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
 					ChargingStation.class)) {
-				double thisDist = this.getDistance(coord, cs.getCoord());
-				
-				// Sort by two keys (whether there are L3 charger, distance)
-				if (((cs.numL3() > 0) && !hasL3) || 
-						(((cs.numL3() > 0) == hasL3) && (minDist > thisDist) && (cs.numL2() > 0 || cs.numL3() > 0))) {
-					minDist = thisDist;
-					hasL3 = (cs.numL3() > 0);
-					nearestChargingStation = cs;
-				}
-			}
-		}
-		if (nearestChargingStation == null) {
-			ContextCreator.logger.error(
-					"CityContext: findNearestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
-							+ coord.toString());
-		}
-		return nearestChargingStation;
-	}
-
-	// Returns the closest charging station for bus from the currentLocation
-	public ChargingStation findNearestBusChargingStation(Coordinate coord) throws NullPointerException {
-		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
-		}
-		GeometryFactory geomFac = new GeometryFactory();
-		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
-		// Use a buffer for efficiency
-		Point point = geomFac.createPoint(coord); 
-		Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
-		double minDist = Double.MAX_VALUE;
-		ChargingStation nearestChargingStation = null;
-		int num_tried = 0;
-		while (nearestChargingStation == null && num_tried < 5) {
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
-				double thisDist = this.getDistance(coord, cs.getCoord());
-				if ((thisDist < minDist) && (cs.capacityBus() > 0)) { // if thisDist < minDist
-					minDist = thisDist;
-					nearestChargingStation = cs;
-				}
-			}
-			num_tried += 1;
-			buffer = point.buffer((num_tried + 1) * GlobalVariables.SEARCHING_BUFFER);
-		}
-		if (nearestChargingStation == null) { // Cannot find instant available charger, go the closest one and wait there
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
-					ChargingStation.class)) {
-				double thisDist = this.getDistance(coord, cs.getCoord());
-				if ((thisDist < minDist) && (cs.numBusCharger() > 0)) { // if thisDist < minDist
-					minDist = thisDist;
-					nearestChargingStation = cs;
+				boolean hasCharger = cs.numCharger(chargerType) > 0;
+				if (hasCharger) {
+					double thisDist = this.getDistance(coord, cs.getCoord());
+					if(thisDist < minDist) {
+						minDist = thisDist;
+						nearestChargingStation = cs;
+					}
 				}
 			}
 		}

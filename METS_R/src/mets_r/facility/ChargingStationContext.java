@@ -19,6 +19,10 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class ChargingStationContext extends FacilityContext<ChargingStation> {
 	
+	private int numL2 = 0;
+	private int numL3 = 0;
+	private int numBusCharger = 0;
+	
 	public ChargingStationContext() {
 
 		super("ChargingStationContext");
@@ -48,6 +52,9 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 				if (result.length >= 6) {
 					cs = chargingStationLoader.nextWithArgs(int_id, (int) Math.round(Double.parseDouble(result[3])),
 							(int) Math.round(Double.parseDouble(result[4])), (int) Math.round(Double.parseDouble(result[5]))); // Using customize parameters
+					numL2 += cs.numCharger(ChargingStation.L2);
+					numL3 += cs.numCharger(ChargingStation.L3);
+					numBusCharger += cs.numCharger(ChargingStation.BUS);
 				} 
 				else {
 					ContextCreator.logger.error(
@@ -61,6 +68,19 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 		} catch (Exception e) {
 			ContextCreator.logger.error("Exception when reading charging sation shape file/csv.");
 			e.printStackTrace();
+		}
+	}
+	
+	public int numCharger(int chargerType) {
+		switch(chargerType) {
+		  case ChargingStation.L2:
+			  return numL2;
+		  case ChargingStation.L3:
+			  return numL3;
+		  case ChargingStation.BUS:
+			  return numBusCharger;
+		  default:
+			  return 0;
 		}
 	}
 }

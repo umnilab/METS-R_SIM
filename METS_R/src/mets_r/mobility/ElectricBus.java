@@ -108,12 +108,17 @@ public class ElectricBus extends ElectricVehicle {
 	}
 	
 	@Override
+	public int decideChargerType() {
+		return ChargingStation.BUS;
+	}
+	
+	@Override
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
 		Coordinate current_dest_coord = this.getDestCoord();
 		this.onChargingRoute_ = true;
 		
-		ChargingStation cs = ContextCreator.getCityContext().findNearestBusChargingStation(this.getCurrentCoord());
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(), this.decideChargerType());
 		this.addPlan(cs.getID(), cs.getCoord(), (int) ContextCreator.getNextTick()); // instantly go to
 																								// charging station
 		this.setNextPlan();

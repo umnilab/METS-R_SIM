@@ -349,6 +349,9 @@ public class QueryMessageHandler extends MessageHandler {
 				if (cs != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", cs.getID());
+					record2.put("l2_charger", cs.numCharger(ChargingStation.L2));
+					record2.put("dcfc_charger", cs.numCharger(ChargingStation.L3));
+					record2.put("bus_charger", cs.numCharger(ChargingStation.BUS));
 					record2.put("num_available_charger", cs.capacity());	
 					record2.put("x", cs.getCoord().x);
 					record2.put("y", cs.getCoord().y);

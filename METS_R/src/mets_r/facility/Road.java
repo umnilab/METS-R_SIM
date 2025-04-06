@@ -75,7 +75,9 @@ public class Road {
 	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
 	
 	/* Public variables */
+	public double currentEnergy;
     public double totalEnergy;
+    public int currentFlow;
     public int totalFlow;
 
 	// Road constructor
@@ -105,6 +107,8 @@ public class Road {
 		this.cachedSpeedLimit_ = this.speedLimit_; 
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
+		this.currentEnergy = 0;
+		this.currentFlow = 0;
 	}
 	
 	public Road(int id, double length) {
@@ -634,14 +638,17 @@ public class Road {
 
 	public void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
+		this.currentFlow += 1;
 		if (v.getVehicleClass() == Vehicle.EV) { // Private
 			ElectricVehicle ev = (ElectricVehicle) v;
 			this.totalEnergy += ev.getLinkConsume();
+			this.currentEnergy += ev.getLinkConsume();
 			ev.resetLinkConsume();
 		}
 		else if(v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
 			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
+			this.currentEnergy = ev.getLinkConsume();
 			if(ev.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 				ContextCreator.kafkaManager.produceLinkEnergy(ev.getID(), ev.getVehicleClass(), this.getID(),
 						ev.getLinkConsume());
@@ -650,6 +657,7 @@ public class Road {
 		} else if (v.getVehicleClass() == Vehicle.EBUS) {
 			ElectricBus bv = (ElectricBus) v;
 			this.totalEnergy += bv.getLinkConsume();
+			this.currentEnergy += bv.getLinkConsume();
 			if(bv.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 				ContextCreator.kafkaManager.produceLinkEnergy(bv.getID(), bv.getVehicleClass(), this.getID(),
 						bv.getLinkConsume());
@@ -664,6 +672,18 @@ public class Road {
 
 	public int getTotalFlow() {
 		return totalFlow;
+	}
+	
+	public double getAndResetCurrentEnergy() {
+		double res = this.currentEnergy;
+		this.currentEnergy = 0;
+		return res;
+	}
+
+	public int getAndResetCurrentFlow() {
+		int res = this.currentFlow;
+		this.currentFlow = 0;
+		return res;
 	}
 
 	public void setRoadType(int roadType) {

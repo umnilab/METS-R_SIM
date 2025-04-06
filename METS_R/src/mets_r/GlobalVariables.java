@@ -250,26 +250,23 @@ public class GlobalVariables {
 		UTURN_SPEED = Float.valueOf(loadConfig("UTURN_SPEED")); // mph
 		
 		// Parameters for MLC
-		betaLeadMLC01 = 0.05;
-		betaLeadMLC02 = 0.15;
-		betaLagMLC01 = 0.15;
-		betaLagMLC02 = 0.40;
-		gama = 2.5e-5;
-		critDisFraction = 0.6;
+		betaLeadMLC01 = Float.valueOf(loadConfig("betaLeadMLC01"));
+		betaLeadMLC02 = Float.valueOf(loadConfig("betaLeadMLC02"));
+		betaLagMLC01 = Float.valueOf(loadConfig("betaLagMLC01"));
+		betaLagMLC02 = Float.valueOf(loadConfig("betaLagMLC02"));
+		MLCgamma = Float.valueOf(loadConfig("gama"));;
+		critDisFraction = Float.valueOf(loadConfig("critDisFraction"));
 		
 		// Parameters for DLC
-		betaLeadDLC01 = 0.05;
-		betaLeadDLC02 = 0.15;
-		betaLagDLC01 = 0.15;
-		betaLagDLC02 = 0.40;
-		minLeadDLC = 0.05;
-		minLagDLC = 0.05;
+		betaLeadDLC01 = Float.valueOf(loadConfig("betaLeadDLC01"));
+		betaLeadDLC02 = Float.valueOf(loadConfig("betaLeadDLC02"));
+		betaLagDLC01 = Float.valueOf(loadConfig("betaLagDLC01"));
+		betaLagDLC02 = Float.valueOf(loadConfig("betaLagDLC02"));
+		minLeadDLC = Float.valueOf(loadConfig("minLeadDLC"));
+		minLagDLC = Float.valueOf(loadConfig("minLagDLC"));
 		
-		/* DB storage, currently is a placeholder for future extention */
-		DB_URL = String.valueOf(loadConfig("DB_URL"));
-		
-		BLOCKAGE_SPEED_FOREVENTS = 2.0; // In miles per hour
 		newEventQueue = new LinkedList<NetworkEventObject>();// Global queue
+		
 		// Parameters for mode split
 		BUS_TICKET_PRICE = Double.valueOf(loadConfig("BUS_TICKET_PRICE"));
 		MS_ALPHA = Double.valueOf(loadConfig("MS_ALPHA"));
@@ -278,6 +275,20 @@ public class GlobalVariables {
 		INITIAL_PRICE_TAXI = Double.valueOf(loadConfig("INITIAL_PRICE_TAXI"));
 		TAXI_BASE = Double.valueOf(loadConfig("TAXI_BASE"));
 		BUS_BASE = Double.valueOf(loadConfig("BUS_BASE"));
+		
+		// Parameters for charging behavior
+		CHARGING_SPEED_L2 = Double.valueOf(loadConfig("CHARGING_SPEED_L2"));
+		CHARGING_SPEED_DCFC = Double.valueOf(loadConfig("CHARGING_SPEED_DCFC"));
+		CHARGING_SPEED_BUS = Double.valueOf(loadConfig("CHARGING_SPEED_BUS"));
+		
+		CHARGING_FEE_L2 = Double.valueOf(loadConfig("CHARGING_FEE_L2"));
+		CHARGING_FEE_DCFC = Double.valueOf(loadConfig("CHARGING_FEE_DCFC"));
+		
+		CHARGING_UTILITY_C0 = Double.valueOf(loadConfig("CHARGING_UTILITY_C0"));
+		CHARGING_UTILITY_C1 = Double.valueOf(loadConfig("CHARGING_UTILITY_C1"));
+		CHARGING_UTILITY_ALPHA = Double.valueOf(loadConfig("CHARGING_UTILITY_ALPHA"));
+		CHARGING_UTILITY_BETA = Double.valueOf(loadConfig("CHARGING_UTILITY_BETA"));
+		CHARGING_UTILITY_GAMMA = Double.valueOf(loadConfig("CHARGING_UTILITY_GAMMA"));
 		
 		// Addressing the gridlock in the parallel mode
 		MAX_STUCK_TIME = (int) (Integer.valueOf(loadConfig("MAX_STUCK_TIME"))/SIMULATION_STEP_SIZE);
@@ -495,25 +506,21 @@ public class GlobalVariables {
 	public static double UTURN_SPEED = Float.valueOf(loadConfig("UTURN_SPEED")); // mph
 	
 	// Parameters for MLC
-	public static double betaLeadMLC01 = 0.05;
-	public static double betaLeadMLC02 = 0.15;
-	public static double betaLagMLC01 = 0.15;
-	public static double betaLagMLC02 = 0.40;
-	public static double gama = 2.5e-5;
-	public static double critDisFraction = 0.6;
+	public static double betaLeadMLC01 = Float.valueOf(loadConfig("betaLeadMLC01"));
+	public static double betaLeadMLC02 = Float.valueOf(loadConfig("betaLeadMLC02"));
+	public static double betaLagMLC01 = Float.valueOf(loadConfig("betaLagMLC01"));
+	public static double betaLagMLC02 = Float.valueOf(loadConfig("betaLagMLC02"));
+	public static double MLCgamma = Float.valueOf(loadConfig("MLCgamma"));;
+	public static double critDisFraction = Float.valueOf(loadConfig("critDisFraction"));
 	
 	// Parameters for DLC
-	public static double betaLeadDLC01 = 0.05;
-	public static double betaLeadDLC02 = 0.15;
-	public static double betaLagDLC01 = 0.15;
-	public static double betaLagDLC02 = 0.40;
-	public static double minLeadDLC = 0.05;
-	public static double minLagDLC = 0.05;
+	public static double betaLeadDLC01 = Float.valueOf(loadConfig("betaLeadDLC01"));
+	public static double betaLeadDLC02 = Float.valueOf(loadConfig("betaLeadDLC02"));
+	public static double betaLagDLC01 = Float.valueOf(loadConfig("betaLagDLC01"));
+	public static double betaLagDLC02 = Float.valueOf(loadConfig("betaLagDLC02"));
+	public static double minLeadDLC = Float.valueOf(loadConfig("minLeadDLC"));
+	public static double minLagDLC = Float.valueOf(loadConfig("minLagDLC"));
 	
-	// DB storage, currently is a placeholder for future extention 
-	public static String DB_URL = String.valueOf(loadConfig("DB_URL"));
-	
-	public static double BLOCKAGE_SPEED_FOREVENTS = 2.0; // In miles per hour
 	public static LinkedList<NetworkEventObject> newEventQueue = new LinkedList<NetworkEventObject>();
 	
 	// Parameters for mode split
@@ -524,6 +531,21 @@ public class GlobalVariables {
 	public static double INITIAL_PRICE_TAXI = Double.valueOf(loadConfig("INITIAL_PRICE_TAXI"));
 	public static double TAXI_BASE = Double.valueOf(loadConfig("TAXI_BASE"));
 	public static double BUS_BASE = Double.valueOf(loadConfig("BUS_BASE"));
+	
+	// Parameters for charging station
+	public static double CHARGING_SPEED_L2 = Double.valueOf(loadConfig("CHARGING_SPEED_L2"));
+	public static double CHARGING_SPEED_DCFC = Double.valueOf(loadConfig("CHARGING_SPEED_DCFC"));
+	public static double CHARGING_SPEED_BUS = Double.valueOf(loadConfig("CHARGING_SPEED_BUS"));
+	
+	public static double CHARGING_FEE_L2 = Double.valueOf(loadConfig("CHARGING_FEE_L2"));
+	public static double CHARGING_FEE_DCFC = Double.valueOf(loadConfig("CHARGING_FEE_DCFC"));
+	
+	public static double CHARGING_UTILITY_C0 = Double.valueOf(loadConfig("CHARGING_UTILITY_C0"));
+	public static double CHARGING_UTILITY_C1 = Double.valueOf(loadConfig("CHARGING_UTILITY_C1"));
+	public static double CHARGING_UTILITY_ALPHA = Double.valueOf(loadConfig("CHARGING_UTILITY_ALPHA"));
+	public static double CHARGING_UTILITY_BETA = Double.valueOf(loadConfig("CHARGING_UTILITY_BETA"));
+	public static double CHARGING_UTILITY_GAMMA = Double.valueOf(loadConfig("CHARGING_UTILITY_GAMMA"));
+	
 	
 	// Addressing the gridlock in the parallel mode
 	public static int MAX_STUCK_TIME = (int) (Integer.valueOf(loadConfig("MAX_STUCK_TIME"))/SIMULATION_STEP_SIZE);

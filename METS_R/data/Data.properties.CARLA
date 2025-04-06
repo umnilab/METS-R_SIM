@@ -225,6 +225,20 @@ UTURN_SPEED = 25
 LANE_CHANGING_PROB_PART1 = 0.5
 LANE_CHANGING_PROB_PART2 = 0.5
 
+betaLeadMLC01 = 0.05
+betaLeadMLC02 = 0.15
+betaLagMLC01 = 0.15
+betaLagMLC02 = 0.40
+MLCgamma = 2.5e-5
+critDisFraction = 0.6
+
+betaLeadDLC01 = 0.05
+betaLeadDLC02 = 0.15
+betaLagDLC01 = 0.15
+betaLagDLC02 = 0.40
+minLeadDLC = 0.05
+minLagDLC = 0.05
+
 ## Mode split
 ### unit: dollars, per mile, per minute
 BUS_TICKET_PRICE = 15.0f
@@ -234,6 +248,21 @@ BASE_PRICE_TAXI = 2.0f
 INITIAL_PRICE_TAXI = 2.5f
 TAXI_BASE = -0.672839f
 BUS_BASE = -1.479586f
+
+## For charging station
+### unit: kwh/hour, dollars/per hour
+CHARGING_SPEED_L2 = 10.0
+CHARGING_SPEED_DCFC = 100.0
+CHARGING_SPEED_BUS = 100.0
+
+CHARGING_FEE_L2 = 2.0
+CHARGING_FEE_DCFC = 30.0 
+
+CHARGING_UTILITY_C0 = -1.265f
+CHARGING_UTILITY_C1 = 0.776f
+CHARGING_UTILITY_ALPHA = -0.96f
+CHARGING_UTILITY_BETA = -0.324f
+CHARGING_UTILITY_GAMMA = -2.16f
 
 ## For resolving gridlock
 ###  unit: seconds, after this amount of time we force the vehicle to move to the next available link
