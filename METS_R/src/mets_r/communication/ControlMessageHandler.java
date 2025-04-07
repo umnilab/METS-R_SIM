@@ -72,12 +72,10 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	private HashMap<String, Object> resetSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		// Get data
-		String property_file = jsonMsg.get("propertyFile").toString();
 		
 		try {
 			// Call the reset function
-			ContextCreator.reset(property_file);
+			ContextCreator.reset();
 			jsonAns.put("CODE", "OK");
 		}
 		catch (Exception e) {

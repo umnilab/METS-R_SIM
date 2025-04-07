@@ -94,18 +94,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static List<ISchedulableAction> scheduledActions = new ArrayList<ISchedulableAction>();
 	
 	/* Functions */
-	// Reading simulation properties stored at data/Data.properties
-	public static Properties readPropertyFile(String file_name) {
-		Properties propertiesFile = new Properties();
-		String working_dir = System.getProperty("user.dir");
-		try {
-			propertiesFile.load(new FileInputStream(working_dir + "/data/" + file_name));
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-		return propertiesFile;
-	}
-
 	// Initializing simulation agents
 	public static void buildSubContexts() {
 		// Initialize facilities
@@ -411,8 +399,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	// The reset function
-	public static void reset(String property_file) {
-		logger.info("Reset using the property file: " + property_file);
+	public static void reset() {
+		logger.info("Restart the simulation!");
 		
 		// 0. Clear scheduled actions and variables
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
@@ -427,10 +415,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(cityContext);
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
-		
-		// 1. Load new config from the propertyFile
-		GlobalVariables.config = readPropertyFile(property_file);
-		GlobalVariables.reset();
 		
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
