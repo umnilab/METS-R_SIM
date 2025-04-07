@@ -99,8 +99,7 @@ public class MetisPartition {
 			// Add the zone to the target partition
 			this.partitionedZones.get(targetInd).add(z);
 			// Update the weight of the partition
-			totRequest.set(targetInd, (totRequest.get(targetInd)
-					+ ContextCreator.demand_per_zone.get(z.getID())/GlobalVariables.HOUR_OF_DEMAND));
+			totRequest.set(targetInd, totRequest.get(targetInd));
 		}
 
 		// Partition Charging stations by num of chargers

@@ -52,7 +52,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* Simulation data */
 	private static int agentID = 0; // Used to generate unique agent id
 	public static double start_time; // Start time of the simulation
-	public static HashMap<Integer, Double> demand_per_zone = new HashMap<Integer, Double>();
 	public static BackgroundTraffic background_traffic = new BackgroundTraffic();
 	public static TravelDemand travel_demand = new TravelDemand();
 	public static BusSchedule bus_schedule = new BusSchedule();
@@ -100,23 +99,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		cityContext.createSubContexts();
 		cityContext.buildRoadNetwork();
 		cityContext.setNeighboringGraph();
-		// Calculate the demand of each zone
-		double demand_total = 0;
-
-		for (Zone z : getZoneContext().getAll()) {
-			double demand_from_zone = 0;
-			int i = z.getID();
-			for (Zone z2 : getZoneContext().getAll()) {
-				int j = z2.getID();
-				demand_from_zone += sumOfArray(travel_demand.getPublicTravelDemand(i, j),
-						GlobalVariables.HOUR_OF_DEMAND - 1);
-			}
-			demand_total += demand_from_zone;
-			demand_per_zone.put(z.getID(), demand_from_zone);
-		}
-		ContextCreator.logger
-				.info("Ridehailing total demand: " + demand_total * GlobalVariables.RH_DEMAND_FACTOR);
-
+		
 		// Initialize vehicles
 		vehicleContext = new VehicleContext();
 		mainContext.addSubContext(vehicleContext);
@@ -418,7 +401,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		agentID = 0;
 		agg_logger = new AggregatedLogger();
-		demand_per_zone = new HashMap<Integer, Double>();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();

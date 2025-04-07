@@ -51,21 +51,18 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 
 	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
 		int total_vehicles = 0;
-
-		// Count the total demand
-		double demand_total = 0;
-		for (Zone z: zoneGeography.getAllObjects()) {
-			demand_total += (ContextCreator.demand_per_zone.get(z.getID()) + 0.001);
-		}
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
+		// Distribute by the capacity of the Zone
+		int park_total = 0;
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			park_total += z.getCapacity();
+		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
 			if(z.getCapacity()>0) {
-				int vehicle_num_to_generate = (int) Math
-						.ceil(vehicle_num * (ContextCreator.demand_per_zone.get(z.getID()) + 0.001) / demand_total);
+				int vehicle_num_to_generate = (int) Math.ceil(num_total * z.getCapacity()/(park_total + 0.001));
 				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
-				vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 				num_total -= vehicle_num_to_generate;
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					ElectricTaxi v = new ElectricTaxi();																	
@@ -96,6 +93,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 						this.availableTaxiMap.get(z.getID()).add(v);
 					}
 					z.addParkingVehicleStock(vehicle_num_to_generate);
+					
+					if(num_total <= 0) break;
 				}
 			}
 		}
