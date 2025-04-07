@@ -108,7 +108,7 @@ public class GlobalVariables {
 	public static String NETWORK_FILE = loadConfig("NETWORK_FILE");
 	
 	public static String ZONES_SHAPEFILE = loadConfig("ZONES_SHAPEFILE");
-	public static String ZONE_CSV = loadConfig("ZONE_CSV");
+	public static String ZONES_CSV = loadConfig("ZONES_CSV");
 	public static String CHARGER_SHAPEFILE = loadConfig("CHARGER_SHAPEFILE");
 	public static String CHARGER_CSV = loadConfig("CHARGER_CSV");
 

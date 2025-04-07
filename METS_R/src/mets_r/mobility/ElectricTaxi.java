@@ -38,8 +38,8 @@ public class ElectricTaxi extends ElectricVehicle {
 	// Parameter to show which route has been chosen in eco-routing.
 	public int routeChoice = -1;
 
-	public ElectricTaxi(boolean vSensor) {
-		super(Vehicle.ETAXI, vSensor?Vehicle.CV2X:Vehicle.NONE_OF_THE_ABOVE);
+	public ElectricTaxi() {
+		super(Vehicle.ETAXI, Vehicle.NONE_OF_THE_ABOVE);
 		this.passNum = 0;
 		this.cruisingTime_ = 0;
 		this.avgPersonMass_ = 60; // kg

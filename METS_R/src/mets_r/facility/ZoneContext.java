@@ -32,11 +32,11 @@ public class ZoneContext extends FacilityContext<Zone> {
 			zoneFile = new File(GlobalVariables.ZONES_SHAPEFILE);
 			URI uri = zoneFile.toURI();
 			zoneLoader = new ShapefileLoader<Zone>(Zone.class, uri.toURL(), zoneGeography, this);
-			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONE_CSV));
+			BufferedReader br = new BufferedReader(new FileReader(GlobalVariables.ZONES_CSV));
 			String line = br.readLine();
 			String[] result = line.split(",");
 			if(result.length < 4) {
-				ContextCreator.logger.error("Missing fields in Zone configuration, a proper one should contain (Name, externalID, Capacity, type)");
+				ContextCreator.logger.error("Missing fields in Zone configuration, a proper one should contain (Name, externalID, Capacity, Type)");
 			}
 			int int_id = 0; // Start with ID = 0
 			while (zoneLoader.hasNext()) {

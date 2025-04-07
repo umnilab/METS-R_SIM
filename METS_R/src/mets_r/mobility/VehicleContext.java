@@ -46,31 +46,16 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.privateVIDMap = new HashMap<Integer, Integer>();
 		
 		createTaxiContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
-		ContextCreator.logger.info("EV generated!");
 		createBusContextFromZone(zoneGeography, GlobalVariables.NUM_OF_BUS);
-		ContextCreator.logger.info("BUS generated!");
-	}
-	
-	
-	public void createVehicleContextFromZone(Geography<Zone> zoneGeography) {
-		int total_EVs = 0;
-		int total_GVs = 0;
-		// Generating private vehicles according to the travelDemand file
-		
-		
-		ContextCreator.logger.info("Total private EV generated " + total_EVs);
-		ContextCreator.logger.info("Total private GV generated " + total_GVs);
 	}
 
 	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
 		int total_vehicles = 0;
 
-		// Generating vehicle according to demand distribution
+		// Count the total demand
 		double demand_total = 0;
 		for (Zone z: zoneGeography.getAllObjects()) {
-			if(z.getCapacity()>0) {
-				demand_total += ContextCreator.demand_per_zone.get(z.getID());
-			}
+			demand_total += (ContextCreator.demand_per_zone.get(z.getID()) + 0.001);
 		}
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
@@ -78,16 +63,14 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
 			if(z.getCapacity()>0) {
 				int vehicle_num_to_generate = (int) Math
-						.ceil(vehicle_num * ContextCreator.demand_per_zone.get(z.getID()) / demand_total);
+						.ceil(vehicle_num * (ContextCreator.demand_per_zone.get(z.getID()) + 0.001) / demand_total);
 				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
 				vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 				num_total -= vehicle_num_to_generate;
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					// GeometryFactory fac = new GeometryFactory();
 					// Sample 1%% of vehicles for collecting trajectory data\
-					ElectricTaxi v;
-					if(vehicle_num>10000) v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.001);
-					else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);																				// first plan
+					ElectricTaxi v = new ElectricTaxi();																	
 					this.add(v);
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
 					v.initializePlan(z.getID(), z.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
@@ -107,11 +90,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					num_total -= vehicle_num_to_generate;
 					for (int i = 0; i < vehicle_num_to_generate; i++) {
 						// GeometryFactory fac = new GeometryFactory();
-						ElectricTaxi v;
-						if(vehicle_num>10000) v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.001);
-						else v = new ElectricTaxi(GlobalVariables.RandomGenerator.nextDouble()<0.01);
+						ElectricTaxi v = new ElectricTaxi();
 						this.add(v);
-						ContextCreator.logger.debug("Vehicle:" + i + " generated");
 						v.initializePlan(z.getID(), z.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
 						total_vehicles += 1;
 						this.taxiMap.put(v.getID(), v);

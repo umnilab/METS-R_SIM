@@ -1071,7 +1071,7 @@ public class Zone {
 	}
 
 	public int getCapacity() {
-		return capacity - this.parkingVehicleStock.get();
+		return this.capacity - this.parkingVehicleStock.get();
 	}
 	
 	public void addNeighboringZone(int z) {
