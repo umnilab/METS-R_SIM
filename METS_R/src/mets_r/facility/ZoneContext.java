@@ -54,7 +54,7 @@ public class ZoneContext extends FacilityContext<Zone> {
 			ZONE_NUM = int_id;
 			ContextCreator.logger.info("Zone generated, total number: " + (int_id + 1));
 		} catch (Exception e) {
-			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone sshapefile.");
+			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone shapefile.");
 			e.printStackTrace();
 		}
 

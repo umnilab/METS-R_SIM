@@ -68,8 +68,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				vehicle_num_to_generate = num_total <= vehicle_num_to_generate ? num_total : vehicle_num_to_generate;
 				num_total -= vehicle_num_to_generate;
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
-					// GeometryFactory fac = new GeometryFactory();
-					// Sample 1%% of vehicles for collecting trajectory data\
 					ElectricTaxi v = new ElectricTaxi();																	
 					this.add(v);
 					ContextCreator.logger.debug("Vehicle:" + i + " generated");
