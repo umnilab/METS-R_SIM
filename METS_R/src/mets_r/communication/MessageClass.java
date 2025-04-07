@@ -138,15 +138,13 @@ public class MessageClass{
     	}
     }
     
-    class ZoneIDOrigRoadDestRoadNum{
-    	int zoneID;
+    class OrigRoadDestRoadNum{
     	String orig;
     	String dest;
     	int num;
     	
     	// Constructor
-    	public ZoneIDOrigRoadDestRoadNum(int zoneID, String orig, String dest, int num) {
-    		this.zoneID = zoneID;
+    	public OrigRoadDestRoadNum(String orig, String dest, int num) {
     		this.orig = orig;
     		this.dest = dest;
     		this.num = num;
@@ -269,15 +267,15 @@ public class MessageClass{
         System.out.println("Deserialized ZoneIDOrigDestNum: " + zoneIDOrigDestNums2);
 
         // ZoneIDOrigRoadDestRoadNum
-        Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums = new ArrayList<>();
-        zoneIDOrigRoadDestRoadNums.add(messageClass.new ZoneIDOrigRoadDestRoadNum(10, "ZoneA", "ZoneB", 7));
-        zoneIDOrigRoadDestRoadNums.add(messageClass.new ZoneIDOrigRoadDestRoadNum(11, "ZoneC", "ZoneD", 8));
+        Collection<OrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums = new ArrayList<>();
+        zoneIDOrigRoadDestRoadNums.add(messageClass.new OrigRoadDestRoadNum("RoadA", "RoadB", 7));
+        zoneIDOrigRoadDestRoadNums.add(messageClass.new OrigRoadDestRoadNum("RoadC", "RoadD", 8));
 
         json = gson.toJson(zoneIDOrigRoadDestRoadNums);
         System.out.println("Serialized ZoneIDOrigRoadDestRoadNum: " + json);
 
-        TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>> collectionType10 = new TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>>() {};
-        Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType10.getType());
+        TypeToken<Collection<OrigRoadDestRoadNum>> collectionType10 = new TypeToken<Collection<OrigRoadDestRoadNum>>() {};
+        Collection<OrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType10.getType());
         System.out.println("Deserialized ZoneIDOrigRoadDestRoadNum: " + zoneIDOrigRoadDestRoadNums2);
 	}
 }

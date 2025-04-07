@@ -15,6 +15,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.VehIDOrigDestNum;
 import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.VehIDVehType;
@@ -23,7 +24,6 @@ import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
 import mets_r.communication.MessageClass.VehIDVehTypeTranRoadIDXY;
 import mets_r.communication.MessageClass.ZoneIDOrigDestNum;
-import mets_r.communication.MessageClass.ZoneIDOrigRoadDestRoadNum;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
@@ -602,7 +602,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -651,7 +651,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -711,7 +711,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -773,7 +773,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -821,7 +821,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -837,27 +837,27 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<ZoneIDOrigRoadDestRoadNum>>() {};
-				Collection<ZoneIDOrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<OrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<OrigRoadDestRoadNum>>() {};
+				Collection<OrigRoadDestRoadNum> origRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
-				for(ZoneIDOrigRoadDestRoadNum zoneIDOrigRoadDestRoadNum: zoneIDOrigRoadDestRoadNums) {
-					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigRoadDestRoadNum.zoneID);
-					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(zoneIDOrigRoadDestRoadNum.orig);
-					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(zoneIDOrigRoadDestRoadNum.dest);
-					if(z1 != null && r1 != null && r2 != null) {
+				for(OrigRoadDestRoadNum origRoadDestRoadNum: origRoadDestRoadNums) {
+					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoadNum.orig);
+					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoadNum.dest);
+					if(r1 != null && r2 != null) {
+						Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
 						// generate request
-						Request p = new Request(z1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, zoneIDOrigRoadDestRoadNum.num);
+						Request p = new Request(z1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), false, origRoadDestRoadNum.num);
 						z1.insertTaxiPass(p);
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", zoneIDOrigRoadDestRoadNum.zoneID);
+			    		record2.put("ID", origRoadDestRoadNum.orig);
 			    		record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}
 					else {
 			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", zoneIDOrigRoadDestRoadNum.zoneID);
+			    		record2.put("ID", origRoadDestRoadNum.orig);
 			    		record2.put("STATUS", "KO");
 						jsonData.add(record2);
 			    	}
@@ -868,7 +868,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -919,7 +919,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -966,7 +966,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -1035,7 +1035,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -1055,7 +1055,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -1075,7 +1075,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
@@ -1095,7 +1095,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing query: " + e.toString());
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
 		}
