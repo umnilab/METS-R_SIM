@@ -77,9 +77,11 @@ public class CityContext extends DefaultContext<Object> {
 	
 	// Set the neighboring links/zones
 	public void setNeighboringGraph() {
+		ContextCreator.logger.info("Building neighboring graph.");
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
 		for (Zone z1 : ContextCreator.getZoneContext().getAll()) { 
-			int threshold = 1000; // initial threshold as 1 km
+			// Set up neighboring zones
+			double threshold = 1000; // initial threshold as 1 km
 			boolean flag = true;
 			
 			while (flag) {
@@ -89,128 +91,75 @@ public class CityContext extends DefaultContext<Object> {
 					}
 				}
 				if (z1.getNeighboringZoneSize() < Math.min(ContextCreator.getZoneGeography().size() - 1, 8)) {
+					// Make sure one zone has at least 8 neighboring zones
 					threshold = threshold * 2;
 				} else {
 					flag = false;
 				}
 			}
-			
-			// Add the nearest hub if not shown in the neighboring list
-			double dist_to_hub = Double.MAX_VALUE;
-			int to_add = -1;
+			// Add the transportation hubs if not shown in the neighboring list
 			for(int hubID: ContextCreator.getZoneContext().HUB_INDEXES) {
-				Zone z2 = ContextCreator.getZoneContext().get(hubID);
-				if (this.getDistance(z1.getCoord(), z2.getCoord()) < dist_to_hub){
-					dist_to_hub = this.getDistance(z1.getCoord(), z2.getCoord());
-					to_add = z2.getID();
-				}
+				z1.addNeighboringZone(hubID);
 			}
-			if(to_add != -1) { // Zone ID is always nonnegative
-				z1.addNeighboringZone(to_add);
-			}
-			
+			// Set up neighboring roads
 			GeometryFactory geomFac = new GeometryFactory();
 			Point point = geomFac.createPoint(z1.getCoord());
-			Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER); 
-			double dist = Double.MAX_VALUE;
-			
-			// If road size is less than 1000 (CARLA networks), go over the entire set
-			if(ContextCreator.getRoadContext().size() < 1000) {
-				for (Road r : ContextCreator.getRoadContext().getAll()) {
-					dist = this.getDistance(z1.getCoord(), r.getStartCoord());
-					if(dist < r.getDistToZone(false)) {
-						r.setNeighboringZone(z1.getID(),false);
-						r.setDistToZone(dist, false);
-						z1.setClosestRoad(r.getID(), false);
-					}
-					
-					dist = this.getDistance(z1.getCoord(), r.getEndCoord());
-					if(dist < r.getDistToZone(true)) {
-						r.setNeighboringZone(z1.getID(),true);
-						r.setDistToZone(dist, true);
-						z1.setClosestRoad(r.getID(), true);
-					}
-				} 
-			}
-			else {
-				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					dist = this.getDistance(z1.getCoord(), r.getStartCoord());
-					if(dist < r.getDistToZone(false)) {
-						r.setNeighboringZone(z1.getID(),false);
-						r.setDistToZone(dist, false);
-						z1.setClosestRoad(r.getID(), false);
-					}
-					
-					dist = this.getDistance(z1.getCoord(), r.getEndCoord());
-					if(dist < r.getDistToZone(true)) {
-						r.setNeighboringZone(z1.getID(),true);
-						r.setDistToZone(dist, true);
-						z1.setClosestRoad(r.getID(), true);
-					}
-				} 
-			}
-			
-		}
-		
-		for (Road r: roadGeography.getAllObjects()) {
-			if(r.getNeighboringZone(false) >= 0) {
-				if(r.getDownStreamRoads().size()>0) { // not the deadend
-					ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
-					this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-				}
-			}
-			if(r.getNeighboringZone(true) >= 0) {
-				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
-				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-			}
-		}
-		
-		for (Zone z: ContextCreator.getZoneContext().getAll()) {
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while (z.getNeighboringLinkSize(false) < 1) { // Take at least 2 neighboring link
-				GeometryFactory geomFac = new GeometryFactory();
-				Point point = geomFac.createPoint(z.getCoord());
-				Geometry buffer = point.buffer(searchBuffer); 
-				// add the closest one
-				double min_dist = Double.MAX_VALUE;
-				Integer roadID = null;
+			while(z1.getClosestRoad(false) == null || z1.getClosestRoad(true) ==null) {
+				double dist = Double.MAX_VALUE;
+				double dist2 = Double.MAX_VALUE;
+				Geometry buffer = point.buffer(searchBuffer);
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					double dist = this.getDistance(z.getCoord(), r.getStartCoord());
-					if((dist < min_dist) && (r.getDownStreamRoads().size()>0)) {
-						min_dist = dist;
-						roadID = r.getID();
-					}	
-				}
-				if(roadID != null) {
-					z.setClosestRoad(roadID, false);
-					z.addNeighboringLink(roadID, false);
-					this.coordOrigRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getStartCoord(), ContextCreator.getRoadContext().get(roadID));
+					dist = this.getDistance(z1.getCoord(), r.getStartCoord());
+					
+					if(dist < r.getDistToZone(false)) {
+						r.setNeighboringZone(z1.getID(),false);
+						r.setDistToZone(dist, false);
+					}
+					if(dist < z1.getDistToRoad(false)) {
+						z1.setClosestRoad(r.getID(), false);
+						z1.setDistToRoad(dist, false);
+					}
+					
+					dist2 = this.getDistance(z1.getCoord(), r.getEndCoord());
+					
+					if(dist2 < r.getDistToZone(true)) {
+						r.setNeighboringZone(z1.getID(),true);
+						r.setDistToZone(dist2, true);
+					}
+					if(dist2 < z1.getDistToRoad(true)) {
+						z1.setClosestRoad(r.getID(), true);
+						z1.setDistToRoad(dist, true);
+					}
 				}
 				searchBuffer = searchBuffer * 2;
 			}
-			
-			searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while (z.getNeighboringLinkSize(true) < 1) { // Take at least 2 neighboring link
-				GeometryFactory geomFac = new GeometryFactory();
-				Point point = geomFac.createPoint(z.getCoord());
-				Geometry buffer = point.buffer(searchBuffer); 
-				// add the closest one
-				double min_dist = Double.MAX_VALUE;
-				Integer roadID = null;
-				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					double dist = this.getDistance(z.getCoord(), r.getEndCoord());
-					if(dist < min_dist) {
-						min_dist = dist;
-						roadID = r.getID();
-					}	
+			z1.addNeighboringLink(z1.getClosestRoad(false), false);
+			z1.addNeighboringLink(z1.getClosestRoad(true), true);
+		}
+		
+		// Ensure every road has neighboring zone
+		for (Road r: roadGeography.getAllObjects()) {
+			if((r.getNeighboringZone(false) < 0) || (r.getNeighboringZone(true) < 0)) {
+				double dist = Double.MAX_VALUE;
+				double dist2 = Double.MAX_VALUE;
+				for (Zone z : ContextCreator.getZoneContext().getAll()) {
+					dist = this.getDistance(z.getCoord(), r.getStartCoord());
+					dist2 = this.getDistance(z.getCoord(), r.getEndCoord());
+					if(dist < r.getDistToZone(false)) {
+						r.setNeighboringZone(z.getID(), false);
+						r.setDistToZone(dist, false);
+					}
+					if(dist2 < r.getDistToZone(true)) {
+						r.setNeighboringZone(z.getID(), true);
+						r.setDistToZone(dist, true);
+					}
 				}
-				if(roadID != null) {
-					z.setClosestRoad(roadID, true);
-					z.addNeighboringLink(roadID, true);
-					this.coordDestRoad_KeyCoord.put(ContextCreator.getRoadContext().get(roadID).getEndCoord(), ContextCreator.getRoadContext().get(roadID));
-				}
-				searchBuffer = searchBuffer * 2;
 			}
+			this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+			this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
+			ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);;;
+			ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);;;
 		}
 	}
 	

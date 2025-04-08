@@ -67,7 +67,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					ElectricTaxi v = new ElectricTaxi();																	
 					this.add(v);
-					ContextCreator.logger.debug("Vehicle:" + i + " generated");
+					// initialize a plan to get the origin info recorded
 					v.initializePlan(z.getID(), z.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
 					total_vehicles += 1;
 					this.taxiMap.put(v.getID(), v);

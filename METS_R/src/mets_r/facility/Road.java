@@ -95,8 +95,8 @@ public class Road {
 		this.travelTimeHistory_ = new ConcurrentLinkedQueue<Double>();
 		this.neighboringDepartureZone = -1;
 		this.neighboringArrivalZone = -1;
-		this.setDistToZone(Double.MAX_VALUE, false);
-		this.setDistToZone(Double.MAX_VALUE, true);
+		this.distToArrivalZone = Double.MAX_VALUE;
+		this.distToDepartureZone = Double.MAX_VALUE;
 
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
@@ -744,7 +744,7 @@ public class Road {
 	}
 
 	public void setNeighboringZone(int neighboringZone, boolean goDest) {
-		if (goDest) this.neighboringDepartureZone = neighboringArrivalZone;
+		if (goDest) this.neighboringArrivalZone = neighboringZone;
 		else this.neighboringDepartureZone = neighboringZone;
 	}
 

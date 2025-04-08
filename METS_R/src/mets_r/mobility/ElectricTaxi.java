@@ -52,19 +52,6 @@ public class ElectricTaxi extends ElectricVehicle {
 	public void goCruising(Zone z) {
 		int dest = z.getNeighboringLink(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
 		
-		if(z.getNeighboringLinkSize(true) == 1) { // Isolated zone
-			// Sample from the neighboring zone
-			while(dest == this.getDestRoadID()) {
-				int neighboringZoneID = z.getNeighboringZones(rand_relocate_only.nextInt(z.getNeighboringZoneSize()));
-				dest = ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLink(rand_relocate_only.nextInt(ContextCreator.getZoneContext().get(neighboringZoneID).getNeighboringLinkSize(true)), true);
-			}
-		}
-		else {
-			while(dest == this.getDestRoadID()) { // Sample again
-				dest = z.getNeighboringLink(rand_relocate_only.nextInt(z.getNeighboringLinkSize(true)), true);
-			}
-		}
-		
 	    // Add a cruising activity
 		this.addPlan(z.getID(), dest, ContextCreator.getNextTick());
 		this.setNextPlan();

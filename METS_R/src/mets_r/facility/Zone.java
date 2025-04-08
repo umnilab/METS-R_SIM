@@ -74,10 +74,12 @@ public class Zone {
 	protected Map<Integer, Queue<Request>> sharableRequestForTaxi; // Shareable passenger for taxis
 	protected Queue<Request> requestInQueueForBus; // Passenger queue for bus
 	protected List<Integer> neighboringZones; // Sorted neighboring Zone from the closest to the farthest
-	protected Integer closestDepartureLink; // Exit of the facility
-	protected Integer closestArrivalLink; // Entrance of the facility
+	protected Integer closestDepartureRoad; // Exit of the facility
+	protected Integer closestArrivalRoad; // Entrance of the facility
 	protected List<Integer> neighboringDepartureLinks; // Surrounding links for vehicle to choose within the origin zone
 	protected List<Integer> neighboringArrivalLinks; // Surrounding links for vehicle to choose within the destination zone
+	protected double distToDepartureRoad;
+	protected double distToArrivalRoad;
 	// For multi-thread mode
 	protected ConcurrentHashMap<Integer, Integer> nearestZoneWithBus; // For collaborative taxi and transit
 	
@@ -164,6 +166,10 @@ public class Zone {
 		this.busTravelDistance = new ConcurrentHashMap<Integer, Float>();
 		this.nearestZoneWithBus = new ConcurrentHashMap<Integer, Integer>();
 		this.neighboringZones = new ArrayList<Integer>();
+		this.closestArrivalRoad = null;
+		this.closestDepartureRoad = null;
+		this.distToArrivalRoad = Double.MAX_VALUE;
+		this.distToDepartureRoad = Double.MAX_VALUE;
 		this.neighboringDepartureLinks = new ArrayList<Integer>();
 		this.neighboringArrivalLinks = new ArrayList<Integer>();
 		this.toAddRequestForTaxi = new ConcurrentLinkedQueue<Request>();
@@ -1081,13 +1087,23 @@ public class Zone {
 	}
 	
 	public void setClosestRoad(int r, boolean goDest) {
-		if(goDest) this.closestArrivalLink = r;
-		else this.closestDepartureLink = r;
+		if(goDest) this.closestArrivalRoad = r;
+		else this.closestDepartureRoad = r;
 	}
 	
-	public int getClosestRoad(boolean goDest) {
-		if(goDest) return this.closestArrivalLink;
-		return this.closestDepartureLink;
+	public Integer getClosestRoad(boolean goDest) {
+		if(goDest) return this.closestArrivalRoad;
+		return this.closestDepartureRoad;
+	}
+	
+	public double getDistToRoad(boolean goDest) {
+		if (goDest) return distToArrivalRoad;
+		else return distToDepartureRoad;
+	}
+
+	public void setDistToRoad(double distToRoad, boolean goDest) {
+		if (goDest) this.distToArrivalRoad = distToRoad; 
+		else this.distToDepartureRoad = distToRoad;
 	}
 	
 	public void addNeighboringLink(int r, boolean goDest) {
@@ -1112,7 +1128,7 @@ public class Zone {
 		}
 	}
 	
-	public int getNeighboringLink(int index, boolean goDest) {
+	public Integer getNeighboringLink(int index, boolean goDest) {
 		if(goDest) {
 			return this.neighboringArrivalLinks.get(index);
 		}
