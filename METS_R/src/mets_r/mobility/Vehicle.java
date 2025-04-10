@@ -1146,14 +1146,17 @@ public class Vehicle {
 	 * This function makes the vehicle follow the turning curve to get to the next lane.
 	 */
 	public void enterNextLane(Lane plane) {
+		this.coordMap.clear();
 		Lane currlane = this.getLane();
 		if(currlane.getTurningDist(plane.getID())>0) {
 			this.distance_ = currlane.getTurningDist(plane.getID());
 			this.coordMap.addAll(currlane.getTurningCoords(plane.getID()));
+			this.nextDistance_ = ContextCreator.getCityContext().getDistance(this.getCurrentCoord(), this.coordMap.get(0));
 		}
 		else {
 			Coordinate targetCoord = plane.getStartCoord();
-			this.distance_ = ContextCreator.getCityContext().getDistance(this.getCurrentCoord(), targetCoord);
+			this.nextDistance_ = ContextCreator.getCityContext().getDistance(this.getCurrentCoord(), targetCoord);
+			this.distance_ = this.nextDistance_;
 			this.coordMap.add(targetCoord);
 		}
 	}
