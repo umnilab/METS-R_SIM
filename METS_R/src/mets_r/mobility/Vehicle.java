@@ -509,7 +509,7 @@ public class Vehicle {
 	            double apx = currCoord.x - a.x;
 	            double apy = currCoord.y - a.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param <= 1.0) {
+	            if (param < 1.0) {
 		        	newDistance -= segmentLen;
 		            for (int j = i + 1; j < coords.size(); j++) {
 		                newCoordMap.add(coords.get(j));
