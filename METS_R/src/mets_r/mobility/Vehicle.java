@@ -524,9 +524,8 @@ public class Vehicle {
 	    	newCoordMap.add(coords.get(coords.size()-1));
 	    }
 	    
-	    newDistance += this.distance(this.getCurrentCoord(), newCoordMap.get(0));
-	    
-	    this.distance_ = newDistance;
+	    this.nextDistance_ = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
+	    this.distance_ = newDistance + this.nextDistance_;
 	    this.coordMap.clear();
 	    this.coordMap.addAll(newCoordMap);
 	    
@@ -624,6 +623,7 @@ public class Vehicle {
 	 */
 	public void teleportToLane(Lane lane, double distance) {
 		if(distance <= lane.getLength()) {
+			this.distance_ = distance;
 			Vehicle leadVehicle = null;
 			Vehicle lagVehicle = null;
 			
