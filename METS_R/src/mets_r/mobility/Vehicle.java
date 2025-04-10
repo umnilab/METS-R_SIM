@@ -521,7 +521,7 @@ public class Vehicle {
 	    }
 	    
 	    if(newCoordMap.size() == 0) {
-	    	newCoordMap.add(coords.get(coords.size()-1));
+	    	newCoordMap.add(this.getCurrentCoord());
 	    }
 	    
 	    this.nextDistance_ = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
