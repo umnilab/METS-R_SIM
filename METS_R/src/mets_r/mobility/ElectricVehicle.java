@@ -4,8 +4,6 @@ import java.io.IOException;
 import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 
-import com.vividsolutions.jts.geom.Coordinate;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
@@ -146,15 +144,15 @@ public class ElectricVehicle extends Vehicle {
 	// Find the closest charging station and update the activity plan
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
-		Coordinate current_dest_coord = this.getDestCoord();
+		int current_dest_road = this.getDestRoad();
 		// Add a charging activity
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
 				this.decideChargerType());
 		if(cs != null) {
 			this.onChargingRoute_ = true;
-			this.addPlan(cs.getID(), cs.getCoord(), ContextCreator.getNextTick());
+			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
 			this.setNextPlan();
-			this.addPlan(current_dest_zone, current_dest_coord, ContextCreator.getNextTick());
+			this.addPlan(current_dest_zone, current_dest_road, ContextCreator.getNextTick());
 			this.setState(Vehicle.CHARGING_TRIP);
 			this.departure();
 			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");

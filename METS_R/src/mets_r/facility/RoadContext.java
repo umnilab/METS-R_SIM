@@ -94,10 +94,14 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	public Road setAttribute(Road r, String[] att) {
-		r.addDownStreamRoad(Integer.parseInt(att[6]));
-		r.addDownStreamRoad(Integer.parseInt(att[7]));
-		r.addDownStreamRoad(Integer.parseInt(att[8]));
-		r.addDownStreamRoad(Integer.parseInt(att[3]));
+		if(Integer.parseInt(att[6])!=0)
+			r.addDownStreamRoad(Integer.parseInt(att[6]));
+		if(Integer.parseInt(att[7])!=0)
+			r.addDownStreamRoad(Integer.parseInt(att[7]));
+		if(Integer.parseInt(att[8])!=0)
+			r.addDownStreamRoad(Integer.parseInt(att[8]));
+		if(Integer.parseInt(att[3])!=0)
+			r.addDownStreamRoad(Integer.parseInt(att[3]));
 		r.setRoadType((int)Double.parseDouble(att[2]));
 		r.setUpStreamJunction(Integer.parseInt(att[4]));
 		r.setDownStreamJunction(Integer.parseInt(att[5]));

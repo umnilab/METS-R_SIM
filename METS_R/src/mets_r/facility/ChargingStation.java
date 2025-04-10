@@ -28,6 +28,12 @@ public class ChargingStation {
 	/* Private variables */
 	private int ID;
 	private Random rand;
+	
+	private Integer closestDepartureRoad; // Exit of the facility
+	private Integer closestArrivalRoad; // Entrance of the facility
+	private double distToDepartureRoad;
+	private double distToArrivalRoad;
+	
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
 	// capacity for the taxi is 50.0 kWh.
 	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
@@ -73,6 +79,8 @@ public class ChargingStation {
 		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<ElectricBus>();
 		this.numChargedCar = 0;
+		this.distToArrivalRoad = Double.MAX_VALUE;
+		this.distToDepartureRoad = Double.MAX_VALUE;
 	}
 
 	// Step function
@@ -355,4 +363,24 @@ public class ChargingStation {
         double SOC_f = Math.min(1.0, SOC_i + y * incremental + minDeltaSOC);
         return SOC_f;
     }
+    
+    public void setClosestRoad(int r, boolean goDest) {
+		if(goDest) this.closestArrivalRoad = r;
+		else this.closestDepartureRoad = r;
+	}
+	
+	public Integer getClosestRoad(boolean goDest) {
+		if(goDest) return this.closestArrivalRoad;
+		return this.closestDepartureRoad;
+	}
+	
+	public double getDistToRoad(boolean goDest) {
+		if (goDest) return distToArrivalRoad;
+		else return distToDepartureRoad;
+	}
+
+	public void setDistToRoad(double distToRoad, boolean goDest) {
+		if (goDest) this.distToArrivalRoad = distToRoad; 
+		else this.distToDepartureRoad = distToRoad;
+	}
 }

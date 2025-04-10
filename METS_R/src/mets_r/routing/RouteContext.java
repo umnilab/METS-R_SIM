@@ -32,19 +32,14 @@ public class RouteContext {
 	}
 	
 	public static List<Road> shortestPathRoute(Road originRoad, Road destRoad, Random rand){
-		Node originDownstreamNode = originRoad.getDownStreamNode();
-		Node destUpstreamNode = destRoad.getUpStreamNode();
-		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownstreamNode, destUpstreamNode, rand);
+		Node originDownStreamNode = originRoad.getDownStreamNode();
+		Node destUpStreamNode = destRoad.getUpStreamNode();
+		List<Road> path = vbr.computeRoute(originRoad, destRoad, originDownStreamNode, destUpStreamNode, rand);
 		return path;
 	}
 
 	public static List<Road> shortestPathRoute(Coordinate origin, Coordinate destination, Random rand) {
 		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin, false);
-		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
-		return shortestPathRoute(originRoad, destRoad, rand);
-	}
-
-	public static List<Road> shortestPathRoute(Road originRoad, Coordinate destination, Random rand){
 		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
 		return shortestPathRoute(originRoad, destRoad, rand);
 	}

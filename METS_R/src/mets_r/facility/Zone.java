@@ -249,8 +249,14 @@ public class Zone {
 				}
 				else { // If vehicle is on road
 					ContextCreator.logger.warn("The private EV: " + oneTrip.getKey() + " is not available at time index "+ currentTimeIndex +" , added destination to its to-be-visited queue");
-					v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
+					int destRoad =  destZone.sampleRoad(true);
+					v.addPlan(oneTrip.getValue(), destRoad , (int) ContextCreator.getNextTick());
 					this.numberOfGeneratedPrivateEVTrip += 1;
+					
+					// Check if vehicle has enough batter
+					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
+						v.goCharging();
+					}
 				}
 			}
 			else { // If vehicle does not exists

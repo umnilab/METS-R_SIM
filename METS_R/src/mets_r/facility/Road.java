@@ -154,7 +154,7 @@ public class Road {
 		for (int i = 0; i < curr_size; i++) {
 			Vehicle v = this.departureVehicleQueueHead();
 			int departTime = v.getDepTime();
-			if (v.closeToRoad(this) == 1 && tickcount >= departTime) {
+			if (v.closeToRoad(this) && tickcount >= departTime) {
 				// check whether the origin is the destination
 				if (v.getOriginCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
 					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
@@ -172,7 +172,7 @@ public class Road {
 					ArrayList<Vehicle> temList = this.departureVehMap.get(key);
 					for (Vehicle pv : temList) {
 						if (tickcount >= pv.getDepTime()) {
-							pv.primitiveMove();
+							pv.primitiveMove(this);
 						} else {
 							break;
 						}
@@ -184,6 +184,7 @@ public class Road {
 		
 		/* Log vehicle states */
 		Vehicle currentVehicle = this.firstVehicle();
+		
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
 			currentVehicle.reportStatus();
@@ -238,8 +239,8 @@ public class Road {
 				return true;
 			}
 			else {
-				veh.removeFromLane();
-				veh.removeFromMacroList();
+				veh.removeFromCurrentLane();
+				veh.removeFromCurrentRoad();
 				veh.appendToRoad(this);
 				if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
 				{
@@ -269,11 +270,11 @@ public class Road {
 	public boolean teleportVehicle(Vehicle veh, Lane lane, double dist) { 
 		if (veh.getRoad() == this) {
 			//Case 1, veh's road is this road, (important) will ignore collision issue and change its loc
-			veh.removeFromLane(); // Just remove the vehicle from the current lane
+			veh.removeFromCurrentLane(); // Just remove the vehicle from the current lane
 		}
 		else {
-			veh.removeFromLane();
-			veh.removeFromMacroList();
+			veh.removeFromCurrentLane();
+			veh.removeFromCurrentRoad();
 			veh.appendToRoad(this);
 			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
 			{
@@ -284,29 +285,8 @@ public class Road {
 			}
 		}
 		
-		// Insert veh to the lane's linkedList
-		Vehicle leadVehicle = null;
-		Vehicle lagVehicle = null;
-		
-		Vehicle toCheckVeh = lane.firstVehicle();
-		while (toCheckVeh != null) { // find where to insert the veh
-			 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
-			 if(toCheckVeh.getDistanceToNextJunction() == dist) {
-				 dist = dist + 0.01; // edge case add a tiny value to the distance of the to-insert vehicle
-			 }
-			 if(toCheckVeh.getDistanceToNextJunction() < dist) {
-				 leadVehicle = toCheckVeh;
-				 toCheckVeh = toCheckVeh.trailing();
-			 }
-			 else {
-				 lagVehicle = toCheckVeh;
-				 break;
-			 }
-		}
-		
 		// Move veh to the x and y location
-		veh.setDistanceToNextJunction(dist);
-		veh.insertToLane(lane, leadVehicle, lagVehicle);
+		veh.teleportToLane(lane, dist);
 		
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
@@ -340,7 +320,7 @@ public class Road {
 	}
 	
 	public void setCoords(Coordinate[] coordinates) {
-		this.coords = new ArrayList<Coordinate>(Arrays.asList(coordinates));;
+		this.coords = new ArrayList<Coordinate>(Arrays.asList(coordinates));
 	}
 	
 	public void setCoords(ArrayList<Coordinate> coordinates) {
@@ -395,16 +375,25 @@ public class Road {
 	}
 
 	public void addDownStreamRoad(int dsRoad) {
-		if (dsRoad > 0) {
-			if (!this.downStreamRoads.contains(dsRoad))
-				this.downStreamRoads.add(dsRoad);
-			else
-				ContextCreator.logger.error("Cannot register the down stream road since it is already added");
-		}
+		if (!this.downStreamRoads.contains(dsRoad))
+			this.downStreamRoads.add(dsRoad);
 	}
 
 	public ArrayList<Integer> getDownStreamRoads() {
 		return this.downStreamRoads;
+	}
+	
+	public boolean canBeOrigin() {
+		return this.downStreamRoads.size() > 0; 
+	}
+	
+	public boolean canBeDest(){
+		if(ContextCreator.getJunctionContext().get(this.getUpStreamJunction())==null)
+			return false;
+		else if(ContextCreator.getJunctionContext().get(this.getUpStreamJunction()).getUpStreamRoads().size()==0)
+			return false;
+		else
+			return true;
 	}
 
 	public void changeNumberOfVehicles(int nVeh) {

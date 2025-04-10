@@ -1,7 +1,6 @@
 package mets_r.mobility;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
@@ -11,7 +10,6 @@ import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
-import mets_r.routing.RouteContext;
 
 /**
  * Electric taxis
@@ -85,7 +83,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
 				ContextCreator.getZoneContext().get(this.getDestID()).numberOfRelocatedVehicles += 1;
 				ContextCreator.getZoneContext().get(z).addFutureSupply();
-				this.addPlan(z, ContextCreator.getZoneContext().get(z).getCoord(),
+				this.addPlan(z, ContextCreator.getZoneContext().get(z).getClosestRoad(true),
 						ContextCreator.getNextTick());
 				this.setNextPlan();
 				this.departure();
@@ -106,7 +104,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		if(this.getState() == Vehicle.CRUISING_TRIP) {
 			this.stopCruising();
 		}
-		this.addPlan(destinationID, ContextCreator.getZoneContext().get(destinationID).getCoord(),
+		this.addPlan(destinationID, ContextCreator.getZoneContext().get(destinationID).sampleRoad(true),
 				ContextCreator.getNextTick());
 		this.setNextPlan();
 		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
@@ -124,7 +122,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			for (Request p: plist) {
 				this.toBoardRequests.add(p);
 				this.addPlan(this.getOriginID(),
-						p.getOriginCoord(),
+						p.getOriginRoad(),
 						ContextCreator.getNextTick());
 				this.servedPass += p.getNumPeople();
 				this.passNum = this.getPassNum() + p.getNumPeople();
@@ -135,43 +133,6 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.setState(Vehicle.PICKUP_TRIP);
 				// Add vehicle to new queue of corresponding road
 				this.departure();
-			}
-		}
-	}
-	
-	
-	@Override
-	public void setNextRoad() {
-		this.atOrigin = false;
-		if(!this.atOrigin) {
-			super.setNextRoad();
-		}
-		else {
-			// Clear legacy impact
-			this.clearShadowImpact();
-			this.roadPath = new ArrayList<Road>();
-			
-			// Compute new route if eco-routing is not used
-			if (this.roadPath == null || this.roadPath.isEmpty()) {
-				this.routeChoice = -1;
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
-			}
-			
-			// Fix the inconsistency of the start link 
-			if (this.getRoad()!=this.roadPath.get(0)) {
-				this.routeChoice = -1;
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
-			}
-			
-			this.setShadowImpact();
-			if (this.roadPath == null) {
-				this.nextRoad_ = null;
-			}
-			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
-				this.nextRoad_ = null;
-			} else {
-				this.nextRoad_ = roadPath.get(1);
-				this.assignNextLane();
 			}
 		}
 	}
@@ -287,7 +248,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
 				this.onBoardRequests.add(pickedup_request);
 				this.addPlan(pickedup_request.getDestZone(),
-						pickedup_request.getDestCoord(),
+						pickedup_request.getDestRoad(),
 							ContextCreator.getNextTick());
 				if(this.toBoardRequests.size() == 0) {
 					this.setState(Vehicle.OCCUPIED_TRIP);

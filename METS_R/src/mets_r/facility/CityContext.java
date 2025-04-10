@@ -63,16 +63,55 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new ChargingStationContext());
 	}
 	
-	// Calculate the length of each length based on their geometries
+	// Calculate the length of each lane based on their geometries
 	private void initializeLaneDistance() {
-		for (Lane lane : ContextCreator.getLaneGeography().getAllObjects()) {
-			Coordinate[] coords = ContextCreator.getLaneGeography().getGeometry(lane).getCoordinates();
+		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
+			ArrayList<Coordinate> coords = lane.getCoords();
 			double distance = 0;
-			for (int i = 0; i < coords.length - 1; i++) {
-				distance += getDistance(coords[i], coords[i + 1]);
+			for (int i = 0; i < coords.size() - 1; i++) {
+				distance += getDistance(coords.get(i), coords.get(i+1));
 			}
 			lane.setLength(distance);
 		}
+	}
+	
+	/**
+     * Catmull-Rom interpolation between four points.
+     * Given points p0, p1, p2, p3 and parameter t in [0, 1], returns the interpolated point.
+     */
+    public ArrayList<Coordinate> catmullRomInterpolate(Coordinate p0, Coordinate p1, Coordinate p2,  Coordinate p3) {
+    	ArrayList<Coordinate> coords = new ArrayList<Coordinate>();
+    	for(double i = 0; i < 6; i++) {
+    		double t = i/5.0;
+	        double t2 = t * t;
+	        double t3 = t2 * t;
+	        
+	        double x = 0.5 * ((2 * p1.x) +
+	                          (-p0.x + p2.x) * t +
+	                          (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+	                          (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3);
+	        double y = 0.5 * ((2 * p1.y) +
+	                          (-p0.y + p2.y) * t +
+	                          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+	                          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
+	        coords.add(new Coordinate(x, y));
+    	}
+        return coords;
+    }
+	
+	// Calculate the turning coords and length based on two connected lanes
+	private void initializeLaneTurningCurves(Lane lane1, Lane lane2) {
+		Coordinate p0 = lane1.getCoords().get(lane1.getCoords().size()-2);
+		Coordinate p1 = lane1.getCoords().get(lane1.getCoords().size()-1);
+		Coordinate p2 = lane2.getCoords().get(0);
+		Coordinate p3 = lane2.getCoords().get(1);
+		ArrayList<Coordinate> coords = catmullRomInterpolate(p0, p1, p2, p3);
+		double distance = 0;
+		for (int i = 0; i < coords.size() - 1; i++) {
+			distance += getDistance(coords.get(i), coords.get(i+1));
+		}
+		lane1.setTurningCoords(lane2.getID(), coords);
+		lane1.setTurningDist(lane2.getID(), distance);
 	}
 	
 	// Set the neighboring links/zones
@@ -80,10 +119,10 @@ public class CityContext extends DefaultContext<Object> {
 		ContextCreator.logger.info("Building neighboring graph.");
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
 		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
+		GeometryFactory geomFac = new GeometryFactory();
 		int minNeighbors = Math.min(ContextCreator.getZoneContext().size() - 1, 8);
 		for (Zone z1 : ContextCreator.getZoneContext().getAll()) { 
 			// Set up neighboring zones
-			GeometryFactory geomFac = new GeometryFactory();
 			Point point = geomFac.createPoint(z1.getCoord());
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER; // initial threshold as 5 km
 			
@@ -107,26 +146,29 @@ public class CityContext extends DefaultContext<Object> {
 				double dist2 = Double.MAX_VALUE;
 				Geometry buffer = point.buffer(searchBuffer);
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-					dist = this.getDistance(z1.getCoord(), r.getStartCoord());
-					
-					if(dist < r.getDistToZone(false)) {
-						r.setNeighboringZone(z1.getID(),false);
-						r.setDistToZone(dist, false);
+					if(r.canBeOrigin()) {
+						dist = this.getDistance(z1.getCoord(), r.getStartCoord());
+						
+						if((dist < r.getDistToZone(false))) {
+							r.setNeighboringZone(z1.getID(),false);
+							r.setDistToZone(dist, false);
+						}
+						if(dist < z1.getDistToRoad(false)) {
+							z1.setClosestRoad(r.getID(), false);
+							z1.setDistToRoad(dist, false);
+						}
 					}
-					if(dist < z1.getDistToRoad(false)) {
-						z1.setClosestRoad(r.getID(), false);
-						z1.setDistToRoad(dist, false);
-					}
-					
-					dist2 = this.getDistance(z1.getCoord(), r.getEndCoord());
-					
-					if(dist2 < r.getDistToZone(true)) {
-						r.setNeighboringZone(z1.getID(),true);
-						r.setDistToZone(dist2, true);
-					}
-					if(dist2 < z1.getDistToRoad(true)) {
-						z1.setClosestRoad(r.getID(), true);
-						z1.setDistToRoad(dist, true);
+					if(r.canBeDest()) {
+						dist2 = this.getDistance(z1.getCoord(), r.getEndCoord());
+						
+						if(dist2 < r.getDistToZone(true)) {
+							r.setNeighboringZone(z1.getID(),true);
+							r.setDistToZone(dist2, true);
+						}
+						if(dist2 < z1.getDistToRoad(true)) {
+							z1.setClosestRoad(r.getID(), true);
+							z1.setDistToRoad(dist, true);
+						}
 					}
 				}
 				searchBuffer = searchBuffer * 2;
@@ -134,13 +176,41 @@ public class CityContext extends DefaultContext<Object> {
 			z1.addNeighboringLink(z1.getClosestRoad(false), false);
 			z1.addNeighboringLink(z1.getClosestRoad(true), true);
 		}
+		
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) { 
+			// Set up neighboring roads
+			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+			Point point = geomFac.createPoint(cs.getCoord());
+			while(cs.getClosestRoad(false) == null || cs.getClosestRoad(true) ==null) {
+				double dist = Double.MAX_VALUE;
+				double dist2 = Double.MAX_VALUE;
+				Geometry buffer = point.buffer(searchBuffer);
+				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
+					if(r.canBeOrigin()) {
+						dist = this.getDistance(cs.getCoord(), r.getStartCoord());
+						if(dist < cs.getDistToRoad(false)) {
+							cs.setClosestRoad(r.getID(), false);
+							cs.setDistToRoad(dist, false);
+						}
+					}
+					if(r.canBeDest()) {
+						dist2 = this.getDistance(cs.getCoord(), r.getEndCoord());
+						if(dist2 < cs.getDistToRoad(true)) {
+							cs.setClosestRoad(r.getID(), true);
+							cs.setDistToRoad(dist, true);
+						}
+					}
+				}
+				searchBuffer = searchBuffer * 2;
+			}
+		}
+		
 		// Ensure every road has neighboring zone
 		for (Road r: roadGeography.getAllObjects()) {
-			GeometryFactory geomFac = new GeometryFactory();
 			Point point1 = geomFac.createPoint(r.getStartCoord());
 			Point point2 = geomFac.createPoint(r.getEndCoord());
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while((r.getNeighboringZone(false) < 0) || (r.getNeighboringZone(true) < 0)) {
+			while(((r.getNeighboringZone(false) < 0) && r.canBeOrigin()) || ((r.getNeighboringZone(true) < 0) && r.canBeDest())) {
 				double dist = Double.MAX_VALUE;
 				double dist2 = Double.MAX_VALUE;
 				Geometry buffer1 = point1.buffer(searchBuffer);
@@ -163,8 +233,10 @@ public class CityContext extends DefaultContext<Object> {
 			}
 			this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
 			this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-			ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);;;
-			ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);;;
+			if(r.canBeOrigin())
+				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
+			if(r.canBeDest())
+				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
 		}
 	}
 	
@@ -185,7 +257,8 @@ public class CityContext extends DefaultContext<Object> {
 		GeometryFactory geomFac = new GeometryFactory();
 		
 		// Create a repast network for routing
-		if (GlobalVariables.NETWORK_FILE.length() == 0) {// Case 1: junction is not provided so we infer it from roads and lanes
+		if (GlobalVariables.NETWORK_FILE.length() == 0) {
+			// Case 1: junction is not provided so we infer it from roads and lanes, shp case
 			for (Road road : ContextCreator.getRoadContext().getAll()) {
 				Geometry roadGeom = roadGeography.getGeometry(road);
 				Coordinate c1 = roadGeom.getCoordinates()[0];
@@ -324,9 +397,10 @@ public class CityContext extends DefaultContext<Object> {
 			r.sortLanes();
 			origRoadID_RoadID.put(r.getOrigID(), r.getID());
 		}
+		
 		// Complete the lane connection
 		// 1. handle the case when road is connected but there is no lane connection (U turn)
-		// 2. handle upStreamLanes
+		// 2. handle upStreamLanes and calculate the turning curves
 		for (Road r1: ContextCreator.getRoadContext().getAll()) {
 			for (int r2ID: r1.getDownStreamRoads()) {
 				Road r2 = ContextCreator.getRoadContext().get(r2ID);
@@ -351,6 +425,7 @@ public class CityContext extends DefaultContext<Object> {
 				Lane lane2 = ContextCreator.getLaneContext().get(lane2ID);
 				if(!lane2.getUpStreamLanes().contains(lane1.getID()))
 					lane2.addUpStreamLane(lane1.getID());
+				this.initializeLaneTurningCurves(lane1, lane2);
 			}
 		}
 		

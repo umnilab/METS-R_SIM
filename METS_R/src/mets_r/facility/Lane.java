@@ -1,6 +1,8 @@
 package mets_r.facility;
 
+import java.util.HashMap;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -29,6 +31,10 @@ public class Lane {
 	// Connection with other facilities
 	private ArrayList<Integer> upStreamLanes;// Upstream lanes that connect to this
 	private ArrayList<Integer> downStreamLanes;// Down stream lanes that connect to
+	
+	private HashMap<Integer, ArrayList<Coordinate>> turningCoords;
+	private HashMap<Integer, Double> turningDists;
+	
 	private int road; // ID of the road who contains this lane
 	
 	// For vehicle movement
@@ -48,6 +54,8 @@ public class Lane {
 		this.upStreamLanes = new ArrayList<Integer>();
 		this.downStreamLanes = new ArrayList<Integer>();
 		this.lastEnterTick = new AtomicInteger(-1);
+		this.turningCoords = new HashMap<Integer, ArrayList<Coordinate>>();
+		this.turningDists = new HashMap<Integer, Double>();
 	}
 
 	public int getAndSetLastEnterTick(int current_tick) {
@@ -75,6 +83,10 @@ public class Lane {
 		return coord;
 	}
 	
+	public void setCoords(Coordinate[] coordinates) {
+		this.coords = new ArrayList<Coordinate>(Arrays.asList(coordinates));
+	}
+	
 	public void setCoords(ArrayList<Coordinate> coords) {
 		this.coords = coords;
 	}
@@ -90,6 +102,31 @@ public class Lane {
 			res.add(coord2);
 		}
 		return res;
+	}
+	
+	public ArrayList<Coordinate> getTurningCoords(int targetLaneID){
+		ArrayList<Coordinate> res = new ArrayList<Coordinate>();
+		if(this.turningCoords.containsKey(targetLaneID)) {
+			int i = 0;
+			for(Coordinate coord: this.turningCoords.get(targetLaneID)) {
+				if(i > 0) { // Skip the first coordinate
+					Coordinate coord2 = new Coordinate();
+					coord2.x = coord.x;
+					coord2.y = coord.y;
+					coord2.z = coord.z;
+					res.add(coord2);
+				}
+				i += 1;
+			}
+		}
+		else {
+			ContextCreator.logger.warn("Lane with ID" + targetLaneID + " asking for turning coords is not connected with lane with oriID " + this.getOrigID());
+		}
+		return res;
+	}
+	
+	public void setTurningCoords(int targetLaneID, ArrayList<Coordinate> turningCoords) {
+		this.turningCoords.put(targetLaneID, turningCoords);
 	}
 	
 	public ArrayList<ArrayList<Double>> getXYList(){
@@ -109,6 +146,19 @@ public class Lane {
 
 	public double getLength() {
 		return length;
+	}
+	
+	public double getTurningDist(int targetLaneID) {
+		if(this.turningDists.containsKey(targetLaneID)) {
+			return this.turningDists.get(targetLaneID);
+		}
+		else {
+			return 0;
+		}
+	}
+	
+	public void setTurningDist(int targetLaneID, double dist) {
+		this.turningDists.put(targetLaneID, dist);
 	}
 	
 	public int getRoad() {
@@ -220,10 +270,10 @@ public class Lane {
 			ContextCreator.logger.error("Cannot register the up stream lane since it is already added");
 	}
 
-	public Lane getUpStreamLaneInRoad(Road pr) {
+	public Lane getUpStreamLaneInRoad(int pr) {
 		Lane connectLane = null;
 		for (int lane : this.getUpStreamLanes()) {
-			if (ContextCreator.getLaneContext().get(lane).getRoad() == pr.getID()) {
+			if (ContextCreator.getLaneContext().get(lane).getRoad() == pr) {
 				connectLane = ContextCreator.getLaneContext().get(lane);
 				break;
 			}

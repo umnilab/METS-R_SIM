@@ -74,7 +74,7 @@ public class VehicleRouting {
 		int K = GlobalVariables.K_VALUE;
 		double theta = GlobalVariables.THETA_LOGIT;
 		
-		if (currNode == destNode) { // Origin and destination is the same
+		if (currentRoad.getID() == destRoad.getID()) { // Origin and destination road is the same
 			roadPath_ = new ArrayList<Road>();
 			roadPath_.add(currentRoad);
 		}
@@ -139,11 +139,6 @@ public class VehicleRouting {
 						roadPath_.add(ContextCreator.getRoadContext().get(roadID));
 					}
 				}
-				roadPath_.add(destRoad);
-			}
-			else if(currentRoad.getDownStreamRoads().contains(destRoad.getID())) {
-				roadPath_ = new ArrayList<Road>();
-				roadPath_.add(currentRoad);
 				roadPath_.add(destRoad);
 			}
 		}

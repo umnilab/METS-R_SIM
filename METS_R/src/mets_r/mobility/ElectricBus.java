@@ -9,14 +9,10 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
-import com.vividsolutions.jts.geom.Coordinate;
-
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
-import mets_r.facility.Road;
 import mets_r.facility.Zone;
-import mets_r.routing.RouteContext;
 
 /**
  * Electric buses
@@ -115,48 +111,20 @@ public class ElectricBus extends ElectricVehicle {
 	@Override
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
-		Coordinate current_dest_coord = this.getDestCoord();
+		int current_dest_road = this.getDestRoad();
 		this.onChargingRoute_ = true;
 		
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(), this.decideChargerType());
-		this.addPlan(cs.getID(), cs.getCoord(), (int) ContextCreator.getNextTick()); // instantly go to
+		this.addPlan(cs.getID(), cs.getClosestRoad(true), (int) ContextCreator.getNextTick()); // instantly go to
 																								// charging station
 		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_coord, (int) ContextCreator.getNextTick()); // Follow the old
+		this.addPlan(current_dest_zone, current_dest_road, (int) ContextCreator.getNextTick()); // Follow the old
 																									// schedule
 		this.setState(Vehicle.CHARGING_TRIP);
 		this.departure();
 		ContextCreator.logger.debug("Bus " + this.getID() + " is on route to charging station");
 	}
 	
-	@Override
-	public void setNextRoad() {
-		if(!this.atOrigin) {
-			super.setNextRoad();
-		}
-		else {
-			this.atOrigin = false;
-			// Clear legacy impact
-			this.clearShadowImpact();
-			this.roadPath = new ArrayList<Road>();
-			
-			// Compute new route if eco-routing is not used or the OD pair is uncovered
-			if (this.roadPath == null || this.roadPath.isEmpty()) {
-				this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.getDestCoord(), this.rand_route_only); // K-shortest path or shortest path
-			}
-			this.setShadowImpact();
-			if (this.roadPath == null) {
-				this.nextRoad_ = null;
-			}
-			else if (this.roadPath.size() < 2) { // The origin and destination share the same Junction
-				this.nextRoad_ = null;
-			} else {
-				this.nextRoad_ = roadPath.get(1);
-				this.assignNextLane();
-			}
-		}
-	}
-
 	// The setReachDest() function applies for three cases:
 	// Case 1: arrive at the charging station.
 	// Case 2: arrive at the start bus stop, and then go the charging station
@@ -231,7 +199,7 @@ public class ElectricBus extends ElectricVehicle {
 					ContextCreator.bus_schedule.popSchedule(this.busStop.get(0), this);
 					super.leaveNetwork();
 					this.addPlan(busStop.get(nextStop),
-							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getCoord(),
+							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getClosestRoad(true),
 							Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop)));
 					this.setNextPlan();
 					this.departure();
@@ -248,7 +216,7 @@ public class ElectricBus extends ElectricVehicle {
 				this.nextStop = nextStop + 1;
 				// Head to the next Stop
 				int destZoneID = busStop.get(nextStop % busStop.size());
-				this.addPlan(destZoneID, ContextCreator.getZoneContext().get(destZoneID).getCoord(),
+				this.addPlan(destZoneID, ContextCreator.getZoneContext().get(destZoneID).getClosestRoad(true),
 						Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop-1)));
 				this.setNextPlan();
 				this.departure();

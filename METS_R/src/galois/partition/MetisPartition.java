@@ -81,10 +81,10 @@ public class MetisPartition {
 		this.partitionDuration = 0;
 		this.backgroundLoads = new ArrayList<Integer>();
 
-		// Partition Zone by prospect demand
-		ArrayList<Double> totRequest = new ArrayList<Double>();
+		// Partition Zone by number of EV taxi
+		ArrayList<Integer> totRequest = new ArrayList<Integer>();
 		for (int i = 0; i < this.nPartition; i++) {
-			totRequest.add(0.0);
+			totRequest.add(0);
 		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			// Find the partition with the lowest weight
@@ -99,7 +99,7 @@ public class MetisPartition {
 			// Add the zone to the target partition
 			this.partitionedZones.get(targetInd).add(z);
 			// Update the weight of the partition
-			totRequest.set(targetInd, totRequest.get(targetInd));
+			totRequest.set(targetInd, totRequest.get(targetInd) + z.getVehicleStock() + 1);
 		}
 
 		// Partition Charging stations by num of chargers
@@ -120,7 +120,7 @@ public class MetisPartition {
 			// Add the zone to the target partition
 			this.partitionedChargingStation.get(targetInd).add(cs);
 			// Update the weight of the partition
-			totCharger.set(targetInd, totCharger.get(targetInd) + cs.capacity());
+			totCharger.set(targetInd, totCharger.get(targetInd) + cs.capacity() + 1);
 		}
 		
 		// Partition Signals by num of signals

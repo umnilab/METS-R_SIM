@@ -55,11 +55,11 @@ public class LaneContext extends FacilityContext<Lane> {
 					ContextCreator.logger.error("Missing fields in Lane configuration, a proper one should contain (LaneID, LinkID, Left, Through, Right)");
 				}
 				while (laneLoader.hasNext()) {
-					
 					line = br.readLine();
 					result = line.split(",");
 					Lane lane = laneLoader.nextWithArgs(Integer.parseInt(result[0]));
 					lane = setAttribute(lane, result);
+					lane.setCoords(laneGeography.getGeometry(lane).getCoordinates());
 					this.put(lane.getID(), lane);
 				}
 				br.close();
@@ -87,9 +87,12 @@ public class LaneContext extends FacilityContext<Lane> {
 
 	public Lane setAttribute(Lane l, String[] att) {
 		l.setRoad(Integer.parseInt(att[1]));
-		l.addDownStreamLane(Integer.parseInt(att[2]));
-		l.addDownStreamLane(Integer.parseInt(att[3]));
-		l.addDownStreamLane(Integer.parseInt(att[4]));
+		if(Integer.parseInt(att[2])!=0)
+			l.addDownStreamLane(Integer.parseInt(att[2]));
+		if(Integer.parseInt(att[3])!=0)
+			l.addDownStreamLane(Integer.parseInt(att[3]));
+		if(Integer.parseInt(att[4])!=0)
+			l.addDownStreamLane(Integer.parseInt(att[4]));
 		return l;
 	}
 }
