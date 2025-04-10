@@ -520,7 +520,7 @@ public class Vehicle {
 	        newDistance -= segmentLen;
 	    }
 	    
-	    if(newDistance > 2 * (this.distance_ + 1)) // no lane changing when curvature is too high
+	    if(newDistance > 1.414 * (this.distance_ + 1)) // no lane changing when curvature is too high
 	    	return;
 	    
 	    if(newCoordMap.size() == 0) {
@@ -1006,7 +1006,7 @@ public class Vehicle {
 		accRate_ = accPlan_.pop();
 		
 		/* Sanity check */
-		if (distance_ < 0 || Double.isNaN(distance_))
+		if (distance_ < -0.001 || Double.isNaN(distance_))
 			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
 		if (currentSpeed_ < 0 || Double.isNaN(currentSpeed_))
 			ContextCreator.logger.error("Vehicle.move(): currentSpeed_=" + currentSpeed_ + " " + this);
