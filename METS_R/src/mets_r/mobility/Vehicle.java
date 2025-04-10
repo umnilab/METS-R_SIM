@@ -520,7 +520,7 @@ public class Vehicle {
 	        newDistance -= segmentLen;
 	    }
 	    
-	    if(newDistance > 1.414 * (this.distance_ + 1)) // no lane changing when curvature is too high
+	    if(newDistance > 1.1 * (this.distance_ + 1)) // no lane changing when curvature is too high
 	    	return;
 	    
 	    if(newCoordMap.size() == 0) {
