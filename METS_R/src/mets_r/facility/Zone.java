@@ -240,11 +240,16 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
+					int destRoad =  destZone.sampleRoad(true);
 					v.initializePlan(this.getID(), this.sampleRoad(false), (int) ContextCreator.getCurrentTick());
-					v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
+					v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
 					v.departure();
+					// Check if vehicle has enough battery
+					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
+						v.goCharging();
+					}
 					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
 				else { // If vehicle is on road
@@ -252,11 +257,6 @@ public class Zone {
 					int destRoad =  destZone.sampleRoad(true);
 					v.addPlan(oneTrip.getValue(), destRoad , (int) ContextCreator.getNextTick());
 					this.numberOfGeneratedPrivateEVTrip += 1;
-					
-					// Check if vehicle has enough batter
-					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
-						v.goCharging();
-					}
 				}
 			}
 			else { // If vehicle does not exists
@@ -273,10 +273,15 @@ public class Zone {
 				
 				// Assign trips
 				v.initializePlan(this.getID(), this.sampleRoad(false), (int) ContextCreator.getCurrentTick());
-				v.addPlan(oneTrip.getValue(), destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
+				int destRoad =  destZone.sampleRoad(true);
+				v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				v.departure();
+				// Check if vehicle has enough battery
+				if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
+					v.goCharging();
+				}
 				this.numberOfGeneratedPrivateEVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
 			}
