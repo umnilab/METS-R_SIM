@@ -110,6 +110,7 @@ public class CityContext extends DefaultContext<Object> {
 		for (int i = 0; i < coords.size() - 1; i++) {
 			distance += getDistance(coords.get(i), coords.get(i+1));
 		}
+		
 		lane1.setTurningCoords(lane2.getID(), coords);
 		lane1.setTurningDist(lane2.getID(), distance);
 	}

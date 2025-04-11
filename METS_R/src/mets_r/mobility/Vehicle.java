@@ -509,7 +509,7 @@ public class Vehicle {
 	            double apx = currCoord.x - a.x;
 	            double apy = currCoord.y - a.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param >= 1.0) {
+	            if (param >= 0.0) {
 		            for (int j = i; j < coords.size(); j++) {
 		                newCoordMap.add(coords.get(j));
 		            }
@@ -519,19 +519,21 @@ public class Vehicle {
 	        newDistance += segmentLen;
 	    }
 	    
-	    if(newCoordMap.size() == 0) {
-	    	newCoordMap.add(coords.get(0));
-	    	newDistance = plane.getLength();
+	    if(newCoordMap.size() == 0) { // Did not find where to insert
+	    	return;
 	    }
 	    
-	    this.nextDistance_ = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
-	    this.distance_ = newDistance + this.nextDistance_;
-	    this.coordMap.clear();
-	    this.coordMap.addAll(newCoordMap);
-	    
-		this.removeFromCurrentLane();
-		this.distance_ += this.distance(this.currentCoord_, this.coordMap.get(0));
-		this.insertToLane(plane);
+	    double transitionDistance= this.distance(this.getCurrentCoord(), newCoordMap.get(0));
+	    if(transitionDistance <= GlobalVariables.NO_LANECHANGING_LENGTH) { // If the transition distance is too high, stop the lane changing
+	    	this.nextDistance_ = transitionDistance;
+		    this.distance_ = newDistance + transitionDistance;
+		    this.coordMap.clear();
+		    this.coordMap.addAll(newCoordMap);
+		    
+			this.removeFromCurrentLane();
+			this.distance_ += this.distance(this.currentCoord_, this.coordMap.get(0));
+			this.insertToLane(plane);
+	    }
 	}
 
 	/**
@@ -1047,7 +1049,7 @@ public class Vehicle {
 			// Solve the crash problem
 			double gap = gapDistance(this.vehicleAhead());
 			dx = Math.min(dx, gap); // no trespass
-
+			
 			// Update vehicle coords
 			lastStepMove_ = updateCoordByDx(dx);
 		}
@@ -1106,10 +1108,10 @@ public class Vehicle {
 			}
 			// Otherwise move as far as we can 
 			else {
-				double distToMove = dx - distTravelled;;
+				double distToMove = dx - distTravelled;
 				if(distToMove > 0) {
 					this.distance_ -=  distToMove;
-					move2(this.getCurrentCoord(), this.coordMap.get(0), nextDistance_, distToMove);
+					this.move2(this.getCurrentCoord(), this.coordMap.get(0), nextDistance_, distToMove);
 					this.nextDistance_ -= distToMove;
 				}
 				lastStepMove =  dx;
@@ -1176,6 +1178,8 @@ public class Vehicle {
 		else if (this.nextRoad_ != null) {
 			// Check if there is enough space in the next road to change to
 			int tickcount = ContextCreator.getCurrentTick();
+			coordMap.clear();
+			coordMap.add(this.getCurrentCoord());
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			boolean movable = false;
 			if(this.nextRoad_.getID() == this.roadPath.get(1).getID()) { // nextRoad data is consistent
@@ -1264,9 +1268,6 @@ public class Vehicle {
 			}
 			
 			this.onLane = false;
-			coordMap.clear();
-			coordMap.add(this.getCurrentCoord());
-			
 			return false;
 		}
 		else{
@@ -1334,14 +1335,6 @@ public class Vehicle {
 	 */
 	public void macroLeading(Vehicle v) {
 		if(v == null) this.macroLeading_ = null;
-		else if(v == this) {
-			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the macroleading with distance" + this.distance_);
-			this.macroLeading_ = null;
-		}
-		else if(v.distance_ >= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " +v.getDistanceToNextJunction() +" to the macroleading of the vehicle with distance " + this.distance_);
-			this.leading_ = null;
-		}
 		else this.macroLeading_ = v;
 	}
 	
@@ -1358,14 +1351,6 @@ public class Vehicle {
 	 */
 	public void macroTrailing(Vehicle v) {
 		if(v == null) this.macroTrailing_ = null;
-		else if(v == this) {
-			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the macrotrailing with distance" + this.distance_);
-			this.macroTrailing_ = null;
-		}
-		else if(v.getDistanceToNextJunction() <= this.distance_) {
-			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistanceToNextJunction() +" to the marotrailing of the vehicle with distance " + this.distance_);
-			this.macroTrailing_ = null;
-		}
 		else this.macroTrailing_ = v;
 	}
 	
