@@ -503,14 +503,14 @@ public class Vehicle {
 	        double dx = b.x - a.x;
 	        double dy = b.y - a.y;
 	        double lenSq = dx * dx + dy * dy;
-	        double segmentLen = distance(a, b);
+	        double segmentLen = this.distance(a, b);
 
 	        if (lenSq > 0) {
 	            double apx = currCoord.x - a.x;
 	            double apy = currCoord.y - a.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
 	            if (param >= 1.0) {
-		            for (int j = i + 1; j < coords.size(); j++) {
+		            for (int j = i; j < coords.size(); j++) {
 		                newCoordMap.add(coords.get(j));
 		            }
 		            break;
