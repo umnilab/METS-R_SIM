@@ -622,7 +622,8 @@ public class CityContext extends DefaultContext<Object> {
 		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
 		// Use a buffer for efficiency
 		Point point = geomFac.createPoint(coord);
-		Geometry buffer = point.buffer(GlobalVariables.SEARCHING_BUFFER);
+		double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+		Geometry buffer = point.buffer(searchBuffer);
 		double minDist = Double.MAX_VALUE;
 		ChargingStation nearestChargingStation = null;
 		int num_tried = 0;
@@ -638,7 +639,8 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 			num_tried += 1;
-			buffer = point.buffer((num_tried + 1) * GlobalVariables.SEARCHING_BUFFER);
+			searchBuffer *= 2;
+			buffer = point.buffer(searchBuffer);
 		}
 		
 		if (nearestChargingStation == null) { // Cannot find instant available charger, go the closest one and wait there

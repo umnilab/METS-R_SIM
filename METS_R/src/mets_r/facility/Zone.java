@@ -245,10 +245,12 @@ public class Zone {
 					v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
-					v.departure();
 					// Check if vehicle has enough battery
 					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
 						v.goCharging();
+					}
+					else {
+						v.departure();
 					}
 					this.numberOfGeneratedPrivateEVTrip += 1;
 				}
@@ -277,10 +279,12 @@ public class Zone {
 				v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
-				v.departure();
 				// Check if vehicle has enough battery
 				if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
 					v.goCharging();
+				}
+				else {
+					v.departure();
 				}
 				this.numberOfGeneratedPrivateEVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
