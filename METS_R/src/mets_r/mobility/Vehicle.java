@@ -494,11 +494,11 @@ public class Vehicle {
 		Coordinate currCoord = this.getCurrentCoord();
 	    ArrayList<Coordinate> coords = lane.getCoords();
 	    ArrayList<Coordinate> newCoordMap = new ArrayList<>();
-	    double newDistance = lane.getLength();
+	    double newDistance = 0;
 
-	    for (int i = 0; i < coords.size() - 1; i++) {
+	    for (int i = coords.size() - 1; i > 0; i--) {
 	        Coordinate a = coords.get(i);
-	        Coordinate b = coords.get(i + 1);
+	        Coordinate b = coords.get(i - 1);
 
 	        double dx = b.x - a.x;
 	        double dy = b.y - a.y;
@@ -509,22 +509,19 @@ public class Vehicle {
 	            double apx = currCoord.x - a.x;
 	            double apy = currCoord.y - a.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param < 1.0) {
-		        	newDistance -= segmentLen;
+	            if (param >= 1.0) {
 		            for (int j = i + 1; j < coords.size(); j++) {
 		                newCoordMap.add(coords.get(j));
 		            }
 		            break;
 		        }
 	        }
-	        newDistance -= segmentLen;
+	        newDistance += segmentLen;
 	    }
 	    
-	    if(newDistance > 1.1 * (this.distance_ + 1)) // no lane changing when curvature is too high
-	    	return;
-	    
 	    if(newCoordMap.size() == 0) {
-	    	newCoordMap.add(this.getCurrentCoord());
+	    	newCoordMap.add(coords.get(0));
+	    	newDistance = plane.getLength();
 	    }
 	    
 	    this.nextDistance_ = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
