@@ -1,13 +1,13 @@
 package mets_r.data.output;
 
 class LinkSnapshot {
-	final int id; // Unique ID of the road
+	final String id; // Unique ID of the road
 	final float speed; //Current time mean speed (unit meters/second)
 	final int nVehicles; //  number of vehicles currently on the road, including the downstream junction
 	final float energy;
 	final int flow;
 
-	LinkSnapshot(int id, double speed, int nVehicles, double energy, int flow) {
+	LinkSnapshot(String id, double speed, int nVehicles, double energy, int flow) {
 		this.id = id;
 		this.speed = (float) speed;
 		this.nVehicles = nVehicles;
@@ -19,7 +19,7 @@ class LinkSnapshot {
 		if (Double.isNaN(energy) || Double.isInfinite(energy)) throw new NumberFormatException("Energy is NaN or Inifinite for " + id);
 	}
 
-	public int getId() {
+	public String getId() {
 		return this.id;
 	}
 

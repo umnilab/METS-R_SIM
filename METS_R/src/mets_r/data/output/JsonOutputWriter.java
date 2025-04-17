@@ -715,7 +715,7 @@ public class JsonOutputWriter implements DataConsumer {
 				energyConsumption += r.getTotalEnergy();
 				if(r.getVehicleNum()>0) {
 					// Store the link state
-					int id = r.getID();
+					String id = r.getOrigID();
 					double speed = r.calcSpeed();
 					int nVehicles = r.getVehicleNum();
 					double energy = r.getTotalEnergy();
