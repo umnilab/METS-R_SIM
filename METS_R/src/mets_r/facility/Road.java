@@ -79,6 +79,7 @@ public class Road {
     public double totalEnergy;
     public int currentFlow;
     public int totalFlow;
+    public int prevFlow;
 
 	// Road constructor
 	public Road(int id) {
@@ -107,6 +108,7 @@ public class Road {
 		this.cachedSpeedLimit_ = this.speedLimit_; 
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
+		this.prevFlow = 0;
 		this.currentEnergy = 0;
 		this.currentFlow = 0;
 	}
@@ -542,6 +544,16 @@ public class Road {
 		}
 		else {
 			this.travelTime = newTravelTime;
+			return true;
+		}
+	}
+	
+	public boolean stateHasChanged() {
+		if(this.prevFlow == this.totalFlow) {
+			return false;
+		}
+		else {
+			this.prevFlow = this.totalFlow;
 			return true;
 		}
 	}

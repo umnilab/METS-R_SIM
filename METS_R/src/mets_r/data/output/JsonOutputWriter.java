@@ -711,9 +711,9 @@ public class JsonOutputWriter implements DataConsumer {
 				servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest+ z.numberOfGeneratedCombinedRequest);
 				leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
 			}
-			for (Road r: ContextCreator.getRoadGeography().getAllObjects()) {
+			for (Road r: ContextCreator.getRoadContext().getAll()) {
 				energyConsumption += r.getTotalEnergy();
-				if(r.getVehicleNum()>0) {
+				if(r.stateHasChanged()) {
 					// Store the link state
 					String id = r.getOrigID();
 					double speed = r.calcSpeed();

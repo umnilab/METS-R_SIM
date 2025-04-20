@@ -136,7 +136,7 @@ public class TickSnapshot {
 	}
 	
 	// Store the current state of the given EV to the tick snapshot.
-	public void logPrivateEV(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
+	public void logPrivateEV(ElectricVehicle vehicle, Coordinate coordinate, int vehState) throws Throwable {
 		if (vehicle == null) {
 			return;
 		}
@@ -166,10 +166,20 @@ public class TickSnapshot {
 		}
 
 		// Create a snapshot for the vehicle and store it in the map
-		EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
-				vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
-		
-		this.evs_private.put(id, snapshot);
+		if(vehState == Vehicle.CHARGING_TRIP) {
+			ETaxiSnapshot snapshot = new ETaxiSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
+					vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
+			synchronized(this.evs_charging) {
+				this.evs_charging.put(id, snapshot);
+			}
+		}
+		else{
+			EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
+					vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
+			synchronized(this.evs_private) {
+				this.evs_private.put(id, snapshot);
+			}
+		}
 	}
 
 	// Store the current state of the given EV to the tick snapshot.

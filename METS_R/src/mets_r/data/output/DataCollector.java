@@ -269,7 +269,7 @@ public class DataCollector {
 		}
 
 		if (vehicle.getVehicleClass() == Vehicle.EV) { // Private EV
-			this.currentSnapshot.logPrivateEV((ElectricVehicle) vehicle, coordinate);
+			this.currentSnapshot.logPrivateEV((ElectricVehicle) vehicle, coordinate, vehicle.getState());
 		}
 		else if (vehicle.getVehicleClass() == Vehicle.ETAXI) { // ETAXI
 			// Add the vehicle to the current snapshot
