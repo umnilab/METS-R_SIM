@@ -123,21 +123,23 @@ public class QueryMessageHandler extends MessageHandler {
 		for(Road r: ContextCreator.coSimRoads.values()) {
 			Vehicle v = r.firstVehicle();
 			while(v != null) {
-				Vehicle nextVehicle = v.macroTrailing();
-				if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
-					vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
-					vehicleTypeList.add(true);
+				if(v.distFraction()<1.0) { // Only consider vehicle that has entered the road
+					Vehicle nextVehicle = v.macroTrailing();
+					if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
+						vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
+						vehicleTypeList.add(true);
+					}
+					else { // public vehicle
+						vehicleIDList.add(v.getID());
+						vehicleTypeList.add(false);
+					}
+					v = nextVehicle;
 				}
-				else { // public vehicle
-					vehicleIDList.add(v.getID());
-					vehicleTypeList.add(false);
-				}
-				v = nextVehicle;
 			}
 		}
 		
-		jsonObj.put("vid_list", vehicleIDList); // ID for private vehicles
-		jsonObj.put("vtype_list", vehicleTypeList); // ID for public vehicles
+		jsonObj.put("vid_list", vehicleIDList); 
+		jsonObj.put("vtype_list", vehicleTypeList); 
 		
 		return jsonObj;
 	}
