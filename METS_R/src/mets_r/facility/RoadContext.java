@@ -75,7 +75,6 @@ public class RoadContext extends FacilityContext<Road> {
 				ContextCreator.logger.info(
 						"ContextCreator: malformed URL exception when reading roadshapefile. Check the 'roadLoc' parameter is correct");
 				e.printStackTrace();
-
 			} catch (FileNotFoundException e) {
 				ContextCreator.logger.info("ContextCreator: No road csv file found");
 				e.printStackTrace();

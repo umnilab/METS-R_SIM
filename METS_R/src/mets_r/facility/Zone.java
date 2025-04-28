@@ -1143,6 +1143,15 @@ public class Zone {
 		}
 	}
 	
+	public List<Integer> getNeighboringLinks(boolean goDest){
+		if(goDest){
+			return this.neighboringArrivalLinks;
+		}
+		else{
+			return this.neighboringDepartureLinks;
+		}
+	}
+	
 	public Integer getNeighboringLink(int index, boolean goDest) {
 		if(goDest) {
 			return this.neighboringArrivalLinks.get(index);
@@ -1152,7 +1161,7 @@ public class Zone {
 		}
 	}
 	
-	public Iterable<Integer> getNeighboringZones(){
+	public List<Integer> getNeighboringZones(){
 		return this.neighboringZones;
 	}
 	

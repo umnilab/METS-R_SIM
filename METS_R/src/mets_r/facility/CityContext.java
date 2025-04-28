@@ -1,5 +1,7 @@
 package mets_r.facility;
 
+import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -8,6 +10,7 @@ import java.util.List;
 
 import org.geotools.referencing.GeodeticCalculator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -16,6 +19,7 @@ import com.vividsolutions.jts.geom.Point;
 import mets_r.*;
 import mets_r.data.input.SumoXML;
 import mets_r.routing.RouteContext;
+import mets_r.data.input.NeighboringGraphCache;
 
 import repast.simphony.context.DefaultContext;
 import repast.simphony.context.space.graph.NetworkFactory;
@@ -121,6 +125,30 @@ public class CityContext extends DefaultContext<Object> {
 		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
 		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
 		GeometryFactory geomFac = new GeometryFactory();
+		
+		ObjectMapper mapper = new ObjectMapper();
+		File cacheFile = new File(GlobalVariables.NETWORK_FILE.replace(".net.xml", "")+ ".json");
+		// Attempt to load cached graph if it exists
+	    if (cacheFile.exists()) {
+	        try {
+	            ContextCreator.logger.info("Loading neighboring graph from cache.");
+	            NeighboringGraphCache cachedData = mapper.readValue(cacheFile, NeighboringGraphCache.class);
+	            cachedData.load();
+	            
+	            for(Road r: ContextCreator.getRoadContext()) {
+	            	if(r.canBeOrigin()) {
+	    				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+	    			}
+	    			if(r.canBeDest()) {
+	    				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
+	    			}
+	            }
+	            return; // Successfully loaded from cache
+	        } catch (IOException e) {
+	            ContextCreator.logger.warn("Failed to load cache. Rebuilding neighboring graph.", e);
+	        }
+	    }
+		
 		int minNeighbors = Math.min(ContextCreator.getZoneContext().size() - 1, 8);
 		for (Zone z1 : ContextCreator.getZoneContext().getAll()) { 
 			// Set up neighboring zones
@@ -232,13 +260,37 @@ public class CityContext extends DefaultContext<Object> {
 				}
 				searchBuffer = searchBuffer * 2;
 			}
-			this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-			this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-			if(r.canBeOrigin())
+			
+			if(r.canBeOrigin()) {
+				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
 				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
-			if(r.canBeDest())
+			}
+			if(r.canBeDest()) {
+				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
 				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
+			}
 		}
+		
+		
+		// Save full cache
+	    ContextCreator.logger.info("Saving neighboring graph to cache.");
+	    try {
+	    	NeighboringGraphCache cacheData = new NeighboringGraphCache();
+
+	        for (Zone z : ContextCreator.getZoneContext().getAll()) {
+	            cacheData.saveZoneNeighbor(z.getID(), z.getNeighboringZones(), z.getNeighboringLinks(false), z.getNeighboringLinks(true), z.getClosestRoad(false), z.getClosestRoad(true));
+	        }
+	        for (Road r : ContextCreator.getRoadContext().getAll()) {
+	            cacheData.saveRoadNeighbor(r.getID(), r.getNeighboringZone(false), r.getNeighboringZone(true));
+	        }
+	        for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+	            cacheData.saveChargingStationNeighbor(cs.getID(), cs.getClosestRoad(false), cs.getClosestRoad(true));
+	        }
+
+	        mapper.writerWithDefaultPrettyPrinter().writeValue(cacheFile, cacheData);
+	    } catch (IOException e) {
+	        ContextCreator.logger.warn("Failed to save cache.", e);
+	    }
 	}
 	
 	public double getDistance(Coordinate c1, Coordinate c2) {
@@ -688,7 +740,7 @@ public class CityContext extends DefaultContext<Object> {
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 						double thisDist = this.getDistance(coord, road.getEndCoord());
-						if (thisDist < minDist) { 
+						if (thisDist < minDist && road.canBeDest()) { 
 							minDist = thisDist;
 							nearestRoad = road;
 						}
@@ -725,7 +777,7 @@ public class CityContext extends DefaultContext<Object> {
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 						double thisDist = this.getDistance(coord, road.getStartCoord());
-						if (thisDist < minDist) { 
+						if (thisDist < minDist && road.canBeOrigin()) { 
 							minDist = thisDist;
 							nearestRoad = road;
 						}
