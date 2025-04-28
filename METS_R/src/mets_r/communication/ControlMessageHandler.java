@@ -117,17 +117,17 @@ public class ControlMessageHandler extends MessageHandler {
 			    		r.setControlType(Road.COSIM);
 						// Add road to coSim HashMap in the road context
 						ContextCreator.coSimRoads.put(roadID, r);
-						// Also output the lane information for computing the co-simulation area
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", roadID);
 						record2.put("STATUS", "OK");
-						ArrayList<Object> centerLines = new ArrayList<Object>();
-						for(Lane l: r.getLanes()) {
-							centerLines.add(l.getXYList());
-						}
-						
-						record2.put("center_lines", centerLines);
-						jsonData.add(record2);
+						// Also output the lane information for computing the co-simulation area
+//						ArrayList<Object> centerLines = new ArrayList<Object>();
+//						for(Lane l: r.getLanes()) {
+//							centerLines.add(l.getXYList());
+//						}
+//						
+//						record2.put("center_lines", centerLines);
+//						jsonData.add(record2);
 			    	}
 			    	else {
 			    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);

@@ -123,8 +123,8 @@ public class QueryMessageHandler extends MessageHandler {
 		for(Road r: ContextCreator.coSimRoads.values()) {
 			Vehicle v = r.firstVehicle();
 			while(v != null) {
-				if(v.distFraction()<1.0) { // Only consider vehicle that has entered the road
-					Vehicle nextVehicle = v.macroTrailing();
+				Vehicle nextVehicle = v.macroTrailing();
+				if(v.distFraction() < 1.0) { // Only consider vehicle that has entered the road
 					if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
 						vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
 						vehicleTypeList.add(true);
