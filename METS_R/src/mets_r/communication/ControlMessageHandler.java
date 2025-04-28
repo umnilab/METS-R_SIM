@@ -127,7 +127,7 @@ public class ControlMessageHandler extends MessageHandler {
 //						}
 //						
 //						record2.put("center_lines", centerLines);
-//						jsonData.add(record2);
+						jsonData.add(record2);
 			    	}
 			    	else {
 			    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);

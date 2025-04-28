@@ -124,17 +124,15 @@ public class QueryMessageHandler extends MessageHandler {
 			Vehicle v = r.firstVehicle();
 			while(v != null) {
 				Vehicle nextVehicle = v.macroTrailing();
-				if(v.distFraction() < 1.0) { // Only consider vehicle that has entered the road
 					if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
-						vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
-						vehicleTypeList.add(true);
-					}
-					else { // public vehicle
-						vehicleIDList.add(v.getID());
-						vehicleTypeList.add(false);
-					}
-					v = nextVehicle;
+					vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
+					vehicleTypeList.add(true);
 				}
+				else { // public vehicle
+					vehicleIDList.add(v.getID());
+					vehicleTypeList.add(false);
+				}
+				v = nextVehicle;
 			}
 		}
 		
