@@ -58,21 +58,39 @@ public class MessageClass{
 	    }
 	}
 	
-	class VehIDVehTypeTranRoadIDXY {
+	class VehIDVehTypeTranXY {
 	    int vehID;
 	    boolean vehType;
 	    boolean transformCoord;
-	    String roadID;
 	    double x;
 	    double y;
 
 	    // Constructor
-	    public VehIDVehTypeTranRoadIDXY(int vehID, boolean vehType, boolean transformCoord, 
-	                                          String roadID, double x, double y) {
+	    public VehIDVehTypeTranXY(int vehID, boolean vehType, boolean transformCoord, 
+	                                          double x, double y) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
 	        this.transformCoord = transformCoord;
-	        this.roadID = roadID;
+	        this.x = x;
+	        this.y = y;
+	    }
+	}
+	
+	class VehIDVehTypeTranBearingXY {
+	    int vehID;
+	    boolean vehType;
+	    boolean transformCoord;
+	    double bearing;
+	    double x;
+	    double y;
+
+	    // Constructor
+	    public VehIDVehTypeTranBearingXY(int vehID, boolean vehType, boolean transformCoord, 
+	                                         double bearing, double x, double y) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.transformCoord = transformCoord;
+	        this.bearing = bearing;
 	        this.x = x;
 	        this.y = y;
 	    }
@@ -219,16 +237,16 @@ public class MessageClass{
 
         
         // VehIDVehTypeTranRoadIDXY
-        Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYs = new ArrayList<>();
-        vehIDVehTypeTranRoadIDXYs.add(messageClass.new VehIDVehTypeTranRoadIDXY(0, true, true, "101", 12.34, 56.78));
-        vehIDVehTypeTranRoadIDXYs.add(messageClass.new VehIDVehTypeTranRoadIDXY(1, false, false, "102", 90.12, 34.56));
+        Collection<VehIDVehTypeTranXY> vehIDVehTypeTranXYs = new ArrayList<>();
+        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(0, true, true, 12.34, 56.78));
+        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(1, false, false, 90.12, 34.56));
 
-        json = gson.toJson(vehIDVehTypeTranRoadIDXYs);
+        json = gson.toJson(vehIDVehTypeTranXYs);
         System.out.println("Serialized VehIDVehTypeTranRoadIDXY: " + json);
 
-        TypeToken<Collection<VehIDVehTypeTranRoadIDXY>> collectionType6 = new TypeToken<Collection<VehIDVehTypeTranRoadIDXY>>() {};
-        Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYs2 = gson.fromJson(json, collectionType6.getType());
-        System.out.println("Deserialized VehIDVehTypeTranRoadIDXY: " + vehIDVehTypeTranRoadIDXYs2);
+        TypeToken<Collection<VehIDVehTypeTranXY>> collectionType6 = new TypeToken<Collection<VehIDVehTypeTranXY>>() {};
+        Collection<VehIDVehTypeTranXY> vehIDVehTypeTranXYs2 = gson.fromJson(json, collectionType6.getType());
+        System.out.println("Deserialized VehIDVehTypeTranRoadIDXY: " + vehIDVehTypeTranXYs2);
 
         // VehIDOrigDestNum
         Collection<VehIDOrigDestNum> vehIDOrigDestNums = new ArrayList<>();

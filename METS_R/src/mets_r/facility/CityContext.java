@@ -443,7 +443,7 @@ public class CityContext extends DefaultContext<Object> {
 		
 		// Assign the lanes to each road
 		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
-			Road road = ContextCreator.getRoadContext().get(lane.getRoad());
+			Road road = lane.getRoad();
 			road.addLane(lane);
 		}
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
@@ -461,7 +461,7 @@ public class CityContext extends DefaultContext<Object> {
 				for (Lane lane1: r1.getLanes()) {
 					for (int lane2ID: lane1.getDownStreamLanes()) {
 						Lane lane2 =  ContextCreator.getLaneContext().get(lane2ID);
-						if(lane2.getRoad() == r2.getID()) {
+						if(lane2.getRoad() == r2) {
 							flag = false;
 							break;
 						}

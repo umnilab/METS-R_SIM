@@ -284,7 +284,7 @@ public class Vehicle {
 	 */
 	public boolean enterNetwork(Road road, Lane lane) {
 		// Sanity check
-		if(lane.getRoad() != road.getID()) return false;
+		if(lane.getRoad() != road) return false;
 		double gap = entranceGap(lane);
 		int tickcount = ContextCreator.getCurrentTick();
 		if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
@@ -1251,14 +1251,14 @@ public class Vehicle {
 					else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
 						for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
 							Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
-							List<Road> tempPath = RouteContext.shortestPathRoute(ContextCreator.getRoadContext().get(dnlane.getRoad()), 
+							List<Road> tempPath = RouteContext.shortestPathRoute(dnlane.getRoad(), 
 									ContextCreator.getRoadContext().get(this.getDestRoad()), this.rand_route_only); // Recalculate the route
 							if (tempPath != null && tempPath.size()>=2 && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
 								this.enterNextLane(dnlane);
 								this.removeFromCurrentLane();
 								this.removeFromCurrentRoad();
 								this.appendToLane(dnlane);
-								this.appendToRoad(ContextCreator.getRoadContext().get(dnlane.getRoad()));
+								this.appendToRoad(dnlane.getRoad());
 								this.rerouteAndSetNextRoad();
 								return true;
 							}
@@ -1823,7 +1823,7 @@ public class Vehicle {
 
 		if (nextRoad != null) {
 			for (int dl : curLane.getDownStreamLanes()) {
-				if (ContextCreator.getLaneContext().get(dl).getRoad() == nextRoad.getID()) {
+				if (ContextCreator.getLaneContext().get(dl).getRoad() == nextRoad) {
 					// if this lane already connects to downstream road then
 					// assign to the connected lane
 					connected = true;
@@ -1845,7 +1845,7 @@ public class Vehicle {
 			return;
 		} else {
 			for (int dl : curLane.getDownStreamLanes()) {
-				if (ContextCreator.getLaneContext().get(dl).getRoad() == this.nextRoad_.getID()) {
+				if (ContextCreator.getLaneContext().get(dl).getRoad() == this.nextRoad_) {
 					this.nextLane_ = ContextCreator.getLaneContext().get(dl);
 					// If this lane already connects to downstream road then assign to the connected lane
 					return;
@@ -1854,7 +1854,7 @@ public class Vehicle {
 			
 			// Vehicle is currently on an incorrect lane that does not connect to the next road
 			for (Lane dl: this.nextRoad_.getLanes()) {
-				if(dl.getUpStreamLaneInRoad(this.road.getID())!=null) {
+				if(dl.getUpStreamLaneInRoad(this.road)!=null) {
 					this.nextLane_ = dl;
 					return;
 				}
@@ -1868,7 +1868,7 @@ public class Vehicle {
 	 */
 	public Lane targetLane() {
 		if (this.nextLane_ != null) 
-			return nextLane_.getUpStreamLaneInRoad(this.road.getID());
+			return nextLane_.getUpStreamLaneInRoad(this.road);
 		else
 			return null;
 	}
@@ -2403,6 +2403,10 @@ public class Vehicle {
 	public double getBearing() {
 		return this.bearing_;
 	}
+	
+	public void setBearing(double bearing) {
+		this.bearing_ = bearing;
+	}
 
 	/**
 	 * Get vehicle state (parking, doing certain type of trip, charging, etc.)
@@ -2468,5 +2472,20 @@ public class Vehicle {
 		for(Coordinate coord: this.coordMap) {
 			ContextCreator.logger.info(coord);
 		}
+	}
+	
+	/**
+	 * Return the list of the most recent (up to numPt) to be visited coordinates
+	 */
+	public ArrayList<ArrayList<Double>> getRecentCoordMap(int numPt) {
+		ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
+		for(Coordinate coord: this.coordMap) {
+			ArrayList<Double> xy = new ArrayList<Double>();
+			xy.add(coord.x);
+			xy.add(coord.y);
+			res.add(xy);
+			if(res.size() >= numPt) break;
+		}
+		return res;
 	}
 }

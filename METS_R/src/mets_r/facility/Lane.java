@@ -161,8 +161,8 @@ public class Lane {
 		this.turningDists.put(targetLaneID, dist);
 	}
 	
-	public int getRoad() {
-		return road;
+	public Road getRoad() {
+		return ContextCreator.getRoadContext().get(road);
 	}
 
 	public void setRoad(int roadID) {
@@ -270,7 +270,7 @@ public class Lane {
 			ContextCreator.logger.error("Cannot register the up stream lane since it is already added");
 	}
 
-	public Lane getUpStreamLaneInRoad(int pr) {
+	public Lane getUpStreamLaneInRoad(Road pr) {
 		Lane connectLane = null;
 		for (int lane : this.getUpStreamLanes()) {
 			if (ContextCreator.getLaneContext().get(lane).getRoad() == pr) {

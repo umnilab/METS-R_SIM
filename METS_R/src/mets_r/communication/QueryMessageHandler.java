@@ -3,8 +3,6 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.List;
-
 import org.json.simple.JSONObject;
 
 import com.google.gson.Gson;
@@ -117,27 +115,37 @@ public class QueryMessageHandler extends MessageHandler {
 	public  HashMap<String, Object> getCoSimVehicle(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		
-		List<Integer> vehicleIDList = new ArrayList<Integer>();
-		List<Boolean> vehicleTypeList = new ArrayList<Boolean>();
-		
+//		List<Integer> vehicleIDList = new ArrayList<Integer>();
+//		List<Boolean> vehicleTypeList = new ArrayList<Boolean>();
+		ArrayList<Object> jsonData = new ArrayList<Object>();
 		for(Road r: ContextCreator.coSimRoads.values()) {
 			Vehicle v = r.firstVehicle();
 			while(v != null) {
 				Vehicle nextVehicle = v.macroTrailing();
-					if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
-					vehicleIDList.add(ContextCreator.getVehicleContext().getPrivateVID(v.getID()));
-					vehicleTypeList.add(true);
+				int vid = -1;
+				boolean vtype = false;
+				if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
+					vid = ContextCreator.getVehicleContext().getPrivateVID(v.getID());
+					vtype= true;
 				}
 				else { // public vehicle
-					vehicleIDList.add(v.getID());
-					vehicleTypeList.add(false);
+					vid = v.getID();
+					vtype = false;
+				}
+				if(vid!=-1 || vtype) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", vid);
+					record2.put("v_type", vtype);
+					record2.put("coord_map",v.getRecentCoordMap(5));
+					Road nr = v.getNextRoad();
+					if(nr != null) record2.put("next_road", nr.getOrigID());
+					jsonData.add(record2);
 				}
 				v = nextVehicle;
 			}
 		}
 		
-		jsonObj.put("vid_list", vehicleIDList); 
-		jsonObj.put("vtype_list", vehicleTypeList); 
+		jsonObj.put("DATA", jsonData);
 		
 		return jsonObj;
 	}

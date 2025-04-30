@@ -22,7 +22,8 @@ import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
 import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
-import mets_r.communication.MessageClass.VehIDVehTypeTranRoadIDXY;
+import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXY;
+import mets_r.communication.MessageClass.VehIDVehTypeTranXY;
 import mets_r.communication.MessageClass.ZoneIDOrigDestNum;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
@@ -120,6 +121,7 @@ public class ControlMessageHandler extends MessageHandler {
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", roadID);
 						record2.put("STATUS", "OK");
+						
 						// Also output the lane information for computing the co-simulation area
 //						ArrayList<Object> centerLines = new ArrayList<Object>();
 //						for(Lane l: r.getLanes()) {
@@ -436,7 +438,7 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		return jsonAns;
     }
-	
+    
 	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) { 
@@ -446,56 +448,54 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 	    	try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeTranRoadIDXY>> collectionType = new TypeToken<Collection<VehIDVehTypeTranRoadIDXY>>() {
+				TypeToken<Collection<VehIDVehTypeTranBearingXY>> collectionType = new TypeToken<Collection<VehIDVehTypeTranBearingXY>>() {
 				};
-				Collection<VehIDVehTypeTranRoadIDXY> vehIDVehTypeTranRoadIDXYDists = gson
+				Collection<VehIDVehTypeTranBearingXY> vehIDVehTypeTranBearingXYs = gson
 						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 
-				for (VehIDVehTypeTranRoadIDXY vehIDVehTypeTranRoadIDXYDist : vehIDVehTypeTranRoadIDXYDists) {
+				for (VehIDVehTypeTranBearingXY vehIDVehTypeTranBearingXY : vehIDVehTypeTranBearingXYs) {
 					// Get data
 					Vehicle veh = null;
-					if (vehIDVehTypeTranRoadIDXYDist.vehType) {
-						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
+					if (vehIDVehTypeTranBearingXY.vehType) {
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranBearingXY.vehID);
 					} else {
-						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranRoadIDXYDist.vehID);
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranBearingXY.vehID);
 					}
 
 					if (veh != null) {
-						Road road = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeTranRoadIDXYDist.roadID);
-						double x = vehIDVehTypeTranRoadIDXYDist.x;
-						double y = vehIDVehTypeTranRoadIDXYDist.y;
-						if (road != null && veh != null) {
-							// Transform coordinates if needed
-							if (vehIDVehTypeTranRoadIDXYDist.transformCoord) {
-								Coordinate coord = new Coordinate();
-								coord.x = x;
-								coord.y = y;
-								coord.z = 0;
-								try {
-									JTS.transform(coord, coord,
-											SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-									x = coord.x;
-									y = coord.y;
-								} catch (TransformException e) {
-									ContextCreator.logger
-											.error("Coordinates transformation failed, input x: " + x + " y:" + y);
-									e.printStackTrace();
-								}
-							}
-
-							// Update its location in the target link and target lane
-							if (road.teleportVehicle(veh, x, y)) {
-								HashMap<String, Object> record2 = new HashMap<String, Object>();
-								record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
-								record2.put("STATUS", "OK");
-								jsonData.add(record2);
-								continue;
+						double x = vehIDVehTypeTranBearingXY.x;
+						double y = vehIDVehTypeTranBearingXY.y;
+						// Transform coordinates if needed
+						if (vehIDVehTypeTranBearingXY.transformCoord) {
+							Coordinate coord = new Coordinate();
+							coord.x = x;
+							coord.y = y;
+							coord.z = 0;
+							try {
+								JTS.transform(coord, coord,
+										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+								x = coord.x;
+								y = coord.y;
+							} catch (TransformException e) {
+								ContextCreator.logger
+										.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+								e.printStackTrace();
 							}
 						}
+						
+						veh.setCurrentCoord(new Coordinate(x, y));
+						veh.setBearing(vehIDVehTypeTranBearingXY.bearing);
+						veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
+
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehIDVehTypeTranBearingXY.vehID);
+						record2.put("STATUS", "OK");
+						jsonData.add(record2);
+						continue;
 					}
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("ID", vehIDVehTypeTranRoadIDXYDist.vehID);
+					record2.put("ID", vehIDVehTypeTranBearingXY.vehID);
 					record2.put("STATUS", "KO");
 					jsonData.add(record2);
 				}
@@ -607,6 +607,113 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+	
+	// TODO: implement this, the input is veh ID, veh type, vehicle x, y coordinate
+	// Find the cloest lane end coords in coSim Road, teleport the vehicle to the lane in METS-R SIM
+	// Trigger enterNextRoad and check whether it succeed or not
+	private HashMap<String, Object> exitCoSimRegion(JSONObject jsonMsg){
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) { 
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+	    	try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDVehTypeTranXY>> collectionType = new TypeToken<Collection<VehIDVehTypeTranXY>>() {
+				};
+				Collection<VehIDVehTypeTranXY> vehIDVehTypeTranXYs = gson
+						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+
+				for (VehIDVehTypeTranXY vehIDVehTypeTranXY : vehIDVehTypeTranXYs) {
+					// Get data
+					Vehicle veh = null;
+					if (vehIDVehTypeTranXY.vehType) {
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranXY.vehID);
+					} else {
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranXY.vehID);
+					}
+
+					if (veh != null) {
+						double x = vehIDVehTypeTranXY.x;
+						double y = vehIDVehTypeTranXY.y;
+						// Transform coordinates if needed
+						if (vehIDVehTypeTranXY.transformCoord) {
+							Coordinate coord = new Coordinate();
+							coord.x = x;
+							coord.y = y;
+							coord.z = 0;
+							try {
+								JTS.transform(coord, coord,
+										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+								x = coord.x;
+								y = coord.y;
+							} catch (TransformException e) {
+								ContextCreator.logger
+										.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+								e.printStackTrace();
+							}
+						}
+						
+						// Find the closest road
+						Coordinate coord2 = new Coordinate();
+						coord2.x = x;
+						coord2.y = y;
+						Road road = ContextCreator.getCityContext().findRoadAtCoordinates(coord2, true);
+						Lane lane = null;
+						if(road != null) {
+							// Find the current lane
+							double minDist = Double.MAX_VALUE;
+							for(Lane l: road.getLanes()) {
+								double currentDist = ContextCreator.getCityContext().getDistance(l.getEndCoord(), coord2);
+								if( currentDist < minDist) {
+									minDist = currentDist;
+									lane = l;
+								}
+							}
+							if(lane != null) {
+								// Insert vehicle to the end of lane
+								veh.removeFromCurrentLane();
+								veh.removeFromCurrentRoad();
+								veh.appendToRoad(road);
+								// Reroute
+								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh enter the next road in its planned route
+								{
+									veh.setNextRoad();
+								}
+								else { // Case 3: veh enter the road not in its planned route
+									veh.rerouteAndSetNextRoad();
+								}
+								
+								veh.teleportToLane(lane, 0);
+								// Enter next road
+								if(veh.changeRoad()) {
+									HashMap<String, Object> record2 = new HashMap<String, Object>();
+						    		record2.put("ID", vehIDVehTypeTranXY.vehID);
+						    		record2.put("STATUS", "OK");
+									jsonData.add(record2);
+									continue;
+								}
+							}
+						}
+					}
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", vehIDVehTypeTranXY.vehID);
+					record2.put("STATUS", "KO");
+					jsonData.add(record2);
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;	
 	}
 	
 	// Update sensorType of a vehicle

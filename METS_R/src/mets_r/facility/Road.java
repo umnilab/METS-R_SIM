@@ -226,42 +226,6 @@ public class Road {
 	}
 	
 	/**
-	 * Teleport vehicle for co-simulation
-	 * 
-	 * This function would not check the collision issue 
-	 * since it is used for synchronize the vehicle information
-	 * from other sources and the "collision" could just be
-	 * caused by the order of vehicle updates.
-	 */
-	public boolean teleportVehicle(Vehicle veh, double x, double y) { 
-		if (this.getControlType() == Road.COSIM) {// Case 1, veh's road is this road and this lane, (important) will ignore collision issue and change its loc
-			if (veh.getRoad() == this) {
-				veh.setCurrentCoord(new Coordinate(x, y));
-				veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
-				return true;
-			}
-			else {
-				veh.removeFromCurrentLane();
-				veh.removeFromCurrentRoad();
-				veh.appendToRoad(this);
-				if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
-				{
-					veh.setNextRoad();
-				}
-				else { // Case 3: veh enter the road not in its planned route
-					veh.rerouteAndSetNextRoad();
-				}
-				veh.setCurrentCoord(new Coordinate(x, y));
-				veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
-				return true;
-			}
-		}
-		else {
-			return false;
-		}
-	}
-	
-	/**
 	 * Teleport vehicle for trace-based replay
 	 * 
 	 * This function would not check the collision issue 
