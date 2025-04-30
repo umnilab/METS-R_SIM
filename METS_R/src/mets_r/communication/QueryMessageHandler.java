@@ -137,8 +137,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("ID", vid);
 					record2.put("v_type", vtype);
 					record2.put("coord_map",v.getRecentCoordMap(5, true));
-					Road nr = v.getNextRoad();
-					if(nr != null) record2.put("next_road", nr.getOrigID());
+					record2.put("route", v.getRoute());
 					jsonData.add(record2);
 				}
 				v = nextVehicle;

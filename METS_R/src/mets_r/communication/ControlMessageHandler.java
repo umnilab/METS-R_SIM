@@ -716,6 +716,55 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;	
 	}
 	
+	// Reach dest, teleport the vehicle to the destination, used when 
+	// the destination road belongs to the co-simulation road
+	private HashMap<String, Object> setReachDest(JSONObject jsonMsg){
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDVehType>> collectionType = new TypeToken<Collection<VehIDVehType>>() {};
+			    Collection<VehIDVehType> vehIDVehTypes = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			    ArrayList<Object> jsonData = new ArrayList<Object>();
+			    
+			    for(VehIDVehType vehIDVehType: vehIDVehTypes) {
+			    	Vehicle veh = null;
+			    	if(vehIDVehType.vehType) { // True: private vehicles
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehType.vehID);
+					}
+					else {
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehType.vehID);
+					}
+			    	if(veh != null) {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		veh.reachDest(); 
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
+			    	}
+			    	else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDVehType.vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+			    }
+			    jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+		    
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
 	// Update sensorType of a vehicle
 	private HashMap<String, Object> updateVehicleSensorType(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();

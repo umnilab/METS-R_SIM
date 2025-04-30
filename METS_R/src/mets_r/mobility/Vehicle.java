@@ -2451,10 +2451,10 @@ public class Vehicle {
 	/**
 	 * Get current route
 	 */
-	public List<Integer> getRoute(){
-		List<Integer> res = new ArrayList<Integer>();
+	public List<String> getRoute(){
+		List<String> res = new ArrayList<String>();
 		for(Road r: roadPath) {
-			res.add(r.getID());
+			res.add(r.getOrigID());
 		}
 		return res;
 	}
