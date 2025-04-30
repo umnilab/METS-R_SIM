@@ -57,6 +57,7 @@ public class ControlMessageHandler extends MessageHandler {
         messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
         messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
         messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
+        messageHandlers.put("reachDest", this::reachDest);
 //        messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
 //        messageHandlers.put("updateBusRoute", this::updateBusRoute);
 //        messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
@@ -718,7 +719,7 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	// Reach dest, teleport the vehicle to the destination, used when 
 	// the destination road belongs to the co-simulation road
-	private HashMap<String, Object> setReachDest(JSONObject jsonMsg){
+	private HashMap<String, Object> reachDest(JSONObject jsonMsg){
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
