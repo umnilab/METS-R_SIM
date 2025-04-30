@@ -4,6 +4,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.data.input.SumoXML;
 import mets_r.facility.Junction;
 import mets_r.facility.Lane;
 import mets_r.facility.Road;
@@ -2477,14 +2478,33 @@ public class Vehicle {
 	/**
 	 * Return the list of the most recent (up to numPt) to be visited coordinates
 	 */
-	public ArrayList<ArrayList<Double>> getRecentCoordMap(int numPt) {
+	public ArrayList<ArrayList<Double>> getRecentCoordMap(int numPt, boolean transformCoord) {
 		ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
-		for(Coordinate coord: this.coordMap) {
-			ArrayList<Double> xy = new ArrayList<Double>();
-			xy.add(coord.x);
-			xy.add(coord.y);
-			res.add(xy);
-			if(res.size() >= numPt) break;
+		if(transformCoord) {
+			for(Coordinate coord: this.coordMap) {
+				ArrayList<Double> xy = new ArrayList<Double>();
+				try {
+					JTS.transform(coord, coord,
+							SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					xy.add(coord.x);
+					xy.add(coord.y);
+				} catch (TransformException e) {
+					ContextCreator.logger
+							.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
+					e.printStackTrace();
+				}
+				res.add(xy);
+				if(res.size() >= numPt) break;
+			}
+		}
+		else {
+			for(Coordinate coord: this.coordMap) {
+				ArrayList<Double> xy = new ArrayList<Double>();
+				xy.add(coord.x);
+				xy.add(coord.y);
+				res.add(xy);
+				if(res.size() >= numPt) break;
+			}
 		}
 		return res;
 	}

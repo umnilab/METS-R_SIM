@@ -44,6 +44,7 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
 		messageHandlers.put("controlVeh", this::controlVeh);
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
+		messageHandlers.put("exitCoSimRegion", this::exitCoSimRegion);
         messageHandlers.put("scheduleBus", this::scheduleBus);
         messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
         messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
@@ -609,7 +610,6 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// TODO: implement this, the input is veh ID, veh type, vehicle x, y coordinate
 	// Find the cloest lane end coords in coSim Road, teleport the vehicle to the lane in METS-R SIM
 	// Trigger enterNextRoad and check whether it succeed or not
 	private HashMap<String, Object> exitCoSimRegion(JSONObject jsonMsg){

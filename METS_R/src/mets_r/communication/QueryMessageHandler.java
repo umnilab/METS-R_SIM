@@ -136,7 +136,7 @@ public class QueryMessageHandler extends MessageHandler {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", vid);
 					record2.put("v_type", vtype);
-					record2.put("coord_map",v.getRecentCoordMap(5));
+					record2.put("coord_map",v.getRecentCoordMap(5, true));
 					Road nr = v.getNextRoad();
 					if(nr != null) record2.put("next_road", nr.getOrigID());
 					jsonData.add(record2);
