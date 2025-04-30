@@ -2485,7 +2485,7 @@ public class Vehicle {
 				ArrayList<Double> xy = new ArrayList<Double>();
 				try {
 					JTS.transform(coord, coord,
-							SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+							SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
 					xy.add(coord.x);
 					xy.add(coord.y);
 				} catch (TransformException e) {
