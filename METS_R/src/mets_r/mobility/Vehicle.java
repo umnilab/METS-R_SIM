@@ -546,9 +546,9 @@ public class Vehicle {
 			this.distance_ = this.distance_ + plane.getLength();
 			
 			// Update bearing to be the directions of the first two consecutive coord in coordMap
-			if(this.coordMap.size() >= 2) {
-				Coordinate c1 = this.coordMap.get(0);
-			    Coordinate c2 = this.coordMap.get(1);
+			if(this.coordMap.size() >= 1) {
+				Coordinate c1 = this.getCurrentCoord();
+			    Coordinate c2 = this.coordMap.get(0);
 			    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
 			    double[] returnVals = new double[2];
 			    distance2(c1, c2, returnVals);
@@ -560,7 +560,7 @@ public class Vehicle {
 			double accDist = plane.getLength();
 			for (int i = 0; i < coords.size() - 1; i++) {
 				accDist -= distance(coords.get(i), coords.get(i+1));
-				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_, add noise to avoid numerical issue
+				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
 					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
 						coordMap.add(coords.get(j));
 					}
@@ -1192,7 +1192,6 @@ public class Vehicle {
 			// Check if there is enough space in the next road to change to
 			int tickcount = ContextCreator.getCurrentTick();
 			coordMap.clear();
-			coordMap.add(this.getCurrentCoord());
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			boolean movable = false;
 			if(this.nextRoad_.getID() == this.roadPath.get(1).getID()) { // nextRoad data is consistent
