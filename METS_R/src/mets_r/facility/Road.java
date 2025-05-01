@@ -3,8 +3,6 @@ package mets_r.facility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -156,7 +154,7 @@ public class Road {
 		for (int i = 0; i < curr_size; i++) {
 			Vehicle v = this.departureVehicleQueueHead();
 			int departTime = v.getDepTime();
-			if (v.closeToRoad(this) && tickcount >= departTime) {
+			if (tickcount >= departTime) {
 				// check whether the origin is the destination
 				if (v.getOriginCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
 					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
@@ -166,21 +164,6 @@ public class Road {
 				} else {
 					break; // Vehicle cannot enter the network
 				}
-			} else {
-				// Iterate all element in the TreeMap
-				Set<Integer> keys = (Set<Integer>) this.departureVehMap.keySet();
-				for (Iterator<Integer> it = (Iterator<Integer>) keys.iterator(); it.hasNext();) {
-					int key =  it.next();
-					ArrayList<Vehicle> temList = this.departureVehMap.get(key);
-					for (Vehicle pv : temList) {
-						if (tickcount >= pv.getDepTime()) {
-							pv.primitiveMove(this);
-						} else {
-							break;
-						}
-					}
-				}
-				break;
 			}
 		}
 		

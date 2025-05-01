@@ -75,7 +75,6 @@ public class Vehicle {
 	private double maxAcceleration_; // in meter/sec2
 	private double normalDeceleration_; // in meter/sec2
 	private double maxDeceleration_; // in meter/sec2
-	private double travelPerTurn;
 	private int deptime;
 	private int endTime;
 	private int originID = -1;
@@ -149,7 +148,6 @@ public class Vehicle {
 		this.activityPlan = new ArrayList<Plan>(); // Empty plan
 
 		this.length = GlobalVariables.DEFAULT_VEHICLE_LENGTH;
-		this.travelPerTurn = GlobalVariables.TRAVEL_PER_TURN;
 		this.maxAcceleration_ = 3.0;
 		this.maxDeceleration_ = -4.0;
 		this.normalDeceleration_ = -0.5;
@@ -1132,29 +1130,6 @@ public class Vehicle {
 			}
 		}
 		return lastStepMove;
-	}
-	
-	/**
-	 * Moving vehicle to its closest road.
-	 */
-	public void primitiveMove(Road road) {
-		Coordinate currentCoord = this.getCurrentCoord();
-		Coordinate target = road.getStartCoord();
-		if (this.isReachDest) {
-			return;
-		}
-
-		double[] distAndAngle = new double[2];
-		double distToTarget;
-		distToTarget = this.distance2(currentCoord, target, distAndAngle);
-
-		if (distToTarget <= travelPerTurn) { // Include the equal case, which is important
-			this.setCurrentCoord(target);
-		} else {
-			double distToTravel = travelPerTurn;
-			move2(currentCoord, target, distToTarget, distToTravel);
-		}
-		return;
 	}
 	
 	/**
