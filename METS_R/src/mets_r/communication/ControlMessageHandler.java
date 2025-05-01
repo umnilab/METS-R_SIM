@@ -658,14 +658,12 @@ public class ControlMessageHandler extends MessageHandler {
 							}
 						}
 						
-						// TODO： add contextCreator.logger.infos to find out which part is raising error.
 						// Find the closest road
 						Coordinate coord2 = new Coordinate();
 						coord2.x = x;
 						coord2.y = y;
 						Road road = ContextCreator.getCityContext().findRoadAtCoordinates(coord2, true);
 						Lane lane = null;
-						ContextCreator.logger.info("HERE1");
 						if(road != null) {
 							// Find the current lane
 							double minDist = Double.MAX_VALUE;
@@ -676,18 +674,15 @@ public class ControlMessageHandler extends MessageHandler {
 									lane = l;
 								}
 							}
-							ContextCreator.logger.info("HERE2");
 							if(lane != null) {
-								ContextCreator.logger.info("HERE3");
 								// Insert vehicle to the end of lane
 								veh.removeFromCurrentLane();
 								veh.removeFromCurrentRoad();
 								veh.appendToRoad(road);
-								ContextCreator.logger.info("HERE4");
 								// Reroute
 								ContextCreator.logger.info("Next road" + veh.getNextRoad());
-								ContextCreator.logger.info("THIS road" + road.getID());
-								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh enter the next road in its planned route
+								ContextCreator.logger.info("This road" + road.getID());
+								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh entered the next road in its planned route
 								{
 									ContextCreator.logger.info("HERE4.5");
 									veh.setNextRoad();
