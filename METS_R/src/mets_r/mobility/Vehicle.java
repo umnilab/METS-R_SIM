@@ -543,17 +543,6 @@ public class Vehicle {
 		if (plane != null) {
 			this.distance_ = this.distance_ + plane.getLength();
 			
-			// Update bearing to be the directions of the first two consecutive coord in coordMap
-			if(this.coordMap.size() >= 1) {
-				Coordinate c1 = this.getCurrentCoord();
-			    Coordinate c2 = this.coordMap.get(0);
-			    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
-			    double[] returnVals = new double[2];
-			    distance2(c1, c2, returnVals);
-			    
-			    this.bearing_ = returnVals[1];
-			}
-			
 			ArrayList<Coordinate> coords = plane.getCoords();
 			double accDist = plane.getLength();
 			for (int i = 0; i < coords.size() - 1; i++) {
@@ -567,6 +556,18 @@ public class Vehicle {
 			}
 			if (coordMap.size() == 0) {
 				ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
+			}
+			else {
+				// Update bearing to be the directions of the first two consecutive coord in coordMap
+				if(this.coordMap.size() >= 1) {
+					Coordinate c1 = this.getCurrentCoord();
+				    Coordinate c2 = this.coordMap.get(0);
+				    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
+				    double[] returnVals = new double[2];
+				    distance2(c1, c2, returnVals);
+				    
+				    this.bearing_ = returnVals[1];
+				}
 			}
 			this.insertToLane(plane);
 			this.nextLane_ = null;
@@ -590,10 +591,6 @@ public class Vehicle {
 		
 		Vehicle toCheckVeh = plane.firstVehicle();
 		while (toCheckVeh != null) { // find where to insert the veh
-			 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
-			 if(toCheckVeh.getDistanceToNextJunction() == this.distance_) {
-				 this.distance_ = this.distance_ + 0.001; // edge case add a tiny value to the distance of the to-insert vehicle
-			 }
 			 if(toCheckVeh.getDistanceToNextJunction() < this.distance_) {
 				 leadVehicle = toCheckVeh;
 				 toCheckVeh = toCheckVeh.trailing();
