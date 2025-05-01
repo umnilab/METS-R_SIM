@@ -544,6 +544,18 @@ public class Vehicle {
 	public void appendToLane(Lane plane) {
 		if (plane != null) {
 			this.distance_ = this.distance_ + plane.getLength();
+			
+			// Update bearing to be the directions of the first two consecutive coord in coordMap
+			if(this.coordMap.size() >= 2) {
+				Coordinate c1 = this.coordMap.get(0);
+			    Coordinate c2 = this.coordMap.get(1);
+			    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
+			    double[] returnVals = new double[2];
+			    distance2(c1, c2, returnVals);
+			    
+			    this.bearing_ = returnVals[1];
+			}
+			
 			ArrayList<Coordinate> coords = plane.getCoords();
 			double accDist = plane.getLength();
 			for (int i = 0; i < coords.size() - 1; i++) {
