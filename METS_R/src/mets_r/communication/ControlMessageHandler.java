@@ -679,12 +679,12 @@ public class ControlMessageHandler extends MessageHandler {
 								veh.removeFromCurrentLane();
 								veh.removeFromCurrentRoad();
 								veh.appendToRoad(road);
+								ContextCreator.logger.info("HERE3");
+								veh.teleportToLane(lane, 0);
+								ContextCreator.logger.info("HERE4");
 								// Reroute
-								ContextCreator.logger.info("Next road" + veh.getNextRoad());
-								ContextCreator.logger.info("This road" + road.getID());
 								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh entered the next road in its planned route
 								{
-									ContextCreator.logger.info("HERE4.5");
 									veh.setNextRoad();
 								}
 								else { // Case 3: veh enter the road not in its planned route
@@ -693,10 +693,7 @@ public class ControlMessageHandler extends MessageHandler {
 								}
 								
 								ContextCreator.logger.info("HERE5");
-								
-								veh.teleportToLane(lane, 0);
-								
-								ContextCreator.logger.info("HERE6");
+							
 								// Enter next road
 								if(veh.changeRoad()) {
 									HashMap<String, Object> record2 = new HashMap<String, Object>();

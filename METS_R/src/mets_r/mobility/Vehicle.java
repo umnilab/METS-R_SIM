@@ -433,20 +433,15 @@ public class Vehicle {
 	 * Set the next to-visit road of this vehicle
 	 */
 	public void setNextRoad() {
-		ContextCreator.logger.info("At origin: " + this.atOrigin);
 		if (!this.atOrigin) { // Not at origin
 			// Special case, the roadPath is null which means the origin
 			// and destination are at the same link
-			ContextCreator.logger.info("Road path: " + this.roadPath);
 			if (this.roadPath == null) {
 				this.nextRoad_ = null;
 				return;
 			}
-			ContextCreator.logger.info("Before remove shadow count");
 			this.removeShadowCount(this.roadPath.get(0));
 			this.roadPath.remove(0);
-			ContextCreator.logger.info("THIS.ROAD " + this.road);
-			ContextCreator.logger.info("DEST.ROAD " + this.getDestRoad());
 			if (this.road.getID() == this.getDestRoad() || this.roadPath.size() <= 1) {
 				this.nextRoad_ = null;
 			} else {
