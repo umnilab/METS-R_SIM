@@ -679,20 +679,15 @@ public class ControlMessageHandler extends MessageHandler {
 								veh.removeFromCurrentLane();
 								veh.removeFromCurrentRoad();
 								veh.appendToRoad(road);
-								ContextCreator.logger.info("HERE3");
 								veh.teleportToLane(lane, 0);
-								ContextCreator.logger.info("HERE4");
 								// Reroute
 								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh entered the next road in its planned route
 								{
 									veh.setNextRoad();
 								}
 								else { // Case 3: veh enter the road not in its planned route
-									ContextCreator.logger.info("HERE4.6");
 									veh.rerouteAndSetNextRoad();
 								}
-								
-								ContextCreator.logger.info("HERE5");
 							
 								// Enter next road
 								if(veh.changeRoad()) {
