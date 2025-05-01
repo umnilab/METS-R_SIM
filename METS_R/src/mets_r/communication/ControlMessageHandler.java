@@ -700,7 +700,6 @@ public class ControlMessageHandler extends MessageHandler {
 							}
 						}
 					}
-					ContextCreator.logger.info("HERE7");
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", vehIDVehTypeTranXY.vehID);
 					record2.put("STATUS", "KO");
