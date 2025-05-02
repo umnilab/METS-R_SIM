@@ -2465,18 +2465,24 @@ public class Vehicle {
 		ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
 		if(transformCoord) {
 			for(Coordinate coord: this.coordMap) {
-				ArrayList<Double> xy = new ArrayList<Double>();
-				try {
-					JTS.transform(coord, coord,
-							SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
-					xy.add(coord.x);
-					xy.add(coord.y);
-				} catch (TransformException e) {
-					ContextCreator.logger
-							.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
-					e.printStackTrace();
+				if(coord != null) {
+					Coordinate coord2 = new Coordinate();
+					coord2.x = coord.x;
+					coord2.y = coord.y;
+					coord2.z = coord.z;
+					ArrayList<Double> xy = new ArrayList<Double>();
+					try {
+						JTS.transform(coord2, coord2,
+								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
+						xy.add(coord2.x);
+						xy.add(coord2.y);
+					} catch (TransformException e) {
+						ContextCreator.logger
+								.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
+						e.printStackTrace();
+					}
+					res.add(xy);
 				}
-				res.add(xy);
 				if(res.size() >= numPt) break;
 			}
 		}
