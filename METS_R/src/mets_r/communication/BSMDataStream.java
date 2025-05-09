@@ -45,9 +45,8 @@ public class BSMDataStream {
 	public double true_y; // for deciding who will see this message and should never be used in operation!
 
 
-	public BSMDataStream(Vehicle vehicle, Coordinate coordinate, int type) {
-		// TODO: add sensor error here
-		this(vehicle.getID(), 3, coordinate.x, coordinate.y, 0, 42, 42, false, false, false, false, false,
+	public BSMDataStream(int vid, Vehicle vehicle, Coordinate coordinate, int type) {
+		this(vid, 3, coordinate.x, coordinate.y, 0, 9, 9, false, false, false, false, false,
 				2.0, 2.0, 0, vehicle.getBearing(), vehicle.currentSpeed(), 0, 0, 0.5, 3, 18,
 				ContextCreator.getCurrentTick(), type, coordinate.x, coordinate.y);
 	}

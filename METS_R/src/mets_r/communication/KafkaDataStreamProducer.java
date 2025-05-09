@@ -11,6 +11,7 @@ import org.apache.kafka.clients.producer.*;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
+import mets_r.ContextCreator;
 import mets_r.mobility.Vehicle;
 
 
@@ -32,7 +33,13 @@ public class KafkaDataStreamProducer{
 	}
 	
 	public void produceBSM(Vehicle vehicle, Coordinate coordinate, int type) {
-		BSMDataStream myMessage = new BSMDataStream(vehicle, coordinate, type);
+		int vid;
+	    if (vehicle.getVehicleClass() == Vehicle.EV || vehicle.getVehicleClass() == Vehicle.GV) {
+	        vid = ContextCreator.getVehicleContext().getPrivateVID(vehicle.getID());
+	    } else {
+	        vid = vehicle.getID();
+	    }
+		BSMDataStream myMessage = new BSMDataStream(vid, vehicle, coordinate, type);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
 		Callable<String> sender = ()->{
