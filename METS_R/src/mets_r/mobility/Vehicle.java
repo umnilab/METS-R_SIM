@@ -473,6 +473,38 @@ public class Vehicle {
 		}
 	}
 	
+	
+	/**
+	 * Update route based on list of roadIDs, return false if the route start and end links are inconsistent 
+	 */
+	public boolean updateRoute(List<String> route) {
+		// Sanity check
+		if(this.road.getOrigID().equals(route.get(0)) && this.destRoad_.getOrigID().equals(route.get(route.size() - 1))){
+			List<Road> newPath = new ArrayList<Road>();
+			
+			for(String rid: route) {
+				Road r = ContextCreator.getCityContext().findRoadWithOrigID(rid);
+				if(r != null) {
+					newPath.add(r);
+				}
+				else {
+					return false;
+				}
+			}
+			// Vehicle departured
+			this.atOrigin = false;
+			this.roadPath = newPath;
+			this.nextRoad_ = newPath.get(1);
+			this.setShadowImpact();
+			this.assignNextLane();
+			return true;
+		}
+		else {
+			return false;
+		}
+		
+	}
+	
 	/**
 	 * Get the next to-visit road of this vehicle
 	 */
@@ -1843,8 +1875,21 @@ public class Vehicle {
 					return;
 				}
 			}
+			
+			// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
+			// Raise a warning and call the routing function to complete the missing route
+			ContextCreator.logger.warn("No connection between curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + "fixing now");
+			List<Road> patchPath = RouteContext.shortestPathRoute(this.getRoad(), this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
+			if (patchPath != null && patchPath.size() > 2) {
+				List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
+				this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
+				this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
+				this.setShadowImpact();
+				this.assignNextLane(); // try to get next lane again 
+				return;
+			}
 		}
-		ContextCreator.logger.error("Cannot assign next lane form the curLane " + curLane + " curRoad " + this.getRoad() + " nextRoad" + this.nextRoad_ + " roadPath" + this.roadPath);
+		ContextCreator.logger.error("Cannot assign next lane form the curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + " roadPath" + this.roadPath);
 	}
 
 	/**

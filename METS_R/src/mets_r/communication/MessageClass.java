@@ -3,6 +3,7 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.List;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -168,7 +169,58 @@ public class MessageClass{
     		this.num = num;
     	}
     }
+    
+    class OrigRoadDestRoad {
+        String orig;
+        String dest;
+
+        // Constructor
+        public OrigRoadDestRoad(String orig, String dest) {
+            this.orig = orig;
+            this.dest = dest;
+        }
+    }
+    
+    class OriginCoordDestCoordTransform {
+        double origX;
+        double origY;
+        double destX;
+        double destY;
+        boolean transformCoord;
+
+        // Constructor
+        public OriginCoordDestCoordTransform(double origX, double origY, double destX, double destY, boolean transformCoord) {
+            this.origX = origX;
+            this.origY = origY;
+            this.destX = destX;
+            this.destY = destY;
+            this.transformCoord = transformCoord;
+        }
+    }
+    
+    class VehIDVehTypeRoute{
+    	int vehID;
+	    boolean vehType;
+	    List<String> route;
 	
+	    // Constructor
+	    public VehIDVehTypeRoute(int vehID, boolean vehType, List<String> route) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.route = route;
+	    }
+    }
+    
+    class RoadIDWeight{
+    	String roadID;
+        double weight;
+        
+        // Constructor
+	    public RoadIDWeight(String roadID, double weight) {
+	        this.roadID = roadID;
+	        this.weight = weight;
+	    }
+    }
 	
 	public static void main(String[] args) {
 		Gson gson = new Gson();
@@ -295,5 +347,30 @@ public class MessageClass{
         TypeToken<Collection<OrigRoadDestRoadNum>> collectionType10 = new TypeToken<Collection<OrigRoadDestRoadNum>>() {};
         Collection<OrigRoadDestRoadNum> zoneIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType10.getType());
         System.out.println("Deserialized ZoneIDOrigRoadDestRoadNum: " + zoneIDOrigRoadDestRoadNums2);
+        
+        // OrigRoadDestRoad
+        Collection<OrigRoadDestRoad> origRoadDestRoadList = new ArrayList<OrigRoadDestRoad>();
+        origRoadDestRoadList.add(messageClass.new OrigRoadDestRoad("Avenue1", "Boulevard1"));
+        origRoadDestRoadList.add(messageClass.new OrigRoadDestRoad("StreetX", "StreetY"));
+
+        json = gson.toJson(origRoadDestRoadList);
+        System.out.println("Serialized OrigRoadDestRoad: " + json);
+
+        TypeToken<Collection<OrigRoadDestRoad>> collectionType11 = new TypeToken<Collection<OrigRoadDestRoad>>() {};
+        Collection<OrigRoadDestRoad> origRoadDestRoadList2 = gson.fromJson(json, collectionType11.getType());
+        System.out.println("Deserialized OrigRoadDestRoad: " + origRoadDestRoadList2);
+
+        // OriginCoordDestCoordTransform
+        Collection<OriginCoordDestCoordTransform> coordTransformList = new ArrayList<>();
+        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(10.5, 20.6, 30.7, 40.8, true));
+        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(50.1, 60.2, 70.3, 80.4, false));
+
+        json = gson.toJson(coordTransformList);
+        System.out.println("Serialized OriginCoordDestCoordTransform: " + json);
+
+        TypeToken<Collection<OriginCoordDestCoordTransform>> collectionType12 = new TypeToken<Collection<OriginCoordDestCoordTransform>>() {};
+        Collection<OriginCoordDestCoordTransform> coordTransformList2 = gson.fromJson(json, collectionType12.getType());
+        System.out.println("Deserialized OriginCoordDestCoordTransform: " + coordTransformList2);
+    
 	}
 }

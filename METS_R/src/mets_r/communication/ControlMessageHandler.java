@@ -16,17 +16,20 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
+import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.VehIDOrigDestNum;
 import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
 import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
+import mets_r.communication.MessageClass.VehIDVehTypeRoute;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
 import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXY;
 import mets_r.communication.MessageClass.VehIDVehTypeTranXY;
 import mets_r.communication.MessageClass.ZoneIDOrigDestNum;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.Lane;
+import mets_r.facility.Node;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
@@ -58,9 +61,9 @@ public class ControlMessageHandler extends MessageHandler {
         messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
         messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
         messageHandlers.put("reachDest", this::reachDest);
-//        messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
+        messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
 //        messageHandlers.put("updateBusRoute", this::updateBusRoute);
-//        messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
+        messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
 //        messageHandlers.put("updateSignal", this::updateSignal);
         
 	}
@@ -470,10 +473,7 @@ public class ControlMessageHandler extends MessageHandler {
 						double y = vehIDVehTypeTranBearingXY.y;
 						// Transform coordinates if needed
 						if (vehIDVehTypeTranBearingXY.transformCoord) {
-							Coordinate coord = new Coordinate();
-							coord.x = x;
-							coord.y = y;
-							coord.z = 0;
+							Coordinate coord = new Coordinate(x, y);
 							try {
 								JTS.transform(coord, coord,
 										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
@@ -642,10 +642,7 @@ public class ControlMessageHandler extends MessageHandler {
 						double y = vehIDVehTypeTranXY.y;
 						// Transform coordinates if needed
 						if (vehIDVehTypeTranXY.transformCoord) {
-							Coordinate coord = new Coordinate();
-							coord.x = x;
-							coord.y = y;
-							coord.z = 0;
+							Coordinate coord = new Coordinate(x, y);
 							try {
 								JTS.transform(coord, coord,
 										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
@@ -1208,7 +1205,41 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		else {
 			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<VehIDVehTypeRoute>> collectionType = new TypeToken<Collection<VehIDVehTypeRoute>>() {};
+				Collection<VehIDVehTypeRoute> vehIDVehTypeRoutes = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
+				for(VehIDVehTypeRoute vehIDVehTypeRoute: vehIDVehTypeRoutes) {
+					Vehicle veh = null;
+			    	if(vehIDVehTypeRoute.vehType) { // True: private vehicles
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeRoute.vehID);
+					}
+					else {
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeRoute.vehID);
+					}
+			    	if(veh != null) {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		if(veh.updateRoute(vehIDVehTypeRoute.route)){
+			    			record2.put("ID", vehIDVehTypeRoute.vehID);
+				    		record2.put("STATUS", "OK");
+			    		}
+			    		else {
+			    			record2.put("ID", vehIDVehTypeRoute.vehID);
+				    		record2.put("STATUS", "KO");
+			    		}
+			    		jsonData.add(record2);
+			    	}
+			    	else {
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", vehIDVehTypeRoute.vehID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
@@ -1248,7 +1279,32 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		else {
 			try {
-				
+				Gson gson = new Gson();
+				TypeToken<Collection<RoadIDWeight>> collectionType = new TypeToken<Collection<RoadIDWeight>>() {};
+			    Collection<RoadIDWeight> roadIDWeights = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			    ArrayList<Object> jsonData = new ArrayList<Object>();
+			    
+			    for(RoadIDWeight roadIDWeight: roadIDWeights) {
+			    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadIDWeight.roadID);
+			    	if(r != null) {
+			    		Node node1 = r.getUpStreamNode();
+				    	Node node2 = r.getDownStreamNode();
+				    	ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(Math.max(roadIDWeight.weight, 1e-3)); // weight cannot be negative 
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", roadIDWeight.roadID);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
+			    	}
+			    	else {
+			    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadIDWeight.roadID);
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", roadIDWeight.roadID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+			    }
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception

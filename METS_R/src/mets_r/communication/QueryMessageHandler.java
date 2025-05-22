@@ -3,7 +3,12 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
+
+import org.geotools.geometry.jts.JTS;
 import org.json.simple.JSONObject;
+import org.opengis.referencing.operation.TransformException;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
@@ -13,15 +18,18 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Node;
 import mets_r.facility.Road;
 import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.Vehicle;
+import mets_r.routing.RouteContext;
 import mets_r.communication.MessageClass.*;
 
 public class QueryMessageHandler extends MessageHandler {
+	private Random rand_route = new Random(GlobalVariables.RandomGenerator.nextInt());
 	
 	public QueryMessageHandler() {
         messageHandlers.put("vehicle", this::getVehicle);
@@ -32,9 +40,9 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("zone", this::getZone);
         messageHandlers.put("signal", this::getSignal);
         messageHandlers.put("chargingStation", this::getChargingStation);
-//        messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
-//        messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
-//        messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
+        messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
+        messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
+        messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -243,7 +251,6 @@ public class QueryMessageHandler extends MessageHandler {
 		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(id);
 				if (road != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("TYPE", "ANS_road");
 					record2.put("ID", road.getOrigID());
 					record2.put("r_type", road.getRoadType());
 					record2.put("num_veh", road.getVehicleNum());
@@ -381,15 +388,56 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getRoutesBwCoords(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			// DO something when no parameter is provided
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
 			return jsonObj;
 		}
 		try {
-			// Load the parameter
-		    ArrayList<Object> jsonData = new ArrayList<Object>();
-		    // Obtain the query results
-		    
-			jsonObj.put("DATA", jsonData);
+			Gson gson = new Gson();
+			TypeToken<Collection<OriginCoordDestCoordTransform>> collectionType = new TypeToken<Collection<OriginCoordDestCoordTransform>>() {};
+			Collection<OriginCoordDestCoordTransform> originCoordDestCoordTransforms = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			// Obtain the query results
+			for (OriginCoordDestCoordTransform originCoordDestCoordTransform: originCoordDestCoordTransforms) {
+		    	// Get orig and dest road
+				Coordinate orig = new Coordinate(originCoordDestCoordTransform.origX, originCoordDestCoordTransform.origY);
+				Coordinate dest = new Coordinate(originCoordDestCoordTransform.destX, originCoordDestCoordTransform.destY);
+				
+				// Transform coordinate if the input is from plain x y coord system
+				if(originCoordDestCoordTransform.transformCoord) {
+					try {
+						JTS.transform(orig, orig,
+								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+						JTS.transform(dest, dest,
+								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException e) {
+						ContextCreator.logger
+								.error("Coordinates transformation failed, origin x: " + orig.x + " y:" + orig.y +  "dest x:" + dest.x + " y:" + dest.y);
+						e.printStackTrace();
+					}
+				}
+				
+				if(orig!=null && dest!=null) {
+		    		// Get the list of road ID (route)
+					List<Road> roadList = RouteContext.shortestPathRoute(orig, dest, this.rand_route);
+					if(roadList != null) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						List<String>  roadIDList = new ArrayList<String>();
+						for(Road r: roadList) {
+							roadIDList.add(r.getOrigID());
+						}
+						record2.put("road_list", roadIDList);
+						jsonData.add(record2);
+					}
+					else {
+						jsonData.add("KO");
+					}
+					
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData); 
 			return jsonObj;
 		}
 		catch (Exception e) {
@@ -403,15 +451,41 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getRoutesBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			// DO something when no parameter is provided
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
 			return jsonObj;
 		}
 		try {
-			// Load the parameter
-		    ArrayList<Object> jsonData = new ArrayList<Object>();
-		    // Obtain the query results
-		    
-			jsonObj.put("DATA", jsonData);
+			Gson gson = new Gson();
+			TypeToken<Collection<OrigRoadDestRoad>> collectionType = new TypeToken<Collection<OrigRoadDestRoad>>() {};
+			Collection<OrigRoadDestRoad> origRoadDestRoads = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			// Obtain the query results
+			for (OrigRoadDestRoad origRoadDestRoad: origRoadDestRoads) {
+		    	// Get orig and dest road
+				Road origRoad = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoad.orig);
+				Road destRoad = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoad.dest);
+				if(origRoad!=null && destRoad!=null) {
+		    		// Get the list of road ID (route)
+					List<Road> roadList = RouteContext.shortestPathRoute(origRoad, destRoad, this.rand_route);
+					if(roadList != null) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						List<String>  roadIDList = new ArrayList<String>();
+						for(Road r: roadList) {
+							roadIDList.add(r.getOrigID());
+						}
+						record2.put("road_list", roadIDList);
+						jsonData.add(record2);
+					}
+					else {
+						jsonData.add("KO");
+					}
+					
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData); 
 			return jsonObj;
 		}
 		catch (Exception e) {
@@ -425,14 +499,31 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			// DO something when no parameter is provided
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
 			return jsonObj;
 		}
 		try {
-			// Load the parameter
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
-		    // Obtain the query results
-		    
+		      
+		    for(String id: IDs) {
+		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(id);
+				if (road != null) {
+					Node node1 = road.getUpStreamNode();
+			    	Node node2 = road.getDownStreamNode();
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", road.getOrigID());
+					record2.put("r_type", road.getRoadType());
+					record2.put("avg_travel_time", road.getTravelTime());
+					record2.put("length", road.getLength());
+					record2.put("weight", ContextCreator.getRoadNetwork().getEdge(node1, node2).getWeight());
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
 			jsonObj.put("DATA", jsonData);
 			return jsonObj;
 		}
