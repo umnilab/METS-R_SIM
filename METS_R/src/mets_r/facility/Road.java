@@ -92,8 +92,8 @@ public class Road {
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeHistory_ = new ConcurrentLinkedQueue<Double>();
-		this.neighboringDepartureZone = -1;
-		this.neighboringArrivalZone = -1;
+		this.neighboringDepartureZone = 0;
+		this.neighboringArrivalZone = 0;
 		this.distToArrivalZone = Double.MAX_VALUE;
 		this.distToDepartureZone = Double.MAX_VALUE;
 
@@ -225,13 +225,6 @@ public class Road {
 			veh.removeFromCurrentLane();
 			veh.removeFromCurrentRoad();
 			veh.appendToRoad(this);
-			if ((veh.getNextRoad()!=null) && (veh.getNextRoad().getID() == this.getID())) // Case 2, veh enter the next road in its planned route
-			{
-				veh.setNextRoad();
-			}
-			else { // Case 3: veh enter the road not in its planned route
-				veh.rerouteAndSetNextRoad();
-			}
 		}
 		
 		// Move veh to the x and y location

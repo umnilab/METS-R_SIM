@@ -33,7 +33,6 @@ public class TravelDemand {
 	
 	private BufferedReader privateEVTripReader;
 	private BufferedReader privateGVTripReader;
-	
 	private BufferedReader privateEVProfileReader;
 	
 	private int hour;
@@ -69,7 +68,6 @@ public class TravelDemand {
 			privateGVTripReader.readLine();
 			privateEVProfileReader.readLine();
 			
-			
 			String line = privateEVProfileReader.readLine();
 			while(line != null) {
 				String[] result = line.split(",");
@@ -102,9 +100,9 @@ public class TravelDemand {
 				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
 
 				String[] inds = OD.split(",");
-				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
+				int originInd = Integer.parseInt(inds[0].replace("(", "").trim()) + 1;
 				;
-				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
+				int destInd = Integer.parseInt(inds[1].replace(")", "").trim()) + 1;
 
 				if (!publicTravelDemand.containsKey(originInd)) {
 					publicTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
@@ -149,8 +147,8 @@ public class TravelDemand {
 		    		String[] result = line.split(",");
 		    		int vid = Integer.parseInt(result[0]);
 		    		int time_ind = Integer.parseInt(result[1]);
-		    		int origin = Integer.parseInt(result[2]);
-		    		int dest = Integer.parseInt(result[3]);
+		    		int origin = Integer.parseInt(result[2]) + 1;
+		    		int dest = Integer.parseInt(result[3]) + 1;
 		    		
 		    		// add it to the privateEVTravelDemand
 		    		if(!privateEVTravelDemand.containsKey(time_ind)) {
@@ -175,8 +173,8 @@ public class TravelDemand {
 		    		String[] result = line.split(",");
 		    		int vid = Integer.parseInt(result[0]);
 		    		int time_ind = Integer.parseInt(result[1]);
-		    		int origin = Integer.parseInt(result[2]);
-		    		int dest = Integer.parseInt(result[3]);
+		    		int origin = Integer.parseInt(result[2]) + 1;
+		    		int dest = Integer.parseInt(result[3]) + 1;
 		    		
 		    		// add it to the privateEVTravelDemand
 		    		if(!privateGVTravelDemand.containsKey(time_ind)) {

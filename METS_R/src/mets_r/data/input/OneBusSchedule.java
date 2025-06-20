@@ -4,7 +4,7 @@ import java.util.ArrayList;
 
 public class OneBusSchedule {
 	public Integer routeID;
-	public ArrayList<Integer> busRoute;
+	public ArrayList<Integer> busRoute; // List of zone ID
 	public ArrayList<Integer> departureTime;
 
 	public OneBusSchedule(int routeID, ArrayList<Integer> busRoute, int departureTime) {

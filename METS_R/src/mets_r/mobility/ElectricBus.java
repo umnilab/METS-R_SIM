@@ -48,7 +48,6 @@ public class ElectricBus extends ElectricVehicle {
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
 	private double avgPersonMass_; // average mass of a person in lbs
-	private double mass_; // mass of the vehicle (consider passengers' weight) in kg for energy calculation
 	private double mass; // mass of the vehicle in kg
 	
 	/* Public variables */
@@ -62,6 +61,7 @@ public class ElectricBus extends ElectricVehicle {
 	// Constructor
 	public ElectricBus(int routeID, ArrayList<Integer> route, ArrayList<Integer> departureTime) {
 		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
+		initializeEVFields(GlobalVariables.BUS_BATTERY, 18000, 666, GlobalVariables.BUS_RECHARGE_LEVEL_LOW, GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);
 		this.routeID = routeID;
 		this.busStop = route;
 		this.stopBus = new Hashtable<Integer, Integer>();
@@ -80,14 +80,7 @@ public class ElectricBus extends ElectricVehicle {
 		this.passNum = 0;
 		this.nextStop = Math.min(1, this.busStop.size() - 1);
 		this.numSeat = 40;
-		this.batteryCapacity = GlobalVariables.BUS_BATTERY;
-		this.batteryLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * this.batteryCapacity
-				+this.rand.nextDouble() * (1 - GlobalVariables.BUS_RECHARGE_LEVEL_LOW) * this.batteryCapacity; // unit:kWh
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_LOW * this.batteryCapacity;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.BUS_RECHARGE_LEVEL_HIGH *this.batteryCapacity;
-		this.mass = 18000.0; // the weight of bus is 18t.
-		this.mass_ = mass * 1.05;
-		this.avgPersonMass_ = 180.0;
+		this.avgPersonMass_ = 60.0;
 	}
 
 	// UpdateBatteryLevel
@@ -99,30 +92,13 @@ public class ElectricBus extends ElectricVehicle {
 			totalConsume += tickEnergy;
 			linkConsume += tickEnergy;
 			tripConsume += tickEnergy;
-			batteryLevel_ -= tickEnergy;
+			batteryLevel -= tickEnergy;
 		}
 	}
 	
 	@Override
 	public int decideChargerType() {
 		return ChargingStation.BUS;
-	}
-	
-	@Override
-	public void goCharging() {
-		int current_dest_zone = this.getDestID();
-		int current_dest_road = this.getDestRoad();
-		this.onChargingRoute_ = true;
-		
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(), this.decideChargerType());
-		this.addPlan(cs.getID(), cs.getClosestRoad(true), (int) ContextCreator.getNextTick()); // instantly go to
-																								// charging station
-		this.setNextPlan();
-		this.addPlan(current_dest_zone, current_dest_road, (int) ContextCreator.getNextTick()); // Follow the old
-																									// schedule
-		this.setState(Vehicle.CHARGING_TRIP);
-		this.departure();
-		ContextCreator.logger.debug("Bus " + this.getID() + " is on route to charging station");
 	}
 	
 	// The setReachDest() function applies for three cases:
@@ -190,9 +166,9 @@ public class ElectricBus extends ElectricVehicle {
 					}
 				}
 				
-				if (batteryLevel_ <= lowerBatteryRechargeLevel_) {
+				if (batteryLevel <= lowerBatteryRechargeLevel_) {
 					this.goCharging();
-				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel_ <= higherBatteryRechargeLevel_
+				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel <= higherBatteryRechargeLevel_
 						&& !ContextCreator.bus_schedule.hasSchedule(this.busStop.get(0))) {
 					this.goCharging();
 				} else {
@@ -292,8 +268,9 @@ public class ElectricBus extends ElectricVehicle {
 		return this.routeID;
 	}
 
+	@Override
 	public double getMass() {
-		return this.mass_ + this.avgPersonMass_ * passNum;
+		return mass + passNum * avgPersonMass_;
 	}
 	
 	public int remainingCapacity() {

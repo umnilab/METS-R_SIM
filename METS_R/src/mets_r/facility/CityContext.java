@@ -239,7 +239,7 @@ public class CityContext extends DefaultContext<Object> {
 			Point point1 = geomFac.createPoint(r.getStartCoord());
 			Point point2 = geomFac.createPoint(r.getEndCoord());
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while(((r.getNeighboringZone(false) < 0) && r.canBeOrigin()) || ((r.getNeighboringZone(true) < 0) && r.canBeDest())) {
+			while(((r.getNeighboringZone(false) == 0) && r.canBeOrigin()) || ((r.getNeighboringZone(true) == 0) && r.canBeDest())) {
 				double dist = Double.MAX_VALUE;
 				double dist2 = Double.MAX_VALUE;
 				Geometry buffer1 = point1.buffer(searchBuffer);

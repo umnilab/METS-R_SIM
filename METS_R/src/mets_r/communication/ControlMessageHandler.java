@@ -677,14 +677,6 @@ public class ControlMessageHandler extends MessageHandler {
 								veh.removeFromCurrentRoad();
 								veh.appendToRoad(road);
 								veh.teleportToLane(lane, 0);
-								// Reroute
-								if ((veh.getNextRoad()!=null) && (veh.getNextRoad() == road)) // Case 2, veh entered the next road in its planned route
-								{
-									veh.setNextRoad();
-								}
-								else { // Case 3: veh enter the road not in its planned route
-									veh.rerouteAndSetNextRoad();
-								}
 							
 								// Enter next road
 								if(veh.changeRoad()) {
@@ -837,9 +829,7 @@ public class ControlMessageHandler extends MessageHandler {
 						ArrayList<Request> plist = new ArrayList<Request>();
 						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), false, vehIDOrigDestNum.num);
 						if(veh.getState() == Vehicle.PARKING) {
-							z1.removeOneParkingVehicle();
-						}else if(veh.getState() == Vehicle.CRUISING_TRIP) {
-							z1.removeOneCruisingVehicle();
+							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
 						}
 						p.matchedTime = ContextCreator.getCurrentTick();
 						z1.taxiPickupRequest += 1;
@@ -898,9 +888,7 @@ public class ControlMessageHandler extends MessageHandler {
 						Request p = new Request(z1.getID(),z2.getID(), r1.getID(), r2.getID(), false, vehIDOrigRoadDestRoadNum.num);
 						
 						if(veh.getState() == Vehicle.PARKING) {
-							z1.removeOneParkingVehicle();
-						}else if(veh.getState() == Vehicle.CRUISING_TRIP) {
-							z1.removeOneCruisingVehicle();
+							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
 						}
 						p.matchedTime = ContextCreator.getCurrentTick();
 						z1.taxiPickupRequest += 1;

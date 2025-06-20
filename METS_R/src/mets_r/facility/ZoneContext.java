@@ -38,7 +38,7 @@ public class ZoneContext extends FacilityContext<Zone> {
 			if(result.length < 4) {
 				ContextCreator.logger.error("Missing fields in Zone configuration, a proper one should contain (Name, externalID, Capacity, Type)");
 			}
-			int int_id = 0; // Start with ID = 0
+			int int_id = 1; // Start with ID = 1
 			while (zoneLoader.hasNext()) {
 				line = br.readLine();
 				result = line.split(",");
@@ -52,7 +52,7 @@ public class ZoneContext extends FacilityContext<Zone> {
 			}
 			br.close();
 			ZONE_NUM = int_id;
-			ContextCreator.logger.info("Zone generated, total number: " + (int_id + 1));
+			ContextCreator.logger.info("Zone generated, total number: " + int_id);
 		} catch (Exception e) {
 			ContextCreator.logger.error("Malformed URL exception or file not exists when reading zone shapefile.");
 			e.printStackTrace();

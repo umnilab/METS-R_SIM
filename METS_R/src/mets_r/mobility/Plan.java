@@ -12,7 +12,7 @@ import mets_r.facility.Road;
 public class Plan { 
 	private Integer destZoneID; // ID of the destination zone
 	private int destRoadID; // ID of the destination road
-	private Double departure_time; // Departure time
+	private double departure_time; // Departure time
 
 	public Plan(int dest_id, int road_id, double d) {
 		this.destZoneID = dest_id;
@@ -27,7 +27,7 @@ public class Plan {
 		this.departure_time = d;
 	}
 
-	public Double getDuration() {
+	public double getDepartureTime() {
 		return departure_time;
 	}
 

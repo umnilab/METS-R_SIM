@@ -62,8 +62,9 @@ public class Vehicle {
 	private Road destRoad_;
 	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized
 	private double length; // vehicle length
-	private double distance_; // distance from downstream junction
-	private double nextDistance_; // distance from the start point of next line segment
+	private double distance_; // distance to downstream junction
+	private double nextDistance_; // distance to the next control point in the current lane's line segments
+	private double distToTravel_; // remaining distance to be traversed along the road, excluding the junction area, used as a rough estimation of travel distance
 	
 	private double currentSpeed_;
 	private double accRate_;
@@ -206,10 +207,9 @@ public class Vehicle {
 	public void setNextPlan() {
 		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
-		this.originRoad_ = this.destRoad_;
+		this.originRoad_ = this.road;
 		this.destinationID = next.getDestZoneID();
-		double duration = next.getDuration();
-		this.deptime = (int) duration;
+		this.deptime = (int) next.getDepartureTime();
 		this.destRoad_ = ContextCreator.getRoadContext().get(next.getDestRoadID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
 		this.activityPlan.remove(0); // Remove current schedule
@@ -218,10 +218,9 @@ public class Vehicle {
 	public void setNextPlan(int delay) { // departure time is right away after a specific delay 
 		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
-		this.originRoad_ = this.destRoad_;
+		this.originRoad_ = this.road;
 		this.destinationID = next.getDestZoneID();
-		double duration = next.getDuration();
-		this.deptime = Math.max((int) duration, ContextCreator.getCurrentTick() + delay);
+		this.deptime = Math.max((int) next.getDepartureTime(), ContextCreator.getCurrentTick() + delay);
 		this.destRoad_ = ContextCreator.getRoadContext().get(next.getDestRoadID());
 		this.atOrigin = true; // The vehicle will be rerouted to the new target when enters a new link.
 		this.activityPlan.remove(0); // Remove current schedule
@@ -294,7 +293,6 @@ public class Vehicle {
 			this.setCurrentCoord(lane.getStartCoord());
 			this.appendToLane(lane);
 			this.appendToRoad(road);
-			this.setNextRoad();
 			return true;
 		}
 		return false;
@@ -431,23 +429,20 @@ public class Vehicle {
 	 * Set the next to-visit road of this vehicle
 	 */
 	public void setNextRoad() {
-		if (!this.atOrigin) { // Not at origin
-			// Special case, the roadPath is null which means the origin
-			// and destination are at the same link
-			if (this.roadPath == null) {
-				this.nextRoad_ = null;
-				return;
-			}
-			this.removeShadowCount(this.roadPath.get(0));
-			this.roadPath.remove(0);
-			if (this.road.getID() == this.getDestRoad() || this.roadPath.size() <= 1) {
-				this.nextRoad_ = null;
-			} else {
-				this.nextRoad_ = this.roadPath.get(1);
-				this.assignNextLane();
-			}
+		// Special case, the roadPath is null which means the origin
+		// and destination are at the same link
+		if (this.roadPath == null) {
+			this.nextRoad_ = null;
+			return;
+		}
+		this.removeShadowCount(this.roadPath.get(0));
+		this.distToTravel_ -= this.roadPath.get(0).getLength();
+		this.roadPath.remove(0);
+		if (this.road.getID() == this.getDestRoad() || this.roadPath.size() <= 1) {
+			this.nextRoad_ = null;
 		} else {
-			this.rerouteAndSetNextRoad();
+			this.nextRoad_ = this.roadPath.get(1);
+			this.assignNextLane();
 		}
 	}
 	
@@ -459,10 +454,11 @@ public class Vehicle {
 		this.atOrigin = false;
 		// Clear legacy impact
 		this.clearShadowImpact();
-		this.roadPath = RouteContext.shortestPathRoute(this.getRoad(), this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
+		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
 		this.setShadowImpact();
+		this.distToTravel_ = 0;
 		if (this.roadPath == null) {
-			ContextCreator.logger.error("No path can be found between road: " + this.getRoad().getID() + " and road " + this.destRoad_.getID());
+			ContextCreator.logger.error("No path can be found between road: " + this.road.getID() + " and road " + this.destRoad_.getID());
 			this.nextRoad_ = null;
 		}
 		else if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
@@ -470,6 +466,9 @@ public class Vehicle {
 		} else {
 			this.nextRoad_ = roadPath.get(1);
 			this.assignNextLane();
+			for(Road r: roadPath) {
+				this.distToTravel_ += r.getLength();
+			}
 		}
 	}
 	
@@ -481,16 +480,18 @@ public class Vehicle {
 		// Sanity check
 		if(this.road.getOrigID().equals(route.get(0)) && this.destRoad_.getOrigID().equals(route.get(route.size() - 1))){
 			List<Road> newPath = new ArrayList<Road>();
-			
+			double dtt = 0;
 			for(String rid: route) {
 				Road r = ContextCreator.getCityContext().findRoadWithOrigID(rid);
 				if(r != null) {
 					newPath.add(r);
+					dtt += r.getLength();
 				}
 				else {
 					return false;
 				}
 			}
+			this.distToTravel_ = dtt;
 			// Vehicle departured
 			this.atOrigin = false;
 			this.roadPath = newPath;
@@ -503,13 +504,6 @@ public class Vehicle {
 			return false;
 		}
 		
-	}
-	
-	/**
-	 * Get the next to-visit road of this vehicle
-	 */
-	public Road getNextRoad() {
-		return this.nextRoad_;
 	}
 
 	/**
@@ -1236,7 +1230,6 @@ public class Vehicle {
 						this.removeFromCurrentRoad();
 						this.appendToLane(nextLane_);
 						this.appendToRoad(nextRoad_);
-						this.setNextRoad();
 						return true;
 					}
 					else {
@@ -1249,7 +1242,6 @@ public class Vehicle {
 							this.removeFromCurrentRoad();
 							this.appendToLane(nextLane_);
 							this.appendToRoad(nextRoad_);
-							this.setNextRoad();
 							return true;
 						}
 					}
@@ -1261,7 +1253,6 @@ public class Vehicle {
 						this.removeFromCurrentRoad();
 						this.appendToLane(nextLane_);
 						this.appendToRoad(nextRoad_);
-						this.setNextRoad();
 						return true;
 					}
 					else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
@@ -1275,7 +1266,6 @@ public class Vehicle {
 								this.removeFromCurrentRoad();
 								this.appendToLane(dnlane);
 								this.appendToRoad(dnlane.getRoad());
-								this.rerouteAndSetNextRoad();
 								return true;
 							}
 						}
@@ -1336,6 +1326,15 @@ public class Vehicle {
 		// After this appending, update the number of vehicles
 		road.changeNumberOfVehicles(1);
 		this.onRoad = true;
+		
+		// Set next road
+		if ((this.nextRoad_!=null) && (this.nextRoad_.getID() == road.getID())) // Veh enter the next road in its planned route
+		{
+			this.setNextRoad();
+		}
+		else { // Veh enter the road not in its planned route
+			this.rerouteAndSetNextRoad();
+		}
 	}
 	
 	/**
@@ -1878,8 +1877,8 @@ public class Vehicle {
 			
 			// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
 			// Raise a warning and call the routing function to complete the missing route
-			ContextCreator.logger.warn("No connection between curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + "fixing now");
-			List<Road> patchPath = RouteContext.shortestPathRoute(this.getRoad(), this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
+			ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " fixing by reroute it.");
+			List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
 			if (patchPath != null && patchPath.size() > 2) {
 				List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
 				this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
@@ -2429,6 +2428,9 @@ public class Vehicle {
 		return this.accRate_;
 	}
 	
+	/**
+	 * Get vehicle bearing
+	 */
 	public double getBearing() {
 		return this.bearing_;
 	}
@@ -2492,6 +2494,13 @@ public class Vehicle {
 	 */
 	public int getNumTrips() {
 		return this.numTrips;
+	}
+	
+	/**
+	 * Get vehicle's roungh distance to travel
+	 */
+	public double getDistToTravel() {
+		return this.distToTravel_;
 	}
 	
 	/**

@@ -7,6 +7,7 @@ import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
 
 /**
  * Electric vehicles
@@ -31,8 +32,8 @@ public class ElectricVehicle extends Vehicle {
 	public static double Pconst = 1500; // energy consumption by auxiliary accessories
 
 	// Local variables
-	protected double batteryCapacity; // the storedEnergy is 50 kWh.
-	protected double batteryLevel_; // current battery level, unite KWh
+	protected double batteryCapacity; // the battery capacity
+	protected double batteryLevel; // current battery level, unit KWh
 	protected double mass; // mass of the vehicle in kg
 	protected boolean onChargingRoute_ = false;
 	protected double tickConsume; // Energy consumption per tick, for verifying the energy model
@@ -41,6 +42,7 @@ public class ElectricVehicle extends Vehicle {
 	protected double linkConsume; // Parameters for storing energy consumptions
 	protected double lowerBatteryRechargeLevel_; // unit: kwh
 	protected double higherBatteryRechargeLevel_; // unit: kwh
+	protected double metersPerKwh; // For charging planning, unit: m/kwh
 	
 	// For recording charging behaviors
 	public int chargingTime = 0;
@@ -49,16 +51,22 @@ public class ElectricVehicle extends Vehicle {
 	
 	public ElectricVehicle(int vType, int vSensor) {
 		super(vType, vSensor);
-		this.batteryCapacity = GlobalVariables.EV_BATTERY;
-		this.batteryLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * this.batteryCapacity
-				+ this.rand.nextDouble() * (1 - GlobalVariables.RECHARGE_LEVEL_LOW) * this.batteryCapacity; 
-		this.mass = 1521; // vehicle's mass
-		this.lowerBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_LOW * this.batteryCapacity;
-		this.higherBatteryRechargeLevel_ = GlobalVariables.RECHARGE_LEVEL_HIGH * this.batteryCapacity;
+		initializeEVFields(GlobalVariables.EV_BATTERY, 1521, 5000, GlobalVariables.RECHARGE_LEVEL_LOW, GlobalVariables.RECHARGE_LEVEL_HIGH);
 	}
 	
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
 		super(maximumAcceleration, maximumDeceleration, vClass, vSensor);
+		initializeEVFields(GlobalVariables.EV_BATTERY, 1521, 5000, GlobalVariables.RECHARGE_LEVEL_LOW, GlobalVariables.RECHARGE_LEVEL_HIGH);
+	}
+	
+	protected void initializeEVFields(double battery_capacity, double mass, double meters_per_kwh, double recharge_low, double reacharge_high) {
+		this.batteryCapacity = battery_capacity;
+		this.batteryLevel = reacharge_high * this.batteryCapacity
+				+ this.rand.nextDouble() * (1 - reacharge_high) * this.batteryCapacity; 
+		this.mass = mass; // vehicle's mass
+		this.lowerBatteryRechargeLevel_ = recharge_low * this.batteryCapacity;
+		this.higherBatteryRechargeLevel_ = reacharge_high * this.batteryCapacity;
+		this.metersPerKwh = meters_per_kwh;
 	}
 	
 	@Override
@@ -68,7 +76,7 @@ public class ElectricVehicle extends Vehicle {
 		totalConsume += tickEnergy;
 		linkConsume += tickEnergy;
 		tripConsume += tickEnergy;
-		batteryLevel_ -= tickEnergy;
+		batteryLevel -= tickEnergy;
 	}
 	
 	@Override
@@ -112,8 +120,7 @@ public class ElectricVehicle extends Vehicle {
 		    	this.setNextPlan();
 		    	this.departure();
 		    }
-			else if(batteryLevel_ <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
-					&& batteryLevel_ <= higherBatteryRechargeLevel_)) {
+			else if(batteryLevel <= lowerBatteryRechargeLevel_) {
 				super.reachDestButNotLeave(); // Go charging
 				this.goCharging();
 			}
@@ -141,13 +148,60 @@ public class ElectricVehicle extends Vehicle {
 		}
 	}
 	
-	// Find the closest charging station and update the activity plan
+	@Override
+	public void appendToRoad(Road road) {
+		super.appendToRoad(road);
+		
+		// Track the remaining mileage and the estimated remaining distance
+		if(this.getState() == Vehicle.PRIVATE_TRIP) {
+			// Check if vehicle has enough battery
+			if((!this.hasEnoughBattery(this.getDistToTravel())) && (this.batteryLevel < this.higherBatteryRechargeLevel_)) {
+				ContextCreator.logger.warn("Not enough battery for vehicle:" + this.getID() +" with battery:" + this.batteryLevel + "kWh but has distance:"+ this.getDistToTravel() + "m to go!");
+				this.goCharging();
+			}
+		}
+		
+		// Update the zone info of relocating taxis
+		if(this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP && 
+				road.getNeighboringZone(true)>0) {
+			int newZone = road.getNeighboringZone(true);
+			ContextCreator.getVehicleContext().updateRelocationTaxi((ElectricTaxi) this, newZone);
+		}
+	}
+	
+	// Find the closest charging station and insert a plan to go to charging station into the current activity plan
 	public void goCharging() {
 		int current_dest_zone = this.getDestID();
 		int current_dest_road = this.getDestRoad();
 		// Add a charging activity
+		int chargetType = this.decideChargerType();
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
-				this.decideChargerType());
+				chargetType);
+		if(cs == null && chargetType == ChargingStation.L3) {
+			cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+					ChargingStation.L2);
+		}
+		if(cs != null) {
+			this.onChargingRoute_ = true;
+			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
+			this.setNextPlan();
+			this.addPlan(current_dest_zone, current_dest_road, ContextCreator.getNextTick());
+			this.setState(Vehicle.CHARGING_TRIP);
+			this.departure();
+			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");
+		}
+		else {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " cannot find charging station at coordinate: " + this.getCurrentCoord());
+		}
+	}
+	
+	// Find the closest charging station with specific charger type and update the activity plan
+	public void goCharging(int chargerType) {
+		int current_dest_zone = this.getDestID();
+		int current_dest_road = this.getDestRoad();
+		// Add a charging activity
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+				chargerType);
 		if(cs != null) {
 			this.onChargingRoute_ = true;
 			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
@@ -189,7 +243,7 @@ public class ElectricVehicle extends Vehicle {
 	// Charge the battery.
 	public void chargeItself(double batteryValue) {
 		chargingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-		batteryLevel_ += batteryValue;
+		batteryLevel += batteryValue;
 	}
 
 	// EV energy consumption model
@@ -264,16 +318,16 @@ public class ElectricVehicle extends Vehicle {
 	}
 	
 	public double getBatteryLevel() {
-		return this.batteryLevel_;
+		return this.batteryLevel;
 	}
 	
 	public double getSoC() {
-		return this.batteryLevel_/this.batteryCapacity;
+		return this.batteryLevel/this.batteryCapacity;
 	}
 	
 	// Set the battery level, unit: % of the total capacity
 	public void setBatteryLevel(double bt) {
-		this.batteryLevel_ = Math.max(0.0, Math.min(1.0, bt / 100.0)) * this.batteryCapacity;
+		this.batteryLevel = Math.max(0.0, Math.min(1.0, bt / 100.0)) * this.batteryCapacity;
 	}
 	
 	
@@ -291,5 +345,14 @@ public class ElectricVehicle extends Vehicle {
 	
 	public double getBatteryCapacity() {
 		return this.batteryCapacity;
+	}
+	
+	public boolean hasEnoughBattery() {
+		return this.batteryLevel > this.lowerBatteryRechargeLevel_;
+	}
+	
+	// Unit: meters
+	public boolean hasEnoughBattery(double distance) {
+		return this.batteryLevel > distance/this.metersPerKwh;
 	}
 }

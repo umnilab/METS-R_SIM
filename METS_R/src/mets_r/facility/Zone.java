@@ -44,7 +44,6 @@ public class Zone {
 	private int nRequestForTaxi; // number of requests for Taxi
 	private int nRequestForBus; // number of requests for Bus
 	private AtomicInteger parkingVehicleStock; // number of parking vehicles at this zone
-	private AtomicInteger cruisingVehicleStock;  // number of cruising vehicles at this zone
 	private int currentHour = -1;
 	private int currentTimeIndex = 0;
 	private int lastTravelTimeUpdateHour = -1; // the last time for updating the travel time estimation
@@ -175,7 +174,6 @@ public class Zone {
 		this.toAddRequestForTaxi = new ConcurrentLinkedQueue<Request>();
 		this.toAddRequestForBus = new ConcurrentLinkedQueue<Request>();
 		this.parkingVehicleStock = new AtomicInteger(0); 
-		this.cruisingVehicleStock = new AtomicInteger(0); 
 		this.futureDemand = 0.0;
 		this.futureSupply = new AtomicInteger(0);
 		this.vehicleSurplus = 0.0;
@@ -245,7 +243,7 @@ public class Zone {
 					v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
-					// Check if vehicle has enough battery
+					// Check if vehicle has enough battery, 1 kWh = 5000 m
 					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
 						v.goCharging();
 					}
@@ -279,13 +277,9 @@ public class Zone {
 				v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
-				// Check if vehicle has enough battery
-				if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
-					v.goCharging();
-				}
-				else {
-					v.departure();
-				}
+				
+				v.departure();
+				
 				this.numberOfGeneratedPrivateEVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
 			}
@@ -492,7 +486,7 @@ public class Zone {
 		
 		this.vehicleSurplus = this.getVehicleStock() - this.nRequestForTaxi + 0.8 * this.futureSupply.get();
 		this.vehicleSurplus = this.vehicleSurplus>0?this.vehicleSurplus:0;
-		this.vehicleDeficiency = this.nRequestForTaxi - this.getVehicleStock() - ContextCreator.getVehicleContext().getRelocationTaxi(this.getID()).size();
+		this.vehicleDeficiency = this.nRequestForTaxi - this.getVehicleStock() - ContextCreator.getVehicleContext().getNumOfRelocationTaxi(this.getID());
 		this.vehicleDeficiency = this.vehicleDeficiency>0?this.vehicleDeficiency:0;
 		
 		ContextCreator.logger.debug("current buss pass is" + this.numberOfGeneratedBusRequest);
@@ -507,6 +501,13 @@ public class Zone {
 	public void servePassengerByTaxi() {
 		// Ridesharing matching for the sharable passengers. Current implementation: If
 		// the passenger goes to the same place, pair them together.
+		Queue<ElectricTaxi> vehQueue = ContextCreator.getVehicleContext().getVehiclesByZone(this.ID);
+		Queue<ElectricTaxi> eligibleTaxis = new LinkedList<ElectricTaxi>();
+		for (ElectricTaxi v : vehQueue) {
+		    if (v.hasEnoughBattery()) {
+		        eligibleTaxis.add(v);
+		    }
+		}
 		// First serve sharable passengers
 		if (this.sharableRequestForTaxi.size() > 0) {
 			for (Queue<Request> passQueue : this.sharableRequestForTaxi.values()) {
@@ -517,14 +518,13 @@ public class Zone {
 					}
 					int v_num = this.getVehicleStock();
 					for (int i = 0; i < v_num; i++) {
-						ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.ID).poll();
-						if (v != null) {
+						ElectricTaxi v = eligibleTaxis.poll();
+						if ((v != null) && (v.hasEnoughBattery())) {
+							vehQueue.remove(v);
 							if(v.getState() == Vehicle.PARKING) {
 								this.removeOneParkingVehicle();
-							}else if(v.getState() == Vehicle.CRUISING_TRIP) {
-								this.removeOneCruisingVehicle();
 							}
-							else {
+							else if(v.getState() != Vehicle.CRUISING_TRIP ) {
 								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
 							ArrayList<Request> tmp_pass = new ArrayList<Request>();
@@ -543,7 +543,6 @@ public class Zone {
 							// Update future supply of the target zone
 							ContextCreator.getZoneContext().get(tmp_pass.get(0).getDestZone()).addFutureSupply();
 							if(pass_num == 0) break;
-							
 						}
 					}
 				}
@@ -553,15 +552,15 @@ public class Zone {
 		// Then serve non-sharable requests
 		int curr_size = this.requestInQueueForTaxi.size();
 		for (int i = 0; i < curr_size; i++) {
-			ElectricTaxi v = ContextCreator.getVehicleContext().getVehiclesByZone(this.ID).poll();
-			if (v != null) {
+			// Find the first electric taxi with enough battery
+			ElectricTaxi v = eligibleTaxis.poll();
+			if ((v != null) && (v.hasEnoughBattery())) {
+				vehQueue.remove(v);
 				Request current_taxi_pass = this.requestInQueueForTaxi.poll();
 				if(v.getState() == Vehicle.PARKING) {
 					this.removeOneParkingVehicle();
-				}else if(v.getState() == Vehicle.CRUISING_TRIP) {
-					this.removeOneCruisingVehicle();
 				}
-				else {
+				else if(v.getState() != Vehicle.CRUISING_TRIP ) {
 					ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 				}
 				if (current_taxi_pass.lenOfActivity() > 1) {
@@ -569,8 +568,7 @@ public class Zone {
 				} else if (current_taxi_pass.lenOfActivity() == 0) {
 					this.taxiPickupRequest += 1;
 				} else {
-					// The length of activity is 1 which means this is the second part of a combined
-					// trip
+					// The length of activity is 1 which means this is the second part of a combined trip
 					this.combinePickupPart2 += 1;
 				}
 				current_taxi_pass.matchedTime = ContextCreator.getCurrentTick();
@@ -664,8 +662,6 @@ public class Zone {
 							ContextCreator.getZoneContext().get(z).numberOfRelocatedVehicles += 1;
 							if(v.getState() == Vehicle.PARKING) {
 								this.removeOneParkingVehicle();
-							}else {
-								this.removeOneCruisingVehicle();
 							}
 							v.relocation(this.ID, z);
 							ContextCreator.getZoneContext().get(z).addFutureSupply();
@@ -749,7 +745,6 @@ public class Zone {
 	// Taxi waiting for passenger, extend this if the relocation is based on the taxiWaiting time
 	protected void taxiWaitPassenger() {
 		this.taxiParkingTime += this.parkingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
-	    this.taxiCruisingTime += this.cruisingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
 	}
 
 	// Split taxi and bus passengers via a discrete choice model
@@ -1006,17 +1001,9 @@ public class Zone {
 	public void addParkingVehicleStock(int vehicle_num) {
 		this.parkingVehicleStock.addAndGet(vehicle_num);
 	}
-	
-	public void addCruisingVehicleStock(int vehicle_num) {
-		this.cruisingVehicleStock.addAndGet(vehicle_num);
-	}
 
 	public void addOneParkingVehicle() {
 		this.parkingVehicleStock.addAndGet(1);
-	}
-	
-	public void addOneCruisingVehicle() {
-		this.cruisingVehicleStock.addAndGet(1);
 	}
 	
 	public void removeOneParkingVehicle() {
@@ -1026,17 +1013,9 @@ public class Zone {
 		}
 		this.addParkingVehicleStock(-1);
 	}
-	
-	public void removeOneCruisingVehicle() {
-		if (this.cruisingVehicleStock.get() - 1 < 0) {
-			ContextCreator.logger.error(this.ID + " out of stock, vehicle_num: " + this.cruisingVehicleStock.get());
-			return;
-		}
-		this.addCruisingVehicleStock(-1);
-	}
 
 	public int getVehicleStock() {
-		return this.parkingVehicleStock.get() + this.cruisingVehicleStock.get();
+		return this.parkingVehicleStock.get() + ContextCreator.getVehicleContext().getNumOfRelocationTaxi(this.ID);
 	}
 
 	public int getZoneType() {

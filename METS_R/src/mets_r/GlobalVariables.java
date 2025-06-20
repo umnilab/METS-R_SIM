@@ -139,6 +139,7 @@ public class GlobalVariables {
 	
 	// EV batteries
 	public static int EV_BATTERY = Integer.valueOf(loadConfig("EV_BATTERY"));
+	public static int TAXI_BATTERY = Integer.valueOf(loadConfig("TAXI_BATTERY"));
 	public static int BUS_BATTERY = Integer.valueOf(loadConfig("BUS_BATTERY"));
 
 	// Event file, placeholder for future extension
@@ -156,6 +157,8 @@ public class GlobalVariables {
 	public static boolean PROACTIVE_CHARGING = Boolean.valueOf(loadConfig("PROACTIVE_CHARGING"));
 	public static double RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("RECHARGE_LEVEL_LOW"));
 	public static double RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("RECHARGE_LEVEL_HIGH"));
+	public static double TAXI_RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("TAXI_RECHARGE_LEVEL_LOW"));
+	public static double TAXI_RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("TAXI_RECHARGE_LEVEL_HIGH"));
 	public static double BUS_RECHARGE_LEVEL_LOW = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_LOW"));
 	public static double BUS_RECHARGE_LEVEL_HIGH = Double.valueOf(loadConfig("BUS_RECHARGE_LEVEL_HIGH"));
 	
