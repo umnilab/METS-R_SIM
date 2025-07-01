@@ -62,8 +62,8 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
 			network_logger = new BufferedWriter(fw);
 			network_logger.write(
-					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,"
+							+ "taxiPickupPass,busPickupPass,"
 							+ "taxiServedPass,busServedPass," 
 							+ "taxiLeavedPass,busLeavedPass,"
 							+ "numWaitingTaxiPass,numWaitingBusPass," 
@@ -80,8 +80,8 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
 			zone_logger = new BufferedWriter(fw);
 			zone_logger.write(
-					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,generatedCombinedPass,"
-							+ "taxiPickupPass,busPickupPass,combinePickupPart1,combinePickupPart2,"
+					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,"
+							+ "taxiPickupPass,busPickupPass,"
 							+ "taxiServedPass,busServedPass,taxiServedPassWaitingTime,busServedPassWaitingTime,"
 							+ "taxiLeavedPass,busLeavedPass,taxiLeavedPassWaitingTime,busLeavedPassWaitingTime,"
 							+ "taxiParkingTime,taxiCruisingTime,futureDemand,futureSupply,"

@@ -22,7 +22,10 @@ public class Request {
 	private int maxWaitingTime;
 	private int currentWaitingTime;
 	private int numPeople;
-	private Boolean willingToShare;
+	
+	private Boolean willingToShare = false; 
+	private int busRouteID = -1; // transit route ID, default value: -1 not using transit
+	
 	private Queue<Plan> activityPlan;
 	
 	// public variables for data collection
@@ -31,7 +34,7 @@ public class Request {
 	public int pickupTime;
 	public int arriveTIme;
 	
-	public Request(int origin, int destination, int originRoad, int destRoad, Boolean willingToShare){
+	public Request(int origin, int destination, int originRoad, int destRoad, int numPeople){
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = new LinkedList<Plan>();
 		this.origin = origin;
@@ -40,56 +43,21 @@ public class Request {
 		this.destRoad = destRoad;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
 		this.currentWaitingTime = 0;
-		this.willingToShare = willingToShare;
-		this.numPeople = 1;
-		
-		this.generationTime = ContextCreator.getCurrentTick();
-	}
-	
-	public Request(int origin, int destination, int originRoad, int destRoad, Boolean willingToShare, int numPeople){
-		this.ID = ContextCreator.generateAgentID();
-		this.activityPlan = new LinkedList<Plan>();
-		this.origin = origin;
-		this.destination = destination;
-		this.originRoad = originRoad;
-		this.destRoad = destRoad;
-		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
-		this.currentWaitingTime = 0;
-		this.willingToShare = willingToShare;
 		this.numPeople = numPeople;
 		
 		this.generationTime = ContextCreator.getCurrentTick();
 	}
-	
-	
-	public Request(int origin, int originRoad, Queue<Plan> activityPlan){
-		this.ID = ContextCreator.generateAgentID();
-		this.activityPlan = activityPlan;
-		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
-		this.currentWaitingTime = 0;	
-		this.willingToShare = false;
-		this.origin = origin;
-		this.originRoad = originRoad;
-		this.destination = activityPlan.peek().getDestZoneID();
-		this.destRoad = activityPlan.peek().getDestRoadID();
-		this.numPeople = 1;
-		
-		this.generationTime = ContextCreator.getCurrentTick();
-	}
-	
 	
 	public Request(int origin, int originRoad, int numPeople, Queue<Plan> activityPlan){
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = activityPlan;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
 		this.currentWaitingTime = 0;	
-		this.willingToShare = false;
 		this.origin = origin;
 		this.originRoad = originRoad;
 		this.destination = activityPlan.peek().getDestZoneID();
 		this.destRoad = activityPlan.peek().getDestRoadID();
 		this.numPeople = numPeople;
-		
 		this.generationTime = ContextCreator.getCurrentTick();
 	}
 	
@@ -173,8 +141,20 @@ public class Request {
 		}
 	}
 	
+	public void setWillingToShare(boolean wts) {
+		this.willingToShare = wts;
+	}
+	
 	public boolean isShareable(){
 		return this.willingToShare;
+	}
+	
+	public void setBusRoute(int routeID) {
+		this.busRouteID = routeID;
+	}
+	
+	public int getBusRoute() {
+		return this.busRouteID;
 	}
 	
 	public void clearActivityPlan() {

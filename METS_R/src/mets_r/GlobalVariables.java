@@ -149,8 +149,6 @@ public class GlobalVariables {
 
 	/* Operation Options */
 	public static boolean K_SHORTEST_PATH = Boolean.valueOf(loadConfig("K_SHORTEST_PATH"));
-	public static boolean COLLABORATIVE_EV = Boolean.valueOf(loadConfig("COLLABORATIVE_EV"));
-	public static boolean BUS_PLANNING = Boolean.valueOf(loadConfig("BUS_PLANNING"));
 	public static boolean PROACTIVE_RELOCATION = Boolean.valueOf(loadConfig("PROACTIVE_RELOCATION"));
 
 	// Vehicle charging

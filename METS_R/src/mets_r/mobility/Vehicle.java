@@ -58,7 +58,7 @@ public class Vehicle {
 	public final static int NONE_OF_THE_ABOVE = -1;
 	
 	/* Private variables that are not visible to descendant classes */
-	private Road originRoad_;
+	private Coordinate originCoord_;
 	private Road destRoad_;
 	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized
 	private double length; // vehicle length
@@ -173,7 +173,7 @@ public class Vehicle {
 		this.road = null;
 		this.nextRoad_ = null;
 		this.coordMap = new ArrayList<Coordinate>();
-		this.originRoad_ = null;
+		this.originCoord_ = null;
 		this.destRoad_ = null;
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
@@ -207,7 +207,6 @@ public class Vehicle {
 	public void setNextPlan() {
 		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
-		this.originRoad_ = this.road;
 		this.destinationID = next.getDestZoneID();
 		this.deptime = (int) next.getDepartureTime();
 		this.destRoad_ = ContextCreator.getRoadContext().get(next.getDestRoadID());
@@ -218,7 +217,6 @@ public class Vehicle {
 	public void setNextPlan(int delay) { // departure time is right away after a specific delay 
 		Plan next = this.activityPlan.get(1);
 		this.originID = this.destinationID;
-		this.originRoad_ = this.road;
 		this.destinationID = next.getDestZoneID();
 		this.deptime = Math.max((int) next.getDepartureTime(), ContextCreator.getCurrentTick() + delay);
 		this.destRoad_ = ContextCreator.getRoadContext().get(next.getDestRoadID());
@@ -306,13 +304,35 @@ public class Vehicle {
 		this.numTrips ++;
 		this.isReachDest = false;
 		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
-			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false);  
+			Road road = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false);
+			this.originCoord_ = road.getStartCoord();
 			road.addVehicleToPendingQueue(this);
 		}
 		else { // The vehicle is on road, we just need to reroute it
 			this.rerouteAndSetNextRoad(); // refresh the CoordMap
 		}
 	}
+	
+	/**
+	 * Append vehicle to the pending list to a specific road
+	 */
+	public void departure(Road road) {
+		this.numTrips ++;
+		this.isReachDest = false;
+		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
+			this.originCoord_ = road.getStartCoord();
+			road.addVehicleToPendingQueue(this);
+		}
+		else { // The vehicle is on road, we just need to reroute it
+			this.rerouteAndSetNextRoad(); // refresh the CoordMap
+		}
+	}
+	
+	public void departure(int roadID) {
+		Road road = ContextCreator.getRoadContext().get(roadID);
+		departure(road);
+	}
+
 
 	/**
 	 *  A place holder for updating battery status for EVs
@@ -457,9 +477,12 @@ public class Vehicle {
 		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
 		this.setShadowImpact();
 		this.distToTravel_ = 0;
-		if (this.roadPath == null) {
-			ContextCreator.logger.error("No path can be found between road: " + this.road.getID() + " and road " + this.destRoad_.getID());
-			this.nextRoad_ = null;
+		if (this.roadPath == null) { 
+			// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
+			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true);
+			this.leaveNetwork();
+			this.destRoad_ = r2;
+			this.departure(ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false));
 		}
 		else if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
 			this.nextRoad_ = null;
@@ -476,20 +499,28 @@ public class Vehicle {
 	/**
 	 * Update route based on list of roadIDs, return false if the route start and end links are inconsistent 
 	 */
-	public boolean updateRoute(List<String> route) {
-		// Sanity check
-		if(this.road.getOrigID().equals(route.get(0)) && this.destRoad_.getOrigID().equals(route.get(route.size() - 1))){
-			List<Road> newPath = new ArrayList<Road>();
+	public boolean updateRouteByRoadName(List<String> route) {
+		List<Road> newPath = new ArrayList<Road>();
+		for(String rid: route) {
+			Road r = ContextCreator.getCityContext().findRoadWithOrigID(rid);
+			if(r != null) {
+				newPath.add(r);
+			}
+			else {
+				return false;
+			}
+		}
+	    return updateRoute(newPath);
+	}
+	
+	/**
+	 * Update route based on list of road, return false if the route start and end links are inconsistent 
+	 */
+	public boolean updateRoute(List<Road> newPath) {
+		if(this.road == newPath.get(0) && this.destRoad_ == newPath.get(newPath.size() - 1)){
 			double dtt = 0;
-			for(String rid: route) {
-				Road r = ContextCreator.getCityContext().findRoadWithOrigID(rid);
-				if(r != null) {
-					newPath.add(r);
-					dtt += r.getLength();
-				}
-				else {
-					return false;
-				}
+			for(Road r: newPath) {
+				dtt += r.getLength();
 			}
 			this.distToTravel_ = dtt;
 			// Vehicle departured
@@ -503,7 +534,6 @@ public class Vehicle {
 		else {
 			return false;
 		}
-		
 	}
 
 	/**
@@ -522,7 +552,9 @@ public class Vehicle {
 	    double newDistance = 0;
 
 	    for (int i = coords.size() - 1; i > 0; i--) {
+	    	// a = last point on the path, then second‐to‐last, etc.
 	        Coordinate a = coords.get(i);
+	        // b = the point immediately before a on the path
 	        Coordinate b = coords.get(i - 1);
 
 	        double dx = b.x - a.x;
@@ -534,7 +566,7 @@ public class Vehicle {
 	            double apx = currCoord.x - a.x;
 	            double apy = currCoord.y - a.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param >= 0.0) {
+	            if (param >= 0.0 && param <= 1.0) {
 		            for (int j = i; j < coords.size(); j++) {
 		                newCoordMap.add(coords.get(j));
 		            }
@@ -548,7 +580,7 @@ public class Vehicle {
 	    	return;
 	    }
 	    
-	    double transitionDistance= this.distance(this.getCurrentCoord(), newCoordMap.get(0));
+	    double transitionDistance = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
 	    if(transitionDistance <= GlobalVariables.NO_LANECHANGING_LENGTH) { // If the transition distance is too high, stop the lane changing
 	    	this.nextDistance_ = transitionDistance;
 		    this.distance_ = newDistance + transitionDistance;
@@ -556,7 +588,6 @@ public class Vehicle {
 		    this.coordMap.addAll(newCoordMap);
 		    
 			this.removeFromCurrentLane();
-			this.distance_ += this.distance(this.currentCoord_, this.coordMap.get(0));
 			this.insertToLane(plane);
 	    }
 	}
@@ -1383,7 +1414,7 @@ public class Vehicle {
 	public void leading(Vehicle v) {
 		if(v == null) this.leading_ = null;
 		else if(v == this) {
-			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the leading with distance" + this.distance_);
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the leading with distance " + this.distance_);
 			this.leading_ = null;
 		}
 		else if(v.distance_ > this.distance_) {
@@ -1407,7 +1438,7 @@ public class Vehicle {
 	public void trailing(Vehicle v) {
 		if(v == null) this.trailing_ = null;
 		else if(v == this) {
-			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the trailing with distance" + this.distance_);
+			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the trailing with distance " + this.distance_);
 			this.trailing_ = null;
 		}
 		else if(v.getDistanceToNextJunction() < this.distance_) {
@@ -1527,9 +1558,11 @@ public class Vehicle {
 	 * Get origin location
 	 */
 	public Coordinate getOriginCoord() {
-		if(originRoad_ != null)
-			return this.originRoad_.getStartCoord();
-		return this.getCurrentCoord();
+		Coordinate coord = new Coordinate();
+		coord.x = this.originCoord_.x;
+		coord.y = this.originCoord_.y;
+		coord.z = this.originCoord_.z;
+		return coord;
 	}
 	
 	/**
@@ -1540,14 +1573,6 @@ public class Vehicle {
 			return this.destRoad_.getEndCoord();
 		return this.getCurrentCoord();
 	}
-	
-	/**
-	 * Get origin road
-	 */
-	public int getOriginRoad() {
-		return this.originRoad_.getID();
-	}
-	
 	
 	/**
 	 * Get destination road
@@ -1654,6 +1679,7 @@ public class Vehicle {
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive
 		this.endTime = ContextCreator.getCurrentTick();
+		this.originCoord_ = this.getCurrentCoord();
 	}
 	
 	/**
@@ -1676,7 +1702,7 @@ public class Vehicle {
 		this.leading_ = null;
 		this.trailing_ = null;
 		this.nextRoad_ = null;
-		this.originRoad_ = null;
+		this.originCoord_ = null;
 		this.destRoad_ = null;
 		// Update the vehicle into the queue of the corresponding link
 		this.accummulatedDistance_ = 0;

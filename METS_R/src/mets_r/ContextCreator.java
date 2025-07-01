@@ -100,6 +100,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		cityContext.buildRoadNetwork();
 		cityContext.setNeighboringGraph();
 		
+		bus_schedule.postProcessing();
+		
 		// Initialize vehicles
 		vehicleContext = new VehicleContext();
 		mainContext.addSubContext(vehicleContext);
@@ -109,30 +111,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.addSubContext(dataContext);
 
 		// Initialize operational parameters 
-		// Set the bus info in each zone
-		for (ArrayList<Integer> route : bus_schedule.getBusSchedule()) {
-			int i = 0;
-			for (int zoneID : route) {
-				Zone zone = ContextCreator.getZoneContext().get(zoneID);
-				if (zone.getZoneType() == 0) { // normal zone, the destination should be hub
-					for (int destinationID : route) {
-						if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(destinationID)) {
-							zone.setBusInfo(destinationID, bus_schedule.getBusGap().get(i));
-						}
-					}
-				} else if (zone.getZoneType() == 1) { // hub, the destination should be other zones (can be another
-														// hub)
-					for (int destinationID : route) {
-						if (zone.getID() != destinationID) {
-							zone.setBusInfo(destinationID, bus_schedule.getBusGap().get(i));
-						}
-
-					}
-				}
-				i += 1;
-			}
-		}
-		
 		cityContext.modifyRoadNetwork(); // This initializes data for path calculation, DO NOT remove it
 		
 		if(GlobalVariables.MULTI_THREADING) {
@@ -210,7 +188,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (Road r : getRoadContext().getObjects(Road.class)) {
 			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
 		}
-		scheduledActions.add(schedule.schedule(speedProfileParams, cityContext, "refreshTravelTime"));
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure

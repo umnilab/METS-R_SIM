@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -18,12 +19,12 @@ import repast.simphony.space.gis.Geography;
 
 public class VehicleContext extends DefaultContext<Vehicle> {
 	// For taxi/ride-hailing operation
-	private HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
-	private HashMap<Integer, ConcurrentHashSet<ElectricTaxi>> relocationTaxiMap;
+	private Map<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
+	private Map<Integer, ConcurrentHashSet<ElectricTaxi>> relocationTaxiMap;
 	
 	// For data collection
-	private HashMap<Integer, ElectricTaxi> taxiMap; 
-	private HashMap<Integer, ElectricBus> busMap;
+	private Map<Integer, ElectricTaxi> taxiMap; 
+	private Map<Integer, ElectricBus> busMap;
 	
 	// For tracking private vehicle trips, note the key is not the agentID but the one used in the TravelDemand JSON files
 	private HashMap<Integer, ElectricVehicle> privateEVMap;
@@ -117,7 +118,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void createBusContextFromZone(Geography<Zone> zoneGeography, int bus_num) {
 		// Go through all routes, generate vehicle_num[i] buses in the beginning of the
 		// routes
-		int num_per_hub = (int) Math.ceil(bus_num / (ContextCreator.getZoneContext().HUB_INDEXES.size()>0? ContextCreator.getZoneContext().HUB_INDEXES.size():1));
+		int total_buses = 0;
+		int num_per_hub = (int) (Math.floor(bus_num / (ContextCreator.getZoneContext().HUB_INDEXES.size()>0? ContextCreator.getZoneContext().HUB_INDEXES.size():1)) + 1);
+		int to_be_generated = bus_num;
 		try {
 			for (int startZone :  ContextCreator.getZoneContext().HUB_INDEXES) {
 				ArrayList<Integer> route = new ArrayList<Integer>(Arrays.asList(startZone));
@@ -126,7 +129,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				ArrayList<Integer> departure_time = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
 				// Generate vehicle_num buses for the corresponding route
 				Zone z = ContextCreator.getZoneContext().get(route.get(0));
-				for (int j = 0; j < num_per_hub; j++) {
+				
+				for (int j = 0; j < Math.min(num_per_hub, to_be_generated); j++) {
 					ElectricBus b;
 					b = new ElectricBus(-1, route,  departure_time);
 					b.addPlan(z.getID(), z.getClosestRoad(false), ContextCreator.getCurrentTick());
@@ -138,16 +142,16 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 					b.setNextPlan();
 					b.departure();
 					this.busMap.put(b.getID(), b);
+					total_buses += 1;
 				}
+				
+				to_be_generated -= Math.min(num_per_hub, to_be_generated);
 			}
+			
+			ContextCreator.logger.info("Total EV buses generated " + total_buses);
 		} catch (Exception e) {
 			ContextCreator.logger.error(e.toString());
 		}
-	}
-
-	// Return the list of vehicles for certain zone
-	public Queue<ElectricTaxi> getVehiclesByZone(int integerID) {
-		return this.availableTaxiMap.get(integerID);
 	}
 
 	public Collection<ElectricTaxi> getTaxis() {
@@ -206,9 +210,17 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    return vehicleIDList;
 	}
 
-	// Add vehicle to zones
+	// Return the list of vehicles for certain zone
+	public Queue<ElectricTaxi> getAvailableTaxis(int zoneID) {
+		return this.availableTaxiMap.get(zoneID);
+	}
+	
 	public void addAvailableTaxi(ElectricTaxi v, int z) {
 		this.availableTaxiMap.get(z).add(v);
+	}
+	
+	public void removeAvailableTaxi(ElectricTaxi v, int z) {
+		this.availableTaxiMap.get(z).remove(v);
 	}
 	
 	public void updateRelocationTaxi(ElectricTaxi v,  int newZone) {

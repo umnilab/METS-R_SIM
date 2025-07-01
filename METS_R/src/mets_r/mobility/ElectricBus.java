@@ -3,15 +3,16 @@ package mets_r.mobility;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Dictionary;
-import java.util.Hashtable;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.data.input.OneBusSchedule;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
 import mets_r.facility.Zone;
 
 /**
@@ -33,11 +34,15 @@ public class ElectricBus extends ElectricVehicle {
 	private int routeID;
 	private int passNum;
 	private int numSeat; // Capacity of the bus.
-	private int nextStop; // nextStop =i means the i-th entry of ArrayList<Integer> busStop.
-	private ArrayList<Integer> busStop;
+	private int nextStop; // nextStop =i means the i-th entry of ArrayList<Integer> toVisitZone.
+	
+	private ArrayList<Integer> stopZones;
+	private ArrayList<Road> stopRoads;
+	private ArrayList<List<Road>> roadsBwStops;
 	// Each entry represents a bus stop (zone) along the bus route.
-	// For instance, it is [0,1,2,3,4,5,6,7,8,9,8,7,6,5,4,3,2,1];
-	private Dictionary<Integer, Integer> stopBus; // Reverse table for track the zone in the busStop;
+	// For instance, it is [0,1,2,3,4,5,6,7,8,9,0];
+	private HashMap<Integer, Integer> zoneStops; // Reverse table for track the zone in the busStop;
+	
 	// Timetable variable here, and the next departure time
 	private ArrayList<Integer> departureTime;
 	
@@ -63,10 +68,10 @@ public class ElectricBus extends ElectricVehicle {
 		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
 		initializeEVFields(GlobalVariables.BUS_BATTERY, 18000, 666, GlobalVariables.BUS_RECHARGE_LEVEL_LOW, GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);
 		this.routeID = routeID;
-		this.busStop = route;
-		this.stopBus = new Hashtable<Integer, Integer>();
+		this.stopZones = route;
+		this.zoneStops = new HashMap<Integer, Integer>();
 		for (int i = 0; i < route.size(); i++) {
-			stopBus.put(route.get(i), i);
+			zoneStops.put(route.get(i), i);
 		}
 		this.departureTime = new ArrayList<Integer>();
 		this.toBoardRequests = new ArrayList<Queue<Request>>();
@@ -78,7 +83,7 @@ public class ElectricBus extends ElectricVehicle {
 			this.onBoardRequests.add(new LinkedList<Request>());
 		}
 		this.passNum = 0;
-		this.nextStop = Math.min(1, this.busStop.size() - 1);
+		this.nextStop = Math.min(1, this.stopZones.size() - 1);
 		this.numSeat = 40;
 		this.avgPersonMass_ = 60.0;
 	}
@@ -108,7 +113,6 @@ public class ElectricBus extends ElectricVehicle {
 	// continue to move)
 	@Override
 	public void reachDest() {
-		// Case 1: the bus arrives at the charging station
 		if (onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getRouteID()
 					+ ",4," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
@@ -124,10 +128,7 @@ public class ElectricBus extends ElectricVehicle {
 			ChargingStation cs = ContextCreator.getChargingStationContext().get(this.getDestID());
 			cs.receiveBus(this);
 			this.tripConsume = 0;
-			// Case 2: the bus arrives at the start bus stop
 		} else {
-			// Case 3: (arrive at the other bus stop), or (arrive at the start bus stop and
-			// continue to move)
 			// drop off passengers at the stop
 			if (this.getRouteID() > 0) {
 				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ","
@@ -140,16 +141,15 @@ public class ElectricBus extends ElectricVehicle {
 					e.printStackTrace();
 				}
 			}
-
 			this.tripConsume = 0;
-
 			ContextCreator.logger.debug("Bus arriving at bus stop: " + nextStop);
-			
+	
 			// Passenger drop off
-			int delay = this.dropOffPassenger(nextStop % this.busStop.size());
+			int delay = this.dropOffPassenger(nextStop % this.stopZones.size());
 			super.reachDestButNotLeave(); // Update the vehicle status
 			// Decide the next step
-			if (nextStop == busStop.size() || this.routeID == -1) { // arrive at the last stop
+			if (nextStop == stopZones.size() || this.routeID == -1) { // arrive at the last stop
+				if(this.routeID != -1) ContextCreator.bus_schedule.finishSchedule(this.routeID);
 				this.routeID = -1; // Clear the previous route ID
 				for(Queue<Request> ps: this.toBoardRequests) {
 					for(Request unserved_pass: ps) {
@@ -167,35 +167,41 @@ public class ElectricBus extends ElectricVehicle {
 				}
 				
 				if (batteryLevel <= lowerBatteryRechargeLevel_) {
-					this.goCharging();
+					this.goCharging(ChargingStation.BUS);
 				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel <= higherBatteryRechargeLevel_
-						&& !ContextCreator.bus_schedule.hasSchedule(this.busStop.get(0))) {
-					this.goCharging();
+						&& !ContextCreator.bus_schedule.hasSchedule(this.stopZones.get(0))) {
+					this.goCharging(ChargingStation.BUS);
 				} else {
-					ContextCreator.bus_schedule.popSchedule(this.busStop.get(0), this);
+					ContextCreator.bus_schedule.popSchedule(this.stopZones.get(0), this);
 					super.leaveNetwork();
-					this.addPlan(busStop.get(nextStop),
-							ContextCreator.getZoneContext().get(busStop.get(nextStop)).getClosestRoad(true),
+					this.addPlan(stopZones.get(nextStop),
+							stopRoads.get(nextStop).getID(),
 							Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop)));
 					this.setNextPlan();
 					this.departure();
 				}
 			} else {
 				// Passengers get on board
-				// ServePassengerByBus
-				Zone arrivedZone = ContextCreator.getZoneContext().get(this.busStop.get(this.nextStop));
+				Zone arrivedZone = ContextCreator.getZoneContext().get(this.stopZones.get(this.nextStop));
 				delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
 				for(Request p: this.toBoardRequests.get(this.nextStop)) {
 					this.pickUpPassenger(p);
 				}
 				
-				this.nextStop = nextStop + 1;
+				this.nextStop ++;
+				
 				// Head to the next Stop
-				int destZoneID = busStop.get(nextStop % busStop.size());
-				this.addPlan(destZoneID, ContextCreator.getZoneContext().get(destZoneID).getClosestRoad(true),
+				int destZoneID = stopZones.get(nextStop % stopZones.size());
+				Road destRoad = stopRoads.get(nextStop % stopZones.size());
+				this.addPlan(destZoneID, destRoad.getID(),
 						Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop-1)));
 				this.setNextPlan();
 				this.departure();
+				if(roadsBwStops != null) {
+					List<Road> path = roadsBwStops.get(nextStop % stopZones.size());
+					this.updateRoute(path);
+				}
+				
 			}
 			ContextCreator.logger.debug("Bus " + this.ID + " has arrive the next station: " + nextStop);
 		}
@@ -204,7 +210,7 @@ public class ElectricBus extends ElectricVehicle {
 	
 	// To add delay in boarding or taking off the bus, modify the following functions
 	public int pickUpPassenger(Request p) {
-		this.onBoardRequests.get(this.stopBus.get(p.getDestZone())).add(p);
+		this.onBoardRequests.get(this.zoneStops.get(p.getDestZone())).add(p);
 		p.pickupTime = ContextCreator.getCurrentTick();
 		this.served_pass += p.getNumPeople();
 		this.passNum = this.getPassNum() + p.getNumPeople();
@@ -220,7 +226,7 @@ public class ElectricBus extends ElectricVehicle {
 			if(arrived_request.lenOfActivity() >= 2){
 				// generate a pass and add it to the corresponding zone
 				arrived_request.moveToNextActivity();
-				ContextCreator.getZoneContext().get(this.busStop.get(stopIndex)).insertTaxiPass(arrived_request);
+				ContextCreator.getZoneContext().get(this.stopZones.get(stopIndex)).insertTaxiPass(arrived_request);
 			}
 			else {
 				arrived_request.arriveTIme = ContextCreator.getCurrentTick();
@@ -241,9 +247,9 @@ public class ElectricBus extends ElectricVehicle {
 	}
 	
 	public boolean addToBoardPass(Request p) {
-		if(busStop.contains(p.getDestZone()) &&  busStop.contains(p.getOriginZone())) {
-			int stopIndex = busStop.indexOf(p.getDestZone());
-			int stopIndex2 = busStop.indexOf(p.getOriginZone());
+		if(stopZones.contains(p.getDestZone()) &&  stopZones.contains(p.getOriginZone())) {
+			int stopIndex = stopZones.indexOf(p.getDestZone());
+			int stopIndex2 = stopZones.indexOf(p.getOriginZone());
 			if ((stopIndex >= this.getNextStopIndex() && stopIndex2 >= this.getNextStopIndex()-1) || stopIndex == 0) {
 				this.toBoardRequests.get(stopIndex2).add(p);
 				return true;
@@ -279,61 +285,39 @@ public class ElectricBus extends ElectricVehicle {
 	
 	// return the list of stops (Zones) to be visited by this bus
 	public List<Integer> getBusStops(){
-		return new ArrayList<Integer>(this.busStop);
-	}
-	
-	@Override
-	public void finishCharging(Integer chargerID, String chargerType) {
-		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
-				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
-				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
-		try {
-			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.chargingWaitingTime = 0;
-			this.chargingTime = 0;
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-		this.onChargingRoute_ = false;
-		this.setNextPlan();
-		this.setState(Vehicle.CHARGING_RETURN_TRIP);
-		this.departure();
-		
+		return new ArrayList<Integer>(this.stopZones);
 	}
 	
 	// Change the entire route
-	public void updateSchedule(int newID, ArrayList<Integer> newRoute, ArrayList<Integer> departureTime) {
-		if (newID == -1) {
+	public void updateSchedule(OneBusSchedule obs) {
+		if (obs == null) {
 			this.routeID = -1;
-			this.busStop = new ArrayList<Integer>(Arrays.asList(this.busStop.get(this.busStop.size()-1)));
+			this.stopZones = new ArrayList<Integer>(Arrays.asList(this.stopZones.get(this.stopZones.size()-1)));
 			this.departureTime = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
+			this.stopRoads = null;
+			this.roadsBwStops = null;
 		} else {
-			this.routeID = newID;
-			this.busStop = newRoute;
-			this.stopBus = new Hashtable<Integer, Integer>();
-			for (int i = 0; i < this.busStop.size(); i++) {
-				this.stopBus.put(this.busStop.get(i), i);
+			this.routeID = obs.routeID;
+			this.stopZones = obs.stopZones; 
+			this.stopRoads = obs.stopRoads;
+			this.roadsBwStops = obs.pathBetweenStops;
+			this.zoneStops = new HashMap<Integer, Integer>();
+			for (int i = 0; i < this.stopZones.size(); i++) {
+				this.zoneStops.put(this.stopZones.get(i), i);
 			}
-			this.departureTime = departureTime;
+			this.departureTime = obs.departureTime;
 		}
 		this.nextStop = 0;
 
 		this.toBoardRequests = new ArrayList<Queue<Request>>();
-		for (int i = 0; i < this.busStop.size(); i++) {
+		for (int i = 0; i < this.stopZones.size(); i++) {
 			this.toBoardRequests.add(new LinkedList<Request>());
 		}
 		this.onBoardRequests = new ArrayList<Queue<Request>>();
-		for (int i = 0; i < this.busStop.size(); i++) {
+		for (int i = 0; i < this.stopZones.size(); i++) {
 			this.onBoardRequests.add(new LinkedList<Request>());
 		}
 		
 		this.passNum = 0;
 	}
-
-	
-	// Add a stop without changing the entire route
-//	public void insertStop() {
-//		
-//	}
-
 }

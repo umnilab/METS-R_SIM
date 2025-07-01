@@ -43,6 +43,7 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
         messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
+//        messageHandlers.put("getBusSchedule", this::getBusSchedule);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -174,11 +175,10 @@ public class QueryMessageHandler extends MessageHandler {
 				if(bus != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", bus.getID());
-					record2.put("route", bus.getRouteID());
+					record2.put("route", ContextCreator.bus_schedule.getRouteName(bus.getRouteID()));
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
 					record2.put("battery_state", bus.getBatteryLevel());
-					record2.put("stop_list", bus.getBusStops());
 					jsonData.add(record2);
 				}
 				else {
@@ -535,5 +535,41 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
-	
+	public HashMap<String, Object> getBusSchedule(JSONObject jsonMsg){
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.bus_schedule.getRouteIDs());
+			jsonObj.put("orig_id", ContextCreator.bus_schedule.getRouteNames());
+			return jsonObj;
+		}
+		
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		     
+		    for(String routeName: IDs) {
+		    	int rID = ContextCreator.bus_schedule.getRouteID(routeName);
+		    	
+				if (rID != -1) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("routeName", routeName);
+					record2.put("routeID", rID);
+					record2.put("stopZones", ContextCreator.bus_schedule.getStopZones(rID));
+					record2.put("stopRoads", ContextCreator.bus_schedule.getStopRoadNames(rID));
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
 }

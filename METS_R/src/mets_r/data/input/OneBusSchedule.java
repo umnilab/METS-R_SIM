@@ -1,24 +1,32 @@
 package mets_r.data.input;
 
 import java.util.ArrayList;
+import java.util.List;
+
+import mets_r.facility.Road;
 
 public class OneBusSchedule {
 	public Integer routeID;
-	public ArrayList<Integer> busRoute; // List of zone ID
+	public ArrayList<Integer> stopZones; // List of zone ID
+	
+	// Optional fields
 	public ArrayList<Integer> departureTime;
-
-	public OneBusSchedule(int routeID, ArrayList<Integer> busRoute, int departureTime) {
+	public ArrayList<Road> stopRoads; // List of road
+	public ArrayList<List<Road>> pathBetweenStops; // Paths (list of roads) between stops for bus, if null, uses the contemperaray shortest path.
+	
+	public OneBusSchedule(int routeID, ArrayList<Integer> stopZones, ArrayList<Integer> departureTime, ArrayList<Road> stopRoads) {
 		this.routeID = routeID;
-		this.busRoute = busRoute;
-		this.departureTime = new ArrayList<Integer>();
-		for (int i=0; i<busRoute.size(); i++) {
-			this.departureTime.add(departureTime);
-		}
-	}
-
-	public OneBusSchedule(int routeID, ArrayList<Integer> busRoute, ArrayList<Integer> departureTime) {
-		this.routeID = routeID;
-		this.busRoute = busRoute;
+		this.stopZones = stopZones;
 		this.departureTime = departureTime;
+		this.stopRoads = stopRoads;
+		this.pathBetweenStops = null;
+	}
+	
+	public OneBusSchedule(int routeID, ArrayList<Integer> stopZones, ArrayList<Integer> departureTime, ArrayList<Road> stopRoads, ArrayList<List<Road>> routesBetweenStops) {
+		this.routeID = routeID;
+		this.stopZones = stopZones;
+		this.departureTime = departureTime;
+		this.stopRoads = stopRoads;
+		this.pathBetweenStops = routesBetweenStops;
 	}
 }

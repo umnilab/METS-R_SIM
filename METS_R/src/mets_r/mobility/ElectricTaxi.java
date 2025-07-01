@@ -79,7 +79,7 @@ public class ElectricTaxi extends ElectricVehicle {
 	public void goParking() {
 		for(int z: ContextCreator.getZoneContext().get(this.getDestID()).getNeighboringZones()) {
 			if(ContextCreator.getZoneContext().get(z).getCapacity()>0) {
-				ContextCreator.getVehicleContext().getVehiclesByZone(this.getDestID()).remove(this);
+				ContextCreator.getVehicleContext().removeAvailableTaxi(this, this.getDestID());
 				ContextCreator.getZoneContext().get(this.getDestID()).numberOfRelocatedVehicles += 1;
 				ContextCreator.getZoneContext().get(z).addFutureSupply();
 				this.addPlan(z, ContextCreator.getZoneContext().get(z).getClosestRoad(true),
@@ -127,19 +127,17 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.passNum = this.getPassNum() + p.getNumPeople();
 			}
 			
-			if((this.getState() != Vehicle.PICKUP_TRIP) && (this.getState() != Vehicle.OCCUPIED_TRIP)){
-				this.setNextPlan();
-				this.setState(Vehicle.PICKUP_TRIP);
-				// Add vehicle to new queue of corresponding road
-				this.departure();
-			}
+			this.setState(Vehicle.PICKUP_TRIP);
+			this.setNextPlan();
+			// Add vehicle to new queue of corresponding road
+			this.departure();
 		}
 	}
 
 	@Override
 	public void reachDest() {
 		// Check if the vehicle was on a charging route
-		if (this.onChargingRoute_) {
+		if (this.onChargingRoute_ || this.getDestID() < 0) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ",4,"
 					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
@@ -148,10 +146,9 @@ public class ElectricTaxi extends ElectricVehicle {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
-			super.reachDestButNotLeave(); 
+			super.reachDestButNotLeave();
 			super.leaveNetwork(); // remove from the network
 			// Add to the charging station
-			ContextCreator.logger.debug("Vehicle arriving at charging station:" + this.getID());
 			ChargingStation cs = ContextCreator.getChargingStationContext().get(this.getDestID());
 			cs.receiveEV(this);
 			this.tripConsume = 0;
@@ -169,7 +166,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				}
 				this.tripConsume = 0;
 			}
-
+			
 			Zone z = ContextCreator.getZoneContext().get(this.getDestID()); // get destination zone info
 			this.setCurrentZone(z.getID());
 			
@@ -184,10 +181,10 @@ public class ElectricTaxi extends ElectricVehicle {
 				if(arrived_request.lenOfActivity() >= 2){
 					// generate a pass and add it to the corresponding zone
 					arrived_request.moveToNextActivity();
-					if (z.busReachableZone.contains(arrived_request.getDestZone())) {
+					if (ContextCreator.bus_schedule.isValid(arrived_request.getBusRoute())) {
 						z.insertBusPass(arrived_request); // if bus can reach the destination
 					} else {
-						z.insertTaxiPass(arrived_request); // this is called when we dynamically update bus schedules
+						z.insertTaxiPass(arrived_request); // this is placed in case one would like to dynamically update bus schedules
 					}
 				} else {
 					arrived_request.arriveTIme = ContextCreator.getCurrentTick();
@@ -207,6 +204,9 @@ public class ElectricTaxi extends ElectricVehicle {
 				z.removeFutureSupply();
 				if (this.onBoardRequests.size() > 0) { // keep serving more passengers
 					// super.leaveNetwork();  // Leave network to drop-off passengers
+					if(this.getPlan().size()<2) {
+						this.addPlan(this.onBoardRequests.peek().getDestZone(), this.onBoardRequests.peek().getDestRoad(), ContextCreator.getNextTick());
+					}
 					this.setNextPlan();
 					ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
 					this.departure();
@@ -214,10 +214,10 @@ public class ElectricTaxi extends ElectricVehicle {
 				else { // charging or join the current zone
 					if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 							&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
-						this.goCharging();
+						this.goCharging(ChargingStation.L3);
 					}
-					else { // join the current zone
-						ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).add(this);
+					else { 
+						// join the current zone
 						if(z.getCapacity() > 0) { // Has capacity
 							z.addOneParkingVehicle();
 		                	this.getParked(z);
@@ -226,6 +226,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		                	// Select a neighboring link and cruise to there
 		                	this.goCruising(z);
 		                }
+						ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
 					}
 				}
 			}
@@ -235,12 +236,17 @@ public class ElectricTaxi extends ElectricVehicle {
 				Request pickedup_request = this.toBoardRequests.poll();
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
 				this.onBoardRequests.add(pickedup_request);
-				this.addPlan(pickedup_request.getDestZone(),
-						pickedup_request.getDestRoad(),
-							ContextCreator.getNextTick());
+
 				if(this.toBoardRequests.size() == 0) {
 					this.setState(Vehicle.OCCUPIED_TRIP);
+					this.addPlan(pickedup_request.getDestZone(),
+							pickedup_request.getDestRoad(),
+								ContextCreator.getNextTick());
 				}
+				if(this.getPlan().size()<2) {
+					this.addPlan(this.toBoardRequests.peek().getOriginZone(), this.toBoardRequests.peek().getOriginRoad(), ContextCreator.getNextTick());
+				}
+				
 				this.setNextPlan();
 				this.departure();
 			}
@@ -248,8 +254,8 @@ public class ElectricTaxi extends ElectricVehicle {
 				if(this.cruisingTime_ <= GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME) {
 					if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 							&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
-						ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).remove(this);
-						this.goCharging();
+						ContextCreator.getVehicleContext().removeAvailableTaxi(this, z.getID());
+						this.goCharging(ChargingStation.L3);
 					}
 					else {
 						if(z.getCapacity() > 0) { // Has capacity
@@ -269,16 +275,15 @@ public class ElectricTaxi extends ElectricVehicle {
 					this.goParking();
 				}
 			}
-			else if (this.getState() == Vehicle.INACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
+			else if (this.getState() == Vehicle.INACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.CHARGING_RETURN_TRIP) {
 				if (this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP)
 					ContextCreator.getVehicleContext().removeRelocationTaxi(this);
 				z.removeFutureSupply();
 				if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
-					this.goCharging();
+					this.goCharging(ChargingStation.L3);
 				}
 				else { // join the current zone
-					ContextCreator.getVehicleContext().getVehiclesByZone(z.getID()).add(this);
 					if(z.getCapacity() > 0) { // Has capacity
 	                	z.addOneParkingVehicle();
 	    				this.getParked(z);
@@ -286,8 +291,8 @@ public class ElectricTaxi extends ElectricVehicle {
 	                else {
 	                	this.cruisingTime_ = 0;
 	                	this.goCruising(z); // Select a neighboring link and cruise to there
-	                	
 	                }
+					ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
 				}
 			}
 			else {
@@ -319,10 +324,15 @@ public class ElectricTaxi extends ElectricVehicle {
 		}
 
 		this.onChargingRoute_ = false;
+		if(this.getPlan().size() < 2) { // No where to go, head to the current Zone
+			this.addPlan(this.getCurrentZone(), ContextCreator.getZoneContext().get(this.getCurrentZone()).getClosestRoad(true), ContextCreator.getNextTick());
+		}
+		
 		this.setNextPlan(); // Return to where it was before goCharging
+		
+		this.setState(Vehicle.CHARGING_RETURN_TRIP);
+		this.departure(ContextCreator.getChargingStationContext().get(chargerID).getClosestRoad(false)); 
 		ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
-		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
-		this.departure(); 
 	}
 	
 	@Override

@@ -144,16 +144,18 @@ public class MessageClass{
     	}
     }
     
-    class ZoneIDOrigDestNum{
+    class ZoneIDOrigDestRouteNameNum{
     	int zoneID;
     	int dest;
     	int num;
+    	String routeName;
     	
     	// Constructor
-    	public ZoneIDOrigDestNum(int zoneID, int dest, int num) {
+    	public ZoneIDOrigDestRouteNameNum(int zoneID, int dest, int num, String routeName) {
     		this.zoneID = zoneID;
     		this.dest = dest;
     		this.num = num;
+    		this.routeName = routeName;
     	}
     }
     
@@ -220,6 +222,32 @@ public class MessageClass{
 	        this.roadID = roadID;
 	        this.weight = weight;
 	    }
+    }
+    
+    class RouteNameZonesRoadsPath{
+    	String routeName;
+    	ArrayList<Integer> zones;
+    	ArrayList<String> roads;
+    	ArrayList<List<String>> paths;
+    	
+    	// Constructor
+    	public RouteNameZonesRoadsPath(String routeName, ArrayList<Integer> zones, ArrayList<String> roads, ArrayList<List<String>> paths) {
+    		this.routeName = routeName;
+    		this.zones = zones;
+    		this.roads = roads;
+    		this.paths = paths;
+    	}
+    }
+    
+    class RouteNameDepartTime{
+    	String routeName;
+    	ArrayList<Integer> departTime;
+    	
+    	// Constructor
+    	public RouteNameDepartTime(String routeName, ArrayList<Integer> departTime) {
+    		this.routeName = routeName;
+    		this.departTime = departTime;
+    	}
     }
 	
 	public static void main(String[] args) {
@@ -325,15 +353,15 @@ public class MessageClass{
         System.out.println("Deserialized VehIDOrigRoadDestRoadNum: " + vehIDOrigRoadDestRoadNums2);
 
         // ZoneIDOrigDestNum
-        Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums = new ArrayList<>();
-        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestNum(10, 300, 3));
-        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestNum(11, 301, 4));
+        Collection<ZoneIDOrigDestRouteNameNum> zoneIDOrigDestNums = new ArrayList<>();
+        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestRouteNameNum(10, 300, 3, "101"));
+        zoneIDOrigDestNums.add(messageClass.new ZoneIDOrigDestRouteNameNum(11, 301, 4, "102"));
 
         json = gson.toJson(zoneIDOrigDestNums);
         System.out.println("Serialized ZoneIDOrigDestNum: " + json);
 
-        TypeToken<Collection<ZoneIDOrigDestNum>> collectionType9 = new TypeToken<Collection<ZoneIDOrigDestNum>>() {};
-        Collection<ZoneIDOrigDestNum> zoneIDOrigDestNums2 = gson.fromJson(json, collectionType9.getType());
+        TypeToken<Collection<ZoneIDOrigDestRouteNameNum>> collectionType9 = new TypeToken<Collection<ZoneIDOrigDestRouteNameNum>>() {};
+        Collection<ZoneIDOrigDestRouteNameNum> zoneIDOrigDestNums2 = gson.fromJson(json, collectionType9.getType());
         System.out.println("Deserialized ZoneIDOrigDestNum: " + zoneIDOrigDestNums2);
 
         // ZoneIDOrigRoadDestRoadNum

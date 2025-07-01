@@ -182,7 +182,7 @@ public class CityContext extends DefaultContext<Object> {
 							r.setNeighboringZone(z1.getID(),false);
 							r.setDistToZone(dist, false);
 						}
-						if(dist < z1.getDistToRoad(false)) {
+						if(r.canBeDest() && (dist < z1.getDistToRoad(false))) { // The first condition ensures that the road qualifies for a valid bus stop
 							z1.setClosestRoad(r.getID(), false);
 							z1.setDistToRoad(dist, false);
 						}
@@ -194,9 +194,9 @@ public class CityContext extends DefaultContext<Object> {
 							r.setNeighboringZone(z1.getID(),true);
 							r.setDistToZone(dist2, true);
 						}
-						if(dist2 < z1.getDistToRoad(true)) {
+						if(r.canBeOrigin() && (dist2 < z1.getDistToRoad(true))) {
 							z1.setClosestRoad(r.getID(), true);
-							z1.setDistToRoad(dist, true);
+							z1.setDistToRoad(dist2, true);
 						}
 					}
 				}
@@ -226,7 +226,7 @@ public class CityContext extends DefaultContext<Object> {
 						dist2 = this.getDistance(cs.getCoord(), r.getEndCoord());
 						if(dist2 < cs.getDistToRoad(true)) {
 							cs.setClosestRoad(r.getID(), true);
-							cs.setDistToRoad(dist, true);
+							cs.setDistToRoad(dist2, true);
 						}
 					}
 				}
@@ -239,11 +239,9 @@ public class CityContext extends DefaultContext<Object> {
 			Point point1 = geomFac.createPoint(r.getStartCoord());
 			Point point2 = geomFac.createPoint(r.getEndCoord());
 			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while(((r.getNeighboringZone(false) == 0) && r.canBeOrigin()) || ((r.getNeighboringZone(true) == 0) && r.canBeDest())) {
+			while(r.getNeighboringZone(false) == 0) {
 				double dist = Double.MAX_VALUE;
-				double dist2 = Double.MAX_VALUE;
 				Geometry buffer1 = point1.buffer(searchBuffer);
-				Geometry buffer2 = point2.buffer(searchBuffer);
 				for (Zone z : zoneGeography.getObjectsWithin(buffer1.getEnvelopeInternal(), Zone.class)) {
 					dist = this.getDistance(z.getCoord(), r.getStartCoord());
 					if(dist < r.getDistToZone(false)) {
@@ -251,21 +249,26 @@ public class CityContext extends DefaultContext<Object> {
 						r.setDistToZone(dist, false);
 					}
 				}
+				searchBuffer = searchBuffer * 2;
+			}
+			
+			searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+			while(r.getNeighboringZone(true) == 0) {
+				double dist2 = Double.MAX_VALUE;
+				Geometry buffer2 = point2.buffer(searchBuffer);
 				for (Zone z : zoneGeography.getObjectsWithin(buffer2.getEnvelopeInternal(), Zone.class)) {
 					dist2 = this.getDistance(z.getCoord(), r.getEndCoord());
 					if(dist2 < r.getDistToZone(true)) {
 						r.setNeighboringZone(z.getID(), true);
-						r.setDistToZone(dist, true);
+						r.setDistToZone(dist2, true);
 					}
 				}
 				searchBuffer = searchBuffer * 2;
 			}
 			
-			if(r.canBeOrigin()) {
+			if(r.canBeOrigin() && r.canBeDest()) {
 				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
 				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
-			}
-			if(r.canBeDest()) {
 				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
 				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
 			}
@@ -646,12 +649,7 @@ public class CityContext extends DefaultContext<Object> {
 	}
 
 	// Returns the closest charging station which has available chargers with specified charger type from the current location
-	public ChargingStation findNearestChargingStation(Coordinate coord, int chargerType) throws NullPointerException {
-		if (coord == null) {
-			throw new NullPointerException(
-					"CityContext: findNearestChargingStation: ERROR: the input coordinate is null");
-		}
-		
+	public ChargingStation findNearestChargingStation(Coordinate coord, int chargerType) {
 		if(ContextCreator.getChargingStationContext().numCharger(chargerType) == 0){ // No such charger
 			switch(chargerType) {
 			  case ChargingStation.L2:
@@ -792,7 +790,7 @@ public class CityContext extends DefaultContext<Object> {
 									+ coord.toString());
 				}
 				else {
-					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
+					this.coordOrigRoad_KeyCoord.put(coord, nearestRoad);
 				}
 				return nearestRoad;
 			}
@@ -824,99 +822,5 @@ public class CityContext extends DefaultContext<Object> {
 
 	public static double squaredEuclideanDistance(Coordinate p0, Coordinate p1) {
 		return (p0.x - p1.x) * (p0.x - p1.x) + (p0.y - p1.y) * (p0.y - p1.y);
-	}
-
-	// Returns the closest zone from the currentLocation that has a bus available
-	public Zone findNearestZoneWithBus(Coordinate coord, Integer destID) throws NullPointerException {
-		if (coord == null) {
-			throw new NullPointerException("CityContext: findNearestZoneWithBus: ERROR: the input coordinate is null");
-		}
-		// Use a buffer for efficiency
-		double minDist = Double.MAX_VALUE;
-		Zone nearestZone = null;
-		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			if (z.busReachableZone.contains(destID)) {
-				double thisDist = this.getDistance(coord, z.getCoord());
-				if (thisDist < minDist) {
-					minDist = thisDist;
-					nearestZone = z;
-				}
-			}
-		}
-		return nearestZone;
-	}
-
-	public void refreshTravelTime() {
-		ContextCreator.logger.info("Update the estimation of travel time...");
-		// Reset the travel time and travel distance estimation
-		for (Zone z1 : ContextCreator.getZoneContext().getAll()) {
-			z1.busTravelTime.clear();
-			z1.busTravelDistance.clear();
-			z1.nearestZoneWithBus.clear();
-		}
-		for (List<Integer> route : ContextCreator.bus_schedule.getBusSchedule()) {
-			// Retrieve stations in order, from hub to other places
-			double travel_distance = 0;
-			double travel_time = 0;
-
-			for (int shift = 0; shift < route.size(); shift++) {
-				if ( ContextCreator.getZoneContext().HUB_INDEXES.contains(route.get(shift))) { // is hub
-					Zone hub = ContextCreator.getZoneContext().get(route.get(shift));
-					Zone z1 = hub;
-					Zone z2;
-
-					for (int i = 1; i < route.size(); i++) {
-						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z2 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), null);
-						if (path != null) {
-							for (Road r : path) {
-								travel_distance += r.getLength();
-								travel_time += r.getTravelTime();
-							}
-						}
-						if (hub.busTravelDistance.containsKey(z2.getID())) {
-							hub.busTravelDistance.put(z2.getID(),
-									Math.min(hub.busTravelDistance.get(z2.getID()), (float) travel_distance));
-							hub.busTravelTime.put(z2.getID(),
-									Math.min(hub.busTravelTime.get(z2.getID()), (float) travel_time));
-						} else {
-							hub.busTravelDistance.put(z2.getID(), (float) travel_distance);
-							hub.busTravelTime.put(z2.getID(), (float) travel_time);
-						}
-						z1 = z2;
-					}
-					ContextCreator.logger.debug(hub.busTravelDistance);
-					ContextCreator.logger.debug(hub.busTravelTime);
-					// Retrieve stations in back order, from other places to hub
-					travel_distance = 0;
-					travel_time = 0;
-					z2 = hub;
-					for (int i = route.size() - 1; i > 0; i--) {
-						int j = shift + i >= route.size() ? shift + i - route.size() : shift + i;
-						z1 = ContextCreator.getZoneContext().get(route.get(j));
-						List<Road> path = RouteContext.shortestPathRoute(z1.getCoord(), z2.getCoord(), null);
-						if (path != null) {
-							for (Road r : path) {
-								travel_distance += r.getLength();
-								travel_time += r.getTravelTime();
-							}
-						}
-						if (z1.busTravelDistance.containsKey(hub.getID())) {
-							z1.busTravelDistance.put(hub.getID(),
-									Math.min(z1.busTravelDistance.get(hub.getID()), (float) travel_distance));
-							z1.busTravelTime.put(hub.getID(),
-									Math.min(z1.busTravelTime.get(hub.getID()), (float) travel_time));
-						} else {
-							z1.busTravelDistance.put(hub.getID(), (float) travel_distance);
-							z1.busTravelTime.put(hub.getID(), (float) travel_time);
-						}
-						z2 = z1;
-						ContextCreator.logger.debug(z1.busTravelDistance);
-						ContextCreator.logger.debug(z1.busTravelTime);
-					}
-				}
-			}
-		}
 	}
 }

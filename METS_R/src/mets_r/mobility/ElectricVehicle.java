@@ -163,51 +163,42 @@ public class ElectricVehicle extends Vehicle {
 		
 		// Update the zone info of relocating taxis
 		if(this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP && 
-				road.getNeighboringZone(true)>0) {
-			int newZone = road.getNeighboringZone(true);
+				road.getNeighboringZone(false) > 0) {
+			int newZone = road.getNeighboringZone(false);
 			ContextCreator.getVehicleContext().updateRelocationTaxi((ElectricTaxi) this, newZone);
 		}
 	}
 	
 	// Find the closest charging station and insert a plan to go to charging station into the current activity plan
 	public void goCharging() {
+		// Add a charging activity
+		int chargerType = this.decideChargerType();
+		goCharging(chargerType);
+	}
+	
+	// Find the closest charging station with specific charger type and update the activity plan
+	public void goCharging(int chargerType) {
+		// Sanity check
 		int current_dest_zone = this.getDestID();
 		int current_dest_road = this.getDestRoad();
+		if(current_dest_zone < 0) { // vehicle is heading to the charging station already
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " is already on route to charging.");
+			return;
+		}
+		
 		// Add a charging activity
-		int chargetType = this.decideChargerType();
 		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
-				chargetType);
-		if(cs == null && chargetType == ChargingStation.L3) {
+				chargerType);
+		if(cs == null && chargerType == ChargingStation.L3) {
 			cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
 					ChargingStation.L2);
 		}
 		if(cs != null) {
 			this.onChargingRoute_ = true;
+			this.setState(Vehicle.CHARGING_TRIP);
 			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
 			this.setNextPlan();
 			this.addPlan(current_dest_zone, current_dest_road, ContextCreator.getNextTick());
-			this.setState(Vehicle.CHARGING_TRIP);
-			this.departure();
-			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");
-		}
-		else {
-			ContextCreator.logger.warn("Vehicle " + this.getID() + " cannot find charging station at coordinate: " + this.getCurrentCoord());
-		}
-	}
-	
-	// Find the closest charging station with specific charger type and update the activity plan
-	public void goCharging(int chargerType) {
-		int current_dest_zone = this.getDestID();
-		int current_dest_road = this.getDestRoad();
-		// Add a charging activity
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
-				chargerType);
-		if(cs != null) {
-			this.onChargingRoute_ = true;
-			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
-			this.setNextPlan();
-			this.addPlan(current_dest_zone, current_dest_road, ContextCreator.getNextTick());
-			this.setState(Vehicle.CHARGING_TRIP);
 			this.departure();
 			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");
 		}
@@ -310,11 +301,12 @@ public class ElectricVehicle extends Vehicle {
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-
+		
+		//Put vehicle back to the departure link of the charging station
 		this.onChargingRoute_ = false;
 		this.setNextPlan(); // Return to where it was before goCharging
 		this.setState(Vehicle.CHARGING_RETURN_TRIP);
-		this.departure(); 
+		this.departure(ContextCreator.getChargingStationContext().get(chargerID).getClosestRoad(false)); 
 	}
 	
 	public double getBatteryLevel() {
