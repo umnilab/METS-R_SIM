@@ -199,7 +199,8 @@ public class ElectricBus extends ElectricVehicle {
 				this.departure();
 				if(roadsBwStops != null) {
 					List<Road> path = roadsBwStops.get(nextStop % stopZones.size());
-					this.updateRoute(path);
+					if(path != null)
+						this.updateRoute(path);
 				}
 				
 			}
@@ -319,5 +320,39 @@ public class ElectricBus extends ElectricVehicle {
 		}
 		
 		this.passNum = 0;
+	}
+	
+	public boolean insertStop(int zoneID, Road r, int stopInd) {
+		if(stopInd == 0 || stopInd + 1 == this.stopRoads.size() || stopInd < this.getCurrentStop()) {
+			ContextCreator.logger.warn("Invalid stop index for inserting new stops!");
+			return false;
+		}
+		else {
+			this.stopZones.add(stopInd, zoneID);
+			this.stopRoads.add(stopInd, r);
+			if(this.roadsBwStops != null) {
+				this.roadsBwStops.remove(stopInd);
+				this.roadsBwStops.add(stopInd, null);
+				this.roadsBwStops.add(stopInd, null);
+			}
+			return true;
+		}
+	}
+	
+	public boolean removeStop(int stopInd) {
+		if(stopInd == 0 || stopInd + 1 == this.stopRoads.size() || stopInd < this.getCurrentStop()) {
+			ContextCreator.logger.warn("Invalid stop index for removing stops!");
+			return false;
+		}
+		else {
+			this.stopZones.remove(stopInd);
+			this.stopRoads.remove(stopInd);
+			if(this.roadsBwStops != null) {
+				this.roadsBwStops.remove(stopInd);
+				this.roadsBwStops.remove(stopInd);
+				this.roadsBwStops.add(stopInd, null);
+			}
+			return true;
+		}
 	}
 }

@@ -14,6 +14,8 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.MessageClass.BusIDRouteNameStopIndex;
+import mets_r.communication.MessageClass.BusIDRouteNameZoneRoadStopIndex;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
@@ -66,8 +68,9 @@ public class ControlMessageHandler extends MessageHandler {
         messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
         messageHandlers.put("reachDest", this::reachDest);
         messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
-        messageHandlers.put("updateBusRoute", this::updateBusRoute);
         messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
+        messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
+        messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
 //        messageHandlers.put("updateSignal", this::updateSignal);
         
 	}
@@ -1351,7 +1354,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	// Route for one bus
-	private HashMap<String, Object> updateBusRoute(JSONObject jsonMsg) {
+	private HashMap<String, Object> insertStopToRoute(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
@@ -1359,7 +1362,50 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		else {
 			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<BusIDRouteNameZoneRoadStopIndex>> collectionType = new TypeToken<Collection<BusIDRouteNameZoneRoadStopIndex>>() {};
+				Collection<BusIDRouteNameZoneRoadStopIndex> busIDRouteNameZoneRoadStopIndexes = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
+				for(BusIDRouteNameZoneRoadStopIndex busIDRouteNameZoneRoadStopIndex: busIDRouteNameZoneRoadStopIndexes) {
+					ElectricBus veh = (ElectricBus) ContextCreator.getVehicleContext().getPublicVehicle(busIDRouteNameZoneRoadStopIndex.busID);
+					
+					if(veh!= null) {
+						int rID = veh.getRouteID();
+						Road r = ContextCreator.getCityContext().findRoadWithOrigID(busIDRouteNameZoneRoadStopIndex.road);
+						if(ContextCreator.bus_schedule.getRouteName(rID) == busIDRouteNameZoneRoadStopIndex.routeName && r != null) {
+							if (veh.insertStop(busIDRouteNameZoneRoadStopIndex.zone, r, busIDRouteNameZoneRoadStopIndex.stopIndex)) {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+					    		record2.put("ID", busIDRouteNameZoneRoadStopIndex.busID);
+					    		record2.put("STATUS", "OK");
+								jsonData.add(record2);
+							}
+							else {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+					    		record2.put("ID", busIDRouteNameZoneRoadStopIndex.busID);
+					    		record2.put("STATUS", "KO");
+								jsonData.add(record2);
+							}
+						}
+						else {
+							ContextCreator.logger.info("insertStopToRoute: bus route or road name incorrect.");
+							HashMap<String, Object> record2 = new HashMap<String, Object>();
+				    		record2.put("ID", busIDRouteNameZoneRoadStopIndex.busID);
+				    		record2.put("STATUS", "KO");
+							jsonData.add(record2);
+						}
+					}
+					else {
+						ContextCreator.logger.info("insertStopToRoute: cannot find bus with ID: " +  busIDRouteNameZoneRoadStopIndex.busID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", busIDRouteNameZoneRoadStopIndex.busID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+					}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
 			}
 			catch (Exception e) {
 			    // Log error and return KO in case of exception
@@ -1369,6 +1415,69 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		return jsonAns;
 	}
+	
+	private HashMap<String, Object> removeStopFromRoute(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<BusIDRouteNameStopIndex>> collectionType = new TypeToken<Collection<BusIDRouteNameStopIndex>>() {};
+				Collection<BusIDRouteNameStopIndex> busIDRouteNameStopIndexes = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(BusIDRouteNameStopIndex busIDRouteNameStopIndex: busIDRouteNameStopIndexes) {
+					ElectricBus veh = (ElectricBus) ContextCreator.getVehicleContext().getPublicVehicle(busIDRouteNameStopIndex.busID);
+					
+					if(veh!= null) {
+						int rID = veh.getRouteID();
+						if(ContextCreator.bus_schedule.getRouteName(rID) == busIDRouteNameStopIndex.routeName) {
+							if (veh.removeStop(busIDRouteNameStopIndex.stopIndex)) {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+					    		record2.put("ID", busIDRouteNameStopIndex.busID);
+					    		record2.put("STATUS", "OK");
+								jsonData.add(record2);
+							}
+							else {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+					    		record2.put("ID", busIDRouteNameStopIndex.busID);
+					    		record2.put("STATUS", "KO");
+								jsonData.add(record2);
+							}
+						}
+						else {
+							ContextCreator.logger.info("insertStopToRoute: bus route or road name incorrect.");
+							HashMap<String, Object> record2 = new HashMap<String, Object>();
+				    		record2.put("ID", busIDRouteNameStopIndex.busID);
+				    		record2.put("STATUS", "KO");
+							jsonData.add(record2);
+						}
+					}
+					else {
+						ContextCreator.logger.info("insertStopToRoute: cannot find bus with ID: " +  busIDRouteNameStopIndex.busID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", busIDRouteNameStopIndex.busID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+					}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	
 	
 	// Weight for online shortest path
 	private HashMap<String, Object> updateEdgeWeight(JSONObject jsonMsg) {

@@ -252,6 +252,35 @@ public class MessageClass{
     	}
     }
     
+    class BusIDRouteNameZoneRoadStopIndex{
+    	int busID;
+    	String routeName;
+    	int zone;
+    	String road;
+    	int stopIndex;
+    	
+    	// Constructor
+    	public BusIDRouteNameZoneRoadStopIndex(int busID, String routeName, int zone, String road, int stopIndex) {
+    		this.routeName = routeName;
+    		this.zone = zone;
+    		this.road = road;
+    		this.stopIndex = stopIndex;
+    	}
+    }
+    
+    class BusIDRouteNameStopIndex{
+    	int busID;
+    	String routeName;
+    	int stopIndex;
+    	
+    	// Constructor
+    	public BusIDRouteNameStopIndex(int busID, String routeName, int stopIndex) {
+    		this.routeName = routeName;
+    		this.stopIndex = stopIndex;
+    	}
+    }
+    
+    
     
     class RouteNameDepartTime{
     	String routeName;
