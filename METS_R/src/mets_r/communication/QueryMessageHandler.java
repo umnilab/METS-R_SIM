@@ -43,7 +43,7 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
         messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
-//        messageHandlers.put("getBusSchedule", this::getBusSchedule);
+        messageHandlers.put("getBusSchedule", this::getBusSchedule);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
