@@ -17,6 +17,7 @@ import mets_r.GlobalVariables;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
+import mets_r.communication.MessageClass.RouteNameZonesRoads;
 import mets_r.communication.MessageClass.RouteNameZonesRoadsPath;
 import mets_r.communication.MessageClass.VehIDOrigDestNum;
 import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
@@ -50,6 +51,7 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("exitCoSimRegion", this::exitCoSimRegion);
         messageHandlers.put("addBusRoute", this::addBusRoute);
+        messageHandlers.put("addBusRouteWithPath", this::addBusRouteWithPath);
         messageHandlers.put("addBusRun", this::addBusRun);
         messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
         messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
@@ -1159,38 +1161,63 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
+				TypeToken<Collection<RouteNameZonesRoads>> collectionType = new TypeToken<Collection<RouteNameZonesRoads>>() {};
+				Collection<RouteNameZonesRoads> routeNameZonesRoads = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(RouteNameZonesRoads routeNameZonesRoad: routeNameZonesRoads) {
+					if(ContextCreator.bus_schedule.insertNewRouteByRoadNames(routeNameZonesRoad.routeName, routeNameZonesRoad.zones, routeNameZonesRoad.roads)) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("routeName", routeNameZonesRoad.routeName);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
+					}
+					else {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("routeName", routeNameZonesRoad.routeName);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+					}
+				}
+				
+				jsonAns.put("DATA", jsonData);
+			    jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		
+		return jsonAns;
+	}
+	
+	private HashMap<String, Object> addBusRouteWithPath(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
 				TypeToken<Collection<RouteNameZonesRoadsPath>> collectionType = new TypeToken<Collection<RouteNameZonesRoadsPath>>() {};
 				Collection<RouteNameZonesRoadsPath> routeNameZonesRoadsPaths = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
 				for(RouteNameZonesRoadsPath routeNameZonesRoadsPath: routeNameZonesRoadsPaths) {
-					if(routeNameZonesRoadsPath.paths != null) {
-						if(ContextCreator.bus_schedule.insertNewRouteByRoadNames(routeNameZonesRoadsPath.routeName, routeNameZonesRoadsPath.zones, routeNameZonesRoadsPath.roads)) {
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
-				    		record2.put("STATUS", "OK");
-							jsonData.add(record2);
-						}
-						else {
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
-				    		record2.put("STATUS", "KO");
-							jsonData.add(record2);
-						}
+					if(ContextCreator.bus_schedule.insertNewRouteByRoadNames(routeNameZonesRoadsPath.routeName, routeNameZonesRoadsPath.zones, routeNameZonesRoadsPath.roads, routeNameZonesRoadsPath.paths)) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
+			    		record2.put("STATUS", "OK");
+						jsonData.add(record2);
 					}
 					else {
-						if(ContextCreator.bus_schedule.insertNewRouteByRoadNames(routeNameZonesRoadsPath.routeName, routeNameZonesRoadsPath.zones, routeNameZonesRoadsPath.roads, routeNameZonesRoadsPath.paths)) {
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
-				    		record2.put("STATUS", "OK");
-							jsonData.add(record2);
-						}
-						else {
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
-				    		record2.put("STATUS", "KO");
-							jsonData.add(record2);
-						}
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("routeName", routeNameZonesRoadsPath.routeName);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
 					}
 				}
 				

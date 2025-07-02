@@ -239,6 +239,20 @@ public class MessageClass{
     	}
     }
     
+    class RouteNameZonesRoads{
+    	String routeName;
+    	ArrayList<Integer> zones;
+    	ArrayList<String> roads;
+    	
+    	// Constructor
+    	public RouteNameZonesRoads(String routeName, ArrayList<Integer> zones, ArrayList<String> roads) {
+    		this.routeName = routeName;
+    		this.zones = zones;
+    		this.roads = roads;
+    	}
+    }
+    
+    
     class RouteNameDepartTime{
     	String routeName;
     	ArrayList<Integer> departTime;
