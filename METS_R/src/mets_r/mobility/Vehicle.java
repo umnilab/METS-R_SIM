@@ -1886,33 +1886,38 @@ public class Vehicle {
 			this.nextLane_ = null;
 			return;
 		} else {
-			for (int dl : curLane.getDownStreamLanes()) {
-				if (ContextCreator.getLaneContext().get(dl).getRoad() == this.nextRoad_) {
-					this.nextLane_ = ContextCreator.getLaneContext().get(dl);
-					// If this lane already connects to downstream road then assign to the connected lane
+			if(curLane == null) { // edge case, vehicle has not entered the network yet, this may occur when someone calls teleportVeh in the control APIs
+				this.nextLane_ = this.nextRoad_.getLane(0); 
+			}
+			else {
+				for (int dl : curLane.getDownStreamLanes()) {
+					if (ContextCreator.getLaneContext().get(dl).getRoad() == this.nextRoad_) {
+						this.nextLane_ = ContextCreator.getLaneContext().get(dl);
+						// If this lane already connects to downstream road then assign to the connected lane
+						return;
+					}
+				}
+				
+				// Vehicle is currently on an incorrect lane that does not connect to the next road
+				for (Lane dl: this.nextRoad_.getLanes()) {
+					if(dl.getUpStreamLaneInRoad(this.road)!=null) {
+						this.nextLane_ = dl;
+						return;
+					}
+				}
+				
+				// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
+				// Raise a warning and call the routing function to complete the missing route
+				ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " fixing by reroute it.");
+				List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
+				if (patchPath != null && patchPath.size() > 2) {
+					List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
+					this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
+					this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
+					this.setShadowImpact();
+					this.assignNextLane(); // try to get next lane again 
 					return;
 				}
-			}
-			
-			// Vehicle is currently on an incorrect lane that does not connect to the next road
-			for (Lane dl: this.nextRoad_.getLanes()) {
-				if(dl.getUpStreamLaneInRoad(this.road)!=null) {
-					this.nextLane_ = dl;
-					return;
-				}
-			}
-			
-			// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
-			// Raise a warning and call the routing function to complete the missing route
-			ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " fixing by reroute it.");
-			List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
-			if (patchPath != null && patchPath.size() > 2) {
-				List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
-				this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
-				this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
-				this.setShadowImpact();
-				this.assignNextLane(); // try to get next lane again 
-				return;
 			}
 		}
 		ContextCreator.logger.error("Cannot assign next lane form the curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + " roadPath" + this.roadPath);
