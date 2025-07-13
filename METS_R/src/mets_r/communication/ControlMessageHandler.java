@@ -417,20 +417,44 @@ public class ControlMessageHandler extends MessageHandler {
 					} else {
 						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeRoadLaneDist.vehID);
 					}
-
-					if (veh != null) {
+					
+					if(veh == null) {
+						ContextCreator.logger.error("Vehicle not found for ID: " + vehIDVehTypeRoadLaneDist.vehID);
+					}
+					else{
 						Road road = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoadLaneDist.roadID);
-						if (road != null && veh != null) {
-							if(road.getNumberOfLanes() > vehIDVehTypeRoadLaneDist.laneID) {
-								Lane lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
-								// Update its location in the target link and target lane
-								if (road.teleportVehicle(veh, lane, vehIDVehTypeRoadLaneDist.dist)) {
+						if (road == null) {
+			                ContextCreator.logger.error("Road not found for ID: " + vehIDVehTypeRoadLaneDist.roadID);
+						}
+		                else {
+		                	if (vehIDVehTypeRoadLaneDist.laneID < 0 || vehIDVehTypeRoadLaneDist.laneID >= road.getNumberOfLanes()) {
+		                		 ContextCreator.logger.error(
+		                                 String.format("Invalid lane index %d for road %s (lanes: %d)",
+		                                		 vehIDVehTypeRoadLaneDist.laneID, vehIDVehTypeRoadLaneDist.roadID, road.getNumberOfLanes()));
+		                	}
+		                	else{
+		                		try {
+									Lane lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
+									// Update its location in the target link and target lane
+									if (veh.getRoad() == road) {
+										veh.removeFromCurrentLane(); // Just remove the vehicle from the current lane
+									}
+									else {
+										veh.removeFromCurrentLane();
+										veh.removeFromCurrentRoad();
+									}
+									
+									road.teleportVehicle(veh, lane, vehIDVehTypeRoadLaneDist.dist);
 									HashMap<String, Object> record2 = new HashMap<String, Object>();
 									record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
 									record2.put("STATUS", "OK");
 									jsonData.add(record2);
 									continue;
-								}
+		                		} catch (Exception innerEx) {
+		                            ContextCreator.logger.error("Teleport failure for vehicle " + vehIDVehTypeRoadLaneDist.vehID
+		                                + " on road " + vehIDVehTypeRoadLaneDist.roadID + ": " + innerEx.getMessage(), innerEx);
+		                        }
+
 							}
 						}
 					}

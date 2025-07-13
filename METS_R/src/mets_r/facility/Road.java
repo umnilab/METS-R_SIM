@@ -216,14 +216,8 @@ public class Road {
 	 * from other sources and the "collision" could just be
 	 * caused by the order of vehicle updates.
 	 */
-	public boolean teleportVehicle(Vehicle veh, Lane lane, double dist) { 
-		if (veh.getRoad() == this) {
-			//Case 1, veh's road is this road, (important) will ignore collision issue and change its loc
-			veh.removeFromCurrentLane(); // Just remove the vehicle from the current lane
-		}
-		else {
-			veh.removeFromCurrentLane();
-			veh.removeFromCurrentRoad();
+	public void teleportVehicle(Vehicle veh, Lane lane, double dist) { 
+		if (veh.getRoad() != this) {
 			veh.appendToRoad(this);
 		}
 		
@@ -233,7 +227,6 @@ public class Road {
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
 		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
-		return true;
 	}
 
 	@Override

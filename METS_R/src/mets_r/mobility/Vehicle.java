@@ -1364,7 +1364,8 @@ public class Vehicle {
 			this.setNextRoad();
 		}
 		else { // Veh enter the road not in its planned route
-			this.rerouteAndSetNextRoad();
+			if(this.destRoad_ != null)
+				this.rerouteAndSetNextRoad();
 		}
 	}
 	
