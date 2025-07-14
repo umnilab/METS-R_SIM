@@ -1397,7 +1397,7 @@ public class ControlMessageHandler extends MessageHandler {
 					if(veh!= null) {
 						int rID = veh.getRouteID();
 						Road r = ContextCreator.getCityContext().findRoadWithOrigID(busIDRouteNameZoneRoadStopIndex.road);
-						if(ContextCreator.bus_schedule.getRouteName(rID) == busIDRouteNameZoneRoadStopIndex.routeName && r != null) {
+						if(ContextCreator.bus_schedule.getRouteName(rID).equals(busIDRouteNameZoneRoadStopIndex.routeName) && r != null) {
 							if (veh.insertStop(busIDRouteNameZoneRoadStopIndex.zone, r, busIDRouteNameZoneRoadStopIndex.stopIndex)) {
 								HashMap<String, Object> record2 = new HashMap<String, Object>();
 					    		record2.put("ID", busIDRouteNameZoneRoadStopIndex.busID);
@@ -1458,7 +1458,7 @@ public class ControlMessageHandler extends MessageHandler {
 					
 					if(veh!= null) {
 						int rID = veh.getRouteID();
-						if(ContextCreator.bus_schedule.getRouteName(rID) == busIDRouteNameStopIndex.routeName) {
+						if(ContextCreator.bus_schedule.getRouteName(rID).equals(busIDRouteNameStopIndex.routeName)) {
 							if (veh.removeStop(busIDRouteNameStopIndex.stopIndex)) {
 								HashMap<String, Object> record2 = new HashMap<String, Object>();
 					    		record2.put("ID", busIDRouteNameStopIndex.busID);
