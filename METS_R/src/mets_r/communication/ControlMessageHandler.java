@@ -1473,7 +1473,7 @@ public class ControlMessageHandler extends MessageHandler {
 							}
 						}
 						else {
-							ContextCreator.logger.info("insertStopToRoute: bus route or road name incorrect.");
+							ContextCreator.logger.info("removeStopFromRoute: bus route or road name incorrect.");
 							HashMap<String, Object> record2 = new HashMap<String, Object>();
 				    		record2.put("ID", busIDRouteNameStopIndex.busID);
 				    		record2.put("STATUS", "KO");
