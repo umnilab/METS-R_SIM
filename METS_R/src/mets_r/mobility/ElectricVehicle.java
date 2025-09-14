@@ -187,11 +187,19 @@ public class ElectricVehicle extends Vehicle {
 		}
 		
 		// Add a charging activity
-		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+		ChargingStation cs = ContextCreator.getCityContext().findCheapestChargingStation(this.getCurrentCoord(),
 				chargerType);
-		if(cs == null && chargerType == ChargingStation.L3) {
+		if(cs == null) { // Fallback: no L2/DCFC charger within a reasonable buffer
 			cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+					chargerType);
+		}
+		if(cs == null && chargerType == ChargingStation.L3) {
+			cs = ContextCreator.getCityContext().findCheapestChargingStation(this.getCurrentCoord(),
 					ChargingStation.L2);
+			if(cs == null) { // Fallback: no L2 charger within a reasonable buffer
+				cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+						ChargingStation.L2);
+			}
 		}
 		if(cs != null) {
 			this.onChargingRoute_ = true;

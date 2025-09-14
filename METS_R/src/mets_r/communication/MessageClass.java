@@ -280,8 +280,6 @@ public class MessageClass{
     	}
     }
     
-    
-    
     class RouteNameDepartTime{
     	String routeName;
     	ArrayList<Integer> departTime;
@@ -292,6 +290,20 @@ public class MessageClass{
     		this.departTime = departTime;
     	}
     }
+    
+    class ChargerIDChargerTypeWeight{
+    	int chargerID;
+    	int chargerType;
+        double weight;
+        
+        // Constructor
+	    public ChargerIDChargerTypeWeight(int chargerID, int chargerType, double weight) {
+	        this.chargerID = chargerID;
+	        this.chargerType = chargerType;
+	        this.weight = weight;
+	    }
+    }
+    
 	
 	public static void main(String[] args) {
 		Gson gson = new Gson();

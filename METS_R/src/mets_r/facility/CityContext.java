@@ -647,8 +647,52 @@ public class CityContext extends DefaultContext<Object> {
 		RepastEdge<?> edge = this.edgeIDEdge_KeyID.get(id);
 		return edge;
 	}
+	
+	// Return the cheapest charging station, no matter whether they are full or not
+	public ChargingStation findCheapestChargingStation(Coordinate coord, int chargerType) {
+		if(ContextCreator.getChargingStationContext().numCharger(chargerType) == 0){ // No such charger
+			switch(chargerType) {
+			  case ChargingStation.L2:
+				  if(ContextCreator.getChargingStationContext().numCharger(ChargingStation.L3) > 0){
+					  chargerType = ChargingStation.L3;
+					  break;
+				  }
+			  case ChargingStation.L3:
+				  if(ContextCreator.getChargingStationContext().numCharger(ChargingStation.L2) > 0){
+					  chargerType = ChargingStation.L2;
+					  break;
+				  }
+			  default:
+				  ContextCreator.logger.error("No charging station with type " + chargerType +" (0-L2, 1-DCFC, 2-BUS)");
+				  return null;
+			}
+		}
+		GeometryFactory geomFac = new GeometryFactory();
+		Geography<ChargingStation> csGeography = ContextCreator.getChargingStationGeography();
+		// Use a buffer for efficiency
+		Point point = geomFac.createPoint(coord);
+		double searchBuffer = 5 * GlobalVariables.SEARCHING_BUFFER; // Beyond this range is considered unreachable
+		Geometry buffer = point.buffer(searchBuffer);
+		ChargingStation cheapestChargingStation = null;
+		double minPrice = Double.MAX_VALUE;
+		for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
+			if (cs.numCharger(chargerType) > 0) {
+				double thisPrice = cs.getPrice(chargerType);
+				if(thisPrice < minPrice) {
+					minPrice = thisPrice;
+					cheapestChargingStation = cs;
+				}
+			}
+		}
+		if (cheapestChargingStation == null) {
+			ContextCreator.logger.warn(
+					"CityContext: findCheapestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
+							+ coord.toString());
+		}
+		return cheapestChargingStation;
+	}
 
-	// Returns the closest charging station which has available chargers with specified charger type from the current location
+	// Return the closest charging station which has available chargers with specified charger type from the current location
 	public ChargingStation findNearestChargingStation(Coordinate coord, int chargerType) {
 		if(ContextCreator.getChargingStationContext().numCharger(chargerType) == 0){ // No such charger
 			switch(chargerType) {

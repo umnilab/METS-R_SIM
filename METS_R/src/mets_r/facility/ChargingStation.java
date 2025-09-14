@@ -35,7 +35,7 @@ public class ChargingStation {
 	private double distToArrivalRoad;
 	
 	// We assume the battery capacity for the bus is 300.0 kWh, and the battery
-	// capacity for the taxi is 50.0 kWh.
+	// default capacity for the taxi is 50.0 kWh.
 	private LinkedList<ElectricVehicle> queueChargingL2; // Car queue waiting for L2 charging
 	private LinkedList<ElectricVehicle> queueChargingL3; // Car queue waiting for L3 charging
 	private LinkedList<ElectricBus> queueChargingBus; // Bus queue waiting for bus charging
@@ -45,6 +45,10 @@ public class ChargingStation {
 	private ArrayList<ElectricVehicle> chargingVehicleL2; // Cars that are charging themselves under the L2 chargers
 	private ArrayList<ElectricVehicle> chargingVehicleL3; // Cars that are charging themselves under the L3 chargers
 	private ArrayList<ElectricBus> chargingBus; // Buses that are charging themselves under the bus chargers
+	
+	// For the price-oriented charging station selection
+	private double priceL2; // Unit: $/kWh, a factor estimated from the real pricing mechanism (e.g., $/hour).
+	private double priceL3; // Unit: $/kWh, a factor estimated from the real pricing mechanism (e.g., $/hour).
 
 	// For thread-safe operation
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
@@ -63,7 +67,7 @@ public class ChargingStation {
 	 * @param numL3 number of L3 chargers
 	 * @param numBus number of bus chargers
 	 */
-	public ChargingStation(int integerID, int numL2, int numL3, int numBus) {
+	public ChargingStation(int integerID, int numL2, int numL3, int numBus, double priceL2, double priceL3) {
 		this.ID = integerID;
 		this.rand = new Random(GlobalVariables.RandomGenerator.nextInt());
 		this.numL2 = numL2; // Number of level 2 chargers
@@ -81,6 +85,8 @@ public class ChargingStation {
 		this.numChargedCar = 0;
 		this.distToArrivalRoad = Double.MAX_VALUE;
 		this.distToDepartureRoad = Double.MAX_VALUE;
+		this.priceL2 = priceL2;
+		this.priceL3 = priceL3;
 	}
 
 	// Step function
@@ -382,5 +388,30 @@ public class ChargingStation {
 	public void setDistToRoad(double distToRoad, boolean goDest) {
 		if (goDest) this.distToArrivalRoad = distToRoad; 
 		else this.distToDepartureRoad = distToRoad;
+	}
+	
+	public double getPrice(int chargerType) {
+		switch(chargerType) {
+		  case ChargingStation.L2:
+			  return priceL2;
+		  case ChargingStation.L3:
+			  return priceL3;
+		  case ChargingStation.BUS:
+			  return 0; // We don't care about the charging price for Bus since EBus would always choose the bus charger
+		  default:
+			  return Double.MAX_VALUE;
+		}
+	}
+	
+	public boolean setPrice(int chargerType, double chargingPrice) {
+		switch(chargerType) {
+		  case ChargingStation.L2:
+			  this.priceL2 = chargingPrice;
+		  case ChargingStation.L3:
+			  this.priceL3 = chargingPrice;
+		  default:
+			  ContextCreator.logger.warn("setPrice: Invalid charger type: " +  chargerType);
+			  return false;
+		}
 	}
 }

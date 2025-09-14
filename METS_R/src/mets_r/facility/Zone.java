@@ -673,17 +673,18 @@ public class Zone {
 	// Split taxi and bus passengers via a discrete choice model
 	// Distance unit in mile
 	// Time unit in minute
-	private float getSplitRatio(double taxiTime, double taxiDist, double bestBusTime, double bestBusDist) {
-		double taxiUtil = GlobalVariables.MS_ALPHA
-				* (GlobalVariables.INITIAL_PRICE_TAXI
-						+ GlobalVariables.BASE_PRICE_TAXI * taxiDist / 1609)
-				+ GlobalVariables.MS_BETA * (taxiTime / 60) + GlobalVariables.TAXI_BASE;
-		double busUtil = (float) (GlobalVariables.MS_ALPHA * GlobalVariables.BUS_TICKET_PRICE
-				+ GlobalVariables.MS_BETA * (bestBusTime / 60)
-				+ GlobalVariables.BUS_BASE);
-		
-		return (float) (Math.exp(1) / (Math.exp(taxiUtil - busUtil) + Math.exp(1)));
-	}
+	// Uncomment if you want to use mode choice model between taxis and buses
+//	private float getSplitRatio(double taxiTime, double taxiDist, double bestBusTime, double bestBusDist) {
+//		double taxiUtil = GlobalVariables.MS_ALPHA
+//				* (GlobalVariables.INITIAL_PRICE_TAXI
+//						+ GlobalVariables.BASE_PRICE_TAXI * taxiDist / 1609)
+//				+ GlobalVariables.MS_BETA * (taxiTime / 60) + GlobalVariables.TAXI_BASE;
+//		double busUtil = (float) (GlobalVariables.MS_ALPHA * GlobalVariables.BUS_TICKET_PRICE
+//				+ GlobalVariables.MS_BETA * (bestBusTime / 60)
+//				+ GlobalVariables.BUS_BASE);
+//		
+//		return (float) (Math.exp(1) / (Math.exp(taxiUtil - busUtil) + Math.exp(1)));
+//	}
 	
 	// Generate passenger waiting time for taxi
 	// this is in Zone class since the observations

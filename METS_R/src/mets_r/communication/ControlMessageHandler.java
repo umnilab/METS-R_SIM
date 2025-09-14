@@ -16,6 +16,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.MessageClass.BusIDRouteNameStopIndex;
 import mets_r.communication.MessageClass.BusIDRouteNameZoneRoadStopIndex;
+import mets_r.communication.MessageClass.ChargerIDChargerTypeWeight;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
@@ -32,6 +33,7 @@ import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXY;
 import mets_r.communication.MessageClass.VehIDVehTypeTranXY;
 import mets_r.communication.MessageClass.ZoneIDOrigDestRouteNameNum;
 import mets_r.data.input.SumoXML;
+import mets_r.facility.ChargingStation;
 import mets_r.facility.Lane;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
@@ -71,6 +73,7 @@ public class ControlMessageHandler extends MessageHandler {
         messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
         messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
         messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
+        messageHandlers.put("updateChargingPrice", this::updateChargingPrice);
 //        messageHandlers.put("updateSignal", this::updateSignal);
         
 	}
@@ -1548,4 +1551,51 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	// Price for searching charging stations
+	private HashMap<String, Object> updateChargingPrice(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<ChargerIDChargerTypeWeight>> collectionType = new TypeToken<Collection<ChargerIDChargerTypeWeight>>() {};
+			    Collection<ChargerIDChargerTypeWeight> chargerIDChargerTypeWeights = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			    ArrayList<Object> jsonData = new ArrayList<Object>();
+			    
+			    for(ChargerIDChargerTypeWeight chargerIDChargerTypeWeight: chargerIDChargerTypeWeights) {
+			    	ChargingStation cs = ContextCreator.getChargingStationContext().get(chargerIDChargerTypeWeight.chargerID);
+			    	if(cs != null) {
+			    		boolean success = cs.setPrice(chargerIDChargerTypeWeight.chargerType, chargerIDChargerTypeWeight.weight);
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", chargerIDChargerTypeWeight.chargerID);
+			    		if(success) {
+			    			record2.put("STATUS", "OK");
+			    		}
+			    		else {
+			    			record2.put("STATUS", "KO");
+			    		}
+						jsonData.add(record2);
+			    	}
+			    	else {
+			    		ContextCreator.logger.warn("Cannot find the charging station, ID: " + chargerIDChargerTypeWeight.chargerID);
+			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
+			    		record2.put("ID", chargerIDChargerTypeWeight.chargerID);
+			    		record2.put("STATUS", "KO");
+						jsonData.add(record2);
+			    	}
+			    }
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
 }

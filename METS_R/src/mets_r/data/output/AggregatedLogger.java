@@ -52,7 +52,7 @@ public class AggregatedLogger {
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "LinkLog-" + timestamp + ".csv", false);
 			link_logger = new BufferedWriter(fw);
-			link_logger.write("tick,linkID,flow,consumption");
+			link_logger.write("tick,linkID,flow,speed,consumption");
 			link_logger.newLine();
 			link_logger.flush();
 		} catch (IOException e) {

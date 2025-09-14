@@ -128,7 +128,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			int currentFlow =  r.getAndResetCurrentFlow();
 			if (currentFlow > 0) {
 				String formated_msg = currentTick + "," + r.getID() + "," + currentFlow + ","
-						+ r.getAndResetCurrentEnergy();
+					   + r.calcSpeed() + "," + r.getAndResetCurrentEnergy();
 				try {
 					ContextCreator.agg_logger.link_logger.write(formated_msg);
 					ContextCreator.agg_logger.link_logger.newLine();

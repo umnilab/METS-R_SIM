@@ -106,6 +106,40 @@ public class ElectricBus extends ElectricVehicle {
 		return ChargingStation.BUS;
 	}
 	
+	@Override
+	// Find the closest charging station with specific charger type and update the activity plan
+	public void goCharging(int chargerType) {
+		// Sanity check
+		int current_dest_zone = this.getDestID();
+		int current_dest_road = this.getDestRoad();
+		if(current_dest_zone < 0) { // vehicle is heading to the charging station already
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " is already on route to charging.");
+			return;
+		}
+		
+		// Add a charging activity
+		ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+				chargerType);
+		if(cs == null && chargerType == ChargingStation.L3) {
+			cs = ContextCreator.getCityContext().findNearestChargingStation(this.getCurrentCoord(),
+						ChargingStation.L2);
+		}
+		
+		if(cs != null) {
+			this.onChargingRoute_ = true;
+			this.setState(Vehicle.CHARGING_TRIP);
+			this.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
+			this.setNextPlan();
+			this.addPlan(current_dest_zone, current_dest_road, ContextCreator.getNextTick());
+			this.departure();
+			ContextCreator.logger.debug("Vehicle " + this.getID() + " is on route to charging.");
+		}
+		
+		else {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " cannot find charging station at coordinate: " + this.getCurrentCoord());
+		}
+	}
+	
 	// The setReachDest() function applies for three cases:
 	// Case 1: arrive at the charging station.
 	// Case 2: arrive at the start bus stop, and then go the charging station
