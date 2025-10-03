@@ -134,6 +134,8 @@ public class Vehicle {
 	
 	protected int numTrips; // Number of trips initialized
 	
+	protected boolean fallBackForRerouting;
+	
 	/**
 	 * Constructor of Vehicle Class
 	 * @param vClass Vehicle type, 0 for gasoline (private vehicle), 1 for EV taxi, 2 for EV bus, 3 for EV (private vehicle) 
@@ -154,6 +156,7 @@ public class Vehicle {
 		this.normalDeceleration_ = -0.5;
 		this.accPlan_ = new LinkedList<Double>();
 		this.accDecided_ = false;
+		this.fallBackForRerouting = false;
 
 		this.previousEpochCoord = new Coordinate();
 		this.endTime = 0;
@@ -477,12 +480,19 @@ public class Vehicle {
 		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
 		this.setShadowImpact();
 		this.distToTravel_ = 0;
-		if (this.roadPath == null) { 
-			// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
-			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true);
-			this.leaveNetwork();
-			this.destRoad_ = r2;
-			this.departure(ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false));
+		if (this.roadPath == null) {
+			if(this.fallBackForRerouting) { // Fallback cannot save this case, the network is troublesome
+				this.nextRoad_ = null; // Remove this trip gracefully
+			}
+			else{
+				// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
+				// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
+				Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
+				this.leaveNetwork();
+				this.destRoad_ = r2;
+				this.departure(ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road));
+				this.fallBackForRerouting = true;
+			}
 		}
 		else if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
 			this.nextRoad_ = null;
@@ -492,6 +502,7 @@ public class Vehicle {
 			for(Road r: roadPath) {
 				this.distToTravel_ += r.getLength();
 			}
+			this.fallBackForRerouting = false;
 		}
 	}
 	

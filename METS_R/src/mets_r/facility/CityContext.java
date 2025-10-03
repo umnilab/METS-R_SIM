@@ -759,7 +759,7 @@ public class CityContext extends DefaultContext<Object> {
 	}
 	
 	// Returns the closest road from the currentLocation 
-	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest) throws NullPointerException {
+	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest, Road excludedRoad) throws NullPointerException {
 		if (coord == null) {
 			throw new NullPointerException("CityContext: findRoadAtCoordinates: ERROR: the input coordinate is null");
 		}
@@ -782,7 +782,7 @@ public class CityContext extends DefaultContext<Object> {
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 						double thisDist = this.getDistance(coord, road.getEndCoord());
-						if (thisDist < minDist && road.canBeDest()) { 
+						if (thisDist < minDist && road.canBeDest() && road != excludedRoad) { 
 							minDist = thisDist;
 							nearestRoad = road;
 						}
@@ -819,7 +819,7 @@ public class CityContext extends DefaultContext<Object> {
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 						double thisDist = this.getDistance(coord, road.getStartCoord());
-						if (thisDist < minDist && road.canBeOrigin()) { 
+						if (thisDist < minDist && road.canBeOrigin() && road != excludedRoad) { 
 							minDist = thisDist;
 							nearestRoad = road;
 						}
@@ -839,6 +839,11 @@ public class CityContext extends DefaultContext<Object> {
 				return nearestRoad;
 			}
 		}
+	}
+	
+	// Returns the closest road from the currentLocation 
+	public Road findRoadAtCoordinates(Coordinate coord, boolean toDest) throws NullPointerException {
+		return findRoadAtCoordinates(coord, toDest, null);
 	}
 
 	public Road findRoadBetweenNodeIDs(int node1, int node2) {
