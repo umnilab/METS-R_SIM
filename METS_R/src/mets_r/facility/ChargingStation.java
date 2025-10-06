@@ -407,8 +407,10 @@ public class ChargingStation {
 		switch(chargerType) {
 		  case ChargingStation.L2:
 			  this.priceL2 = chargingPrice;
+			  return true;
 		  case ChargingStation.L3:
 			  this.priceL3 = chargingPrice;
+			  return true;
 		  default:
 			  ContextCreator.logger.warn("setPrice: Invalid charger type: " +  chargerType);
 			  return false;
