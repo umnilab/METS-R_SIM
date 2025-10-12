@@ -6,7 +6,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 
 import org.geotools.referencing.GeodeticCalculator;
 
@@ -612,8 +614,116 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 		
+		// Mark deadend roads
+		markInvalidOrigins();
+		markInvalidDestinations();
+		
 		ContextCreator.logger.info("City initialized!");
 	}
+	
+	
+	/**
+	 * Marks all roads that are part of a dead-end branch (a "cul-de-sac").
+	 * A vehicle starting on such a road has no path to exit that branch.
+	 */
+	public void markInvalidOrigins() {
+	    // 1. Initialize a worklist for propagation.
+	    Queue<Road> worklist = new LinkedList<>();
+
+	    // 2. First pass: Find all terminal dead-end roads.
+	    // These are the initial roads that cannot be origins.
+	    for (Road r : ContextCreator.getRoadContext().getAll()) {
+	        if (r.getDownStreamRoads().isEmpty()) {
+	            r.setCanBeOrigin(false);
+	            worklist.add(r);
+	        } else {
+	            // Assume valid until proven otherwise
+	            r.setCanBeOrigin(true); 
+	        }
+	    }
+
+	    // 3. Propagate the "invalid origin" status backward through the graph.
+	    while (!worklist.isEmpty()) {
+	        Road currentRoad = worklist.poll();
+
+	        // Find all roads that lead to the start of our current dead-end road.
+	        int upStreamJunctionId = currentRoad.getUpStreamJunction();
+	        for (int predecessorId : ContextCreator.getJunctionContext().get(upStreamJunctionId).getUpStreamRoads()) {
+	            Road predecessorRoad = ContextCreator.getRoadContext().get(predecessorId);
+
+	            // If this predecessor was previously considered valid, check it now.
+	            if (predecessorRoad.canBeOrigin()) {
+	                boolean hasValidExit = false;
+	                // Check if ALL of its downstream paths are now invalid.
+	                for (int successorId : predecessorRoad.getDownStreamRoads()) {
+	                    if (ContextCreator.getRoadContext().get(successorId).canBeOrigin()) {
+	                        hasValidExit = true;
+	                        break; // Found a valid exit, so the predecessor is fine.
+	                    }
+	                }
+
+	                // If all exits from the predecessor lead to invalid origins...
+	                if (!hasValidExit) {
+	                    predecessorRoad.setCanBeOrigin(false); // ...then it's also an invalid origin.
+	                    worklist.add(predecessorRoad);      // Add it to the list to propagate further backward.
+	                }
+	            }
+	        }
+	    }
+	}
+
+
+	/**
+	 * Marks all roads that can only be reached from a "source" node.
+	 * A vehicle trying to travel to such a road may not find a valid path into the branch.
+	 */
+	public void markInvalidDestinations() {
+	    // 1. Initialize a worklist for propagation.
+	    Queue<Road> worklist = new LinkedList<>();
+
+	    // 2. First pass: Find all "source" roads (no roads leading to them).
+	    // These are the initial roads that cannot be destinations.
+	    for (Road r : ContextCreator.getRoadContext().getAll()) {
+	        Junction upstreamJunction = ContextCreator.getJunctionContext().get(r.getUpStreamJunction());
+	        if (upstreamJunction == null || upstreamJunction.getUpStreamRoads().isEmpty()) {
+	            r.setCanBeDest(false);
+	            worklist.add(r);
+	        } else {
+	            // Assume valid until proven otherwise
+	            r.setCanBeDest(true);
+	        }
+	    }
+
+	    // 3. Propagate the "invalid destination" status forward through the graph.
+	    while (!worklist.isEmpty()) {
+	        Road currentRoad = worklist.poll();
+
+	        // Find all roads that come after our current invalid road.
+	        for (int successorId : currentRoad.getDownStreamRoads()) {
+	            Road successorRoad = ContextCreator.getRoadContext().get(successorId);
+
+	            // If this successor was previously considered valid, check it now.
+	            if (successorRoad.canBeDest()) {
+	                boolean hasValidEntry = false;
+	                // Check if ALL of its upstream paths are now invalid.
+	                int upJunctionId = successorRoad.getUpStreamJunction();
+	                for (int predecessorId : ContextCreator.getJunctionContext().get(upJunctionId).getUpStreamRoads()) {
+	                    if (ContextCreator.getRoadContext().get(predecessorId).canBeDest()) {
+	                        hasValidEntry = true;
+	                        break; // Found a valid entry path, so the successor is fine.
+	                    }
+	                }
+	                
+	                // If all entry paths to the successor are invalid...
+	                if (!hasValidEntry) {
+	                    successorRoad.setCanBeDest(false); // ...then it's also an invalid destination.
+	                    worklist.add(successorRoad);    // Add it to the list to propagate further forward.
+	                }
+	            }
+	        }
+	    }
+	}
+
 	
 
 	// Update node based routing

@@ -55,6 +55,9 @@ public class Road {
 	private double distToDepartureZone;
 	private double distToArrivalZone;
 	
+	private boolean _canBeOrigin;
+	private boolean _canBeDest;
+	
 	// For vehicle movement
 	private int lastUpdateHour; // To find the current hour of the simulation
 	private AtomicInteger nVehicles_; // Number of vehicles currently in the road
@@ -96,6 +99,9 @@ public class Road {
 		this.neighboringArrivalZone = 0;
 		this.distToArrivalZone = Double.MAX_VALUE;
 		this.distToDepartureZone = Double.MAX_VALUE;
+		
+		this._canBeDest = true;
+		this._canBeOrigin = true;
 
 		// For adaptive network partitioning
 		this.nShadowVehicles = 0;
@@ -319,16 +325,19 @@ public class Road {
 	}
 	
 	public boolean canBeOrigin() {
-		return this.downStreamRoads.size() > 0; 
+		return this._canBeOrigin;
 	}
 	
 	public boolean canBeDest(){
-		if(ContextCreator.getJunctionContext().get(this.getUpStreamJunction())==null)
-			return false;
-		else if(ContextCreator.getJunctionContext().get(this.getUpStreamJunction()).getUpStreamRoads().size()==0)
-			return false;
-		else
-			return true;
+		return this._canBeDest;
+	}
+	
+	public void setCanBeOrigin(Boolean b) {
+		this._canBeOrigin = b;
+	}
+	
+	public void setCanBeDest(Boolean b) {
+		this._canBeDest = b;
 	}
 
 	public void changeNumberOfVehicles(int nVeh) {
