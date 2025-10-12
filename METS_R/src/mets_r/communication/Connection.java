@@ -65,6 +65,8 @@ public class Connection{
 			return;
 		}
 		
+		session.setIdleTimeout(0); //Never timeout
+		
 		if (ConnectionManager.activeSession == null) {
 			ConnectionManager.activeSession = session;
 		}
