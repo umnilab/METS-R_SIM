@@ -369,7 +369,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("l2_price", cs.getPrice(ChargingStation.L2));
 					record2.put("dcfc_price", cs.getPrice(ChargingStation.L3));
 					record2.put("bus_charger", cs.numCharger(ChargingStation.BUS));
-					record2.put("num_available_charger", cs.capacity());	
+					record2.put("num_available_l2", cs.capacity(ChargingStation.L2));
+					record2.put("num_available_dcfc", cs.capacity(ChargingStation.L3));
 					record2.put("x", cs.getCoord().x);
 					record2.put("y", cs.getCoord().y);
 					jsonData.add(record2);

@@ -788,7 +788,7 @@ public class CityContext extends DefaultContext<Object> {
 		for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
 			if (cs.numCharger(chargerType) > 0) {
 				double thisPrice = cs.getPrice(chargerType);
-				if(thisPrice < minPrice) {
+				if((thisPrice < minPrice) && (cs.capacity(chargerType) > 0)) {
 					minPrice = thisPrice;
 					cheapestChargingStation = cs;
 				}
@@ -834,7 +834,7 @@ public class CityContext extends DefaultContext<Object> {
 		while (nearestChargingStation == null && num_tried < 5) {
 			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
 				boolean hasCharger = cs.numCharger(chargerType) > 0;
-				if (hasCharger && (cs.capacity() > 0)) {
+				if (hasCharger && (cs.capacity(chargerType) > 0)) {
 					double thisDist = this.getDistance(coord, cs.getCoord());
 					if(thisDist < minDist) {
 						minDist = thisDist;

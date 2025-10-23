@@ -98,13 +98,17 @@ public class ChargingStation {
 		chargeBus(); // Function 5.
 	}
 	
-	/**
-	 * Calculate the current capacity of the charging station for electric taxis 
-	 * @return Number of electric taxis
-	 */
 	public int capacity() {
 		return this.numL2 + this.numL3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
 	}
+	
+	public int capacity(int chargerType) {
+		if(chargerType == ChargingStation.L3)
+			return this.numL3 - this.chargingVehicleL3.size();
+		else
+			return this.numL2 - this.chargingVehicleL2.size();
+	}
+	
 	
 	public int capacityBus() {
 		return this.numBusCharger - this.chargingBus.size();
