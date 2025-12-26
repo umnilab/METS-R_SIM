@@ -304,6 +304,100 @@ public class MessageClass{
 	    }
     }
     
+    // Message class for querying signal by road connection (upstream road -> downstream road)
+    class UpStreamRoadDownStreamRoad {
+        String upStreamRoad;
+        String downStreamRoad;
+
+        // Constructor
+        public UpStreamRoadDownStreamRoad(String upStreamRoad, String downStreamRoad) {
+            this.upStreamRoad = upStreamRoad;
+            this.downStreamRoad = downStreamRoad;
+        }
+    }
+    
+    // Message class for updating signal phase
+    // signalID: the ID of the signal
+    // targetPhase: 0 (Green), 1 (Yellow), 2 (Red)
+    // phaseTime: time offset in seconds from the start of the phase (optional, default 0)
+    class SignalIDPhase {
+        int signalID;
+        int targetPhase;
+        int phaseTime; // optional, defaults to 0 if not provided
+
+        // Constructor
+        public SignalIDPhase(int signalID, int targetPhase, int phaseTime) {
+            this.signalID = signalID;
+            this.targetPhase = targetPhase;
+            this.phaseTime = phaseTime;
+        }
+    }
+    
+    // Message class for updating signal phase timing
+    // signalID: the ID of the signal
+    // greenTime, yellowTime, redTime: duration in seconds for each phase
+    class SignalIDPhaseTiming {
+        int signalID;
+        int greenTime;
+        int yellowTime;
+        int redTime;
+
+        // Constructor
+        public SignalIDPhaseTiming(int signalID, int greenTime, int yellowTime, int redTime) {
+            this.signalID = signalID;
+            this.greenTime = greenTime;
+            this.yellowTime = yellowTime;
+            this.redTime = redTime;
+        }
+    }
+    
+    // Message class for setting a complete phase plan (phase timing + starting state)
+    // signalID: the ID of the signal
+    // greenTime, yellowTime, redTime: duration in seconds for each phase
+    // startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
+    // phaseOffset: time offset in seconds from the start of the startPhase (optional, defaults to 0)
+    class SignalPhasePlan {
+        int signalID;
+        int greenTime;
+        int yellowTime;
+        int redTime;
+        int startPhase;
+        int phaseOffset; // optional, defaults to 0
+
+        // Constructor
+        public SignalPhasePlan(int signalID, int greenTime, int yellowTime, int redTime, int startPhase, int phaseOffset) {
+            this.signalID = signalID;
+            this.greenTime = greenTime;
+            this.yellowTime = yellowTime;
+            this.redTime = redTime;
+            this.startPhase = startPhase;
+            this.phaseOffset = phaseOffset;
+        }
+    }
+    
+    // Message class for setting phase plan with tick-level precision
+    // signalID: the ID of the signal
+    // greenTicks, yellowTicks, redTicks: duration in simulation ticks for each phase
+    // startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
+    // tickOffset: tick offset from the start of the startPhase (optional, defaults to 0)
+    class SignalPhasePlanTicks {
+        int signalID;
+        int greenTicks;
+        int yellowTicks;
+        int redTicks;
+        int startPhase;
+        int tickOffset; // optional, defaults to 0
+
+        // Constructor
+        public SignalPhasePlanTicks(int signalID, int greenTicks, int yellowTicks, int redTicks, int startPhase, int tickOffset) {
+            this.signalID = signalID;
+            this.greenTicks = greenTicks;
+            this.yellowTicks = yellowTicks;
+            this.redTicks = redTicks;
+            this.startPhase = startPhase;
+            this.tickOffset = tickOffset;
+        }
+    }
 	
 	public static void main(String[] args) {
 		Gson gson = new Gson();

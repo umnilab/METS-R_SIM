@@ -73,6 +73,139 @@ public class Signal {
 		return (stop * stop) / (2 * total);
 	}
 	
+	// Get phase durations in ticks
+	public ArrayList<Integer> getPhaseTick() {
+		return this.phaseTick;
+	}
+	
+	// Set the signal to a specific phase
+	// phaseTime: time offset in seconds from the start of the phase (0 means start of the phase)
+	public boolean setPhase(int targetPhase, int phaseTime) {
+		if (targetPhase < 0 || targetPhase > 2) {
+			return false;
+		}
+		
+		int phaseTimeTick = (int) (phaseTime / GlobalVariables.SIMULATION_STEP_SIZE);
+		int phaseDuration = this.phaseTick.get(targetPhase);
+		
+		// Validate phaseTime is within phase duration
+		if (phaseTimeTick < 0 || phaseTimeTick >= phaseDuration) {
+			phaseTimeTick = 0; // Default to start of phase if invalid
+		}
+		
+		this.state = targetPhase;
+		this.currentTick = ContextCreator.getCurrentTick();
+		this.nextUpdateTick = this.currentTick + (phaseDuration - phaseTimeTick);
+		
+		return true;
+	}
+	
+	// Update phase timing (green, yellow, red durations in seconds)
+	public boolean updatePhaseTiming(List<Integer> phaseTime) {
+		if (phaseTime == null || phaseTime.size() != 3) {
+			return false;
+		}
+		
+		this.phaseTick.clear();
+		for (int onePhaseTime : phaseTime) {
+			int onePhaseTick = (int) (onePhaseTime / GlobalVariables.SIMULATION_STEP_SIZE);
+			if (onePhaseTick <= 0) {
+				return false; // Invalid phase time
+			}
+			this.phaseTick.add(onePhaseTick);
+		}
+		
+		// Recalculate nextUpdateTick based on current state
+		this.currentTick = ContextCreator.getCurrentTick();
+		this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
+		
+		return true;
+	}
+	
+	// Get current tick
+	public int getCurrentTick() {
+		return this.currentTick;
+	}
+	
+	// Set a complete new phase plan
+	// phaseTime: list of [greenTime, yellowTime, redTime] in seconds
+	// startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
+	// phaseOffset: time offset in seconds from the start of the startPhase
+	public boolean setPhasePlan(List<Integer> phaseTime, int startPhase, int phaseOffset) {
+		if (phaseTime == null || phaseTime.size() != 3) {
+			return false;
+		}
+		if (startPhase < 0 || startPhase > 2) {
+			return false;
+		}
+		
+		// Update phase durations
+		this.phaseTick.clear();
+		for (int onePhaseTime : phaseTime) {
+			int onePhaseTick = (int) (onePhaseTime / GlobalVariables.SIMULATION_STEP_SIZE);
+			if (onePhaseTick <= 0) {
+				return false; // Invalid phase time
+			}
+			this.phaseTick.add(onePhaseTick);
+		}
+		
+		// Set starting state
+		this.state = startPhase;
+		
+		// Calculate phase offset in ticks
+		int phaseOffsetTick = (int) (phaseOffset / GlobalVariables.SIMULATION_STEP_SIZE);
+		int phaseDuration = this.phaseTick.get(startPhase);
+		
+		// Validate phaseOffset is within phase duration
+		if (phaseOffsetTick < 0 || phaseOffsetTick >= phaseDuration) {
+			phaseOffsetTick = 0; // Default to start of phase if invalid
+		}
+		
+		// Set current tick and next update tick
+		this.currentTick = ContextCreator.getCurrentTick();
+		this.nextUpdateTick = this.currentTick + (phaseDuration - phaseOffsetTick);
+		
+		return true;
+	}
+	
+	// Set phase plan with phase durations in ticks directly (for more precise control)
+	// phaseTickDurations: list of [greenTicks, yellowTicks, redTicks] in simulation ticks
+	// startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
+	// tickOffset: tick offset from the start of the startPhase
+	public boolean setPhasePlanInTicks(List<Integer> phaseTickDurations, int startPhase, int tickOffset) {
+		if (phaseTickDurations == null || phaseTickDurations.size() != 3) {
+			return false;
+		}
+		if (startPhase < 0 || startPhase > 2) {
+			return false;
+		}
+		
+		// Update phase durations directly in ticks
+		this.phaseTick.clear();
+		for (int onePhaseTick : phaseTickDurations) {
+			if (onePhaseTick <= 0) {
+				return false; // Invalid phase tick
+			}
+			this.phaseTick.add(onePhaseTick);
+		}
+		
+		// Set starting state
+		this.state = startPhase;
+		
+		int phaseDuration = this.phaseTick.get(startPhase);
+		
+		// Validate tickOffset is within phase duration
+		if (tickOffset < 0 || tickOffset >= phaseDuration) {
+			tickOffset = 0; // Default to start of phase if invalid
+		}
+		
+		// Set current tick and next update tick
+		this.currentTick = ContextCreator.getCurrentTick();
+		this.nextUpdateTick = this.currentTick + (phaseDuration - tickOffset);
+		
+		return true;
+	}
+	
 	private void initialization(List<Integer> phaseTime) {
 		int index = 0;
 		int tmp = 0;

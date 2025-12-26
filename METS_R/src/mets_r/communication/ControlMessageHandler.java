@@ -17,6 +17,10 @@ import mets_r.GlobalVariables;
 import mets_r.communication.MessageClass.BusIDRouteNameStopIndex;
 import mets_r.communication.MessageClass.BusIDRouteNameZoneRoadStopIndex;
 import mets_r.communication.MessageClass.ChargerIDChargerTypeWeight;
+import mets_r.communication.MessageClass.SignalIDPhase;
+import mets_r.communication.MessageClass.SignalIDPhaseTiming;
+import mets_r.communication.MessageClass.SignalPhasePlan;
+import mets_r.communication.MessageClass.SignalPhasePlanTicks;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
@@ -37,6 +41,7 @@ import mets_r.facility.ChargingStation;
 import mets_r.facility.Lane;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
+import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
@@ -54,28 +59,30 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("controlVeh", this::controlVeh);
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("exitCoSimRegion", this::exitCoSimRegion);
-        messageHandlers.put("addBusRoute", this::addBusRoute);
-        messageHandlers.put("addBusRouteWithPath", this::addBusRouteWithPath);
-        messageHandlers.put("addBusRun", this::addBusRun);
-        messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
-        messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
-        messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
-        messageHandlers.put("addBusRequests", this::addBusRequests);
-        messageHandlers.put("addTaxiRequests", this::addTaxiRequests);
-        messageHandlers.put("addTaxiReqBwRoads", this::addTaxiReqBwRoads);
-        messageHandlers.put("generateTrip", this::generateTrip);
-        messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
-        messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
-        messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
-        messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
-        messageHandlers.put("reachDest", this::reachDest);
-        messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
-        messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
-        messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
-        messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
-        messageHandlers.put("updateChargingPrice", this::updateChargingPrice);
-//        messageHandlers.put("updateSignal", this::updateSignal);
-        
+		messageHandlers.put("addBusRoute", this::addBusRoute);
+		messageHandlers.put("addBusRouteWithPath", this::addBusRouteWithPath);
+		messageHandlers.put("addBusRun", this::addBusRun);
+		messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
+		messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
+		messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
+		messageHandlers.put("addBusRequests", this::addBusRequests);
+		messageHandlers.put("addTaxiRequests", this::addTaxiRequests);
+		messageHandlers.put("addTaxiReqBwRoads", this::addTaxiReqBwRoads);
+		messageHandlers.put("generateTrip", this::generateTrip);
+		messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
+		messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
+		messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
+		messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
+		messageHandlers.put("reachDest", this::reachDest);
+		messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
+		messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
+		messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
+		messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
+		messageHandlers.put("updateChargingPrice", this::updateChargingPrice);
+		messageHandlers.put("updateSignal", this::updateSignal);
+		messageHandlers.put("updateSignalTiming", this::updateSignalTiming);
+		messageHandlers.put("setSignalPhasePlan", this::setSignalPhasePlan);
+		messageHandlers.put("setSignalPhasePlanTicks", this::setSignalPhasePlanTicks);
 	}
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -1305,26 +1312,239 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Place holders for APIs to be implemented
-	// Traffic signal
-//	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
-//		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-//		if(!jsonMsg.containsKey("DATA")) {
-//			jsonAns.put("WARN", "No DATA field found in the control message");
-//			jsonAns.put("CODE", "KO");
-//		}
-//		else {
-//			try {
-//				
-//			}
-//			catch (Exception e) {
-//			    // Log error and return KO in case of exception
-//			    ContextCreator.logger.error("Error processing control: " + e.toString());
-//			    jsonAns.put("CODE", "KO");
-//			}
-//		}
-//		return jsonAns;
-//	}
+	// Traffic signal phase control
+	// Update the signal phase given signal ID and target phase (optionally with phase time offset)
+	// If only phase is provided, starts from the beginning of that phase (phaseTime = 0)
+	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message. Expected: [{signalID, targetPhase, phaseTime(optional)}, ...]");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<SignalIDPhase>> collectionType = new TypeToken<Collection<SignalIDPhase>>() {};
+				Collection<SignalIDPhase> signalIDPhases = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(SignalIDPhase signalIDPhase: signalIDPhases) {
+					Signal signal = ContextCreator.getSignalContext().get(signalIDPhase.signalID);
+					if(signal != null) {
+						// Set the phase (phaseTime defaults to 0 if not provided)
+						boolean success = signal.setPhase(signalIDPhase.targetPhase, signalIDPhase.phaseTime);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", signalIDPhase.signalID);
+						if(success) {
+							record2.put("STATUS", "OK");
+							record2.put("new_state", signal.getState());
+							record2.put("next_update_tick", signal.getNextUpdateTick());
+						}
+						else {
+							record2.put("STATUS", "KO");
+							record2.put("REASON", "Invalid target phase (must be 0=Green, 1=Yellow, 2=Red)");
+						}
+						jsonData.add(record2);
+					}
+					else {
+						ContextCreator.logger.warn("Cannot find the signal, signal ID: " + signalIDPhase.signalID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", signalIDPhase.signalID);
+						record2.put("STATUS", "KO");
+						record2.put("REASON", "Signal not found");
+						jsonData.add(record2);
+					}
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Update signal phase timing (green, yellow, red durations)
+	private HashMap<String, Object> updateSignalTiming(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message. Expected: [{signalID, greenTime, yellowTime, redTime}, ...]");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<SignalIDPhaseTiming>> collectionType = new TypeToken<Collection<SignalIDPhaseTiming>>() {};
+				Collection<SignalIDPhaseTiming> signalIDPhaseTimings = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(SignalIDPhaseTiming signalIDPhaseTiming: signalIDPhaseTimings) {
+					Signal signal = ContextCreator.getSignalContext().get(signalIDPhaseTiming.signalID);
+					if(signal != null) {
+						ArrayList<Integer> phaseTime = new ArrayList<Integer>();
+						phaseTime.add(signalIDPhaseTiming.greenTime);
+						phaseTime.add(signalIDPhaseTiming.yellowTime);
+						phaseTime.add(signalIDPhaseTiming.redTime);
+						
+						boolean success = signal.updatePhaseTiming(phaseTime);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", signalIDPhaseTiming.signalID);
+						if(success) {
+							record2.put("STATUS", "OK");
+							record2.put("phase_ticks", signal.getPhaseTick());
+						}
+						else {
+							record2.put("STATUS", "KO");
+							record2.put("REASON", "Invalid phase timing (all durations must be positive)");
+						}
+						jsonData.add(record2);
+					}
+					else {
+						ContextCreator.logger.warn("Cannot find the signal, signal ID: " + signalIDPhaseTiming.signalID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", signalIDPhaseTiming.signalID);
+						record2.put("STATUS", "KO");
+						record2.put("REASON", "Signal not found");
+						jsonData.add(record2);
+					}
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Set a complete new phase plan for a signal (phase timing + starting state + offset)
+	// Time values are in seconds
+	private HashMap<String, Object> setSignalPhasePlan(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found. Expected: [{signalID, greenTime, yellowTime, redTime, startPhase, phaseOffset(optional)}, ...]");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<SignalPhasePlan>> collectionType = new TypeToken<Collection<SignalPhasePlan>>() {};
+				Collection<SignalPhasePlan> signalPhasePlans = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(SignalPhasePlan plan: signalPhasePlans) {
+					Signal signal = ContextCreator.getSignalContext().get(plan.signalID);
+					if(signal != null) {
+						ArrayList<Integer> phaseTime = new ArrayList<Integer>();
+						phaseTime.add(plan.greenTime);
+						phaseTime.add(plan.yellowTime);
+						phaseTime.add(plan.redTime);
+						
+						boolean success = signal.setPhasePlan(phaseTime, plan.startPhase, plan.phaseOffset);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", plan.signalID);
+						if(success) {
+							record2.put("STATUS", "OK");
+							record2.put("phase_ticks", signal.getPhaseTick());
+							record2.put("current_state", signal.getState());
+							record2.put("next_update_tick", signal.getNextUpdateTick());
+						}
+						else {
+							record2.put("STATUS", "KO");
+							record2.put("REASON", "Invalid phase plan (check phase durations and startPhase)");
+						}
+						jsonData.add(record2);
+					}
+					else {
+						ContextCreator.logger.warn("Cannot find the signal, signal ID: " + plan.signalID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", plan.signalID);
+						record2.put("STATUS", "KO");
+						record2.put("REASON", "Signal not found");
+						jsonData.add(record2);
+					}
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+	
+	// Set a complete new phase plan with tick-level precision
+	// Time values are in simulation ticks for more precise control
+	private HashMap<String, Object> setSignalPhasePlanTicks(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found. Expected: [{signalID, greenTicks, yellowTicks, redTicks, startPhase, tickOffset(optional)}, ...]");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<SignalPhasePlanTicks>> collectionType = new TypeToken<Collection<SignalPhasePlanTicks>>() {};
+				Collection<SignalPhasePlanTicks> signalPhasePlansTicks = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				
+				for(SignalPhasePlanTicks plan: signalPhasePlansTicks) {
+					Signal signal = ContextCreator.getSignalContext().get(plan.signalID);
+					if(signal != null) {
+						ArrayList<Integer> phaseTicks = new ArrayList<Integer>();
+						phaseTicks.add(plan.greenTicks);
+						phaseTicks.add(plan.yellowTicks);
+						phaseTicks.add(plan.redTicks);
+						
+						boolean success = signal.setPhasePlanInTicks(phaseTicks, plan.startPhase, plan.tickOffset);
+						
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", plan.signalID);
+						if(success) {
+							record2.put("STATUS", "OK");
+							record2.put("phase_ticks", signal.getPhaseTick());
+							record2.put("current_state", signal.getState());
+							record2.put("current_tick", signal.getCurrentTick());
+							record2.put("next_update_tick", signal.getNextUpdateTick());
+						}
+						else {
+							record2.put("STATUS", "KO");
+							record2.put("REASON", "Invalid phase plan (check phase tick durations and startPhase)");
+						}
+						jsonData.add(record2);
+					}
+					else {
+						ContextCreator.logger.warn("Cannot find the signal, signal ID: " + plan.signalID);
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", plan.signalID);
+						record2.put("STATUS", "KO");
+						record2.put("REASON", "Signal not found");
+						jsonData.add(record2);
+					}
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    // Log error and return KO in case of exception
+			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
 	
 	// Route for one vehicle trip
 	private HashMap<String, Object> updateVehicleRoute(JSONObject jsonMsg) {

@@ -18,6 +18,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Junction;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
 import mets_r.facility.Signal;
@@ -39,6 +40,7 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("road", this::getRoad);
         messageHandlers.put("zone", this::getZone);
         messageHandlers.put("signal", this::getSignal);
+        messageHandlers.put("signalForConnection", this::getSignalForConnection);
         messageHandlers.put("chargingStation", this::getChargingStation);
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
@@ -332,6 +334,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("state", signal.getState());
 					record2.put("nex_state", signal.getNextState());
 					record2.put("next_update_time", signal.getNextUpdateTick());
+					record2.put("phase_ticks", signal.getPhaseTick());
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -344,6 +347,87 @@ public class QueryMessageHandler extends MessageHandler {
 		    ContextCreator.logger.error("Error processing query: " + e.toString());
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
+		}
+	}
+	
+	// Query signal ID for a connection between two consecutive roads
+	// Input: upstream road ID, downstream road ID (using original road IDs)
+	// Returns: signal ID, current state, next state, next update tick, phase timing
+	public HashMap<String, Object> getSignalForConnection(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("WARN", "No DATA field found. Expected: [{upStreamRoad, downStreamRoad}, ...]");
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<UpStreamRoadDownStreamRoad>> collectionType = new TypeToken<Collection<UpStreamRoadDownStreamRoad>>() {};
+			Collection<UpStreamRoadDownStreamRoad> connections = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			for(UpStreamRoadDownStreamRoad connection: connections) {
+				// Find roads by their original IDs
+				Road upStreamRoad = ContextCreator.getCityContext().findRoadWithOrigID(connection.upStreamRoad);
+				Road downStreamRoad = ContextCreator.getCityContext().findRoadWithOrigID(connection.downStreamRoad);
+				
+				if (upStreamRoad == null || downStreamRoad == null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("upStreamRoad", connection.upStreamRoad);
+					record2.put("downStreamRoad", connection.downStreamRoad);
+					record2.put("STATUS", "KO");
+					record2.put("REASON", upStreamRoad == null ? "Upstream road not found" : "Downstream road not found");
+					jsonData.add(record2);
+					continue;
+				}
+				
+				// Get the junction at the downstream end of the upstream road
+				int junctionID = upStreamRoad.getDownStreamJunction();
+				Junction junction = ContextCreator.getJunctionContext().get(junctionID);
+				
+				if (junction == null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("upStreamRoad", connection.upStreamRoad);
+					record2.put("downStreamRoad", connection.downStreamRoad);
+					record2.put("STATUS", "KO");
+					record2.put("REASON", "No junction found at the connection");
+					jsonData.add(record2);
+					continue;
+				}
+				
+				// Get the signal for this connection
+				Signal signal = junction.getSignal(upStreamRoad.getID(), downStreamRoad.getID());
+				
+				if (signal != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("upStreamRoad", connection.upStreamRoad);
+					record2.put("downStreamRoad", connection.downStreamRoad);
+					record2.put("signalID", signal.getID());
+					record2.put("state", signal.getState());
+					record2.put("next_state", signal.getNextState());
+					record2.put("next_update_tick", signal.getNextUpdateTick());
+					record2.put("phase_ticks", signal.getPhaseTick());
+					record2.put("junction_id", junctionID);
+					record2.put("STATUS", "OK");
+					jsonData.add(record2);
+				}
+				else {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("upStreamRoad", connection.upStreamRoad);
+					record2.put("downStreamRoad", connection.downStreamRoad);
+					record2.put("STATUS", "KO");
+					record2.put("REASON", "No signal found for this connection (junction control type: " + junction.getControlType() + ")");
+					jsonData.add(record2);
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+			// Log error and return KO in case of exception
+			ContextCreator.logger.error("Error processing query: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
 		}
 	}
 	
