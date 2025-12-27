@@ -261,6 +261,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("avg_travel_time", road.getTravelTime());
 					record2.put("length", road.getLength());
 					record2.put("energy_consumed", road.getTotalEnergy());
+					record2.put("down_stream_road", road.getDownStreamRoadOrigIDs());
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");

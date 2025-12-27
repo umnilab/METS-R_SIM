@@ -324,6 +324,14 @@ public class Road {
 		return this.downStreamRoads;
 	}
 	
+	public ArrayList<String> getDownStreamRoadOrigIDs() {
+		ArrayList<String> res = new ArrayList<String>();
+		for(int rid: this.downStreamRoads) {
+			res.add(ContextCreator.getRoadContext().get(rid).getOrigID());
+		}
+		return res;
+	}
+	
 	public boolean canBeOrigin() {
 		return this._canBeOrigin;
 	}
