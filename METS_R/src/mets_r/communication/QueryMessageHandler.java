@@ -97,11 +97,13 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bearing", vehicle.getBearing());
 					record2.put("acc", vehicle.currentAcc());
 					record2.put("speed", vehicle.currentSpeed());
-					// if vehicle is on lane
-					if(vehicle.isOnLane()) {
+					// if vehicle is on road
+					if(vehicle.isOnRoad()) {
 						record2.put("road", vehicle.getRoad().getOrigID());
-						record2.put("lane", vehicle.getLane().getIndex());
-						record2.put("dist", vehicle.getDistanceToNextJunction());
+						if(vehicle.isOnLane()) {
+							record2.put("lane", vehicle.getLane().getIndex());
+							record2.put("dist", vehicle.getDistanceToNextJunction());
+						}
 					}
 					jsonData.add(record2);
 				}
