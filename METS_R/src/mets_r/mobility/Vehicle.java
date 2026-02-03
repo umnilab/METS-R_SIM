@@ -284,18 +284,53 @@ public class Vehicle {
 	public boolean enterNetwork(Road road, Lane lane) {
 		// Sanity check
 		if(lane.getRoad() != road) return false;
-		double gap = entranceGap(lane);
-		int tickcount = ContextCreator.getCurrentTick();
-		if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
-			this.getAndSetLastMoveTick(tickcount);
-			currentSpeed_ = 0.0; // The initial speed
-			this.distance_ = 0;
-			this.setPreviousEpochCoord(lane.getStartCoord());
-			this.setCurrentCoord(lane.getStartCoord());
-			this.appendToLane(lane);
-			this.appendToRoad(road);
-			return true;
+		
+		if(road.getControlType()!=Road.COSIM) {
+			double gap = entranceGap(lane);
+			int tickcount = ContextCreator.getCurrentTick();
+			if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
+				this.getAndSetLastMoveTick(tickcount);
+				this.currentSpeed_ = 0.0; // The initial speed
+				this.distance_ = 0;
+				this.setPreviousEpochCoord(lane.getStartCoord());
+				this.setCurrentCoord(lane.getStartCoord());
+				this.appendToLane(lane);
+				this.appendToRoad(road);
+				return true;
+			}
 		}
+		else {
+			// This is a cosim road, we need to check the entrace gap using coordinates
+			int tickcount = ContextCreator.getCurrentTick();
+			Vehicle lastVeh = lane.lastVehicle();
+			if((lastVeh == null) && (tickcount > lane.getAndSetLastEnterTick(tickcount))) {
+				this.getAndSetLastMoveTick(tickcount);
+				this.currentSpeed_ = 0.0; // The initial speed
+				this.distance_ = 0;
+				this.setPreviousEpochCoord(lane.getStartCoord());
+				this.setCurrentCoord(lane.getStartCoord());
+				this.appendToLane(lane);
+				this.appendToRoad(road);
+				return true;
+			}
+			else {
+				Coordinate c1 = lastVeh.getCurrentCoord();
+				// Get dist between the coord and the begining coord of the lane
+				Coordinate c2 = lane.getStartCoord();
+				if((ContextCreator.getCityContext().getDistance(c1, c2) >= 1.2 * this.length()) && (tickcount > this.lane.getAndSetLastEnterTick(tickcount))){
+					this.getAndSetLastMoveTick(tickcount);
+					this.currentSpeed_ = 0.0; // The initial speed
+					this.distance_ = 0;
+					this.setPreviousEpochCoord(lane.getStartCoord());
+					this.setCurrentCoord(lane.getStartCoord());
+					this.appendToLane(lane);
+					this.appendToRoad(road);
+					return true;
+				}
+			}
+			
+		}
+		
 		return false;
 	}
 	
