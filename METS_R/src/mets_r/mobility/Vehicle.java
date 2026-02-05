@@ -302,8 +302,28 @@ public class Vehicle {
 		else {
 			// This is a cosim road, we need to check the entrace gap using coordinates
 			int tickcount = ContextCreator.getCurrentTick();
-			Vehicle lastVeh = lane.lastVehicle();
-			if((lastVeh == null) && (tickcount > lane.getAndSetLastEnterTick(tickcount))) {
+			Vehicle lastVeh1 = lane.lastVehicle();
+			Vehicle lastVeh2 = road.lastVehicle();
+			boolean canEnter = true;
+			
+			if(lastVeh1 != null) {
+				Coordinate c1 = lastVeh1.getCurrentCoord();
+				Coordinate c2 = lane.getStartCoord();
+				// Check if the gap is large enough (1.2x vehicle length)
+			    if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
+			        canEnter = false;
+			    }
+			}
+			if((lastVeh2 != null) && (lastVeh2 != lastVeh1)) {
+				Coordinate c1 = lastVeh2.getCurrentCoord();
+				Coordinate c2 = lane.getStartCoord();
+				// Check if the gap is large enough (1.2x vehicle length)
+			    if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
+			        canEnter = false;
+			    }
+			}
+			
+			if (canEnter && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
 				this.getAndSetLastMoveTick(tickcount);
 				this.currentSpeed_ = 0.0; // The initial speed
 				this.distance_ = 0;
@@ -312,21 +332,6 @@ public class Vehicle {
 				this.appendToLane(lane);
 				this.appendToRoad(road);
 				return true;
-			}
-			else {
-				Coordinate c1 = lastVeh.getCurrentCoord();
-				// Get dist between the coord and the begining coord of the lane
-				Coordinate c2 = lane.getStartCoord();
-				if((ContextCreator.getCityContext().getDistance(c1, c2) >= 1.2 * this.length()) && (tickcount > this.lane.getAndSetLastEnterTick(tickcount))){
-					this.getAndSetLastMoveTick(tickcount);
-					this.currentSpeed_ = 0.0; // The initial speed
-					this.distance_ = 0;
-					this.setPreviousEpochCoord(lane.getStartCoord());
-					this.setCurrentCoord(lane.getStartCoord());
-					this.appendToLane(lane);
-					this.appendToRoad(road);
-					return true;
-				}
 			}
 			
 		}
