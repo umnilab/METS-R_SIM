@@ -674,6 +674,136 @@ public class Road {
 	
 	public void setControlType(int controlType) {
 		this.controlType = controlType;
+		// If from cosim to others and there is vehicles on road, recompute the distance and recreated the vehicle linkedlist
+		if (this.controlType == Road.COSIM && this.getVehicleNum() > 0) {
+			// Collect all vehicles on the road by traversing the macro linked list
+			ArrayList<Vehicle> vehicles = new ArrayList<>();
+			Vehicle curVeh = this.firstVehicle();
+			while (curVeh != null) {
+				vehicles.add(curVeh);
+				curVeh = curVeh.macroTrailing();
+			}
+
+			int n = vehicles.size();
+			if (n == 0) return;
+
+			// Remove all vehicles from their current lanes
+			for (Vehicle veh : vehicles) {
+				veh.removeFromCurrentLane();
+			}
+
+			// For each vehicle on the road, compute the closest distance to each lane
+			// Assign the vehicle to the lane with the closest distance
+			// Compute the distance variable (distance to the road end point) for each vehicle
+			Lane[] assignedLanes = new Lane[n];
+			double[] assignedDistances = new double[n];
+
+			for (int v = 0; v < n; v++) {
+				Vehicle veh = vehicles.get(v);
+				Coordinate currCoord = veh.getCurrentCoord();
+
+				Lane closestLane = null;
+				double minPerpDist = Double.MAX_VALUE;
+				double bestDistance = 0;
+
+				for (Lane lane : this.lanes) {
+					ArrayList<Coordinate> coords = lane.getCoords();
+					double distFromEnd = 0;
+					boolean found = false;
+
+					// Iterate from downstream end to upstream, same as changeLane
+					for (int i = coords.size() - 1; i > 0; i--) {
+						Coordinate a = coords.get(i);     // more downstream
+						Coordinate b = coords.get(i - 1); // more upstream
+
+						double dx = b.x - a.x;
+						double dy = b.y - a.y;
+						double lenSq = dx * dx + dy * dy;
+
+						if (lenSq > 0) {
+							double apx = currCoord.x - a.x;
+							double apy = currCoord.y - a.y;
+							double param = (apx * dx + apy * dy) / lenSq;
+
+							if (param >= 0.0 && param <= 1.0) {
+								// Projection falls on this segment, compute perpendicular distance
+								double projX = a.x + param * dx;
+								double projY = a.y + param * dy;
+								Coordinate projCoord = new Coordinate(projX, projY);
+								double perpDist = ContextCreator.getCityContext().getDistance(currCoord, projCoord);
+
+								if (perpDist < minPerpDist) {
+									minPerpDist = perpDist;
+									closestLane = lane;
+									// Distance to road end = accumulated distance from downstream + partial segment
+									double segLen = ContextCreator.getCityContext().getDistance(a, b);
+									bestDistance = distFromEnd + segLen * param;
+								}
+								found = true;
+								break;
+							}
+						}
+
+						double segLen = ContextCreator.getCityContext().getDistance(a, b);
+						distFromEnd += segLen;
+					}
+
+					// If no projection found on this lane, use nearest endpoint as fallback
+					if (!found) {
+						double distToStart = ContextCreator.getCityContext().getDistance(currCoord, coords.get(0));
+						double distToEnd = ContextCreator.getCityContext().getDistance(currCoord, coords.get(coords.size() - 1));
+						if (distToEnd < minPerpDist) {
+							minPerpDist = distToEnd;
+							closestLane = lane;
+							bestDistance = 0; // Near downstream end
+						}
+						if (distToStart < minPerpDist) {
+							minPerpDist = distToStart;
+							closestLane = lane;
+							bestDistance = lane.getLength(); // Near upstream end
+						}
+					}
+				}
+
+				// Fallback: use first lane with current distance
+				if (closestLane == null) {
+					closestLane = this.lanes.get(0);
+					bestDistance = veh.getDistanceToNextJunction();
+				}
+
+				assignedLanes[v] = closestLane;
+				assignedDistances[v] = Math.max(0, Math.min(bestDistance, closestLane.getLength()));
+			}
+
+			// Update the CoordMap of each vehicle by teleporting to the assigned lane
+			// (this also rebuilds lane-level linked lists: leading/trailing, firstVehicle/lastVehicle)
+			for (int v = 0; v < n; v++) {
+				vehicles.get(v).teleportToLane(assignedLanes[v], assignedDistances[v]);
+			}
+
+			// Sort the vehicles by the distance variable (distFraction, descending)
+			// firstVehicle has the highest distFraction (closest to upstream end)
+			Integer[] sortedIndices = new Integer[n];
+			for (int i = 0; i < n; i++) sortedIndices[i] = i;
+			Arrays.sort(sortedIndices, (idx1, idx2) -> {
+				double fracA = assignedDistances[idx1] / assignedLanes[idx1].getLength();
+				double fracB = assignedDistances[idx2] / assignedLanes[idx2].getLength();
+				return Double.compare(fracB, fracA); // Descending order
+			});
+
+			// Update the first vehicle and last vehicle of the road
+			// Recreate the vehicle macro linked list, starting from the first vehicle
+			Vehicle first = vehicles.get(sortedIndices[0]);
+			this.firstVehicle(first);
+			Vehicle prev = first;
+			for (int i = 1; i < n; i++) {
+				Vehicle curr = vehicles.get(sortedIndices[i]);
+				prev.macroTrailing(curr);
+				curr.macroLeading(prev);
+				prev = curr;
+			}
+			this.lastVehicle(prev);
+		}
 	}
 	
 	public int getControlType() {
