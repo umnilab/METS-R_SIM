@@ -30,18 +30,18 @@ public class Signal {
     // Step function
     public void step() {
     	this.currentTick = ContextCreator.getCurrentTick();
-    	if(this.currentTick >= this.nextUpdateTick) {
+    	while(this.currentTick >= this.nextUpdateTick) {
             this.goNextPhase();
-            this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
+            this.nextUpdateTick += this.phaseTick.get(this.state);
     	}
     }
     
     // Step function for parallel update
     public void step2() {
     	this.currentTick += GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL;
-    	if(this.currentTick >= this.nextUpdateTick) {
+    	while(this.currentTick >= this.nextUpdateTick) {
     		this.goNextPhase();
-    		this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
+    		this.nextUpdateTick += this.phaseTick.get(this.state);
     	}
     }
     
