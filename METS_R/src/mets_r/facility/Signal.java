@@ -16,32 +16,20 @@ public class Signal {
 	private ArrayList<Integer> phaseTick;  // GreenYellowRed, the unit is tick
 	// e.g., 21s of green, 3s of yellow, 20s of red
 	// will be 21, 3, 20
-    private int currentTick;
     private int nextUpdateTick;
     
-    public Signal(int id, List<Integer> phaseTime, int currentTime) {
+    public Signal(int id, List<Integer> phaseTime, int offsetTime) {
     	this.ID = id;
     	this.phaseTick = new ArrayList<Integer>();
-    	this.currentTick = (int) (currentTime/GlobalVariables.SIMULATION_STEP_SIZE);
     	this.state = -1;
-    	this.initialization(phaseTime);
+    	this.initialization(phaseTime, offsetTime);
     }
     
     // Step function
     public void step() {
-    	this.currentTick = ContextCreator.getCurrentTick();
-    	while(this.currentTick >= this.nextUpdateTick) {
+    	while(ContextCreator.getCurrentTick() >= this.nextUpdateTick) {
             this.goNextPhase();
             this.nextUpdateTick += this.phaseTick.get(this.state);
-    	}
-    }
-    
-    // Step function for parallel update
-    public void step2() {
-    	this.currentTick += GlobalVariables.SIMULATION_SIGNAL_REFRESH_INTERVAL;
-    	while(this.currentTick >= this.nextUpdateTick) {
-    		this.goNextPhase();
-    		this.nextUpdateTick += this.phaseTick.get(this.state);
     	}
     }
     
@@ -94,8 +82,7 @@ public class Signal {
 		}
 		
 		this.state = targetPhase;
-		this.currentTick = ContextCreator.getCurrentTick();
-		this.nextUpdateTick = this.currentTick + (phaseDuration - phaseTimeTick);
+		this.nextUpdateTick = ContextCreator.getCurrentTick() + (phaseDuration - phaseTimeTick);
 		
 		return true;
 	}
@@ -116,15 +103,9 @@ public class Signal {
 		}
 		
 		// Recalculate nextUpdateTick based on current state
-		this.currentTick = ContextCreator.getCurrentTick();
-		this.nextUpdateTick = this.currentTick + this.phaseTick.get(this.state);
+		this.nextUpdateTick = ContextCreator.getCurrentTick() + this.phaseTick.get(this.state);
 		
 		return true;
-	}
-	
-	// Get current tick
-	public int getCurrentTick() {
-		return this.currentTick;
 	}
 	
 	// Set a complete new phase plan
@@ -161,9 +142,7 @@ public class Signal {
 			phaseOffsetTick = 0; // Default to start of phase if invalid
 		}
 		
-		// Set current tick and next update tick
-		this.currentTick = ContextCreator.getCurrentTick();
-		this.nextUpdateTick = this.currentTick + (phaseDuration - phaseOffsetTick);
+		this.nextUpdateTick = ContextCreator.getCurrentTick() + (phaseDuration - phaseOffsetTick);
 		
 		return true;
 	}
@@ -199,16 +178,15 @@ public class Signal {
 			tickOffset = 0; // Default to start of phase if invalid
 		}
 		
-		// Set current tick and next update tick
-		this.currentTick = ContextCreator.getCurrentTick();
-		this.nextUpdateTick = this.currentTick + (phaseDuration - tickOffset);
+		this.nextUpdateTick = ContextCreator.getCurrentTick() + (phaseDuration - tickOffset);
 		
 		return true;
 	}
 	
-	private void initialization(List<Integer> phaseTime) {
+	private void initialization(List<Integer> phaseTime, int offsetTime) {
 		int index = 0;
 		int tmp = 0;
+		int currentTick = (int) (offsetTime/GlobalVariables.SIMULATION_STEP_SIZE);
 		for(int onePhaseTime: phaseTime) {
     		int onePhaseTick = (int) (onePhaseTime/GlobalVariables.SIMULATION_STEP_SIZE);
     		tmp += onePhaseTick;
@@ -217,9 +195,9 @@ public class Signal {
     		}
     		this.phaseTick.add(onePhaseTick);
     		
-    		if((tmp > this.currentTick) && this.state == -1) {
+    		if((tmp > currentTick) && this.state == -1) {
     			this.state = index;
-    			this.nextUpdateTick = tmp;
+    			this.nextUpdateTick = tmp - currentTick;
     		}
     		
     		index += 1;

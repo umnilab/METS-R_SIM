@@ -1516,7 +1516,6 @@ public class ControlMessageHandler extends MessageHandler {
 							record2.put("STATUS", "OK");
 							record2.put("phase_ticks", signal.getPhaseTick());
 							record2.put("current_state", signal.getState());
-							record2.put("current_tick", signal.getCurrentTick());
 							record2.put("next_update_tick", signal.getNextUpdateTick());
 						}
 						else {

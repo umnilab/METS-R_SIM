@@ -315,7 +315,7 @@ class PartitionSignalThread implements Callable<Integer> {
 		double start_t = System.currentTimeMillis();
 		try {
 			for (Signal s : this.signalSet) {
-				s.step2();
+				s.step();
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
