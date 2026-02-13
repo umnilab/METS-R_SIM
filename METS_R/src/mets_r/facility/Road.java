@@ -673,7 +673,6 @@ public class Road {
 	}
 	
 	public void setControlType(int controlType) {
-		this.controlType = controlType;
 		// If from cosim to others and there is vehicles on road, recompute the distance and recreated the vehicle linkedlist
 		if (this.controlType == Road.COSIM && this.getVehicleNum() > 0) {
 			// Collect all vehicles on the road by traversing the macro linked list
@@ -804,6 +803,7 @@ public class Road {
 			}
 			this.lastVehicle(prev);
 		}
+		this.controlType = controlType;
 	}
 	
 	public int getControlType() {
