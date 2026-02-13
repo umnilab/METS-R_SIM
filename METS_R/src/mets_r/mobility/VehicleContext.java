@@ -29,7 +29,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	// For tracking private vehicle trips, note the key is not the agentID but the one used in the TravelDemand JSON files
 	private HashMap<Integer, ElectricVehicle> privateEVMap;
 	private HashMap<Integer, Vehicle> privateGVMap;
-	
 	private HashMap<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
 
 	public VehicleContext() {
@@ -285,16 +284,22 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public void registerPrivateEV(int vid, ElectricVehicle ev) {
-		if(!this.privateEVMap.containsKey(vid)) {
+		if(!this.privateVIDMap.containsValue(vid)) {
 			this.privateEVMap.put(vid, ev);
 			this.privateVIDMap.put(ev.getID(), vid);
+		}
+		else {
+			ContextCreator.logger.warn("Vehicle with vid " + vid + " already exists");
 		}
 	}
 	
 	public void registerPrivateGV(int vid, Vehicle gv) {
-		if(!this.privateGVMap.containsKey(vid)) {
+		if(!this.privateVIDMap.containsValue(vid)) {
 			this.privateGVMap.put(vid, gv);
 			this.privateVIDMap.put(gv.getID(), vid);
+		}
+		else {
+			ContextCreator.logger.warn("Vehicle with vid " + vid + " already exists");
 		}
 	}
 	
