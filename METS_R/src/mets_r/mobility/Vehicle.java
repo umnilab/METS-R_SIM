@@ -672,7 +672,7 @@ public class Vehicle {
 				    Coordinate c2 = this.coordMap.get(0);
 				    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
 				    double[] returnVals = new double[2];
-				    distance2(c1, c2, returnVals);
+				    this.distance2(c1, c2, returnVals);
 				    
 				    this.bearing_ = returnVals[1];
 				}
@@ -792,7 +792,7 @@ public class Vehicle {
 					
 					this.setCurrentCoord(coords.get(i)); // Set current coord
 					double[] distAndAngle = new double[2];
-					distance2(coords.get(i), coords.get(i+1), distAndAngle);
+					this.distance2(coords.get(i), coords.get(i+1), distAndAngle);
 					double distToMove = distAndAngle[0] - (this.distance_ - accDist);
 					if (distToMove > 0) {
 						move2(coords.get(i), coords.get(i+1), distAndAngle[0], distToMove); // Update vehicle location
@@ -2585,6 +2585,17 @@ public class Vehicle {
 	public double getDistToTravel() {
 		return this.distToTravel_;
 	}
+	
+	/**
+	 * Extend the coordMap by attaching a coordinate to its starting place
+	 */
+	public void extendCoordMap(Coordinate newCoord) {
+		double newdist =  this.distance(newCoord, this.currentCoord_); 
+		this.coordMap.add(0, this.currentCoord_);
+		this.currentCoord_ = newCoord;
+		this.distance_ += newdist;
+	}
+	
 	
 	/**
 	 * Print the coordMap (subroute within a road) of the vehicle

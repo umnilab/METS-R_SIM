@@ -707,7 +707,7 @@ public class Road {
 
 				for (Lane lane : this.lanes) {
 					ArrayList<Coordinate> coords = lane.getCoords();
-					double distFromEnd = 0;
+					double distFromEnd = 0;  
 					boolean found = false;
 
 					// Iterate from downstream end to upstream, same as changeLane
@@ -747,7 +747,7 @@ public class Road {
 						distFromEnd += segLen;
 					}
 
-					// If no projection found on this lane, use nearest endpoint as fallback
+					// If no projection found on this lane, use nearest endpoint
 					if (!found) {
 						double distToStart = ContextCreator.getCityContext().getDistance(currCoord, coords.get(0));
 						double distToEnd = ContextCreator.getCityContext().getDistance(currCoord, coords.get(coords.size() - 1));
@@ -764,12 +764,6 @@ public class Road {
 					}
 				}
 
-				// Fallback: use first lane with current distance
-				if (closestLane == null) {
-					closestLane = this.lanes.get(0);
-					bestDistance = veh.getDistanceToNextJunction();
-				}
-
 				assignedLanes[v] = closestLane;
 				assignedDistances[v] = Math.max(0, Math.min(bestDistance, closestLane.getLength()));
 			}
@@ -777,7 +771,14 @@ public class Road {
 			// Update the CoordMap of each vehicle by teleporting to the assigned lane
 			// (this also rebuilds lane-level linked lists: leading/trailing, firstVehicle/lastVehicle)
 			for (int v = 0; v < n; v++) {
-				vehicles.get(v).teleportToLane(assignedLanes[v], assignedDistances[v]);
+				Vehicle veh = vehicles.get(v);
+				Coordinate currCoord = veh.getCurrentCoord();
+				veh.teleportToLane(assignedLanes[v], assignedDistances[v]);
+				if(veh.getDistanceToNextJunction() > 0) {
+					// concatenate the currCoord to the first point in the CoordMap, then update the distance
+					veh.extendCoordMap(currCoord);
+				}
+				assignedDistances[v] = veh.getDistanceToNextJunction();
 			}
 
 			// Sort the vehicles by the distance variable (distFraction, descending)
