@@ -2591,9 +2591,12 @@ public class Vehicle {
 	 */
 	public void extendCoordMap(Coordinate newCoord) {
 		double newdist =  this.distance(newCoord, this.currentCoord_); 
-		this.coordMap.add(0, this.currentCoord_);
-		this.currentCoord_ = newCoord;
-		this.distance_ += newdist;
+		if(newdist > 0.0) {
+			this.coordMap.add(0, this.currentCoord_);
+			this.currentCoord_ = newCoord;
+			this.distance_ += newdist;
+			this.nextDistance_ = newdist;
+		}
 	}
 	
 	
