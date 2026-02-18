@@ -224,6 +224,19 @@ public class MessageClass{
 	    }
     }
     
+    class RoadIDLaneIndexTransform{
+    	String roadID;
+        int laneIndex;
+        boolean transformCoord;
+        
+        // Constructor
+	    public RoadIDLaneIndexTransform(String roadID, int laneIndex, boolean transformCoord) {
+	        this.roadID = roadID;
+	        this.laneIndex = laneIndex;
+	        this.transformCoord = transformCoord;
+	    }
+    }
+    
     class RouteNameZonesRoadsPath{
     	String routeName;
     	ArrayList<Integer> zones;

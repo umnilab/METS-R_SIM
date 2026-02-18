@@ -12,14 +12,17 @@ public class Signal {
 	public final static int Red = 2;
 	
 	private int ID;
+	private String groupID; // ID of the signal group
+	
 	private int state; // state of the signal light
 	private ArrayList<Integer> phaseTick;  // GreenYellowRed, the unit is tick
 	// e.g., 21s of green, 3s of yellow, 20s of red
 	// will be 21, 3, 20
     private int nextUpdateTick;
     
-    public Signal(int id, List<Integer> phaseTime, int offsetTime) {
+    public Signal(int id, String groupID, List<Integer> phaseTime, int offsetTime) {
     	this.ID = id;
+    	this.groupID = groupID;
     	this.phaseTick = new ArrayList<Integer>();
     	this.state = -1;
     	this.initialization(phaseTime, offsetTime);
@@ -40,6 +43,10 @@ public class Signal {
     
 	public int getID() {
 		return ID;
+	}
+	
+	public String getGroupID() {
+		return groupID;
 	}
 
 	public int getState() {

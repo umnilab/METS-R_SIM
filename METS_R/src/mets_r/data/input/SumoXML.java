@@ -586,7 +586,7 @@ public class SumoXML {
 					}
 					start = (total - start) % total;
 					signalNum += 1;
-					Signal one_signal = new Signal(signalNum, Arrays.asList(green,yellow,red), start);
+					Signal one_signal = new Signal(signalNum, currentSignal + "_" + i, Arrays.asList(green,yellow,red), start);
 					signalIDMap.get(currentSignal).add(one_signal);
 				}
 				inSignal = false;

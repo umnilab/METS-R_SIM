@@ -40,13 +40,15 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("road", this::getRoad);
         messageHandlers.put("zone", this::getZone);
         messageHandlers.put("signal", this::getSignal);
+        messageHandlers.put("signalGroup", this::getSignalGroup);
         messageHandlers.put("signalForConnection", this::getSignalForConnection);
         messageHandlers.put("chargingStation", this::getChargingStation);
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
-        messageHandlers.put("getEdgeWeight", this::getEdgeWeight);
-        messageHandlers.put("getBusRoute", this::getBusRoute);
-        messageHandlers.put("getBusWithRoute", this::getBusWithRoute);
+        messageHandlers.put("edgeWeight", this::getEdgeWeight);
+        messageHandlers.put("busRoute", this::getBusRoute);
+        messageHandlers.put("busWithRoute", this::getBusWithRoute);
+        messageHandlers.put("centerLine", this::getCenterLine);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -279,6 +281,99 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	public HashMap<String, Object> getCenterLine(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<RoadIDLaneIndexTransform>> collectionType = new TypeToken<Collection<RoadIDLaneIndexTransform>>() {};
+		    Collection<RoadIDLaneIndexTransform> roadIDLaneIndexTransforms = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		      
+		    for(RoadIDLaneIndexTransform roadIDLaneIndexTransform: roadIDLaneIndexTransforms) {
+		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadIDLaneIndexTransform.roadID);
+				if (road != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", road.getOrigID());
+					ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
+					int laneIndex = roadIDLaneIndexTransform.laneIndex;
+					boolean transformCoord = roadIDLaneIndexTransform.transformCoord;
+					if(laneIndex < 0) {
+						Coordinate startCoord = road.getStartCoord();
+						Coordinate endCoord = road.getEndCoord();
+						if(transformCoord) {
+							try {
+								JTS.transform(startCoord, startCoord,
+										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
+								JTS.transform(endCoord, endCoord,
+										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
+							} catch (TransformException e) {
+								ContextCreator.logger
+										.error("Coordinates transformation failed, start x: " + startCoord.x + " y:" + startCoord.y);
+								e.printStackTrace();
+							}
+						}
+						ArrayList<Double> startXY = new ArrayList<Double>();
+						startXY.add(startCoord.x);
+						startXY.add(startCoord.y);
+						res.add(startXY);
+						ArrayList<Double> endXY = new ArrayList<Double>();
+						endXY.add(endCoord.x);
+						endXY.add(endCoord.y);
+						res.add(endXY);
+					}
+					else if(laneIndex < road.getLanes().size()) {
+						if(transformCoord) {
+							for(Coordinate coord: road.getLane(laneIndex).getCoords()) {
+								if(coord != null) {
+									Coordinate coord2 = new Coordinate();
+									coord2.x = coord.x;
+									coord2.y = coord.y;
+									coord2.z = coord.z;
+									ArrayList<Double> xy = new ArrayList<Double>();
+									try {
+										JTS.transform(coord2, coord2,
+												SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
+										xy.add(coord2.x);
+										xy.add(coord2.y);
+									} catch (TransformException e) {
+										ContextCreator.logger
+												.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
+										e.printStackTrace();
+									}
+									res.add(xy);
+								}
+							}
+						}
+						else {
+							for(Coordinate coord: road.getLane(laneIndex).getCoords()) {
+								ArrayList<Double> xy = new ArrayList<Double>();
+								xy.add(coord.x);
+								xy.add(coord.y);
+								res.add(xy);
+							}
+						}
+					}
+					record2.put("centerline", res);
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
+	
 	public HashMap<String, Object> getZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -334,10 +429,45 @@ public class QueryMessageHandler extends MessageHandler {
 				if (signal != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", signal.getID());
+					record2.put("groupID", signal.getDelay());
 					record2.put("state", signal.getState());
 					record2.put("nex_state", signal.getNextState());
 					record2.put("next_update_time", signal.getNextUpdateTick());
 					record2.put("phase_ticks", signal.getPhaseTick());
+					jsonData.add(record2);
+				}
+				else jsonData.add("KO");
+		    }
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+		    // Log error and return KO in case of exception
+		    ContextCreator.logger.error("Error processing query: " + e.toString());
+		    jsonObj.put("CODE", "KO");
+		    return jsonObj;
+		}
+	}
+	
+	// Query signals based on its origID (in the SUMO xml)
+	public HashMap<String, Object> getSignalGroup(JSONObject jsonMsg){
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.getSignalContext().getAllGroupIDs());
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+		    Collection<String> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+		    ArrayList<Object> jsonData = new ArrayList<Object>();
+		      
+		    for(String id: IDs) {
+		    	List<Integer> signalGroup = ContextCreator.getSignalContext().getOneGroup(id);
+				if (signalGroup != null) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("groupID", id);
+					record2.put("signalIDs", signalGroup);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");

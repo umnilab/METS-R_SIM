@@ -548,9 +548,9 @@ public class CityContext extends DefaultContext<Object> {
 							int signalNumber=j.getUpStreamRoads().size();
 							for(int r1: j.getUpStreamRoads()) {
 								for (int r2: ContextCreator.getRoadContext().get(r1).getDownStreamRoads()) {
-									Signal signal = new Signal(ContextCreator.generateAgentID(), 
+									Signal signal = new Signal(ContextCreator.generateAgentID(), "-1", 
 											new ArrayList<Integer>(Arrays.asList(27,3,30*(signalNumber-1))), 
-													signalIndex*30);
+													signalIndex*30); // -1 as the default control group
 									ContextCreator.getSignalContext().put(signal.getID(), signal);
 									j.setSignal(r1, r2, signal);
 									j.setDelay(r1, r2, signal.getDelay());
@@ -591,6 +591,11 @@ public class CityContext extends DefaultContext<Object> {
 				}
 				
 			}
+		}
+		
+		// Register the signal group
+		for(Signal signal: ContextCreator.getSignalContext().getAll()) {
+			ContextCreator.getSignalContext().registerSignal(signal.getGroupID(), signal);
 		}
 		
 		ContextCreator.logger.info("Signal initialized!");
