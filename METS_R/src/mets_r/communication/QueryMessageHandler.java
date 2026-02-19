@@ -429,7 +429,7 @@ public class QueryMessageHandler extends MessageHandler {
 				if (signal != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", signal.getID());
-					record2.put("groupID", signal.getDelay());
+					record2.put("groupID", signal.getGroupID());
 					record2.put("state", signal.getState());
 					record2.put("nex_state", signal.getNextState());
 					record2.put("next_update_time", signal.getNextUpdateTick());
