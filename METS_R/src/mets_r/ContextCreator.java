@@ -1,7 +1,8 @@
 package mets_r;
 
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import javax.measure.unit.NonSI;
 import javax.measure.unit.SI;
@@ -79,7 +80,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static final DataCollector dataCollector = new DataCollector();
 	
 	// Road collections for co-simulation
-	public static HashMap<String, Road> coSimRoads = new HashMap<String, Road>();
+	public static LinkedHashMap<String, Road> coSimRoads = new LinkedHashMap<String, Road>();
 	
 	/* Synchronize mode flags */
 	// Volatile for thread-read-safe 
@@ -230,7 +231,17 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0);
 		for (Road r : getRoadContext().getAll()) {
-			scheduledActions.add(schedule.schedule(agentParams, r, "step"));
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
+		}
+		for (Road r : getRoadContext().getAll()) {
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
+		}
+		for (Road r : getRoadContext().getAll()) {
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart3"));
+		}
+		
+		for (Road r : getRoadContext().getAll()) {
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart4"));
 		}
 	}
 
@@ -239,31 +250,24 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
+				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 2);
 		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraZoneStep"));
-		
-		ScheduleParameters agentParaParams2 = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
-		scheduledActions.add(schedule.schedule(agentParaParams2, tscheduler, "paraZoneRidehailingStep"));
 	}
 
 	// Schedule the event for zone updates (single-thread)
 	public static void scheduleSequentialZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		
-		// Schedule the passenger serving events
 		ScheduleParameters demandServeParams = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 1);
-		
-		ScheduleParameters demandServeParams2 = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.SIMULATION_RH_MATCHING_WINDOW, 2);
+				GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 2);
 		
 		for (Zone z : getZoneContext().getAll()) {
-			scheduledActions.add(schedule.schedule(demandServeParams, z, "step"));
+			scheduledActions.add(schedule.schedule(demandServeParams, z, "stepPart1"));
 		}
 		for (Zone z : getZoneContext().getAll()) {
-			scheduledActions.add(schedule.schedule(demandServeParams2, z, "ridehailingStep"));
+			scheduledActions.add(schedule.schedule(demandServeParams, z, "stepPart2"));
 		}
+		
 	}
 
 	// Schedule the event for charging station updates (multi-thread)
@@ -280,7 +284,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ScheduleParameters chargingServeParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 		for (ChargingStation cs : getChargingStationContext().getAll()) {
-			scheduledActions.add(schedule.schedule(chargingServeParams, cs, "step"));
+			scheduledActions.add(schedule.schedule(chargingServeParams, cs, "stepPart1"));
+		}
+		for (ChargingStation cs : getChargingStationContext().getAll()) {
+			scheduledActions.add(schedule.schedule(chargingServeParams, cs, "stepPart2"));
 		}
 	}
 	
@@ -391,14 +398,92 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduleEvents();
 	}
 	
-	// The save function
-	public static void save() {
-		
+	// The save function: captures all dynamic state into a zip archive
+	public static void save(String zipPath) {
+		try {
+			SnapshotUtil.saveToZip(zipPath);
+		} catch (IOException e) {
+			logger.error("Failed to save simulation state: " + e.getMessage());
+			e.printStackTrace();
+		}
 	}
 	
-	// The load function
-	public static void load() {
+	// The load function: restores simulation from a zip archive
+	public static void load(String zipPath) {
+		try {
+			SnapshotUtil.loadFromZip(zipPath);
+		} catch (IOException e) {
+			logger.error("Failed to load simulation state: " + e.getMessage());
+			e.printStackTrace();
+		}
+	}
+	
+	/**
+	 * Rebuild the simulation infrastructure for load.
+	 * Similar to reset() but creates a VehicleContext without auto-generating vehicles,
+	 * since those will be restored from the snapshot.
+	 */
+	public static void rebuildForLoad(int savedInitTick, int savedTick) {
+		logger.info("Rebuilding simulation infrastructure for load...");
 		
+		// Clear scheduled actions
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		for (ISchedulableAction scheduledAction : scheduledActions) {
+			schedule.removeAction(scheduledAction);
+		}
+		scheduledActions = new ArrayList<ISchedulableAction>();
+		dataContext.stopCollecting();
+		agg_logger.close();
+		travel_demand.close();
+		
+		mainContext.removeSubContext(cityContext);
+		mainContext.removeSubContext(dataContext);
+		mainContext.removeSubContext(vehicleContext);
+		
+		// Set the tick offset so getCurrentTick() returns the saved tick
+		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0) - savedTick;
+		
+		// Reinitialize data structures
+		agg_logger = new AggregatedLogger();
+		background_traffic = new BackgroundTraffic();
+		travel_demand = new TravelDemand();
+		bus_schedule = new BusSchedule();
+		partitioner = new MetisPartition(GlobalVariables.N_Partition);
+		waitNextStepCommand = GlobalVariables.SYNCHRONIZED ? 0 : -1;
+		
+		// Rebuild city context (roads, zones, charging stations from data.properties)
+		cityContext = new CityContext();
+		mainContext.addSubContext(cityContext);
+		cityContext.createSubContexts();
+		cityContext.buildRoadNetwork();
+		cityContext.setNeighboringGraph();
+		bus_schedule.postProcessing();
+		
+		// Create empty vehicle context (vehicles will be restored from snapshot)
+		vehicleContext = new VehicleContext(true);
+		mainContext.addSubContext(vehicleContext);
+		
+		// Rebuild data context
+		dataContext = new DataCollectionContext();
+		mainContext.addSubContext(dataContext);
+		
+		// Initialize operational parameters
+		cityContext.modifyRoadNetwork();
+		
+		if (GlobalVariables.MULTI_THREADING) {
+			try {
+				partitioner.first_run();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+		
+		dataContext.startCollecting();
+		
+		// Reschedule events
+		scheduleEvents();
+		
+		logger.info("Infrastructure rebuilt. Tick offset set to match saved tick: " + savedTick);
 	}
 	
 	

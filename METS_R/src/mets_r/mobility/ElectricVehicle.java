@@ -101,7 +101,7 @@ public class ElectricVehicle extends Vehicle {
 		else {
 			// Log the trip consume here
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
-					+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
+			        + "," + this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + "," + this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,"
 					+ "0\r\n";
 			try {
@@ -176,7 +176,7 @@ public class ElectricVehicle extends Vehicle {
 		goCharging(chargerType);
 	}
 	
-	// Find the closest charging station with specific charger type and update the activity plan
+	// Find the cheapest charging station with specific charger type and update the activity plan
 	public void goCharging(int chargerType) {
 		// Sanity check
 		int current_dest_zone = this.getDestID();
@@ -355,4 +355,26 @@ public class ElectricVehicle extends Vehicle {
 	public boolean hasEnoughBattery(double distance) {
 		return this.batteryLevel > distance/this.metersPerKwh;
 	}
+	
+	/* Getters and setters for save/load support */
+	public boolean isOnChargingRoute() { return this.onChargingRoute_; }
+	public void setOnChargingRoute(boolean v) { this.onChargingRoute_ = v; }
+	public void setTotalConsume(double v) { this.totalConsume = v; }
+	public void setTripConsume(double v) { this.tripConsume = v; }
+	public void setLinkConsume(double v) { this.linkConsume = v; }
+	public double getMass_() { return this.mass; }
+	public void setMass_(double v) { this.mass = v; }
+	public double getLowerRechargeLevel() { return this.lowerBatteryRechargeLevel_; }
+	public double getHigherRechargeLevel() { return this.higherBatteryRechargeLevel_; }
+	public void setLowerRechargeLevel(double v) { this.lowerBatteryRechargeLevel_ = v; }
+	public void setHigherRechargeLevel(double v) { this.higherBatteryRechargeLevel_ = v; }
+	public double getMetersPerKwh() { return this.metersPerKwh; }
+	public void setMetersPerKwh(double v) { this.metersPerKwh = v; }
+	public void setBatteryLevelDirectly(double v) { this.batteryLevel = v; }
+	public int getChargingTime() { return this.chargingTime; }
+	public int getChargingWaitingTime() { return this.chargingWaitingTime; }
+	public void setChargingTime(int v) { this.chargingTime = v; }
+	public void setChargingWaitingTime(int v) { this.chargingWaitingTime = v; }
+	public double getInitialChargingState() { return this.initialChargingState; }
+	public void setInitialChargingState(double v) { this.initialChargingState = v; }
 }

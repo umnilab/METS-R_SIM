@@ -2,18 +2,19 @@ package mets_r.facility;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import mets_r.ContextCreator;
 import repast.simphony.context.DefaultContext;
 
 public class FacilityContext<T> extends DefaultContext<T>{
-	private HashMap<Integer, T> facilityDictionary;
+	private Map<Integer, T> facilityDictionary;
 	
 	public FacilityContext(String facilityName) {
 		super(facilityName);
-		facilityDictionary = new HashMap<Integer, T>();
+		facilityDictionary = new LinkedHashMap<Integer, T>();
 	}
 	
 	public void put(int ID, T newFacility) {

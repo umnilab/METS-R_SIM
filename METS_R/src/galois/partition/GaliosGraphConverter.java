@@ -2,6 +2,7 @@ package galois.partition;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 
 import galois.objects.graph.GNode;
 import galois.objects.graph.IntGraph;
@@ -184,7 +185,10 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 					int edgeWeight = 1 + road.getVehicleNum() * this.alpha + road.getShadowVehicleNum() * this.beta
 							+ road.getFutureRoutingVehNum() * this.gamma;
 					
-					if (n1.getData().getPartition() == n2.getData().getPartition()) { // if road lie within a partition then
+					int p1 = n1.getData().getPartition();
+			        int p2 = n2.getData().getPartition();
+					
+					if (p1 == p2) { // if road lie within a partition then
 																						// add the road corresponding to
 																						// that partition
 						partitionedInRoads.get(n1.getData().getPartition()).add(road);
@@ -193,8 +197,29 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 
 					} else { // If road lies between partitions then store the road along with its partition IDs
 						partitionedBwRoads.add(road);
+						
+						// Smart Assignment: Give it to the partition (p1 or p2) that has the lighter load
+			            int assignedPartition = (partitionWeights.get(p1) <= partitionWeights.get(p2)) ? p1 : p2;
+			            partitionedInRoads.get(assignedPartition).add(road);
+			            partitionWeights.set(assignedPartition, partitionWeights.get(assignedPartition) + edgeWeight);
 					}
 				}
+			}
+			
+			// Immediately after the loop, distribute the LeftOverRoads so they get executed too
+			this.computeLeftOverRoads();
+			int leftoverPartitionIndex = 0;
+			for (Road r : this.LeftOverRoads) {
+			    // Keep partitionedBwRoads updated if you use it for logging leftover roads
+			    if (!partitionedBwRoads.contains(r)) { 
+			        partitionedBwRoads.add(r);
+			    }
+			    
+			    // Round-robin distribute the leftover roads into the execution partitions
+			    partitionedInRoads.get(leftoverPartitionIndex).add(r);
+			    partitionWeights.set(leftoverPartitionIndex, partitionWeights.get(leftoverPartitionIndex) + 1); // Nominal weight
+			    
+			    leftoverPartitionIndex = (leftoverPartitionIndex + 1) % nparts;
 			}
 			
 			int tot_load = 0;
@@ -202,7 +227,6 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 				tot_load += partitionWeights.get(k) +  ContextCreator.partitioner.getBackgroundLoad(k);
 			}
 			
-//			System.out.println(tot_load);
 			
 			// Post-processing, if some partition has extremely high loads, divide the largest partition into two parts.
 			int max_iter = 3;
@@ -253,6 +277,7 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 //			for(int k = 0; k<partitionedInRoads.size(); k++) {
 //				System.out.println("Partition" + k + "," + partitionedInRoads.get(k).size() + "," + (partitionWeights.get(k) +  ContextCreator.partitioner.getBackgroundLoad(k)));
 //			}
+			
 
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -265,7 +290,9 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 		for (Road r : ContextCreator.getRoadContext().getObjects(Road.class)) {
 			this.LeftOverRoads.add(r);
 		}
-		this.LeftOverRoads.removeAll(this.ResolvedRoads);
+		// 2. Use a HashSet to make the removal instant (O(N) instead of O(N^2))
+	    HashSet<Road> resolvedSet = new HashSet<>(this.ResolvedRoads);
+	    this.LeftOverRoads.removeAll(resolvedSet);
 	}
 
 	/*
@@ -279,8 +306,7 @@ public class GaliosGraphConverter<T> implements ProjectionListener<T> {
 
 	/* Get the array list that contains the boundary roads */
 	public ArrayList<Road> getPartitionedBwRoads() {
-		// Add the leftover roads into the boundary roads
-		return this.partitionedBwRoads;
+	    return this.partitionedBwRoads;
 	}
 
 	/* Get the total edge weight for each partition */

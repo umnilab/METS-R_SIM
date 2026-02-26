@@ -33,7 +33,7 @@ public class AggregatedLogger {
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
 			ev_logger = new BufferedWriter(fw);
-			ev_logger.write("tick,vehicleID,tripType,originID,destID,distance,departureTime,cost,choice,passNum");
+			ev_logger.write("tick,vehicleID,tripType,originID,destID,originRoad,destRoad,distance,departureTime,cost,choice,passNum");
 			ev_logger.newLine();
 			ev_logger.flush();
 		} catch (IOException e) {

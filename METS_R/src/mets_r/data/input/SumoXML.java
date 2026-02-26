@@ -12,7 +12,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -88,23 +88,23 @@ public class SumoXML {
 		return data;
 	}
 	
-	public HashMap<Integer, Road> getRoad(){
+	public LinkedHashMap<Integer, Road> getRoad(){
 		return this.handler.getRoad();
 	}
 	
-	public HashMap<Integer, Lane> getLane(){
+	public LinkedHashMap<Integer, Lane> getLane(){
 		return this.handler.getLane();
 	}
 	
-	public HashMap<Integer, HashMap<Integer, Signal>> getSignal(){
+	public LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>> getSignal(){
 		return this.handler.getSignal();
 	}
 	
-	public HashMap<Integer, Junction> getJunction(){
+	public LinkedHashMap<Integer, Junction> getJunction(){
 		return this.handler.getJunction();
 	}
 	
-	public HashMap<Integer, List<List<Integer>>>  getRoadConnection(){
+	public LinkedHashMap<Integer, List<List<Integer>>>  getRoadConnection(){
 		return this.handler.getRoadConnection();
 	}
 	
@@ -117,36 +117,36 @@ public class SumoXML {
 		double y_offs = 0;
 		ArrayList<Double> boundary = new ArrayList<Double>();
 		
-		HashMap<Integer, Road> roads;
-		HashMap<Integer,Junction> junctions;
-		HashMap<Integer,Lane> lanes;
-		HashMap<Integer, HashMap<Integer, Signal>> signals;
+		LinkedHashMap<Integer, Road> roads;
+		LinkedHashMap<Integer,Junction> junctions;
+		LinkedHashMap<Integer,Lane> lanes;
+		LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>> signals;
 		
 		
-		HashMap<Integer, List<List<Integer>>> roadConnections; // road connection within junctions
-		HashMap<Integer, List<List<Integer>>> laneConnections; // lane connection within junctions
+		LinkedHashMap<Integer, List<List<Integer>>> roadConnections; // road connection within junctions
+		LinkedHashMap<Integer, List<List<Integer>>> laneConnections; // lane connection within junctions
 		
-		HashMap<Integer, List<Integer>> roadLane;
+		LinkedHashMap<Integer, List<Integer>> roadLane;
 		ArrayList<String> tmpPhaseState;
 		ArrayList<Integer> tmpPhaseTime;
-		HashMap<String, List<Signal>> signalIDMap; 
-		HashMap<String, Integer> roadIDMap; //SUMO use string as the road ID, need to translate it to integer
-		HashMap<String, Integer> laneIDMap;
-		HashMap<String, Integer> junctionIDMap;
+		LinkedHashMap<String, List<Signal>> signalIDMap; 
+		LinkedHashMap<String, Integer> roadIDMap; //SUMO use string as the road ID, need to translate it to integer
+		LinkedHashMap<String, Integer> laneIDMap;
+		LinkedHashMap<String, Integer> junctionIDMap;
 		
-		HashMap<String, String> incLaneJunctionMap; // which lane ends (incoming) to which junction
-		HashMap<String, String> intLaneJunctionMap; // which lane starts (initializing) from which junction
-		HashMap<String, Integer> junctionsRoadMap; // which road ends (incoming) to which junction
-		HashMap<String, String> laneRoadMap;
+		LinkedHashMap<String, String> incLaneJunctionMap; // which lane ends (incoming) to which junction
+		LinkedHashMap<String, String> intLaneJunctionMap; // which lane starts (initializing) from which junction
+		LinkedHashMap<String, Integer> junctionsRoadMap; // which road ends (incoming) to which junction
+		LinkedHashMap<String, String> laneRoadMap;
 		
 		// Handle internal lanes, since METS-R SIM does not consider inner intersection movement
 		// we need to translate the internal connection back into the lane connection
-		HashMap<String, Boolean> isInternalRoadMap;
-		HashMap<String, Boolean> isInternalLaneMap;
+		LinkedHashMap<String, Boolean> isInternalRoadMap;
+		LinkedHashMap<String, Boolean> isInternalLaneMap;
 		
-		HashMap<String, String> internalFromLaneConnections;  
-		HashMap<String, String> internalToLaneConnections; 
-		HashMap<String, List<String>> internalFromToLaneConnections;
+		LinkedHashMap<String, String> internalFromLaneConnections;  
+		LinkedHashMap<String, String> internalToLaneConnections; 
+		LinkedHashMap<String, List<String>> internalFromToLaneConnections;
 		
 		Road currentRoad;
 		Junction currentJunction;
@@ -175,11 +175,11 @@ public class SumoXML {
 		int junctionNum = 0;
 		int signalNum = 0;
 		
-		public HashMap<Integer,Road> getRoad() {return roads;};
-		public HashMap<Integer,Junction> getJunction() {return junctions;};
-		public HashMap<Integer,Lane> getLane() {return lanes;};
-		public HashMap<Integer, HashMap<Integer, Signal>> getSignal() {return signals;}
-		public HashMap<Integer, List<List<Integer>>>  getRoadConnection() {return roadConnections;}
+		public LinkedHashMap<Integer,Road> getRoad() {return roads;};
+		public LinkedHashMap<Integer,Junction> getJunction() {return junctions;};
+		public LinkedHashMap<Integer,Lane> getLane() {return lanes;};
+		public LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>> getSignal() {return signals;}
+		public LinkedHashMap<Integer, List<List<Integer>>>  getRoadConnection() {return roadConnections;}
 		public List<List<Integer>>  getRoadConnection(int junction_id) {return roadConnections.get(junction_id);}
 		
 		public int generateLaneID(int roadID, String strLaneID) {
@@ -228,32 +228,32 @@ public class SumoXML {
 		
 		@Override
 		public void startDocument() {
-			roads = new HashMap<Integer,Road>();
-			junctions = new HashMap<Integer,Junction>();
-			lanes = new HashMap<Integer,Lane>();
+			roads = new LinkedHashMap<Integer,Road>();
+			junctions = new LinkedHashMap<Integer,Junction>();
+			lanes = new LinkedHashMap<Integer,Lane>();
 			
-			roadConnections = new HashMap<Integer, List<List<Integer>>>();
-			laneConnections = new HashMap<Integer, List<List<Integer>>>();
+			roadConnections = new LinkedHashMap<Integer, List<List<Integer>>>();
+			laneConnections = new LinkedHashMap<Integer, List<List<Integer>>>();
 			
-			internalFromLaneConnections = new HashMap<String, String>();
-			internalToLaneConnections = new HashMap<String, String>();
-			internalFromToLaneConnections = new HashMap<String, List<String>>();
+			internalFromLaneConnections = new LinkedHashMap<String, String>();
+			internalToLaneConnections = new LinkedHashMap<String, String>();
+			internalFromToLaneConnections = new LinkedHashMap<String, List<String>>();
 			
-			roadLane = new HashMap<Integer, List<Integer>>();
-			signals = new HashMap<Integer, HashMap<Integer, Signal>>();
+			roadLane = new LinkedHashMap<Integer, List<Integer>>();
+			signals = new LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>>();
 			
-			roadIDMap = new HashMap<String, Integer>();
-			laneIDMap = new HashMap<String, Integer>();
-			signalIDMap = new HashMap<String, List<Signal>>();
-			junctionIDMap = new HashMap<String, Integer>();
+			roadIDMap = new LinkedHashMap<String, Integer>();
+			laneIDMap = new LinkedHashMap<String, Integer>();
+			signalIDMap = new LinkedHashMap<String, List<Signal>>();
+			junctionIDMap = new LinkedHashMap<String, Integer>();
 			
-			incLaneJunctionMap = new HashMap<String, String>();
-			intLaneJunctionMap = new HashMap<String, String>();
-			junctionsRoadMap = new HashMap<String, Integer>();
+			incLaneJunctionMap = new LinkedHashMap<String, String>();
+			intLaneJunctionMap = new LinkedHashMap<String, String>();
+			junctionsRoadMap = new LinkedHashMap<String, Integer>();
 			
-			laneRoadMap = new HashMap<String, String>();
-			isInternalRoadMap = new HashMap<String, Boolean>();
-			isInternalLaneMap = new HashMap<String, Boolean>();
+			laneRoadMap = new LinkedHashMap<String, String>();
+			isInternalRoadMap = new LinkedHashMap<String, Boolean>();
+			isInternalLaneMap = new LinkedHashMap<String, Boolean>();
 		}
 		
 		@SuppressWarnings("deprecation")
@@ -487,7 +487,7 @@ public class SumoXML {
 									if ((attributes.getValue("tl") != null) && signalIDMap.containsKey(attributes.getValue("tl"))) {
 										// has signal control
 										if(!signals.containsKey(from_road_id)) {
-											signals.put(from_road_id, new HashMap<Integer, Signal>());
+											signals.put(from_road_id, new LinkedHashMap<Integer, Signal>());
 										}
 										signals.get(from_road_id).put(to_road_id, signalIDMap.get(attributes.getValue("tl")).get(Integer.parseInt(attributes.getValue("linkIndex"))));
 									}

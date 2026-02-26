@@ -190,6 +190,13 @@ public class Signal {
 		return true;
 	}
 	
+	/* Setters for save/load support */
+	public void restoreState(int state, int nextUpdateTick, ArrayList<Integer> phaseTick) {
+		this.state = state;
+		this.nextUpdateTick = nextUpdateTick;
+		this.phaseTick = phaseTick;
+	}
+	
 	private void initialization(List<Integer> phaseTime, int offsetTime) {
 		int index = 0;
 		int tmp = 0;

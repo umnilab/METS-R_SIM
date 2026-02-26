@@ -137,7 +137,7 @@ public class CityContext extends DefaultContext<Object> {
 	            NeighboringGraphCache cachedData = mapper.readValue(cacheFile, NeighboringGraphCache.class);
 	            cachedData.load();
 	            
-	            for(Road r: ContextCreator.getRoadContext()) {
+	            for(Road r: ContextCreator.getRoadContext().getAll()) {
 	            	if(r.canBeOrigin()) {
 	    				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
 	    			}
@@ -159,7 +159,17 @@ public class CityContext extends DefaultContext<Object> {
 			
 			while (z1.getNeighboringZoneSize() < minNeighbors) {
 				Geometry buffer = point.buffer(searchBuffer);
+				// 1. Gather the raw, unordered results
+				List<Zone> unorderedZones = new ArrayList<>();
 				for (Zone z2 : zoneGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Zone.class)) {
+				    unorderedZones.add(z2);
+				}
+
+				// 2. Sort the results deterministically by ID
+				unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+
+				// 3. Process the sorted list
+				for (Zone z2 : unorderedZones) {
 					if (z1.getID() != z2.getID()) {
 						z1.addNeighboringZone(z2.getID());
 					}
@@ -180,11 +190,11 @@ public class CityContext extends DefaultContext<Object> {
 					if(r.canBeOrigin()) {
 						dist = this.getDistance(z1.getCoord(), r.getStartCoord());
 						
-						if((dist < r.getDistToZone(false))) {
+						if((dist < r.getDistToZone(false)) || (dist == r.getDistToZone(false) && (z1.getID() < r.getNeighboringZone(false)))) {
 							r.setNeighboringZone(z1.getID(),false);
 							r.setDistToZone(dist, false);
 						}
-						if(r.canBeDest() && (dist < z1.getDistToRoad(false))) { // The first condition ensures that the road qualifies for a valid bus stop
+						if(r.canBeDest() && ((dist < z1.getDistToRoad(false)) || ((dist == z1.getDistToRoad(false)) && (r.getID() < z1.getClosestRoad(false))))) { // The first condition ensures that the road qualifies for a valid bus stop
 							z1.setClosestRoad(r.getID(), false);
 							z1.setDistToRoad(dist, false);
 						}
@@ -192,11 +202,11 @@ public class CityContext extends DefaultContext<Object> {
 					if(r.canBeDest()) {
 						dist2 = this.getDistance(z1.getCoord(), r.getEndCoord());
 						
-						if(dist2 < r.getDistToZone(true)) {
+						if((dist2 < r.getDistToZone(true)) || (dist2 == r.getDistToZone(true) && (z1.getID() < r.getNeighboringZone(true)))) {
 							r.setNeighboringZone(z1.getID(),true);
 							r.setDistToZone(dist2, true);
 						}
-						if(r.canBeOrigin() && (dist2 < z1.getDistToRoad(true))) {
+						if(r.canBeOrigin() && ((dist2 < z1.getDistToRoad(true)) || ((dist2 == z1.getDistToRoad(true)) && (r.getID() < z1.getClosestRoad(true))))) {
 							z1.setClosestRoad(r.getID(), true);
 							z1.setDistToRoad(dist2, true);
 						}
@@ -219,14 +229,14 @@ public class CityContext extends DefaultContext<Object> {
 				for (Road r : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 					if(r.canBeOrigin()) {
 						dist = this.getDistance(cs.getCoord(), r.getStartCoord());
-						if(dist < cs.getDistToRoad(false)) {
+						if(dist < cs.getDistToRoad(false) || ((dist == cs.getDistToRoad(false)) && (r.getID() < cs.getClosestRoad(false))) ) {
 							cs.setClosestRoad(r.getID(), false);
 							cs.setDistToRoad(dist, false);
 						}
 					}
 					if(r.canBeDest()) {
 						dist2 = this.getDistance(cs.getCoord(), r.getEndCoord());
-						if(dist2 < cs.getDistToRoad(true)) {
+						if(dist2 < cs.getDistToRoad(true) || ((dist == cs.getDistToRoad(true)) && (r.getID() < cs.getClosestRoad(true))) ) {
 							cs.setClosestRoad(r.getID(), true);
 							cs.setDistToRoad(dist2, true);
 						}
@@ -244,7 +254,17 @@ public class CityContext extends DefaultContext<Object> {
 			while(r.getNeighboringZone(false) == 0) {
 				double dist = Double.MAX_VALUE;
 				Geometry buffer1 = point1.buffer(searchBuffer);
-				for (Zone z : zoneGeography.getObjectsWithin(buffer1.getEnvelopeInternal(), Zone.class)) {
+				// 1. Gather the raw, unordered results
+				List<Zone> unorderedZones = new ArrayList<>();
+				for (Zone z2 : zoneGeography.getObjectsWithin(buffer1.getEnvelopeInternal(), Zone.class)) {
+				    unorderedZones.add(z2);
+				}
+
+				// 2. Sort the results deterministically by ID
+				unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+
+				// 3. Process the sorted list
+				for (Zone z : unorderedZones) {
 					dist = this.getDistance(z.getCoord(), r.getStartCoord());
 					if(dist < r.getDistToZone(false)) {
 						r.setNeighboringZone(z.getID(), false);
@@ -258,7 +278,17 @@ public class CityContext extends DefaultContext<Object> {
 			while(r.getNeighboringZone(true) == 0) {
 				double dist2 = Double.MAX_VALUE;
 				Geometry buffer2 = point2.buffer(searchBuffer);
-				for (Zone z : zoneGeography.getObjectsWithin(buffer2.getEnvelopeInternal(), Zone.class)) {
+				// 1. Gather the raw, unordered results
+				List<Zone> unorderedZones = new ArrayList<>();
+				for (Zone z2 : zoneGeography.getObjectsWithin(buffer2.getEnvelopeInternal(), Zone.class)) {
+				    unorderedZones.add(z2);
+				}
+
+				// 2. Sort the results deterministically by ID
+				unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+
+				// 3. Process the sorted list
+				for (Zone z : unorderedZones) {
 					dist2 = this.getDistance(z.getCoord(), r.getEndCoord());
 					if(dist2 < r.getDistToZone(true)) {
 						r.setNeighboringZone(z.getID(), true);
@@ -593,6 +623,27 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 		
+		// Add upstream roads
+		for (Road r : ContextCreator.getRoadContext().getAll()) {
+			for(int dsRoadID: r.getDownStreamRoads()) {
+				Road dsRoad = ContextCreator.getRoadContext().get(dsRoadID);
+				double angle1 = CityContext.angle(r.getStartCoord(), r.getEndCoord());
+				double angle2 = CityContext.angle(dsRoad.getStartCoord(), dsRoad.getEndCoord());
+				double angleDiff = angle2 - angle1;
+				while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+				while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+				int priority;
+				if (Math.abs(angleDiff) < Math.PI / 4) {
+					priority = 0; // straight
+				} else if (angleDiff > 0) {
+					priority = 2; // left turn
+				} else {
+					priority = 1; // right turn
+				}
+				dsRoad.addUpStreamRoad(r, priority);
+			}
+		}
+		
 		// Register the signal group
 		for(Signal signal: ContextCreator.getSignalContext().getAll()) {
 			ContextCreator.getSignalContext().registerSignal(signal.getGroupID(), signal);
@@ -790,7 +841,17 @@ public class CityContext extends DefaultContext<Object> {
 		Geometry buffer = point.buffer(searchBuffer);
 		ChargingStation cheapestChargingStation = null;
 		double minPrice = Double.MAX_VALUE;
-		for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
+		// 1. Gather the raw, unordered results
+		List<ChargingStation> unorderedChargingStations = new ArrayList<>();
+		for (ChargingStation cs2 : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
+			unorderedChargingStations.add(cs2);
+		}
+
+		// 2. Sort the results deterministically by ID
+		unorderedChargingStations.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+
+		// 3. Process the sorted list
+		for (ChargingStation cs : unorderedChargingStations) {
 			if (cs.numCharger(chargerType) > 0) {
 				double thisPrice = cs.getPrice(chargerType);
 				if((thisPrice < minPrice) && (cs.capacity(chargerType) > 0)) {
@@ -798,11 +859,6 @@ public class CityContext extends DefaultContext<Object> {
 					cheapestChargingStation = cs;
 				}
 			}
-		}
-		if (cheapestChargingStation == null) {
-			ContextCreator.logger.warn(
-					"CityContext: findCheapestChargingStation (Coordinate coord): ERROR: couldn't find a charging station at these coordinates:\n\t"
-							+ coord.toString());
 		}
 		return cheapestChargingStation;
 	}
@@ -841,7 +897,7 @@ public class CityContext extends DefaultContext<Object> {
 				boolean hasCharger = cs.numCharger(chargerType) > 0;
 				if (hasCharger && (cs.capacity(chargerType) > 0)) {
 					double thisDist = this.getDistance(coord, cs.getCoord());
-					if(thisDist < minDist) {
+					if(thisDist < minDist || (thisDist == minDist && cs.getID() < nearestChargingStation.getID())) {
 						minDist = thisDist;
 						nearestChargingStation = cs;
 					}
@@ -858,7 +914,7 @@ public class CityContext extends DefaultContext<Object> {
 				boolean hasCharger = cs.numCharger(chargerType) > 0;
 				if (hasCharger) {
 					double thisDist = this.getDistance(coord, cs.getCoord());
-					if(thisDist < minDist) {
+					if(thisDist < minDist || (thisDist == minDist && cs.getID() < nearestChargingStation.getID())) {
 						minDist = thisDist;
 						nearestChargingStation = cs;
 					}
@@ -896,11 +952,16 @@ public class CityContext extends DefaultContext<Object> {
 				int num_tried = 0;
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
-						double thisDist = this.getDistance(coord, road.getEndCoord());
-						if (thisDist < minDist && road.canBeDest() && road != excludedRoad) { 
-							minDist = thisDist;
-							nearestRoad = road;
-						}
+						// 1. Check if it's a valid candidate first
+					    if (road.canBeDest() && road != excludedRoad) {
+					        double thisDist = this.getDistance(coord, road.getEndCoord());
+					        
+					        // 2. Then check distance and tie-breakers (adding a null check just to be 100% safe)
+					        if (thisDist < minDist || (thisDist == minDist && nearestRoad != null && road.getID() < nearestRoad.getID())) { 
+					            minDist = thisDist;
+					            nearestRoad = road;
+					        }
+					    }
 					}
 					num_tried += 1;
 					buffer = point.buffer((num_tried + 1) * GlobalVariables.SEARCHING_BUFFER);
@@ -934,7 +995,7 @@ public class CityContext extends DefaultContext<Object> {
 				while (nearestRoad == null && num_tried < 5) {
 					for (Road road : roadGeography.getObjectsWithin(buffer.getEnvelopeInternal(), Road.class)) {
 						double thisDist = this.getDistance(coord, road.getStartCoord());
-						if (thisDist < minDist && road.canBeOrigin() && road != excludedRoad) { 
+						if ((thisDist < minDist || (thisDist == minDist && road.getID() < nearestRoad.getID())) && road.canBeOrigin() && road != excludedRoad) { 
 							minDist = thisDist;
 							nearestRoad = road;
 						}

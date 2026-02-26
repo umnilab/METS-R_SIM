@@ -10,14 +10,11 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
 
-//import java.util.HashMap;
-//import java.util.Map;
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 
-//import com.vividsolutions.jts.geom.Coordinate;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;

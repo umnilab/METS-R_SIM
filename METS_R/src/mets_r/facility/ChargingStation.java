@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.Random;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -51,14 +52,21 @@ public class ChargingStation {
 	private double priceL3; // Unit: $/kWh, a factor estimated from the real pricing mechanism (e.g., $/hour).
 
 	// For thread-safe operation
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL2; // Pending Car queue waiting for L2 charging
-	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingL3; // Pending Car queue waiting for L3 charging
+	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingEV; // Pending Car queue waiting for charging (L2/L3 decided later)
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
+	
+	private int cachedL2Capacity;
+	private int cachedL3Capacity;
+	private int cachedBusCapacity;
+	
+	private ArrayList<ElectricVehicle> finishedVehicleL2;
+	private ArrayList<ElectricVehicle> finishedVehicleL3;
+	private ArrayList<ElectricBus> finishedBus;
 	
 	/* Public Variables */
 	// Statistics
-	public int numChargedCar;
-	public int numChargedBus;
+	public AtomicInteger numChargedCar = new AtomicInteger(0);
+	public AtomicInteger numChargedBus = new AtomicInteger(0);
 	
 	/**
 	 * This function construct a charging station
@@ -73,16 +81,20 @@ public class ChargingStation {
 		this.numL2 = numL2; // Number of level 2 chargers
 		this.numL3 = numL3; // Number of level 3 chargers
 		this.numBusCharger = numBus; // Number of bus chargers
+		this.cachedL2Capacity = this.numL2;
+		this.cachedL3Capacity = this.numL3;
+		this.cachedBusCapacity = this.numBusCharger;
 		this.queueChargingL2 = new LinkedList<ElectricVehicle>();
 		this.queueChargingL3 = new LinkedList<ElectricVehicle>();
 		this.queueChargingBus = new LinkedList<ElectricBus>();
 		this.chargingVehicleL2 = new ArrayList<ElectricVehicle>();
 		this.chargingVehicleL3 = new ArrayList<ElectricVehicle>();
 		this.chargingBus = new ArrayList<ElectricBus>();
-		this.toAddChargingL2 = new ConcurrentLinkedQueue<ElectricVehicle>();
-		this.toAddChargingL3 = new ConcurrentLinkedQueue<ElectricVehicle>();
+		this.toAddChargingEV = new ConcurrentLinkedQueue<ElectricVehicle>();
 		this.toAddChargingBus = new ConcurrentLinkedQueue<ElectricBus>();
-		this.numChargedCar = 0;
+		this.finishedVehicleL2 = new ArrayList<ElectricVehicle>();
+		this.finishedVehicleL3 = new ArrayList<ElectricVehicle>();
+		this.finishedBus = new ArrayList<ElectricBus>();
 		this.distToArrivalRoad = Double.MAX_VALUE;
 		this.distToDepartureRoad = Double.MAX_VALUE;
 		this.priceL2 = priceL2;
@@ -90,28 +102,51 @@ public class ChargingStation {
 	}
 
 	// Step function
-	public void step() {
+	public void stepPart1() {
 		processToAddEV();
 		processToAddBus();
+		updateCapacity();
 		chargeL2(); // Function 3.
 		chargeL3(); // Function 4.
 		chargeBus(); // Function 5.
 	}
 	
+	public void stepPart2() { //vehicle leaving the charging station
+		for(ElectricVehicle ev: finishedVehicleL2) {
+			ev.finishCharging(this.getID(), "L2");
+		}
+		for(ElectricVehicle ev: finishedVehicleL3) {
+			ev.finishCharging(this.getID(), "L3");
+		}
+		for(ElectricVehicle evBus: finishedBus) {
+			evBus.finishCharging(this.getID(), "Bus");
+		}
+		
+		finishedVehicleL2.clear();
+		finishedVehicleL3.clear();
+		finishedBus.clear();
+	}
+	
 	public int capacity() {
-		return this.numL2 + this.numL3 - this.chargingVehicleL2.size() - this.chargingVehicleL3.size();
+		return cachedL2Capacity + cachedL3Capacity;
 	}
 	
 	public int capacity(int chargerType) {
 		if(chargerType == ChargingStation.L3)
-			return this.numL3 - this.chargingVehicleL3.size();
+			return cachedL3Capacity;
 		else
-			return this.numL2 - this.chargingVehicleL2.size();
+			return cachedL2Capacity;
 	}
 	
 	
 	public int capacityBus() {
-		return this.numBusCharger - this.chargingBus.size();
+		return this.cachedBusCapacity;
+	}
+	
+	public void updateCapacity() {
+		this.cachedL2Capacity = this.numL2 - this.chargingVehicleL2.size();
+		this.cachedL3Capacity = this.numL3 - this.chargingVehicleL3.size();
+		this.cachedBusCapacity =this.numBusCharger - this.chargingBus.size();
 	}
 
 	public int numCharger(int chargerType) {
@@ -134,54 +169,63 @@ public class ChargingStation {
 	// Function1: busArrive()
 	public void receiveBus(ElectricBus bus) {
 		bus.initialChargingState = bus.getBatteryLevel();
-		this.numChargedBus += 1;
+		this.numChargedBus.incrementAndGet();
 		if (numBusCharger >0) this.toAddChargingBus.add(bus);
 		else {
-			this.numChargedBus -= 1;
+			this.numChargedBus.decrementAndGet();
 			ContextCreator.logger.error("Something went wrong, no bus charger at this station.");
 		}
 	}
 
 	public void processToAddBus() {
+		ArrayList<ElectricBus> pending = new ArrayList<ElectricBus>();
 		for (ElectricBus bus = this.toAddChargingBus.poll(); bus != null; bus = this.toAddChargingBus.poll()) {
+			pending.add(bus);
+		}
+		pending.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+		for (ElectricBus bus : pending) {
 			queueChargingBus.add(bus);
 		}
 	}
 
-	// Function2: vehicleArrive()
+	// Function2: vehicleArrive() - enqueue only, L2/L3 decision deferred to processToAddEV for determinism
 	public void receiveEV(ElectricVehicle ev) {
 		ev.initialChargingState = ev.getBatteryLevel();
-		this.numChargedCar += 1;
-		if ((numL2 > 0) && (numL3 > 0)) {
-			double utilityL2 = GlobalVariables.CHARGING_UTILITY_C0 + GlobalVariables.CHARGING_UTILITY_ALPHA * waitingTimeL2() + 
-					GlobalVariables.CHARGING_UTILITY_BETA * chargingTimeL2(ev) * GlobalVariables.CHARGING_FEE_L2 + 
-					GlobalVariables.CHARGING_UTILITY_C1 * (ev.getSoC() > 0.8 ? 1 : 0);
-			double utilityL3 = GlobalVariables.CHARGING_UTILITY_ALPHA* waitingTimeL3() + 
-					GlobalVariables.CHARGING_UTILITY_BETA * chargingTimeL3(ev) * GlobalVariables.CHARGING_FEE_DCFC + 
-					GlobalVariables.CHARGING_UTILITY_GAMMA * chargingTimeL3(ev);
-			double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
-			double random = rand.nextDouble();
-			if (random < shareOfL2) {
-				toAddChargingL2.add(ev);
-			} else {
-				toAddChargingL3.add(ev);
-			}
-		} else if (numL2 > 0) {
-			toAddChargingL2.add(ev);
-		} else if (numL3 > 0) {
-			toAddChargingL3.add(ev);
+		this.numChargedCar.incrementAndGet();
+		if (numL2 > 0 || numL3 > 0) {
+			toAddChargingEV.add(ev);
 		} else {
-			this.numChargedCar -= 1;
+			this.numChargedCar.decrementAndGet();
 			ContextCreator.logger.error("Something went wrong, no car charger at this station.");
 		}
 	}
 
 	public void processToAddEV() {
-		for (ElectricVehicle ev = this.toAddChargingL2.poll(); ev != null; ev = this.toAddChargingL2.poll()) {
-			queueChargingL2.add(ev);
+		ArrayList<ElectricVehicle> pending = new ArrayList<ElectricVehicle>();
+		for (ElectricVehicle ev = this.toAddChargingEV.poll(); ev != null; ev = this.toAddChargingEV.poll()) {
+			pending.add(ev);
 		}
-		for (ElectricVehicle ev = this.toAddChargingL3.poll(); ev != null; ev = this.toAddChargingL3.poll()) {
-			queueChargingL3.add(ev);
+		pending.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+		for (ElectricVehicle ev : pending) {
+			if ((numL2 > 0) && (numL3 > 0)) {
+				double utilityL2 = GlobalVariables.CHARGING_UTILITY_C0 + GlobalVariables.CHARGING_UTILITY_ALPHA * waitingTimeL2() + 
+						GlobalVariables.CHARGING_UTILITY_BETA * chargingTimeL2(ev) * GlobalVariables.CHARGING_FEE_L2 + 
+						GlobalVariables.CHARGING_UTILITY_C1 * (ev.getSoC() > 0.8 ? 1 : 0);
+				double utilityL3 = GlobalVariables.CHARGING_UTILITY_ALPHA * waitingTimeL3() + 
+						GlobalVariables.CHARGING_UTILITY_BETA * chargingTimeL3(ev) * GlobalVariables.CHARGING_FEE_DCFC + 
+						GlobalVariables.CHARGING_UTILITY_GAMMA * chargingTimeL3(ev);
+				double shareOfL2 = Math.exp(utilityL2) / (Math.exp(utilityL2) + Math.exp(utilityL3));
+				double random = rand.nextDouble();
+				if (random < shareOfL2) {
+					queueChargingL2.add(ev);
+				} else {
+					queueChargingL3.add(ev);
+				}
+			} else if (numL2 > 0) {
+				queueChargingL2.add(ev);
+			} else if (numL3 > 0) {
+				queueChargingL3.add(ev);
+			}
 		}
 	}
 
@@ -209,7 +253,7 @@ public class ChargingStation {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
 					// add vehicle to departureQueue of corresponding road
-					ev.finishCharging(this.getID(), "L2");
+					this.finishedVehicleL2.add(ev);
 				}
 			}
 			this.chargingVehicleL2.removeAll(toRemoveVeh);
@@ -247,7 +291,7 @@ public class ChargingStation {
 				} else {
 					ev.chargeItself(maxChargingDemand); // battery increases by maxChargingDemand
 					toRemoveVeh.add(ev); // the vehicle leaves the charger
-					ev.finishCharging(this.getID(), "L3");
+					this.finishedVehicleL3.add(ev);
 				}
 			}
 			this.chargingVehicleL3.removeAll(toRemoveVeh);
@@ -285,7 +329,7 @@ public class ChargingStation {
 					evBus.chargeItself(maxChargingDemand); // Battery increases by maxChargingDemand
 					toRemoveBus.add(evBus); // The vehicle leaves the charger
 					evBus.setState(Vehicle.BUS_TRIP);
-					evBus.finishCharging(this.getID(), "Bus");
+					this.finishedBus.add(evBus);
 				}
 			}
 
@@ -420,4 +464,16 @@ public class ChargingStation {
 			  return false;
 		}
 	}
+	
+	/* Getters and setters for save/load support */
+	public Random getRandom() { return this.rand; }
+	public void setRandom(Random r) { this.rand = r; }
+	public LinkedList<ElectricVehicle> getQueueL2() { return this.queueChargingL2; }
+	public LinkedList<ElectricVehicle> getQueueL3() { return this.queueChargingL3; }
+	public LinkedList<ElectricBus> getQueueBus() { return this.queueChargingBus; }
+	public ArrayList<ElectricVehicle> getChargingL2() { return this.chargingVehicleL2; }
+	public ArrayList<ElectricVehicle> getChargingL3() { return this.chargingVehicleL3; }
+	public ArrayList<ElectricBus> getChargingBus() { return this.chargingBus; }
+	public double getPriceL2() { return this.priceL2; }
+	public double getPriceL3() { return this.priceL3; }
 }

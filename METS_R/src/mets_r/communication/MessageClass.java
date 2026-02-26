@@ -97,6 +97,19 @@ public class MessageClass{
 	    }
 	}
 	
+	class VehIDVehTypeRoad {
+	    int vehID;
+	    boolean vehType;
+	    String roadID;
+
+	    // Constructor
+	    public VehIDVehTypeRoad(int vehID, boolean vehType, String roadID) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.roadID = roadID;
+	    }
+	}
+	
 	class VehIDVehTypeRoadLaneDist {
 	    int vehID;
 	    boolean vehType;

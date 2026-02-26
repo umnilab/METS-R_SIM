@@ -3,6 +3,8 @@ package mets_r.facility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,6 +49,7 @@ public class Road {
 	private ArrayList<Lane> lanes; // Lanes inside the road
 	private Node upStreamNode;
 	private Node downStreamNode;
+	private ArrayList<Road> upStreamRoads;
 	private ArrayList<Integer> downStreamRoads; // Includes the opposite link in U-turn
 	private int upStreamJunction;
 	private int downStreamJunction;
@@ -63,6 +66,7 @@ public class Road {
 	private AtomicInteger nVehicles_; // Number of vehicles currently in the road
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
 	private Vehicle firstVehicle_;
+	private Vehicle prevFirstVehicle; // For parallel computing
 	private double travelTime;
 	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
@@ -71,9 +75,13 @@ public class Road {
 	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
 	private ConcurrentLinkedQueue<Double> travelTimeHistory_; 
 	
-	// For parallel computing
-	private int nShadowVehicles; // Potential vehicles might be loaded on the road
-	private int nFutureRoutingVehicles; // Potential vehicles might performing routing on the road
+	// For parallel computing - AtomicInteger for thread safety since these are
+	// modified by setShadowImpact/clearShadowImpact from parallel road step threads
+	// and read by the METIS partitioner for edge weight computation.
+	private AtomicInteger nShadowVehicles;
+	private AtomicInteger nFutureRoutingVehicles;
+	private ConcurrentLinkedQueue<Vehicle> pendingTransferVehicles;
+	private ArrayList<Vehicle> pendingArrivalVehicles;
 	
 	/* Public variables */
 	public double currentEnergy;
@@ -102,11 +110,15 @@ public class Road {
 		
 		this._canBeDest = true;
 		this._canBeOrigin = true;
+		
+		this.upStreamRoads = new ArrayList<Road>(); // Sort by priority
 
 		// For adaptive network partitioning
-		this.nShadowVehicles = 0;
-		this.nFutureRoutingVehicles = 0;
+		this.nShadowVehicles = new AtomicInteger(0);
+		this.nFutureRoutingVehicles = new AtomicInteger(0);
 		this.eventFlag = false;
+		this.pendingTransferVehicles = new ConcurrentLinkedQueue<Vehicle>();
+		this.pendingArrivalVehicles = new ArrayList<Vehicle>();
 
 		// Set default value
 		this.cachedSpeedLimit_ = this.speedLimit_; 
@@ -147,35 +159,17 @@ public class Road {
 		this.eventFlag = false;
 	}
 
+
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
-	public void step() {
+	// Scheduling step
+	public void stepPart1() {
 		int tickcount = ContextCreator.getCurrentTick();
 		
-		/* Vehicle loading */
-		this.addVehicleToDepartureMap();
-
-		/* Vehicle departure */
-		int curr_size = this.departureVehMap.size();
-		for (int i = 0; i < curr_size; i++) {
-			Vehicle v = this.departureVehicleQueueHead();
-			int departTime = v.getDepTime();
-			if (tickcount >= departTime) {
-				// check whether the origin is the destination
-				if (v.getCurrentCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
-					this.removeVehicleFromNewQueue(departTime, v); // Remove vehicle from the waiting vehicle queue
-					v.reachDest();
-				} else if (v.enterNetwork(this)) {
-					this.removeVehicleFromNewQueue(departTime, v);
-				} else {
-					break; // Vehicle cannot enter the network
-				}
-			}
-		}
-		
-		/* Log vehicle states */
+		/* Log all vehicle states */
 		Vehicle currentVehicle = this.firstVehicle();
-		
+		this.prevFirstVehicle = currentVehicle;
+		if (this.prevFirstVehicle != null) this.prevFirstVehicle.recordPrevState();
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
 			currentVehicle.reportStatus();
@@ -186,11 +180,26 @@ public class Road {
 			currentVehicle = nextVehicle;
 		}
 
-		/* Vehicle movement */
-		if(this.getControlType() == Road.COSIM) {
-			ContextCreator.logger.debug("Skipped vehicle movements for the coSim road with origin ID: " + this.getOrigID());
+		/* Vehicle departure */
+		while (!this.departureVehMap.isEmpty()) {
+		    Vehicle v = this.departureVehicleQueueHead();
+		    int departTime = v.getDepTime();
+		    if (tickcount >= departTime) {
+		        if (v.getCurrentCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
+		            this.removeVehicleFromNewQueue(departTime, v);
+		            this.pendingArrivalVehicles.add(v);
+		        } else if (v.enterNetwork(this)) {
+		            this.removeVehicleFromNewQueue(departTime, v);
+		        } else {
+		            break; // Network is full, stop processing departures
+		        }
+		    } else {
+		        break; // Reached vehicles scheduled for future ticks
+		    }
 		}
-		else {
+
+		/* Vehicle decision */
+		if(!(this.getControlType() == Road.COSIM)) {
 			currentVehicle = this.firstVehicle();
 			// happened at time t, deciding acceleration and lane changing
 			while (currentVehicle != null) {
@@ -198,20 +207,73 @@ public class Road {
 				if (tickcount> currentVehicle.getAndSetLastVisitTick(tickcount)) {
 					currentVehicle.calcState();
 				}
-				currentVehicle = nextVehicle;
-			}
-	
-			// happened during time t to t + 1, conducting vehicle movements
-			currentVehicle = this.firstVehicle();
-			while (currentVehicle != null) {
-				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been visited yet
-					currentVehicle.move();
-					currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				else {
+					break;
 				}
 				currentVehicle = nextVehicle;
 			}
 		}
+	}
+	
+	// Realization step
+	public void stepPart2() {
+		int tickcount = ContextCreator.getCurrentTick();
+		
+		/* Vehicle movement */
+		if(!(this.getControlType() == Road.COSIM)) {
+			Vehicle currentVehicle = this.firstVehicle();
+			
+			// happened during time t to t + 1, conducting vehicle movements
+			currentVehicle = this.firstVehicle();
+			while (currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been moved yet
+					currentVehicle.move();
+					currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				}
+				else {
+					break;
+				}
+				currentVehicle = nextVehicle;
+			}
+		}
+	}
+	
+	// Execute AFTER stepPart2 is done.
+	public void stepPart3() {
+		addVehicleToDepartureMap();
+		
+	    if(this.getControlType() == Road.COSIM) return;
+	    
+	    List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.pendingTransferVehicles);
+	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
+	    
+	    for (Vehicle currentVehicle: sortedTransfers) {
+	        // If the vehicle reached the intersection and needs to change roads
+	        if (!currentVehicle.isOnLane()) {
+	            if (!currentVehicle.changeRoad()) { 
+	                currentVehicle.setSpeed(0.0f);
+	                currentVehicle.setAccRate(0.0f);
+	                currentVehicle.setMovingFlag(false);
+	            } else { 
+	                // Successfully entered the next road
+	                this.recordEnergyConsumption(currentVehicle); 
+	                this.recordTravelTime(currentVehicle);
+	                currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
+	                currentVehicle.setMovingFlag(true);
+	            }
+	        }
+	    }
+	    
+	    List<Vehicle> sortedArrivals = new ArrayList<>(this.pendingArrivalVehicles);
+	    sortedArrivals.sort(Comparator.comparingInt(Vehicle::getID));
+	    
+	    for (Vehicle currentVehicle: sortedArrivals) {
+	    	currentVehicle.reachDest();
+	    }
+	    
+	    this.pendingTransferVehicles.clear();
+	    this.pendingArrivalVehicles.clear();
 	}
 	
 	/**
@@ -319,6 +381,12 @@ public class Road {
 		if (!this.downStreamRoads.contains(dsRoad))
 			this.downStreamRoads.add(dsRoad);
 	}
+	
+	public void addUpStreamRoad(Road usRoad, int priority) { // priority: 0 - straight, 1 - right turn, 2 - left turn
+		if (!this.upStreamRoads.contains(usRoad)) {
+			this.upStreamRoads.add(Math.min(this.upStreamRoads.size(), priority), usRoad);
+		}
+	}
 
 	public ArrayList<Integer> getDownStreamRoads() {
 		return this.downStreamRoads;
@@ -373,6 +441,10 @@ public class Road {
 	public Vehicle firstVehicle() {
 		return firstVehicle_;
 	}
+	
+	public Vehicle prevFirstVehicle() {
+		return this.prevFirstVehicle;
+	}
 
 	public Vehicle lastVehicle() {
 		return lastVehicle_;
@@ -385,44 +457,49 @@ public class Road {
 
 	/* For adaptive network partitioning */
 	public int getShadowVehicleNum() {
-		return this.nShadowVehicles;
+		return this.nShadowVehicles.get();
 	}
 
 	public void incrementShadowVehicleNum() {
-		this.nShadowVehicles++;
+		this.nShadowVehicles.incrementAndGet();
 	}
 
 	public void resetShadowVehicleNum() {
-		this.nShadowVehicles = 0;
+		this.nShadowVehicles.set(0);
 	}
 
 	public void decreaseShadowVehicleNum() {
-		this.nShadowVehicles--;
-		if (this.nShadowVehicles < 0)
-			this.nShadowVehicles = 0;
+		int val = this.nShadowVehicles.decrementAndGet();
+		if (val < 0)
+			this.nShadowVehicles.compareAndSet(val, 0);
 	}
 
 	public int getFutureRoutingVehNum() {
-		return this.nFutureRoutingVehicles;
+		return this.nFutureRoutingVehicles.get();
 	}
 
 	public void incrementFutureRoutingVehNum() {
-		this.nFutureRoutingVehicles++;
+		this.nFutureRoutingVehicles.incrementAndGet();
 	}
 
 	public void resetFutureRountingVehNum() {
-		this.nFutureRoutingVehicles = 0;
+		this.nFutureRoutingVehicles.set(0);
 	}
 
 	public void decreaseFutureRoutingVehNum() {
-		this.nFutureRoutingVehicles--;
-		if (this.nFutureRoutingVehicles < 0)
-			this.nFutureRoutingVehicles = 0;
+		int val = this.nFutureRoutingVehicles.decrementAndGet();
+		if (val < 0)
+			this.nFutureRoutingVehicles.compareAndSet(val, 0);
 	}
 
 	// This add queue using TreeMap structure
 	public void addVehicleToDepartureMap() {
+		ArrayList<Vehicle> pending = new ArrayList<Vehicle>();
 		for (Vehicle v = this.toAddDepartureVeh.poll(); v != null; v = this.toAddDepartureVeh.poll()) {
+			pending.add(v);
+		}
+		pending.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+		for (Vehicle v : pending) {
 			int departuretime_ = v.getDepTime();
 			if (!this.departureVehMap.containsKey(departuretime_)) {
 				ArrayList<Vehicle> temporalList = new ArrayList<Vehicle>();
@@ -866,5 +943,48 @@ public class Road {
 	
 	public void setOrigID(String newID) {
 		this.origID = newID;
+	}
+	
+	public boolean noEnterRoadConflict(Road usroad) {
+		 for(Road r: this.upStreamRoads) {
+			 if(r == usroad) break;
+			 if(r.prevFirstVehicle()!= null) {
+				Vehicle v = r.prevFirstVehicle();
+				Junction prevJunction = ContextCreator.getJunctionContext().get(this.getUpStreamJunction());
+				if(v.aboutToEnterRoad(this)) {
+					boolean movable = false;
+					switch(prevJunction.getControlType()) {
+						case Junction.NoControl:
+							movable = true;
+							break;
+						case Junction.DynamicSignal:
+							if(prevJunction.getSignalState(r.getID(), this.getID())<= Signal.Yellow)
+								movable = true;
+							break;
+						case Junction.StaticSignal:
+							if(prevJunction.getSignalState(r.getID(), this.getID())<= Signal.Yellow)
+								movable = true;
+							break;
+						case Junction.StopSign:
+							if(prevJunction.getDelay(r.getID(), this.getID()) <= v.getStuckTime())
+								movable = true;
+							break;
+						case Junction.Yield:
+							if(prevJunction.getDelay(r.getID(), this.getID()) <= v.getStuckTime())
+								movable = true;
+							break;
+						default:
+							movable = true;
+							break;
+						}
+					if(movable) return false;
+				}
+			 }
+		 }
+		 return true;
+	}
+	
+	public void addPendingTransferVehicle(Vehicle v) {
+		this.pendingTransferVehicles.add(v);
 	}
 }

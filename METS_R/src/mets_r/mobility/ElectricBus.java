@@ -389,4 +389,15 @@ public class ElectricBus extends ElectricVehicle {
 			return true;
 		}
 	}
+	
+	/* Getters and setters for save/load support */
+	public ArrayList<Integer> getStopZones() { return this.stopZones; }
+	public ArrayList<Integer> getDepartureTimes() { return this.departureTime; }
+	public int getNextStop() { return this.nextStop; }
+	public void setNextStop(int v) { this.nextStop = v; }
+	public void setPassNum(int v) { this.passNum = v; }
+	public int getServedPass() { return this.served_pass; }
+	public void setServedPass(int v) { this.served_pass = v; }
+	public ArrayList<Queue<Request>> getToBoardRequests() { return this.toBoardRequests; }
+	public ArrayList<Queue<Request>> getOnBoardRequests() { return this.onBoardRequests; }
 }

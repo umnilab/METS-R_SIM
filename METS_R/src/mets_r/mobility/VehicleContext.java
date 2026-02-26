@@ -3,13 +3,11 @@ package mets_r.mobility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-
-import org.eclipse.jetty.util.ConcurrentHashSet;
+import java.util.TreeSet;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -18,18 +16,21 @@ import repast.simphony.context.DefaultContext;
 import repast.simphony.space.gis.Geography;
 
 public class VehicleContext extends DefaultContext<Vehicle> {
+	private static final Comparator<ElectricTaxi> TAXI_ID_ORDER =
+			Comparator.comparingInt(ElectricTaxi::getID);
+
 	// For taxi/ride-hailing operation
-	private Map<Integer, ConcurrentLinkedQueue<ElectricTaxi>> availableTaxiMap;
-	private Map<Integer, ConcurrentHashSet<ElectricTaxi>> relocationTaxiMap;
+	private Map<Integer, TreeSet<ElectricTaxi>> availableTaxiMap;
+	private Map<Integer, TreeSet<ElectricTaxi>> relocationTaxiMap;
 	
 	// For data collection
 	private Map<Integer, ElectricTaxi> taxiMap; 
 	private Map<Integer, ElectricBus> busMap;
 	
 	// For tracking private vehicle trips, note the key is not the agentID but the one used in the TravelDemand JSON files
-	private HashMap<Integer, ElectricVehicle> privateEVMap;
-	private HashMap<Integer, Vehicle> privateGVMap;
-	private HashMap<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
+	private Map<Integer, ElectricVehicle> privateEVMap;
+	private Map<Integer, Vehicle> privateGVMap;
+	private Map<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -37,19 +38,40 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		Geography<Zone> zoneGeography;
 		zoneGeography = ContextCreator.getZoneGeography();
 
-		this.availableTaxiMap = new HashMap<Integer, ConcurrentLinkedQueue<ElectricTaxi>>();
-		this.relocationTaxiMap = new HashMap<Integer, ConcurrentHashSet<ElectricTaxi>>();
-		
-		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
-		this.busMap = new HashMap<Integer, ElectricBus>();
-		
-		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
-		this.privateGVMap = new HashMap<Integer, Vehicle>();
-		
-		this.privateVIDMap = new HashMap<Integer, Integer>();
+		initMaps();
 		
 		createTaxiContextFromZone(zoneGeography, GlobalVariables.NUM_OF_EV);
 		createBusContextFromZone(zoneGeography, GlobalVariables.NUM_OF_BUS);
+	}
+	
+	/**
+	 * Constructor for load mode: creates empty maps without auto-generating vehicles.
+	 * @param emptyMode ignored, just used to distinguish from the default constructor
+	 */
+	public VehicleContext(boolean emptyMode) {
+		super("VehicleContext");
+		ContextCreator.logger.info("VehicleContext creation (empty for load)");
+		initMaps();
+	}
+	
+	private void initMaps() {
+		this.availableTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
+		this.relocationTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
+		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
+		this.busMap = new HashMap<Integer, ElectricBus>();
+		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
+		this.privateGVMap = new HashMap<Integer, Vehicle>();
+		this.privateVIDMap = new HashMap<Integer, Integer>();
+		
+		// Ensure zone-based maps are initialized for all zones
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			if (!this.availableTaxiMap.containsKey(z.getID())) {
+				this.availableTaxiMap.put(z.getID(), new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
+			}
+			if (!this.relocationTaxiMap.containsKey(z.getID())) {
+				this.relocationTaxiMap.put(z.getID(), new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
+			}
+		}
 	}
 
 	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
@@ -62,7 +84,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			park_total += z.getCapacity();
 		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			ConcurrentLinkedQueue<ElectricTaxi> tmpQueue = new ConcurrentLinkedQueue<ElectricTaxi>();
+			TreeSet<ElectricTaxi> tmpQueue = new TreeSet<ElectricTaxi>(TAXI_ID_ORDER);
 			if(z.getCapacity()>0) {
 				int vehicle_num_to_generate = (int) Math.ceil(num_total * z.getCapacity()/(park_total + 0.001));
 				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
@@ -80,7 +102,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				z.addParkingVehicleStock(vehicle_num_to_generate);
 			}
 			this.availableTaxiMap.put(z.getID(), tmpQueue);
-			this.relocationTaxiMap.put(z.getID(), new ConcurrentHashSet<ElectricTaxi>());
+			this.relocationTaxiMap.put(z.getID(), new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
 		}
 		
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
@@ -209,37 +231,49 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    return vehicleIDList;
 	}
 
-	// Return the list of vehicles for certain zone
-	public Queue<ElectricTaxi> getAvailableTaxis(int zoneID) {
-		return this.availableTaxiMap.get(zoneID);
+	public synchronized List<ElectricTaxi> getAvailableTaxisSorted(int zoneID) {
+		TreeSet<ElectricTaxi> set = this.availableTaxiMap.get(zoneID);
+		if (set == null || set.isEmpty()) return new ArrayList<>();
+		
+		List<ElectricTaxi> sortedList = new ArrayList<>(set);
+		// Explicitly sort to guarantee ID order, overriding any TreeSet corruption
+		sortedList.sort(Comparator.comparingInt(ElectricTaxi::getID));
+		
+		return sortedList;
 	}
 	
-	public void addAvailableTaxi(ElectricTaxi v, int z) {
+	public synchronized void addAvailableTaxi(ElectricTaxi v, int z) {
 		this.availableTaxiMap.get(z).add(v);
 	}
 	
-	public void removeAvailableTaxi(ElectricTaxi v, int z) {
+	public synchronized void removeAvailableTaxi(ElectricTaxi v, int z) {
 		this.availableTaxiMap.get(z).remove(v);
 	}
 	
-	public void updateRelocationTaxi(ElectricTaxi v,  int newZone) {
+	public synchronized void updateAvailableTaxi(ElectricTaxi v, int oldZone, int newZone) {
+		if (this.availableTaxiMap.containsKey(oldZone)) {
+			this.availableTaxiMap.get(oldZone).remove(v);
+		}
+		v.setCurrentZone(newZone);
+		this.availableTaxiMap.get(newZone).add(v);
+	}
+	
+	public synchronized void updateRelocationTaxi(ElectricTaxi v, int newZone) {
 		int oldZone = v.getCurrentZone();
 		
 		if (relocationTaxiMap.containsKey(oldZone)) {
-	        ConcurrentHashSet<ElectricTaxi> set = relocationTaxiMap.get(oldZone);
+	        TreeSet<ElectricTaxi> set = relocationTaxiMap.get(oldZone);
 	        set.remove(v);
 	    }
 
-	    // Update vehicle's current zone
 	    v.setCurrentZone(newZone);
 
-	    // Add to new zone
 	    relocationTaxiMap.get(newZone).add(v);
 	}
 	
-	public void removeRelocationTaxi(ElectricTaxi v){
+	public synchronized void removeRelocationTaxi(ElectricTaxi v){
 		int zone = v.getCurrentZone();
-	    ConcurrentHashSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
+	    TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
 	    if (set != null) {
 	        set.remove(v);
 	    }
@@ -255,13 +289,17 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 //		return result;
 //	}
 	
-	public List<ElectricTaxi> getRelocationTaxi(int z) {
-	    ConcurrentHashSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
-	    return (set != null) ? new ArrayList<>(set) : new ArrayList<>();
+	public synchronized List<ElectricTaxi> getRelocationTaxiSorted(int z) {
+	    TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
+	    if (set == null) return new ArrayList<>();
+	    List<ElectricTaxi> sortedList = new ArrayList<>(set);
+		// Explicitly sort to guarantee ID order, overriding any TreeSet corruption
+		sortedList.sort(Comparator.comparingInt(ElectricTaxi::getID));
+	    return sortedList;
 	}
 	
-	public int getNumOfRelocationTaxi(int z) {
-		ConcurrentHashSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
+	public synchronized int getNumOfRelocationTaxi(int z) {
+		TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
 	    return (set != null) ? set.size() : 0;
 	}
 	
@@ -309,5 +347,27 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 		return -1;
 	}
-
+	
+	/* Methods for save/load support */
+	public void clearMaps() {
+		this.taxiMap.clear();
+		this.busMap.clear();
+		this.privateEVMap.clear();
+		this.privateGVMap.clear();
+		this.privateVIDMap.clear();
+		for (TreeSet<ElectricTaxi> q : this.availableTaxiMap.values()) {
+			q.clear();
+		}
+		for (TreeSet<ElectricTaxi> s : this.relocationTaxiMap.values()) {
+			s.clear();
+		}
+	}
+	
+	public void registerTaxi(ElectricTaxi v) {
+		this.taxiMap.put(v.getID(), v);
+	}
+	
+	public void registerBus(ElectricBus v) {
+		this.busMap.put(v.getID(), v);
+	}
 }

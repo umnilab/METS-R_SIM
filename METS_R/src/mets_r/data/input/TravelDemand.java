@@ -22,9 +22,9 @@ import org.json.simple.parser.JSONParser;
  **/
 
 public class TravelDemand {
-	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateEVTravelDemand; // The outer key is departure time, the inner key is vid
-	private TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>> privateGVTravelDemand;
-	private HashMap<Integer, ArrayList<Double>> privateEVProfile;
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>> privateEVTravelDemand; // The outer key is departure time, the inner key is vid
+	private TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>> privateGVTravelDemand;
+	private TreeMap<Integer, ArrayList<Double>> privateEVProfile;
 	
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> publicTravelDemand; // The outer key is the origin and the
 																				// inner key is the destination
@@ -39,9 +39,9 @@ public class TravelDemand {
 
 	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
-		privateEVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
-		privateGVTravelDemand = new TreeMap<Integer, HashMap<Integer, ArrayList<Integer>>>();
-		privateEVProfile = new HashMap<Integer, ArrayList<Double>>();
+		privateEVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>>();
+		privateGVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>>();
+		privateEVProfile = new TreeMap<Integer, ArrayList<Double>>();
 		publicTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
 		sharePercentage = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
@@ -126,13 +126,13 @@ public class TravelDemand {
 		int gv_trip_number = 0;
 		
 		// clear the previous chunk
-		Iterator<Map.Entry<Integer, HashMap<Integer, ArrayList<Integer>>>> iter = this.privateGVTravelDemand.entrySet().iterator();
+		Iterator<Map.Entry<Integer, TreeMap<Integer, ArrayList<Integer>>>> iter = this.privateGVTravelDemand.entrySet().iterator();
 	    while (iter.hasNext()) {
 	        if (iter.next().getKey() < hour * 60) {
 	            iter.remove();
 	        }
 	    }
-	    Iterator<Map.Entry<Integer,HashMap<Integer, ArrayList<Integer>>>> iter2 = this.privateEVTravelDemand.entrySet().iterator();
+	    Iterator<Map.Entry<Integer,TreeMap<Integer, ArrayList<Integer>>>> iter2 = this.privateEVTravelDemand.entrySet().iterator();
 	    while (iter2.hasNext()) {
 	        if (iter2.next().getKey() < hour * 60) {
 	            iter2.remove();
@@ -152,7 +152,7 @@ public class TravelDemand {
 		    		
 		    		// add it to the privateEVTravelDemand
 		    		if(!privateEVTravelDemand.containsKey(time_ind)) {
-		    			privateEVTravelDemand.put(time_ind, new HashMap<Integer, ArrayList<Integer>>());
+		    			privateEVTravelDemand.put(time_ind, new TreeMap<Integer, ArrayList<Integer>>());
 		    		}
 		    		ArrayList<Integer> od = new ArrayList<Integer>();
 		    		od.add(origin);
@@ -178,7 +178,7 @@ public class TravelDemand {
 		    		
 		    		// add it to the privateEVTravelDemand
 		    		if(!privateGVTravelDemand.containsKey(time_ind)) {
-		    			privateGVTravelDemand.put(time_ind, new HashMap<Integer, ArrayList<Integer>>());
+		    			privateGVTravelDemand.put(time_ind, new TreeMap<Integer, ArrayList<Integer>>());
 		    		}
 		    		ArrayList<Integer> od = new ArrayList<Integer>();
 		    		od.add(origin);
@@ -260,9 +260,9 @@ public class TravelDemand {
 		}
 	}
 	
-	public HashMap<Integer, Integer> getPrivateEVTravelDemand(int timeIndex, int originID) {
+	public TreeMap<Integer, Integer> getPrivateEVTravelDemand(int timeIndex, int originID) {
 		// return a list of vid, dest
-		HashMap<Integer, Integer> result = new HashMap<Integer, Integer>();
+		TreeMap<Integer, Integer> result = new TreeMap<Integer, Integer>();
 		if (this.privateEVTravelDemand.containsKey(timeIndex)) {
 			for(Entry<Integer, ArrayList<Integer>> item: this.privateEVTravelDemand.get(timeIndex).entrySet()) {
 				int vid = item.getKey();
@@ -283,9 +283,9 @@ public class TravelDemand {
 			return null;
 	}
 	
-	public HashMap<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {
+	public TreeMap<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {
 		// return a list of vid, dest
-		HashMap<Integer, Integer> result = new HashMap<Integer, Integer>();
+		TreeMap<Integer, Integer> result = new TreeMap<Integer, Integer>();
 		if (this.privateGVTravelDemand.containsKey(timeIndex)) {
 			for(Entry<Integer, ArrayList<Integer>> item: this.privateGVTravelDemand.get(timeIndex).entrySet()) {
 				int vid = item.getKey();
