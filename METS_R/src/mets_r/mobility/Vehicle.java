@@ -1336,8 +1336,9 @@ public class Vehicle {
 						break;
 				}
 			}
+			
 
-			if(movable && this.nextRoad_.noEnterRoadConflict(this.road)) {
+			if((movable && this.nextRoad_.noEnterRoadConflict(this.road)) || this.road.getControlType() == Road.COSIM) { // Cosim road would rely the external simulator to decide movable or not
 				// Check if the target road has space
 				if(this.nextRoad_.getControlType() == Road.COSIM) {
 						// For cosim road, get the last vehicle, check whether the distance is greater than 1.2 * this.length
