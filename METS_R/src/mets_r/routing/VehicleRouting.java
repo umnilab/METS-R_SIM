@@ -125,7 +125,7 @@ public class VehicleRouting {
 					shortestPath = sp.getPath(currNode, destNode).getEdgeList();
 				}
 				catch(Exception e) {
-					ContextCreator.logger.error("Cannot find path between roads " + currentRoad.getOrigID() + ", " + destRoad.getOrigID());
+					ContextCreator.logger.error("Routing engine error between " + currentRoad.getOrigID() + ", " + destRoad.getOrigID() + ": " + e.getMessage());
 				}
 			}
 	

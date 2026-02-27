@@ -242,27 +242,22 @@ public class Road {
 	// Execute AFTER stepPart2 is done.
 	public void stepPart3() {
 		addVehicleToDepartureMap();
-		
-	    if(this.getControlType() == Road.COSIM) return;
 	    
 	    List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.pendingTransferVehicles);
 	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
 	    
 	    for (Vehicle currentVehicle: sortedTransfers) {
-	        // If the vehicle reached the intersection and needs to change roads
-	        if (!currentVehicle.isOnLane()) {
-	            if (!currentVehicle.changeRoad()) { 
-	                currentVehicle.setSpeed(0.0f);
-	                currentVehicle.setAccRate(0.0f);
-	                currentVehicle.setMovingFlag(false);
-	            } else { 
-	                // Successfully entered the next road
-	                this.recordEnergyConsumption(currentVehicle); 
-	                this.recordTravelTime(currentVehicle);
-	                currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
-	                currentVehicle.setMovingFlag(true);
-	            }
-	        }
+            if (!currentVehicle.changeRoad()) { 
+                currentVehicle.setSpeed(0.0f);
+                currentVehicle.setAccRate(0.0f);
+                currentVehicle.setMovingFlag(false);
+            } else { 
+                // Successfully entered the next road
+                this.recordEnergyConsumption(currentVehicle); 
+                this.recordTravelTime(currentVehicle);
+                currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
+                currentVehicle.setMovingFlag(true);
+            }
 	    }
 	    
 	    List<Vehicle> sortedArrivals = new ArrayList<>(this.pendingArrivalVehicles);

@@ -140,8 +140,6 @@ public class Vehicle {
 	
 	protected int numTrips; // Number of trips initialized
 	
-	protected boolean fallBackForRerouting;
-	
 	/**
 	 * Constructor of Vehicle Class
 	 * @param vClass Vehicle type, 0 for gasoline (private vehicle), 1 for EV taxi, 2 for EV bus, 3 for EV (private vehicle) 
@@ -162,7 +160,6 @@ public class Vehicle {
 		this.normalDeceleration_ = -0.5;
 		this.accPlan_ = new LinkedList<Double>();
 		this.accDecided_ = false;
-		this.fallBackForRerouting = false;
 
 		this.previousEpochCoord = new Coordinate();
 		this.endTime = 0;
@@ -534,28 +531,47 @@ public class Vehicle {
 		this.setShadowImpact();
 		this.distToTravel_ = 0;
 		if (this.roadPath == null) {
-			if(this.fallBackForRerouting) { // Fallback cannot save this case, the network is troublesome
-				this.nextRoad_ = null; // Remove this trip gracefully
+			// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
+			// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
+			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
+			
+			this.roadPath = RouteContext.shortestPathRoute(this.road, r2, this.rand_route_only); // K-shortest path or shortest path
+			
+			this.onLane = false; // So this vehicle will call enterNextRoad in the next round
+			
+			this.removeFromCurrentLane();
+			
+			if(this.roadPath == null) {
+				Road r1 = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road);
+				
+				this.roadPath = RouteContext.shortestPathRoute(r1, r2, this.rand_route_only); 
+				
+				if(this.roadPath == null) {
+					this.nextRoad_ = null;
+					return;
+				}
+				else {
+					this.roadPath.add(0, this.road);
+				}
+				
 			}
 			else{
-				// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
-				// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
-				Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
-				this.leaveNetwork();
 				this.destRoad_ = r2;
-				this.departure(ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road));
-				this.fallBackForRerouting = true;
 			}
 		}
-		else if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
+		
+		this.setShadowImpact();
+		this.distToTravel_ = this.distance_;
+		
+	    if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
 			this.nextRoad_ = null;
 		} else {
 			this.nextRoad_ = roadPath.get(1);
 			this.assignNextLane();
+			this.distToTravel_ = this.distance_ - this.road.getLength();
 			for(Road r: roadPath) {
 				this.distToTravel_ += r.getLength();
 			}
-			this.fallBackForRerouting = false;
 		}
 	}
 	
@@ -564,37 +580,47 @@ public class Vehicle {
 	 */
 	public void rerouteWithSpecifiedNextRoad(Road nextRoad) {
 		if(this.road.getDownStreamRoads().contains(nextRoad.getID())) {
-			// Vehicle departed
-			this.atOrigin = false;
-			// Clear legacy impact
-			this.clearShadowImpact();
-			this.roadPath = RouteContext.shortestPathRoute(nextRoad, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
-			this.roadPath.add(0, this.road); // Add the current road to the path
-			this.setShadowImpact();
-			this.distToTravel_ = 0;
-			if (this.roadPath == null) {
-				if(this.fallBackForRerouting) { // Fallback cannot save this case, the network is troublesome
-					this.nextRoad_ = null; // Remove this trip gracefully
-				}
-				else{
+			if(this.nextRoad_ != nextRoad) {
+				// Vehicle departed
+				this.atOrigin = false;
+				// Clear legacy impact
+				this.clearShadowImpact();
+				this.roadPath = RouteContext.shortestPathRoute(nextRoad, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
+				
+				if (this.roadPath == null) {
 					// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
 					// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
 					Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
-					this.leaveNetwork();
-					this.destRoad_ = r2;
-					this.departure(ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road));
-					this.fallBackForRerouting = true;
+					
+					this.roadPath = RouteContext.shortestPathRoute(nextRoad, r2, this.rand_route_only); // K-shortest path or shortest path
+					
+					this.onLane = false; // So this vehicle will call enterNextRoad in the next round
+					
+					this.removeFromCurrentLane();
+					
+					if(this.roadPath == null) {
+						ContextCreator.logger.warn("Cannot find path from " + nextRoad.getOrigID() + " to the vehicle destination, gracefully removing this trip.");
+						this.nextRoad_ = null;
+						return;
+					}
+					else{
+						this.destRoad_ = r2;
+					}
 				}
-			}
-			else if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
-				this.nextRoad_ = null;
-			} else {
-				this.nextRoad_ = roadPath.get(0);
-				this.assignNextLane();
-				for(Road r: roadPath) {
-					this.distToTravel_ += r.getLength();
+				
+				this.roadPath.add(0, this.road); // Add the current road to the path
+				this.setShadowImpact();
+				this.distToTravel_ = this.distance_;
+				if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
+					this.nextRoad_ = null;
+				} else {
+					this.nextRoad_ = roadPath.get(1);
+					this.assignNextLane();
+					this.distToTravel_ = this.distance_ - this.road.getLength();
+					for(Road r: roadPath) {
+						this.distToTravel_ += r.getLength();
+					}
 				}
-				this.fallBackForRerouting = false;
 			}
 		}
 	}
@@ -1200,11 +1226,11 @@ public class Vehicle {
 			lastStepMove_ = updateCoordByDx(dx);
 		}
 		else {
-			if(this.nextRoad_ == null) {
-				this.road.addPendingTransferVehicle(this);
+			if(this.nextRoad_ != null) {
+				this.nextRoad_.addPendingTransferVehicle(this);
 			}
 			else {
-				this.nextRoad_.addPendingTransferVehicle(this);
+				this.road.addPendingTransferVehicle(this);
 			}
 		}
 		
@@ -1272,6 +1298,7 @@ public class Vehicle {
 		}
 		return lastStepMove;
 	}
+	
 	
 	/**
 	 * This function makes the vehicle follow the turning curve to get to the next lane.
@@ -1349,6 +1376,7 @@ public class Vehicle {
 							this.removeFromCurrentRoad();
 							this.appendToLane(nextLane_);
 							this.appendToRoad(nextRoad_);
+							
 							return true;
 						}
 						else {
@@ -1361,6 +1389,7 @@ public class Vehicle {
 								this.removeFromCurrentRoad();
 								this.appendToLane(nextLane_);
 								this.appendToRoad(nextRoad_);
+								
 								return true;
 							}
 						}
@@ -1385,7 +1414,6 @@ public class Vehicle {
 									this.removeFromCurrentRoad();
 									this.appendToLane(dnlane);
 									this.appendToRoad(dnlane.getRoad());
-									this.advanceInMacroList();
 									return true;
 								}
 							}
@@ -1401,7 +1429,6 @@ public class Vehicle {
 			return true;
 		}
 	}
-	
 	/**
 	 * Check if the vehicle is close to a road, used when the vehicle attempts to depart from its closest road
 	 * 
@@ -1507,9 +1534,9 @@ public class Vehicle {
 			ContextCreator.logger.warn("Attempt to insert a vehicle itself as the leading with distance " + this.distance_);
 			this.leading_ = null;
 		}
-		else if(v.distance_ > this.distance_) {
+		else if(v.getDistanceToNextJunction() > this.distance_) {
 			ContextCreator.logger.warn("Attempt to insert a behind vehicle with distance " + v.getDistanceToNextJunction() +" to the leading of the vehicle with distance " + this.distance_);
-			this.leading_ = null;
+			this.leading_ = v;
 		}
 		else this.leading_ = v;
 	}
@@ -1533,7 +1560,7 @@ public class Vehicle {
 		}
 		else if(v.getDistanceToNextJunction() < this.distance_) {
 			ContextCreator.logger.warn("Attempt to insert a front vehicle with distance " +v.getDistanceToNextJunction() +" to the trailing of the vehicle with distance " + this.distance_);
-			this.trailing_ = null;
+			this.trailing_ = v;
 		}
 		else this.trailing_ = v;
 	}
@@ -1772,6 +1799,8 @@ public class Vehicle {
 	 *  Call when arriving the destination but not leave the network
 	 */
 	public void reachDestButNotLeave() {
+		this.onLane = false; // Trigger change road if next trip is scheduled
+		// Reach destination
 		this.isReachDest = true;
 		this.accummulatedDistance_ = 0;
 		// Vehicle arrive
@@ -2003,18 +2032,21 @@ public class Vehicle {
 					}
 				}
 				
+				// Fallback, use the first lane
+				this.nextLane_ = this.nextRoad_.getLane(0);
+				
 				// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
 				// Raise a warning and call the routing function to complete the missing route
-				ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " fixing by reroute it.");
-				List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
-				if (patchPath != null && patchPath.size() > 2) {
-					List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
-					this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
-					this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
-					this.setShadowImpact();
-					this.assignNextLane(); // try to get next lane again 
-					return;
-				}
+//				ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " for vehicle " + this.getID() + " fixing by reroute it.");
+//				List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
+//				if (patchPath != null && patchPath.size() > 2) {
+//					List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
+//					this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
+//					this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
+//					this.setShadowImpact();
+//					this.assignNextLane(); // try to get next lane again 
+//					return;
+//				}
 			}
 		}
 		ContextCreator.logger.error("Cannot assign next lane form the curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + " roadPath" + this.roadPath);
