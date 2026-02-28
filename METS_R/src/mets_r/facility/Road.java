@@ -3,8 +3,6 @@ package mets_r.facility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -80,8 +78,6 @@ public class Road {
 	// and read by the METIS partitioner for edge weight computation.
 	private AtomicInteger nShadowVehicles;
 	private AtomicInteger nFutureRoutingVehicles;
-	private ConcurrentLinkedQueue<Vehicle> pendingTransferVehicles;
-	private ArrayList<Vehicle> pendingArrivalVehicles;
 	
 	/* Public variables */
 	public double currentEnergy;
@@ -117,8 +113,6 @@ public class Road {
 		this.nShadowVehicles = new AtomicInteger(0);
 		this.nFutureRoutingVehicles = new AtomicInteger(0);
 		this.eventFlag = false;
-		this.pendingTransferVehicles = new ConcurrentLinkedQueue<Vehicle>();
-		this.pendingArrivalVehicles = new ArrayList<Vehicle>();
 
 		// Set default value
 		this.cachedSpeedLimit_ = this.speedLimit_; 
@@ -165,6 +159,7 @@ public class Road {
 	// Scheduling step
 	public void stepPart1() {
 		int tickcount = ContextCreator.getCurrentTick();
+		addVehicleToDepartureMap();
 		
 		/* Log all vehicle states */
 		Vehicle currentVehicle = this.firstVehicle();
@@ -187,7 +182,7 @@ public class Road {
 		    if (tickcount >= departTime) {
 		        if (v.getCurrentCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
 		            this.removeVehicleFromNewQueue(departTime, v);
-		            this.pendingArrivalVehicles.add(v);
+		            ContextCreator.getVehicleContext().addArrivalVehicles(v);
 		        } else if (v.enterNetwork(this)) {
 		            this.removeVehicleFromNewQueue(departTime, v);
 		        } else {
@@ -237,38 +232,6 @@ public class Road {
 				currentVehicle = nextVehicle;
 			}
 		}
-	}
-	
-	// Execute AFTER stepPart2 is done.
-	public void stepPart3() {
-		addVehicleToDepartureMap();
-	    
-	    List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.pendingTransferVehicles);
-	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
-	    
-	    for (Vehicle currentVehicle: sortedTransfers) {
-            if (!currentVehicle.changeRoad()) { 
-                currentVehicle.setSpeed(0.0f);
-                currentVehicle.setAccRate(0.0f);
-                currentVehicle.setMovingFlag(false);
-            } else { 
-                // Successfully entered the next road
-                this.recordEnergyConsumption(currentVehicle); 
-                this.recordTravelTime(currentVehicle);
-                currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
-                currentVehicle.setMovingFlag(true);
-            }
-	    }
-	    
-	    List<Vehicle> sortedArrivals = new ArrayList<>(this.pendingArrivalVehicles);
-	    sortedArrivals.sort(Comparator.comparingInt(Vehicle::getID));
-	    
-	    for (Vehicle currentVehicle: sortedArrivals) {
-	    	currentVehicle.reachDest();
-	    }
-	    
-	    this.pendingTransferVehicles.clear();
-	    this.pendingArrivalVehicles.clear();
 	}
 	
 	/**
@@ -977,9 +940,5 @@ public class Road {
 			 }
 		 }
 		 return true;
-	}
-	
-	public void addPendingTransferVehicle(Vehicle v) {
-		this.pendingTransferVehicles.add(v);
 	}
 }

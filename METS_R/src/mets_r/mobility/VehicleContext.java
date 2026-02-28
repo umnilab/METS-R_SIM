@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -31,6 +32,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private Map<Integer, ElectricVehicle> privateEVMap;
 	private Map<Integer, Vehicle> privateGVMap;
 	private Map<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
+	
+	ConcurrentLinkedQueue<Vehicle> allTransferringVehicles = new ConcurrentLinkedQueue<Vehicle>();
+	ConcurrentLinkedQueue<Vehicle> allArrivingVehicles = new ConcurrentLinkedQueue<Vehicle>();
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -369,5 +373,43 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	public void registerBus(ElectricBus v) {
 		this.busMap.put(v.getID(), v);
+	}
+	
+	public void executeGlobalTransfers() {
+		List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.allTransferringVehicles);
+	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
+	    
+	    for (Vehicle currentVehicle: sortedTransfers) {
+	    	Road r = currentVehicle.getRoad();
+            if (!currentVehicle.changeRoad()) { 
+                currentVehicle.setSpeed(0.0f);
+                currentVehicle.setAccRate(0.0f);
+                currentVehicle.setMovingFlag(false);
+            } else { 
+                // Successfully entered the next road
+                r.recordEnergyConsumption(currentVehicle); 
+                r.recordTravelTime(currentVehicle);
+                currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
+                currentVehicle.setMovingFlag(true);
+            }
+	    }
+	    
+	    List<Vehicle> sortedArrivals = new ArrayList<>(this.allArrivingVehicles);
+	    sortedArrivals.sort(Comparator.comparingInt(Vehicle::getID));
+	    
+	    for (Vehicle currentVehicle: sortedArrivals) {
+	    	currentVehicle.reachDest();
+	    }
+	    
+	    this.allTransferringVehicles.clear();
+	    this.allTransferringVehicles.clear();
+	}
+	
+	public void addArrivalVehicles(Vehicle v) {
+		this.allArrivingVehicles.add(v);
+	}
+	
+	public void addTransferringVehicles(Vehicle v) {
+		this.allTransferringVehicles.add(v);
 	}
 }

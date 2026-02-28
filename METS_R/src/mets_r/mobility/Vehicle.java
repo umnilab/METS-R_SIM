@@ -291,7 +291,7 @@ public class Vehicle {
 		if(road.getControlType()!=Road.COSIM) {
 			double gap = entranceGap(lane);
 			int tickcount = ContextCreator.getCurrentTick();
-			if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount) && road.noEnterRoadConflict(null)) { // If no upstream road's vehicle is entering this road
+			if (gap >= 1.2 * this.length() && tickcount > lane.getAndSetLastEnterTick(tickcount)) {
 				this.getAndSetLastMoveTick(tickcount);
 				this.currentSpeed_ = 0.0; // The initial speed
 				this.distance_ = 0;
@@ -1226,12 +1226,7 @@ public class Vehicle {
 			lastStepMove_ = updateCoordByDx(dx);
 		}
 		else {
-			if(this.nextRoad_ != null) {
-				this.nextRoad_.addPendingTransferVehicle(this);
-			}
-			else {
-				this.road.addPendingTransferVehicle(this);
-			}
+			ContextCreator.getVehicleContext().addTransferringVehicles(this);
 		}
 		
 		// Update the position of vehicles, 0<=distance_<=lane.length()
@@ -1371,11 +1366,7 @@ public class Vehicle {
 						// For cosim road, get the last vehicle, check whether the distance is greater than 1.2 * this.length
 						Vehicle lastVeh = nextLane_.lastVehicle();
 						if((lastVeh == null) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) {
-							this.enterNextLane(nextLane_);
-							this.removeFromCurrentLane();
-							this.removeFromCurrentRoad();
-							this.appendToLane(nextLane_);
-							this.appendToRoad(nextRoad_);
+							this.executeRoadTransition(nextLane_, nextRoad_);
 							
 							return true;
 						}
@@ -1384,11 +1375,7 @@ public class Vehicle {
 							// Get dist between the coord and the begining coord of the lane
 							Coordinate c2 = nextLane_.getStartCoord();
 							if((ContextCreator.getCityContext().getDistance(c1, c2) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))){
-								this.enterNextLane(nextLane_);
-								this.removeFromCurrentLane();
-								this.removeFromCurrentRoad();
-								this.appendToLane(nextLane_);
-								this.appendToRoad(nextRoad_);
+								this.executeRoadTransition(nextLane_, nextRoad_);
 								
 								return true;
 							}
@@ -1396,24 +1383,14 @@ public class Vehicle {
 					}
 					else {
 						if ((this.entranceGap(nextLane_) >= 1.2 * this.length()) && (tickcount > this.nextLane_.getAndSetLastEnterTick(tickcount))) { //Update enter tick so other vehicle cannot enter
-							this.enterNextLane(nextLane_);
-							this.removeFromCurrentLane();
-							this.removeFromCurrentRoad();
-							this.appendToLane(nextLane_);
-							this.appendToRoad(nextRoad_);
+							this.executeRoadTransition(nextLane_, nextRoad_);
 							return true;
 						}
 						else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock
 							for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
 								Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
-								List<Road> tempPath = RouteContext.shortestPathRoute(dnlane.getRoad(), 
-										ContextCreator.getRoadContext().get(this.getDestRoad()), this.rand_route_only); // Recalculate the route
-								if (tempPath != null && tempPath.size()>=2 && this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
-									this.enterNextLane(dnlane);
-									this.removeFromCurrentLane();
-									this.removeFromCurrentRoad();
-									this.appendToLane(dnlane);
-									this.appendToRoad(dnlane.getRoad());
+								if (this.entranceGap(dnlane) >= 1.2*this.length() && (tickcount > dnlane.getAndSetLastEnterTick(tickcount))) {
+									this.executeRoadTransition(dnlane, dnlane.getRoad());
 									return true;
 								}
 							}
@@ -1428,6 +1405,17 @@ public class Vehicle {
 			this.reachDest();
 			return true;
 		}
+	}
+	
+	/**
+	 * Transitions the vehicle to the next lane and road
+	 */
+	public void executeRoadTransition(Lane targetLane, Road targetRoad) {
+        this.enterNextLane(targetLane);
+        this.removeFromCurrentLane();
+        this.removeFromCurrentRoad();
+        this.appendToLane(targetLane);
+        this.appendToRoad(targetRoad);
 	}
 	/**
 	 * Check if the vehicle is close to a road, used when the vehicle attempts to depart from its closest road

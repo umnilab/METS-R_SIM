@@ -236,9 +236,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		for (Road r : getRoadContext().getAll()) {
 			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
 		}
-		for (Road r : getRoadContext().getAll()) {
-			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart3"));
-		}
+		
+		scheduledActions.add(schedule.schedule(agentParams, ContextCreator.getVehicleContext(), "executeGlobalTransfers"));
 	}
 
 	// Schedule the event for zone updates (multi-thread)

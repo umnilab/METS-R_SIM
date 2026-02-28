@@ -71,23 +71,25 @@ public class ThreadedScheduler {
 			ex.printStackTrace();
 		}
 		
-		List<PartitionRoadThreadPart3> tasks3 = new ArrayList<PartitionRoadThreadPart3>();
-		for (int i = 0; i < this.N_Partition; i++) {
-			tasks3.add(new PartitionRoadThreadPart3(partitionedInRoads.get(i), i));
-		}
-
-		try {
-			List<Future<Integer>> futures = executor.invokeAll(tasks3);
-			ArrayList<Integer> time_stat = new ArrayList<Integer>();
-			for (int i = 0; i < N_Partition; i++)
-				time_stat.add(futures.get(i).get());
-			ArrayList<Integer> time_result = minMaxAvg(time_stat);
-			min_para_time = min_para_time + time_result.get(0);
-			max_para_time = max_para_time + time_result.get(1);
-			avg_para_time = avg_para_time + time_result.get(2);
-		} catch (Exception ex) {
-			ex.printStackTrace();
-		}
+//		List<PartitionRoadThreadPart3> tasks3 = new ArrayList<PartitionRoadThreadPart3>();
+//		for (int i = 0; i < this.N_Partition; i++) {
+//			tasks3.add(new PartitionRoadThreadPart3(partitionedInRoads.get(i), i));
+//		}
+//
+//		try {
+//			List<Future<Integer>> futures = executor.invokeAll(tasks3);
+//			ArrayList<Integer> time_stat = new ArrayList<Integer>();
+//			for (int i = 0; i < N_Partition; i++)
+//				time_stat.add(futures.get(i).get());
+//			ArrayList<Integer> time_result = minMaxAvg(time_stat);
+//			min_para_time = min_para_time + time_result.get(0);
+//			max_para_time = max_para_time + time_result.get(1);
+//			avg_para_time = avg_para_time + time_result.get(2);
+//		} catch (Exception ex) {
+//			ex.printStackTrace();
+//		}
+		
+		ContextCreator.getVehicleContext().executeGlobalTransfers();
 		
 	}
 
@@ -280,31 +282,31 @@ class PartitionRoadThreadPart2 implements Callable<Integer> {
 }
 
 /* A thread to call road's step() method */
-class PartitionRoadThreadPart3 implements Callable<Integer> {
-	private ArrayList<Road> RoadSet;
-	private int threadID;
-
-	public PartitionRoadThreadPart3(ArrayList<Road> roadPartition, int ID) {
-		this.RoadSet = roadPartition;
-		this.threadID = ID;
-	}
-
-	public int getThreadID() {
-		return this.threadID;
-	}
-
-	public Integer call() {
-		double start_t = System.currentTimeMillis();
-		try {
-			for (Road r : this.RoadSet) {
-				r.stepPart3();
-			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
-		}
-		return (int) (System.currentTimeMillis() - start_t);
-	}
-}
+//class PartitionRoadThreadPart3 implements Callable<Integer> {
+//	private ArrayList<Road> RoadSet;
+//	private int threadID;
+//
+//	public PartitionRoadThreadPart3(ArrayList<Road> roadPartition, int ID) {
+//		this.RoadSet = roadPartition;
+//		this.threadID = ID;
+//	}
+//
+//	public int getThreadID() {
+//		return this.threadID;
+//	}
+//
+//	public Integer call() {
+//		double start_t = System.currentTimeMillis();
+//		try {
+//			for (Road r : this.RoadSet) {
+//				r.stepPart3();
+//			}
+//		} catch (Exception ex) {
+//			ex.printStackTrace();
+//		}
+//		return (int) (System.currentTimeMillis() - start_t);
+//	}
+//}
 
 /* A thread to call zones's step() method */
 class PartitionZoneThread1 implements Callable<Integer> {
