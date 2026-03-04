@@ -3,6 +3,7 @@ package mets_r.facility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -193,18 +194,38 @@ public class Road {
 		    }
 		}
 
-		/* Vehicle decision */
+		/* Vehicle decision – three-phase approach to avoid stale acceleration after lane changes */
 		if(!(this.getControlType() == Road.COSIM)) {
+			// Phase 1: lane-changing decisions for all vehicles
 			currentVehicle = this.firstVehicle();
-			// happened at time t, deciding acceleration and lane changing
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (tickcount> currentVehicle.getAndSetLastVisitTick(tickcount)) {
-					currentVehicle.calcState();
-				}
-				else {
-					break;
-				}
+				currentVehicle.calcLaneChangingState();
+				currentVehicle = nextVehicle;
+			}
+
+			// Phase 2: repair macro list ordering after all lane changes
+			List<Vehicle> vehicleBuffer = new ArrayList<>();
+			currentVehicle = this.firstVehicle();
+
+			// 1. Create a static snapshot of the vehicles currently on the road
+			while (currentVehicle != null) {
+			    vehicleBuffer.add(currentVehicle);
+			    currentVehicle = currentVehicle.macroTrailing();
+			}
+
+			// 2. Iterate through the buffered list to safely apply macro list repairs
+			for (Vehicle v : vehicleBuffer) {
+			    v.advanceInMacroList();
+			    v.retreatInMacroList();
+			    v.advanceInLaneList();
+			}
+
+			// Phase 3: acceleration decisions (now with correct leading vehicles)
+			currentVehicle = this.firstVehicle();
+			while (currentVehicle != null) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				currentVehicle.calcAccState();
 				currentVehicle = nextVehicle;
 			}
 		}
@@ -212,8 +233,6 @@ public class Road {
 	
 	// Realization step
 	public void stepPart2() {
-		int tickcount = ContextCreator.getCurrentTick();
-		
 		/* Vehicle movement */
 		if(!(this.getControlType() == Road.COSIM)) {
 			Vehicle currentVehicle = this.firstVehicle();
@@ -222,13 +241,8 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if ((tickcount == currentVehicle.getLastVisitTick()) && (tickcount > currentVehicle.getAndSetLastMoveTick(tickcount))) { // vehicle has not been moved yet
-					currentVehicle.move();
-					currentVehicle.updateBatteryLevel(); // Update the energy for each move
-				}
-				else {
-					break;
-				}
+				currentVehicle.move();
+				currentVehicle.updateBatteryLevel(); // Update the energy for each move
 				currentVehicle = nextVehicle;
 			}
 		}
@@ -252,7 +266,6 @@ public class Road {
 		
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
-		veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
 	}
 
 	@Override

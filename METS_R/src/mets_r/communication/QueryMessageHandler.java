@@ -148,7 +148,7 @@ public class QueryMessageHandler extends MessageHandler {
 					vid = v.getID();
 					vtype = false;
 				}
-				if(vid!=-1 || vtype) {
+				if(vid != -1) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", vid);
 					record2.put("v_type", vtype);

@@ -587,7 +587,6 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						veh.setCurrentCoord(new Coordinate(x, y));
 						veh.setBearing(vehIDVehTypeTranBearingXY.bearing);
-						veh.getAndSetLastMoveTick(ContextCreator.getCurrentTick());
 
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", vehIDVehTypeTranBearingXY.vehID);

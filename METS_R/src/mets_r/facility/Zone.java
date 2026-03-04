@@ -984,4 +984,6 @@ public class Zone {
 	public void setFutureSupply(int v) { this.futureSupply.set(v); }
 	public void setVehicleSurplus(double v) { this.vehicleSurplus = v; }
 	public void setVehicleDeficiency(double v) { this.vehicleDeficiency = v; }
+	public void setNRequestForTaxi(int v) { this.nRequestForTaxi = v; }
+	public void setNRequestForBus(int v) { this.nRequestForBus = v; }
 }

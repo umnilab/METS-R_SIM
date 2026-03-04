@@ -435,8 +435,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
 		
-		// Set the tick offset so getCurrentTick() returns the saved tick
-		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0) - savedTick;
+		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
+		
+		// Use current Repast tick for scheduling so events start from "now",
+		// not from the past. We'll adjust initTick for getCurrentTick() after scheduling.
+		initTick = currentRepastTick;
 		
 		// Reinitialize data structures
 		agg_logger = new AggregatedLogger();
@@ -475,8 +478,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		dataContext.startCollecting();
 		
-		// Reschedule events
+		// Reschedule events (initTick == currentRepastTick, so events start now)
 		scheduleEvents();
+		
+		// Now set the correct offset so getCurrentTick() returns the saved logical tick
+		initTick = currentRepastTick - savedTick;
 		
 		logger.info("Infrastructure rebuilt. Tick offset set to match saved tick: " + savedTick);
 	}

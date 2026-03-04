@@ -32,6 +32,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private Map<Integer, ElectricVehicle> privateEVMap;
 	private Map<Integer, Vehicle> privateGVMap;
 	private Map<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
+	private Map<Integer, Integer> vidToAgentMap; // reverse of privateVIDMap: key is vid, value is agentID
 	
 	ConcurrentLinkedQueue<Vehicle> allTransferringVehicles = new ConcurrentLinkedQueue<Vehicle>();
 	ConcurrentLinkedQueue<Vehicle> allArrivingVehicles = new ConcurrentLinkedQueue<Vehicle>();
@@ -66,6 +67,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
 		this.privateGVMap = new HashMap<Integer, Vehicle>();
 		this.privateVIDMap = new HashMap<Integer, Integer>();
+		this.vidToAgentMap = new HashMap<Integer, Integer>();
 		
 		// Ensure zone-based maps are initialized for all zones
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
@@ -205,7 +207,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return vehicle;
 	}
 	
-	public Vehicle getPrivateVehicle(int vid){
+	public synchronized Vehicle getPrivateVehicle(int vid){
 		Vehicle	vehicle = (Vehicle) this.getPrivateEV(vid);
 		if(vehicle == null) {
 			vehicle = (Vehicle) this.getPrivateGV(vid);
@@ -213,10 +215,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return vehicle;
 	}
 	
-	public List<Integer> getPrivateVehicleIDList(){
-		List<Integer> vehicleIDList = new ArrayList<Integer>(this.privateEVMap.keySet());
-	    vehicleIDList.addAll(this.privateGVMap.keySet());
-	    return vehicleIDList;
+	public synchronized List<Integer> getPrivateVehicleIDList(){
+		return new ArrayList<Integer>(this.vidToAgentMap.keySet());
 	}
 	
 	public List<Integer> getTaxiIDList(){
@@ -275,6 +275,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    relocationTaxiMap.get(newZone).add(v);
 	}
 	
+	public synchronized void addRelocationTaxi(ElectricTaxi v, int z) {
+		this.relocationTaxiMap.get(z).add(v);
+	}
+	
 	public synchronized void removeRelocationTaxi(ElectricTaxi v){
 		int zone = v.getCurrentZone();
 	    TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
@@ -307,7 +311,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    return (set != null) ? set.size() : 0;
 	}
 	
-	public ElectricVehicle getPrivateEV(int vid) {
+	public synchronized ElectricVehicle getPrivateEV(int vid) {
 		if(this.privateEVMap.containsKey(vid)) {
 			return this.privateEVMap.get(vid);
 		}
@@ -316,7 +320,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 	
-	public Vehicle getPrivateGV(int vid) {
+	public synchronized Vehicle getPrivateGV(int vid) {
 		if(this.privateGVMap.containsKey(vid)) {
 			return this.privateGVMap.get(vid);
 		}
@@ -325,27 +329,29 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 	
-	public void registerPrivateEV(int vid, ElectricVehicle ev) {
-		if(!this.privateVIDMap.containsValue(vid)) {
+	public synchronized void registerPrivateEV(int vid, ElectricVehicle ev) {
+		if(!this.vidToAgentMap.containsKey(vid)) {
 			this.privateEVMap.put(vid, ev);
 			this.privateVIDMap.put(ev.getID(), vid);
+			this.vidToAgentMap.put(vid, ev.getID());
 		}
 		else {
 			ContextCreator.logger.warn("Vehicle with vid " + vid + " already exists");
 		}
 	}
 	
-	public void registerPrivateGV(int vid, Vehicle gv) {
-		if(!this.privateVIDMap.containsValue(vid)) {
+	public synchronized void registerPrivateGV(int vid, Vehicle gv) {
+		if(!this.vidToAgentMap.containsKey(vid)) {
 			this.privateGVMap.put(vid, gv);
 			this.privateVIDMap.put(gv.getID(), vid);
+			this.vidToAgentMap.put(vid, gv.getID());
 		}
 		else {
 			ContextCreator.logger.warn("Vehicle with vid " + vid + " already exists");
 		}
 	}
 	
-	public int getPrivateVID(int agentID) {
+	public synchronized int getPrivateVID(int agentID) {
 		if(privateVIDMap.containsKey(agentID)) {
 			return privateVIDMap.get(agentID);
 		}
@@ -359,6 +365,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.privateEVMap.clear();
 		this.privateGVMap.clear();
 		this.privateVIDMap.clear();
+		this.vidToAgentMap.clear();
 		for (TreeSet<ElectricTaxi> q : this.availableTaxiMap.values()) {
 			q.clear();
 		}

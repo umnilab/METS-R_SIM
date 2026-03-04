@@ -41,7 +41,6 @@ public class Lane {
 	private AtomicInteger nVehicles_; // Number of vehicle in the lane
 	private Vehicle firstVehicle_; // The first vehicle on a lane
 	private Vehicle lastVehicle_; // The last vehicle vehicle on a lane
-	private AtomicInteger lastEnterTick; // Store the latest enter time of vehicles
 	private Random rand; // Random seed for lane changing
 	private double freeSpeed_; // Target speed for vehicles on this lane
 
@@ -53,13 +52,8 @@ public class Lane {
 		this.lastVehicle_ = null;
 		this.upStreamLanes = new ArrayList<Integer>();
 		this.downStreamLanes = new ArrayList<Integer>();
-		this.lastEnterTick = new AtomicInteger(-1);
 		this.turningCoords = new HashMap<Integer, ArrayList<Coordinate>>();
 		this.turningDists = new HashMap<Integer, Double>();
-	}
-
-	public int getAndSetLastEnterTick(int current_tick) {
-		return this.lastEnterTick.getAndSet(current_tick);
 	}
 
 	public int getID() {
