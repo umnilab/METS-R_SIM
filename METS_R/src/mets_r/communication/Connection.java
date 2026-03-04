@@ -7,8 +7,6 @@ import org.eclipse.jetty.websocket.api.annotations.*;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
-import org.json.simple.parser.ParseException;
-
 import mets_r.ContextCreator;
 
 /**
