@@ -106,13 +106,14 @@ public class Connection{
 				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
 				if(answer != null && session != null) this.answerSender.sendMessage(session, answer);
 			}
-		} catch (ParseException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
 		} catch (Exception e) {
-			e.printStackTrace();
-		}
+	        ContextCreator.logger.error("Standard Exception caught: " + e.getMessage());
+	        e.printStackTrace();
+	    } catch (Throwable t) {
+	        // THIS WILL CATCH FATAL ERRORS LIKE StackOverflowError
+	        ContextCreator.logger.error("FATAL JVM ERROR: " + t.toString(), t);
+	        t.printStackTrace(); 
+	    }
 	}
 	
 	public void sendStepMessage(int tick) {
