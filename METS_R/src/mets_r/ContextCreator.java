@@ -375,6 +375,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
 		
+		// Release stale Road references so query_coSimVehicle cannot return
+		// vehicle IDs from the previous run before set_cosim_road is called again.
+		coSimRoads.clear();
+		
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
@@ -434,6 +438,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		mainContext.removeSubContext(cityContext);
 		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
+		
+		// Release stale Road references so query_coSimVehicle cannot return
+		// vehicle IDs from the previous run before set_cosim_road is called again.
+		coSimRoads.clear();
 		
 		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
