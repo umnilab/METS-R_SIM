@@ -694,6 +694,33 @@ public class Vehicle {
 	    	double transitionDistance = this.distance(currCoord, coords.get(segIdx));
 		    newDistance += transitionDistance;
 	    }
+	    else { // Fallback: Pick the segment whose clamped nearest point is closest to the vehicle.
+	    	double minDist = Double.MAX_VALUE;
+	        for (int i = coords.size() - 1; i > 0; i--) {
+	            Coordinate a = coords.get(i);
+	            Coordinate b = coords.get(i - 1);
+	            double dx = b.x - a.x;
+	            double dy = b.y - a.y;
+	            double lenSq = dx * dx + dy * dy;
+	            if (lenSq > 0) {
+	                double apx = currCoord.x - a.x;
+	                double apy = currCoord.y - a.y;
+	                double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
+	                double closestX = a.x + param * dx;
+	                double closestY = a.y + param * dy;
+	                double d = Math.hypot(currCoord.x - closestX, currCoord.y - closestY);
+	                if (d < minDist) {
+	                    minDist = d;
+	                    segIdx = i;
+	                }
+	            }
+	        }
+	        newDistance = 0;
+	        for (int i = coords.size() - 1; i > segIdx; i--) {
+	            newDistance += this.distance(coords.get(i), coords.get(i - 1));
+	        }
+	        newDistance += this.distance(currCoord, coords.get(segIdx));
+	    }
 	    
 	    
 	    cachedProjectionLane_ = plane;

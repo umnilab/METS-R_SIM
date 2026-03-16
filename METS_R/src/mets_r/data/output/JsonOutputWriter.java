@@ -708,7 +708,7 @@ public class JsonOutputWriter implements DataConsumer {
         
 		if(currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
 			for (Zone z : ContextCreator.getZoneContext().getAll()) {
-				servedPass += (z.numberOfGeneratedTaxiRequest + z.numberOfGeneratedBusRequest);
+				servedPass += (z.taxiPickupRequest + z.busPickupRequest);
 				leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
 			}
 			for (Road r: ContextCreator.getRoadContext().getAll()) {
