@@ -673,8 +673,8 @@ public class Vehicle {
 	        Coordinate a = coords.get(i);
 	        Coordinate b = coords.get(i - 1);
 
-	        double dx = b.x - a.x;
-	        double dy = b.y - a.y;
+	        double dx = a.x - b.x;
+	        double dy = a.y - b.y;
 	        double lenSq = dx * dx + dy * dy;
 	        double segmentLen = this.distance(a, b);
 
