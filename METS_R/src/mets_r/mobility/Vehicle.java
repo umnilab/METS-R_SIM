@@ -682,7 +682,7 @@ public class Vehicle {
 	            double apx = currCoord.x - b.x;
 	            double apy = currCoord.y - b.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param >= 0.0 && param <= 1.0) {
+	            if (param >= 0.0 && param <= 1.0 && Math.abs(this.distance_ - newDistance) < 25.0) { 
 	            	segIdx = i;
 		            break;
 		        }
