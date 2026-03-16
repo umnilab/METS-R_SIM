@@ -77,23 +77,25 @@ public class MessageClass{
 	    }
 	}
 	
-	class VehIDVehTypeTranBearingXY {
+	class VehIDVehTypeTranBearingXYSpeed {
 	    int vehID;
 	    boolean vehType;
 	    boolean transformCoord;
 	    double bearing;
 	    double x;
 	    double y;
+	    double speed;
 
 	    // Constructor
-	    public VehIDVehTypeTranBearingXY(int vehID, boolean vehType, boolean transformCoord, 
-	                                         double bearing, double x, double y) {
+	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
+	                                         double bearing, double x, double y, double speed) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
 	        this.transformCoord = transformCoord;
 	        this.bearing = bearing;
 	        this.x = x;
 	        this.y = y;
+	        this.speed = speed;
 	    }
 	}
 	

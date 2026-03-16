@@ -34,7 +34,7 @@ import mets_r.communication.MessageClass.VehIDVehTypeRoad;
 import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeRoute;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
-import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXY;
+import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXYSpeed;
 import mets_r.communication.MessageClass.ZoneIDOrigDestRouteNameNum;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
@@ -552,26 +552,26 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 	    	try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeTranBearingXY>> collectionType = new TypeToken<Collection<VehIDVehTypeTranBearingXY>>() {
+				TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>> collectionType = new TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>>() {
 				};
-				Collection<VehIDVehTypeTranBearingXY> vehIDVehTypeTranBearingXYs = gson
+				Collection<VehIDVehTypeTranBearingXYSpeed> vehIDVehTypeTranBearingXYSpeeds = gson
 						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 
-				for (VehIDVehTypeTranBearingXY vehIDVehTypeTranBearingXY : vehIDVehTypeTranBearingXYs) {
+				for (VehIDVehTypeTranBearingXYSpeed vehIDVehTypeTranBearingXYSpeed : vehIDVehTypeTranBearingXYSpeeds) {
 					// Get data
 					Vehicle veh = null;
-					if (vehIDVehTypeTranBearingXY.vehType) {
-						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranBearingXY.vehID);
+					if (vehIDVehTypeTranBearingXYSpeed.vehType) {
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranBearingXYSpeed.vehID);
 					} else {
-						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranBearingXY.vehID);
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranBearingXYSpeed.vehID);
 					}
 
 					if (veh != null) {
-						double x = vehIDVehTypeTranBearingXY.x;
-						double y = vehIDVehTypeTranBearingXY.y;
+						double x = vehIDVehTypeTranBearingXYSpeed.x;
+						double y = vehIDVehTypeTranBearingXYSpeed.y;
 						// Transform coordinates if needed
-						if (vehIDVehTypeTranBearingXY.transformCoord) {
+						if (vehIDVehTypeTranBearingXYSpeed.transformCoord) {
 							Coordinate coord = new Coordinate(x, y);
 							try {
 								JTS.transform(coord, coord,
@@ -586,16 +586,17 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 						
 						veh.setCurrentCoord(new Coordinate(x, y));
-						veh.setBearing(vehIDVehTypeTranBearingXY.bearing);
+						veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
+						veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
 
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						record2.put("ID", vehIDVehTypeTranBearingXY.vehID);
+						record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
 						record2.put("STATUS", "OK");
 						jsonData.add(record2);
 						continue;
 					}
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("ID", vehIDVehTypeTranBearingXY.vehID);
+					record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
 					record2.put("STATUS", "KO");
 					jsonData.add(record2);
 				}
