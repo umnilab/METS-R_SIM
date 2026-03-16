@@ -679,8 +679,8 @@ public class Vehicle {
 	        double segmentLen = this.distance(a, b);
 
 	        if (lenSq > 0) {
-	            double apx = currCoord.x - a.x;
-	            double apy = currCoord.y - a.y;
+	            double apx = currCoord.x - b.x;
+	            double apy = currCoord.y - b.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
 	            if (param >= 0.0 && param <= 1.0) {
 	            	segIdx = i;
