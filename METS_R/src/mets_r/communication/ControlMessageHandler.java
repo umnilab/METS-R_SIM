@@ -672,6 +672,16 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		else {
 	    	try {
+	    		if (ContextCreator.getVehicleContext() == null) {
+	    			ContextCreator.logger.error("enterNextRoad: VehicleContext is null — simulation may not be fully initialized");
+	    			jsonAns.put("CODE", "KO");
+	    			return jsonAns;
+	    		}
+	    		if (ContextCreator.getCityContext() == null) {
+	    			ContextCreator.logger.error("enterNextRoad: CityContext is null — simulation may not be fully initialized");
+	    			jsonAns.put("CODE", "KO");
+	    			return jsonAns;
+	    		}
 				Gson gson = new Gson();
 				TypeToken<Collection<VehIDVehTypeRoad>> collectionType = new TypeToken<Collection<VehIDVehTypeRoad>>() {};
 			    Collection<VehIDVehTypeRoad> vehIDVehTypeRoads = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
@@ -690,7 +700,12 @@ public class ControlMessageHandler extends MessageHandler {
 							Road r = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoad.roadID);
 							if(r != null) {
 								if(veh.getNextRoad() != r) {
-									veh.rerouteWithSpecifiedNextRoad(r);
+									if (veh.getRoad() == null) {
+										ContextCreator.logger.warn("enterNextRoad: vehicle " + vehIDVehTypeRoad.vehID
+												+ " has no current road, skipping rerouteWithSpecifiedNextRoad");
+									} else {
+										veh.rerouteWithSpecifiedNextRoad(r);
+									}
 								}
 							}
 						}
@@ -714,8 +729,7 @@ public class ControlMessageHandler extends MessageHandler {
 				jsonAns.put("CODE", "OK");
 			}
 			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
+			    ContextCreator.logger.error("Error processing control enterNextRoad: " + e.getMessage(), e);
 			    jsonAns.put("CODE", "KO");
 			}
 		}

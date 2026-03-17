@@ -35,6 +35,7 @@ public class TravelDemand {
 	private BufferedReader privateGVTripReader;
 	private BufferedReader privateEVProfileReader;
 	
+	private volatile boolean closed = false;
 	private int hour;
 
 	public TravelDemand() {
@@ -121,6 +122,7 @@ public class TravelDemand {
 	}
 	
 	public void loadPrivateDemandChunk() { // For loading the next hour demand
+		if (closed) return; // stale call after reset – readers are already closed
 		// Add the logger
 		int ev_trip_number = 0;
 		int gv_trip_number = 0;
@@ -340,11 +342,11 @@ public class TravelDemand {
 	}
 	
 	public void close() {
+		closed = true;
 		try {
 			this.privateEVTripReader.close();
 			this.privateGVTripReader.close();
 		} catch (IOException e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 	}

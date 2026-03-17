@@ -383,6 +383,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
 		agentID = 0;
+		GlobalVariables.RandomGenerator = new java.util.Random(GlobalVariables.RANDOM_SEED);
 		agg_logger = new AggregatedLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();

@@ -570,6 +570,11 @@ public class Vehicle {
 	 * Reroute the vehicle in the middle of the road
 	 */
 	public void rerouteWithSpecifiedNextRoad(Road nextRoad) {
+		if (this.road == null) {
+			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
+					+ " has null current road, cannot reroute to " + nextRoad.getOrigID());
+			return;
+		}
 		if(this.road.getDownStreamRoads().contains(nextRoad.getID())) {
 			if(this.nextRoad_ != nextRoad) {
 				// Vehicle departed
