@@ -513,7 +513,14 @@ public class Vehicle {
 	public Road getNextRoad() {
 		return this.nextRoad_;
 	}
-	
+
+	/**
+	 * Get the next target lane of this vehicle
+	 */
+	public Lane getNextLane() {
+		return this.nextLane_;
+	}
+
 	/**
 	 * Reroute the vehicle in the middle of the road
 	 */
@@ -567,7 +574,10 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Reroute the vehicle in the middle of the road
+	 * Reroute the vehicle in the middle of the road with a specified next road.
+	 * In co-sim scenarios the external simulator is authoritative about which road
+	 * the vehicle crosses into, so the path is updated even when nextRoad is not
+	 * a direct downstream neighbor of the vehicle's currently stored road.
 	 */
 	public void rerouteWithSpecifiedNextRoad(Road nextRoad) {
 		if (this.road == null) {
@@ -575,44 +585,45 @@ public class Vehicle {
 					+ " has null current road, cannot reroute to " + nextRoad.getOrigID());
 			return;
 		}
-		if(this.road.getDownStreamRoads().contains(nextRoad.getID())) {
-			if(this.nextRoad_ != nextRoad) {
-				// Vehicle departed
-				this.atOrigin = false;
-				// Clear legacy impact
-				this.clearShadowImpact();
-				this.roadPath = RouteContext.shortestPathRoute(nextRoad, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
-				
-				if (this.roadPath == null) {
-					// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
-					// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
-					Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
-					
-					this.roadPath = RouteContext.shortestPathRoute(nextRoad, r2, this.rand_route_only); // K-shortest path or shortest path
-					
-					if(this.roadPath == null) {
-						ContextCreator.logger.warn("Cannot find path from " + nextRoad.getOrigID() + " to the vehicle destination, gracefully removing this trip.");
-						this.nextRoad_ = null;
-						return;
-					}
-					else{
-						this.destRoad_ = r2;
-					}
-				}
-				
-				this.roadPath.add(0, this.road); // Add the current road to the path
-				this.setShadowImpact();
-				this.distToTravel_ = this.distance_;
-				if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
-					this.nextRoad_ = null;
-				} else {
-					this.nextRoad_ = roadPath.get(1);
-					this.assignNextLane();
-					this.distToTravel_ = this.distance_ - this.road.getLength();
-					for(Road r: roadPath) {
-						this.distToTravel_ += r.getLength();
-					}
-				}
+		if (this.nextRoad_ == nextRoad) {
+			return; // Already heading to the specified road, nothing to do
+		}
+		if (!this.road.getDownStreamRoads().contains(nextRoad.getID())) {
+			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
+					+ " current road " + this.road.getOrigID() + " is not directly connected to next road "
+					+ nextRoad.getOrigID() + " — updating path anyway for co-sim tracking.");
+		}
+
+		// Vehicle departed
+		this.atOrigin = false;
+		// Clear legacy impact
+		this.clearShadowImpact();
+		this.roadPath = RouteContext.shortestPathRoute(nextRoad, this.destRoad_, this.rand_route_only);
+
+		if (this.roadPath == null) {
+			// Fallback: destination road may be a dead-end; try nearest valid road
+			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
+			this.roadPath = RouteContext.shortestPathRoute(nextRoad, r2, this.rand_route_only);
+			if (this.roadPath == null) {
+				ContextCreator.logger.warn("Cannot find path from " + nextRoad.getOrigID() + " to the vehicle destination, gracefully removing this trip.");
+				this.nextRoad_ = null;
+				return;
+			} else {
+				this.destRoad_ = r2;
+			}
+		}
+
+		this.roadPath.add(0, this.road); // Prepend the current road
+		this.setShadowImpact();
+		this.distToTravel_ = this.distance_;
+		if (this.roadPath.size() < 2) {
+			this.nextRoad_ = null;
+		} else {
+			this.nextRoad_ = roadPath.get(1);
+			this.assignNextLane();
+			this.distToTravel_ = this.distance_ - this.road.getLength();
+			for (Road r : roadPath) {
+				this.distToTravel_ += r.getLength();
 			}
 		}
 	}
@@ -2161,7 +2172,10 @@ public class Vehicle {
 //				}
 			}
 		}
-		ContextCreator.logger.error("Cannot assign next lane form the curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad" + this.nextRoad_ + " roadPath" + this.roadPath);
+		// nextRoad is not connected to the current lane — acceptable in co-sim where the
+		// external simulator may route the vehicle across non-adjacent roads. Lane 0 of
+		// nextRoad is used as the fallback entry point.
+		ContextCreator.logger.warn("assignNextLane: no lane connection from curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad " + this.nextRoad_ + " — using lane 0 as fallback");
 	}
 
 	/**
@@ -2805,6 +2819,7 @@ public class Vehicle {
 	 */
 	public List<String> getRoute(){
 		List<String> res = new ArrayList<String>();
+		if(roadPath == null) return res;
 		for(Road r: roadPath) {
 			res.add(r.getOrigID());
 		}

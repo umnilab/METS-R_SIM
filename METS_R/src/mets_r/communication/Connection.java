@@ -2,6 +2,7 @@ package mets_r.communication;
 
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.HashMap;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.*;
 
@@ -98,11 +99,44 @@ public class Connection{
 			}
 			else if (msgType[0].equals("CTRL")) {
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
-				if(answer != null && session != null) this.answerSender.sendMessage(session, answer);
+				if (answer != null && session != null) {
+					this.answerSender.sendMessage(session, answer);
+				} else if (session == null) {
+					ContextCreator.logger.warn("CTRL_" + msgType[1] + ": cannot send answer, session is null");
+				} else {
+					// answer is null: handler failed to produce output, send a KO fallback
+					ContextCreator.logger.warn("CTRL_" + msgType[1] + ": handler returned null answer, sending KO");
+					HashMap<String, Object> errObj = new HashMap<String, Object>();
+					errObj.put("TYPE", "CTRL_" + msgType[1]);
+					errObj.put("CODE", "KO");
+					errObj.put("MSG", "Unknown control name: " + msgType[0]);
+					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
+				}
 			}
-			else if(msgType[0].equals("QUERY")){
+			else if (msgType[0].equals("QUERY")) {
 				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
-				if(answer != null && session != null) this.answerSender.sendMessage(session, answer);
+				if (answer != null && session != null) {
+					this.answerSender.sendMessage(session, answer);
+				} else if (session == null) {
+					ContextCreator.logger.warn("QUERY_" + msgType[1] + ": cannot send answer — session is null");
+				} else {
+					// answer is null: handler failed to produce output, send a KO fallback
+					ContextCreator.logger.warn("QUERY_" + msgType[1] + ": handler returned null answer, sending KO");
+					HashMap<String, Object> errObj = new HashMap<String, Object>();
+					errObj.put("TYPE", "ANS_" + msgType[1]);
+					errObj.put("CODE", "KO");
+					errObj.put("MSG", "Unknown query name: " + msgType[0]);
+					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
+				}
+			}
+			else {
+				ContextCreator.logger.warn("Unknown message type: " + msgType[0]);
+				if (session != null) {
+					HashMap<String, Object> errObj = new HashMap<String, Object>();
+					errObj.put("TYPE", "ANS_error");
+					errObj.put("MSG", "Unknown message type: " + msgType[0]);
+					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
+				}
 			}
 		} catch (Exception e) {
 	        ContextCreator.logger.error("Standard Exception caught: " + e.getMessage());

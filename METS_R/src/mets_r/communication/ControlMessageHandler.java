@@ -695,21 +695,43 @@ public class ControlMessageHandler extends MessageHandler {
 					else {
 						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeRoad.vehID);
 					}
-					if(veh != null) {
-						if(vehIDVehTypeRoad.roadID != "") {
-							Road r = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoad.roadID);
-							if(r != null) {
-								if(veh.getNextRoad() != r) {
-									if (veh.getRoad() == null) {
-										ContextCreator.logger.warn("enterNextRoad: vehicle " + vehIDVehTypeRoad.vehID
-												+ " has no current road, skipping rerouteWithSpecifiedNextRoad");
-									} else {
-										veh.rerouteWithSpecifiedNextRoad(r);
-									}
+				if(veh != null) {
+					if(vehIDVehTypeRoad.roadID != "") {
+						Road r = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoad.roadID);
+						if(r != null) {
+					if (veh.getRoad() == null) {
+							ContextCreator.logger.warn("enterNextRoad: vehicle " + vehIDVehTypeRoad.vehID
+									+ " has no current road, skipping");
+						} else {
+							// Always reroute so the stored path reflects the specified next road,
+							// even when the current stored road and nextRoad are not adjacent (co-sim drift).
+							veh.rerouteWithSpecifiedNextRoad(r);
+
+							boolean entered = veh.changeRoad();
+							if (!entered) {
+								// changeRoad() failed (e.g. space/gap check); force the transition
+								// because the external co-sim simulator is authoritative about road entry.
+								Lane targetLane = veh.getNextLane();
+								if (targetLane != null) {
+									veh.executeRoadTransition(targetLane, r);
+									entered = true;
+								} else {
+									ContextCreator.logger.warn("enterNextRoad: could not force transition for vehicle "
+											+ vehIDVehTypeRoad.vehID + " to road " + vehIDVehTypeRoad.roadID
+											+ " — nextLane is null");
 								}
 							}
-						}
 
+							if (entered) {
+								HashMap<String, Object> record2 = new HashMap<String, Object>();
+								record2.put("ID", vehIDVehTypeRoad.vehID);
+								record2.put("STATUS", "OK");
+								jsonData.add(record2);
+								continue;
+							}
+						}
+						}
+					} else {
 						if(veh.changeRoad()) {
 							HashMap<String, Object> record2 = new HashMap<String, Object>();
 				    		record2.put("ID", vehIDVehTypeRoad.vehID);
@@ -717,8 +739,8 @@ public class ControlMessageHandler extends MessageHandler {
 							jsonData.add(record2);
 							continue;
 						}
-						
 					}
+				}
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 		    		record2.put("ID", vehIDVehTypeRoad.vehID);
 		    		record2.put("STATUS", "KO");

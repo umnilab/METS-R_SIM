@@ -198,6 +198,19 @@ public class MessageClass{
         }
     }
     
+    class OrigRoadDestRoadK {
+        String orig;
+        String dest;
+        int K;
+
+        // Constructor
+        public OrigRoadDestRoadK(String orig, String dest, int K) {
+            this.orig = orig;
+            this.dest = dest;
+            this.K = K;
+        }
+    }
+    
     class OriginCoordDestCoordTransform {
         double origX;
         double origY;
@@ -212,6 +225,25 @@ public class MessageClass{
             this.destX = destX;
             this.destY = destY;
             this.transformCoord = transformCoord;
+        }
+    }
+    
+    class OriginCoordDestCoordTransformK {
+        double origX;
+        double origY;
+        double destX;
+        double destY;
+        boolean transformCoord;
+        int K;
+
+        // Constructor
+        public OriginCoordDestCoordTransformK(double origX, double origY, double destX, double destY, boolean transformCoord, int K) {
+            this.origX = origX;
+            this.origY = origY;
+            this.destX = destX;
+            this.destY = destY;
+            this.transformCoord = transformCoord;
+            this.K = K;
         }
     }
     

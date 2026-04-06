@@ -45,10 +45,12 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("chargingStation", this::getChargingStation);
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
+        messageHandlers.put("multiRoutesBwCoords", this::getKRoutesBwCoords);
+        messageHandlers.put("multiRoutesBwRoads", this::getKRoutesBwRoads);
         messageHandlers.put("edgeWeight", this::getEdgeWeight);
         messageHandlers.put("busRoute", this::getBusRoute);
         messageHandlers.put("busWithRoute", this::getBusWithRoute);
-        messageHandlers.put("centerLine", this::getCenterLine);
+        messageHandlers.put("centerLine", this::getCenterLine);  
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -717,6 +719,108 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	public HashMap<String, Object> getKRoutesBwCoords(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<OriginCoordDestCoordTransformK>> collectionType = new TypeToken<Collection<OriginCoordDestCoordTransformK>>() {};
+			Collection<OriginCoordDestCoordTransformK> requests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (OriginCoordDestCoordTransformK req: requests) {
+				Coordinate orig = new Coordinate(req.origX, req.origY);
+				Coordinate dest = new Coordinate(req.destX, req.destY);
+
+				if(req.transformCoord) {
+					try {
+						JTS.transform(orig, orig, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+						JTS.transform(dest, dest, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException e) {
+						ContextCreator.logger.error("Coordinates transformation failed, origin x: " + req.origX + " y:" + req.origY + " dest x:" + req.destX + " y:" + req.destY);
+						e.printStackTrace();
+					}
+				}
+
+				List<List<Road>> kRoadLists = RouteContext.kShortestPathRoute(req.K, orig, dest);
+				if(kRoadLists != null && !kRoadLists.isEmpty()) {
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					ArrayList<List<String>> allRoutes = new ArrayList<List<String>>();
+					for(List<Road> roadList: kRoadLists) {
+						List<String> roadIDList = new ArrayList<String>();
+						for(Road r: roadList) {
+							roadIDList.add(r.getOrigID());
+						}
+						allRoutes.add(roadIDList);
+					}
+					record2.put("road_lists", allRoutes);
+					jsonData.add(record2);
+				}
+				else {
+					jsonData.add("KO");
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing query: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	public HashMap<String, Object> getKRoutesBwRoads(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<OrigRoadDestRoadK>> collectionType = new TypeToken<Collection<OrigRoadDestRoadK>>() {};
+			Collection<OrigRoadDestRoadK> requests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (OrigRoadDestRoadK req: requests) {
+				Road origRoad = ContextCreator.getCityContext().findRoadWithOrigID(req.orig);
+				Road destRoad = ContextCreator.getCityContext().findRoadWithOrigID(req.dest);
+				if(origRoad != null && destRoad != null) {
+					List<List<Road>> kRoadLists = RouteContext.kShortestPathRoute(req.K, origRoad, destRoad);
+					if(kRoadLists != null && !kRoadLists.isEmpty()) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						ArrayList<List<String>> allRoutes = new ArrayList<List<String>>();
+						for(List<Road> roadList: kRoadLists) {
+							List<String> roadIDList = new ArrayList<String>();
+							for(Road r: roadList) {
+								roadIDList.add(r.getOrigID());
+							}
+							allRoutes.add(roadIDList);
+						}
+						record2.put("road_lists", allRoutes);
+						jsonData.add(record2);
+					}
+					else {
+						jsonData.add("KO");
+					}
+				}
+				else jsonData.add("KO");
+			}
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing query: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
 	public HashMap<String, Object> getEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {

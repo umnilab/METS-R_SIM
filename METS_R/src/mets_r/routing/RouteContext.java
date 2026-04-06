@@ -44,6 +44,19 @@ public class RouteContext {
 		return shortestPathRoute(originRoad, destRoad, rand);
 	}
 
+	public static List<List<Road>> kShortestPathRoute(int K, Road originRoad, Road destRoad) {
+		Node originDownStreamNode = originRoad.getDownStreamNode();
+		Node destUpStreamNode = destRoad.getUpStreamNode();
+		return vbr.computeKRoute(K, originRoad, destRoad, originDownStreamNode, destUpStreamNode);
+	}
+
+	public static List<List<Road>> kShortestPathRoute(int K, Coordinate origin, Coordinate destination) {
+		Road originRoad = ContextCreator.getCityContext().findRoadAtCoordinates(origin, false);
+		Road destRoad = ContextCreator.getCityContext().findRoadAtCoordinates(destination, true);
+		if (originRoad == null || destRoad == null) return null;
+		return kShortestPathRoute(K, originRoad, destRoad);
+	}
+
 	public static void printRoute(List<Road> path) {
 		ContextCreator.logger.info("Route:");
 		for (Road r : path) {
