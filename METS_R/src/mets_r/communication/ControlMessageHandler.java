@@ -11,6 +11,7 @@ import org.opengis.referencing.operation.TransformException;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
+import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
@@ -35,7 +36,13 @@ import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeRoute;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
 import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXYSpeed;
+import mets_r.communication.MessageClass.AddTaxiToZone;
+import mets_r.communication.MessageClass.ChargingStationParams;
+import mets_r.communication.MessageClass.RouteNameNum;
+import mets_r.communication.MessageClass.VehIDVehTypeChargerTypeCSID;
 import mets_r.communication.MessageClass.ZoneIDOrigDestRouteNameNum;
+import mets_r.communication.MessageClass.ZoneParams;
+import mets_r.facility.ZoneContext;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Lane;
@@ -84,6 +91,11 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("updateSignalTiming", this::updateSignalTiming);
 		messageHandlers.put("setSignalPhasePlan", this::setSignalPhasePlan);
 		messageHandlers.put("setSignalPhasePlanTicks", this::setSignalPhasePlanTicks);
+		messageHandlers.put("addZone", this::addZone);
+		messageHandlers.put("addChargingStation", this::addChargingStation);
+		messageHandlers.put("addTaxi", this::addTaxi);
+		messageHandlers.put("addBus", this::addBus);
+		messageHandlers.put("goCharging", this::goCharging);
 	}
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -331,6 +343,14 @@ public class ControlMessageHandler extends MessageHandler {
 						jsonData.add(record2);
 		    			continue;
 					}
+					if(originZone.getClosestRoad(false) == null) {
+						ContextCreator.logger.warn("Origin zone " + originID + " has no departure road assigned yet");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
+					}
 					
 					if(destID >= 0) {
 						destZone = ContextCreator.getZoneContext().get(destID);
@@ -348,6 +368,14 @@ public class ControlMessageHandler extends MessageHandler {
 			    		record2.put("STATUS", "KO");
 						jsonData.add(record2);
 		    			continue;
+					}
+					if(destZone.getClosestRoad(true) == null) {
+						ContextCreator.logger.warn("Destination zone " + destID + " has no arrival road assigned yet");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
 					}
 			    			
 					// Assign trips
@@ -436,7 +464,23 @@ public class ControlMessageHandler extends MessageHandler {
 		    			
 		    		int originZoneID = originRoad.getNeighboringZone(false);
 		    		int destZoneID = destRoad.getNeighboringZone(true);
-			    			
+		    		if(ContextCreator.getZoneContext().get(originZoneID) == null) {
+						ContextCreator.logger.warn("Origin road " + originID + " has no neighboring zone assigned");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
+					}
+		    		if(ContextCreator.getZoneContext().get(destZoneID) == null) {
+						ContextCreator.logger.warn("Destination road " + destID + " has no neighboring zone assigned");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
+					}
+
 					// Assign trips
 					v.initializePlan(originZoneID, originRoad.getID(), (int) ContextCreator.getCurrentTick());
 					v.addPlan(destZoneID, destRoad.getID(), (int) ContextCreator.getNextTick());
@@ -971,10 +1015,18 @@ public class ControlMessageHandler extends MessageHandler {
 					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigDestNum.vehID);
 					Zone z1 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.orig);
 					Zone z2 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.dest);
-					if(veh != null && z1 != null && z2 != null) {
-						// generate request
-						ArrayList<Request> plist = new ArrayList<Request>();
-						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), vehIDOrigDestNum.num);
+				if(veh != null && z1 != null && z2 != null) {
+					if(z1.getClosestRoad(false) == null || z2.getClosestRoad(true) == null) {
+						ContextCreator.logger.warn("dispatchTaxi: zone " + (z1.getClosestRoad(false) == null ? z1.getID() : z2.getID()) + " has no road assigned yet");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehIDOrigDestNum.vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
+					}
+					// generate request
+					ArrayList<Request> plist = new ArrayList<Request>();
+					Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), vehIDOrigDestNum.num);
 						if(veh.getState() == Vehicle.PARKING) {
 							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
 						}
@@ -1027,13 +1079,20 @@ public class ControlMessageHandler extends MessageHandler {
 					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigRoadDestRoadNum.vehID);
 					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.orig);
 					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.dest);
-					if(veh != null && r1 != null && r2 != null) {
-						// generate request
-						ArrayList<Request> plist = new ArrayList<Request>();
-						Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
-						Zone z2 = ContextCreator.getZoneContext().get(r2.getNeighboringZone(true));
-						
-						Request p = new Request(z1.getID(),z2.getID(), r1.getID(), r2.getID(), vehIDOrigRoadDestRoadNum.num);
+				if(veh != null && r1 != null && r2 != null) {
+					// generate request
+					ArrayList<Request> plist = new ArrayList<Request>();
+					Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
+					Zone z2 = ContextCreator.getZoneContext().get(r2.getNeighboringZone(true));
+					if(z1 == null || z2 == null) {
+						ContextCreator.logger.warn("dispTaxiBwRoads: road " + (z1 == null ? vehIDOrigRoadDestRoadNum.orig : vehIDOrigRoadDestRoadNum.dest) + " has no neighboring zone assigned");
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
+						record2.put("STATUS", "KO");
+						jsonData.add(record2);
+						continue;
+					}
+					Request p = new Request(z1.getID(),z2.getID(), r1.getID(), r2.getID(), vehIDOrigRoadDestRoadNum.num);
 						
 						if(veh.getState() == Vehicle.PARKING) {
 							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
@@ -1920,6 +1979,446 @@ public class ControlMessageHandler extends MessageHandler {
 			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically adds one or more zones at given coordinates.
+	 * Input DATA: list of {x, y, transformCoord, capacity, type}
+	 * Returns the assigned zone IDs.
+	 */
+	private HashMap<String, Object> addZone(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<ZoneParams>> collectionType = new TypeToken<Collection<ZoneParams>>() {};
+			Collection<ZoneParams> params = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			GeometryFactory geomFac = new GeometryFactory();
+			ZoneContext zoneContext = ContextCreator.getZoneContext();
+
+			for (ZoneParams p : params) {
+				Coordinate coord = new Coordinate(p.x, p.y);
+				if (p.transformCoord) {
+					try {
+						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException e) {
+						ContextCreator.logger.error("addZone: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
+						jsonData.add("KO");
+						continue;
+					}
+				}
+
+				int zoneID = zoneContext.ZONE_NUM++;
+				Zone zone = new Zone(zoneID, p.capacity, p.type);
+				zone.setCoord(coord);
+				zoneContext.put(zoneID, zone);
+				ContextCreator.getZoneGeography().move(zone, geomFac.createPoint(coord));
+
+				// Find and attach the nearest departure and arrival roads
+				Road deptRoad = ContextCreator.getCityContext().findRoadAtCoordinates(coord, false);
+				Road arrRoad  = ContextCreator.getCityContext().findRoadAtCoordinates(coord, true);
+				if (deptRoad != null) {
+					zone.setClosestRoad(deptRoad.getID(), false);
+					zone.setDistToRoad(ContextCreator.getCityContext().getDistance(coord, deptRoad.getStartCoord()), false);
+					zone.addNeighboringLink(deptRoad.getID(), false);
+				} else {
+					ContextCreator.logger.warn("addZone: no departure road found for zone " + zoneID);
+				}
+				if (arrRoad != null) {
+					zone.setClosestRoad(arrRoad.getID(), true);
+					zone.setDistToRoad(ContextCreator.getCityContext().getDistance(coord, arrRoad.getEndCoord()), true);
+					zone.addNeighboringLink(arrRoad.getID(), true);
+				} else {
+					ContextCreator.logger.warn("addZone: no arrival road found for zone " + zoneID);
+				}
+
+				// Initialize taxi availability maps for the new zone
+				ContextCreator.getVehicleContext().initializeZoneMaps(zoneID);
+
+				if (p.type == Zone.HUB) {
+					zoneContext.HUB_INDEXES.add(zoneID);
+				}
+
+				// Schedule the zone's tick steps so it actively processes demand
+				// and its stats are included in ZoneLog just like pre-loaded zones
+				ContextCreator.scheduleNewZone(zone);
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", zoneID);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control addZone: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically adds one or more charging stations at given coordinates.
+	 * Input DATA: list of {x, y, transformCoord, numL2, numL3, numBus, priceL2, priceL3}
+	 * Returns the assigned (negative) station IDs.
+	 */
+	private HashMap<String, Object> addChargingStation(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<ChargingStationParams>> collectionType = new TypeToken<Collection<ChargingStationParams>>() {};
+			Collection<ChargingStationParams> params = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			GeometryFactory geomFac = new GeometryFactory();
+
+			// IDs for charging stations are negative integers; find the next available one
+			int nextID = ContextCreator.getChargingStationContext().getIDList().stream()
+					.mapToInt(Integer::intValue).min().orElse(0) - 1;
+
+			for (ChargingStationParams p : params) {
+				Coordinate coord = new Coordinate(p.x, p.y);
+				if (p.transformCoord) {
+					try {
+						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException e) {
+						ContextCreator.logger.error("addChargingStation: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
+						jsonData.add("KO");
+						continue;
+					}
+				}
+
+				int csID = nextID--;
+				ChargingStation cs = new ChargingStation(csID, p.numL2, p.numL3, p.numBus, p.priceL2, p.priceL3);
+				ContextCreator.getChargingStationContext().put(csID, cs);
+				// Register in geography so cs.getCoord() (which queries the geography) works
+				ContextCreator.getChargingStationGeography().move(cs, geomFac.createPoint(coord));
+
+				// Find and attach the nearest departure and arrival roads
+				Road deptRoad = ContextCreator.getCityContext().findRoadAtCoordinates(coord, false);
+				Road arrRoad  = ContextCreator.getCityContext().findRoadAtCoordinates(coord, true);
+				if (deptRoad != null) {
+					cs.setClosestRoad(deptRoad.getID(), false);
+					cs.setDistToRoad(ContextCreator.getCityContext().getDistance(coord, deptRoad.getStartCoord()), false);
+				} else {
+					ContextCreator.logger.warn("addChargingStation: no departure road found for station " + csID);
+				}
+				if (arrRoad != null) {
+					cs.setClosestRoad(arrRoad.getID(), true);
+					cs.setDistToRoad(ContextCreator.getCityContext().getDistance(coord, arrRoad.getEndCoord()), true);
+				} else {
+					ContextCreator.logger.warn("addChargingStation: no arrival road found for station " + csID);
+				}
+
+				// Schedule the station's tick steps so it actively charges vehicles
+				// and produces ChargerLog entries identical to pre-loaded stations
+				ContextCreator.scheduleNewChargingStation(cs);
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", csID);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control addChargingStation: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically spawns e-taxis parked at a specified zone.
+	 * Input DATA: list of {zoneID, num}
+	 * Returns the assigned vehicle IDs.
+	 */
+	private HashMap<String, Object> addTaxi(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<AddTaxiToZone>> collectionType = new TypeToken<Collection<AddTaxiToZone>>() {};
+			Collection<AddTaxiToZone> requests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (AddTaxiToZone req : requests) {
+				Zone zone = ContextCreator.getZoneContext().get(req.zoneID);
+				if (zone == null) {
+					ContextCreator.logger.warn("addTaxi: zone not found: " + req.zoneID);
+					jsonData.add("KO");
+					continue;
+				}
+				if (zone.getClosestRoad(false) == null) {
+					ContextCreator.logger.warn("addTaxi: zone " + req.zoneID + " has no departure road, cannot spawn taxis");
+					jsonData.add("KO");
+					continue;
+				}
+
+				// Ensure taxi maps exist for this zone (may be a dynamically added zone)
+				ContextCreator.getVehicleContext().initializeZoneMaps(req.zoneID);
+
+				ArrayList<Integer> spawnedIDs = new ArrayList<Integer>();
+				for (int i = 0; i < req.num; i++) {
+					ElectricTaxi v = new ElectricTaxi();
+					ContextCreator.getVehicleContext().add(v);
+					v.initializePlan(req.zoneID, zone.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
+					v.setCurrentZone(req.zoneID);
+					ContextCreator.getVehicleContext().registerTaxi(v);
+					ContextCreator.getVehicleContext().addAvailableTaxi(v, req.zoneID);
+					zone.addParkingVehicleStock(1);
+					spawnedIDs.add(v.getID());
+				}
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("zoneID", req.zoneID);
+				record.put("IDs", spawnedIDs);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control addTaxi: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically spawns e-buses on an existing named route.
+	 * Input DATA: list of {routeName, num}
+	 * Returns the assigned vehicle IDs.
+	 */
+	private HashMap<String, Object> addBus(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<RouteNameNum>> collectionType = new TypeToken<Collection<RouteNameNum>>() {};
+			Collection<RouteNameNum> requests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (RouteNameNum req : requests) {
+				int routeID = ContextCreator.bus_schedule.getRouteID(req.routeName);
+				if (routeID == -1) {
+					ContextCreator.logger.warn("addBus: unknown route name: " + req.routeName);
+					jsonData.add("KO");
+					continue;
+				}
+
+				ArrayList<Integer> stopZones = ContextCreator.bus_schedule.getStopZones(routeID);
+				if (stopZones == null || stopZones.isEmpty()) {
+					ContextCreator.logger.warn("addBus: route " + req.routeName + " has no stop zones");
+					jsonData.add("KO");
+					continue;
+				}
+
+				Zone startZone = ContextCreator.getZoneContext().get(stopZones.get(0));
+				if (startZone == null || startZone.getClosestRoad(false) == null) {
+					ContextCreator.logger.warn("addBus: start zone for route " + req.routeName + " is missing or has no departure road");
+					jsonData.add("KO");
+					continue;
+				}
+
+				ArrayList<Integer> departureTime = new ArrayList<Integer>();
+				departureTime.add((int) (ContextCreator.getCurrentTick() + 60 / GlobalVariables.SIMULATION_STEP_SIZE));
+
+				ArrayList<Integer> spawnedIDs = new ArrayList<Integer>();
+				for (int i = 0; i < req.num; i++) {
+					ElectricBus b = new ElectricBus(routeID, stopZones, departureTime);
+					b.addPlan(startZone.getID(), startZone.getClosestRoad(false), ContextCreator.getCurrentTick());
+					ContextCreator.getVehicleContext().add(b);
+					b.setCurrentCoord(startZone.getCoord());
+					b.addPlan(startZone.getID(), startZone.getClosestRoad(false), ContextCreator.getCurrentTick());
+					b.setNextPlan();
+					b.addPlan(startZone.getID(), startZone.getClosestRoad(false), ContextCreator.getCurrentTick());
+					b.setNextPlan();
+					b.departure();
+					ContextCreator.getVehicleContext().registerBus(b);
+					spawnedIDs.add(b.getID());
+				}
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("routeName", req.routeName);
+				record.put("IDs", spawnedIDs);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control addBus: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Command a vehicle to interrupt its current activity and go charge.
+	 * After charging it will return to its pre-charging destination.
+	 *
+	 * Input DATA: list of {vehID, vehType, chargerType, csID} where:
+	 *   vehType    true  = private EV, false = public taxi
+	 *   chargerType ChargingStation.L2 / L3 / BUS
+	 *   csID       0 = auto-select nearest/cheapest; negative = specific station ID
+	 *
+	 * For parking taxis the vehicle is removed from the available-taxi pool first
+	 * and the "return destination" is set to its current zone so it comes back
+	 * after charging.
+	 */
+	private HashMap<String, Object> goCharging(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeChargerTypeCSID>> collectionType =
+					new TypeToken<Collection<VehIDVehTypeChargerTypeCSID>>() {};
+			Collection<VehIDVehTypeChargerTypeCSID> requests =
+					gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (VehIDVehTypeChargerTypeCSID req : requests) {
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", req.vehID);
+
+				ElectricVehicle veh = req.vehType
+						? ContextCreator.getVehicleContext().getPrivateEV(req.vehID)
+						: (ElectricVehicle) ContextCreator.getVehicleContext().getPublicVehicle(req.vehID);
+
+				if (veh == null) {
+					ContextCreator.logger.warn("goCharging: vehicle " + req.vehID + " not found");
+					record.put("STATUS", "KO");
+					jsonData.add(record);
+					continue;
+				}
+
+				if (veh.isOnChargingRoute()) {
+					ContextCreator.logger.warn("goCharging: vehicle " + req.vehID + " is already on a charging route");
+					record.put("STATUS", "KO");
+					jsonData.add(record);
+					continue;
+				}
+
+				// For parking taxis: clean up pool membership before rerouting
+				boolean isTaxiParking = !req.vehType && veh.getState() == Vehicle.PARKING;
+				if (isTaxiParking) {
+					ElectricTaxi taxi = (ElectricTaxi) veh;
+					int parkingZone = taxi.getCurrentZone();
+					Zone z = ContextCreator.getZoneContext().get(parkingZone);
+					if (z != null) z.removeOneParkingVehicle();
+					ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
+				}
+
+				if (req.csID != 0) {
+					// Specific charging station requested — replicate goCharging logic manually
+					ChargingStation cs = ContextCreator.getChargingStationContext().get(req.csID);
+					if (cs == null) {
+						ContextCreator.logger.warn("goCharging: charging station " + req.csID + " not found");
+						record.put("STATUS", "KO");
+						jsonData.add(record);
+						continue;
+					}
+					if (cs.getClosestRoad(true) == null) {
+						ContextCreator.logger.warn("goCharging: charging station " + req.csID + " has no arrival road");
+						record.put("STATUS", "KO");
+						jsonData.add(record);
+						continue;
+					}
+
+					int returnZoneID;
+					int returnRoadID;
+					if (isTaxiParking) {
+						returnZoneID = ((ElectricTaxi) veh).getCurrentZone();
+						Zone rz = ContextCreator.getZoneContext().get(returnZoneID);
+						returnRoadID = (rz != null && rz.getClosestRoad(true) != null)
+								? rz.getClosestRoad(true)
+								: veh.getDestRoad();
+					} else {
+						returnZoneID = veh.getDestID();
+						returnRoadID = veh.getDestRoad();
+					}
+
+					if (returnZoneID < 0) {
+						// Vehicle was already heading to a charging station; refuse
+						ContextCreator.logger.warn("goCharging: vehicle " + req.vehID + " has no valid return destination");
+						record.put("STATUS", "KO");
+						jsonData.add(record);
+						continue;
+					}
+
+					veh.setOnChargingRoute(true);
+					veh.setState(Vehicle.CHARGING_TRIP);
+					veh.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
+					veh.setNextPlan();
+					veh.addPlan(returnZoneID, returnRoadID, ContextCreator.getNextTick());
+					veh.departure();
+					ContextCreator.logger.debug("goCharging: vehicle " + req.vehID + " dispatched to CS " + cs.getID());
+				} else {
+					// Auto-select: delegate to the vehicle's own goCharging logic
+					if (isTaxiParking) {
+						// For parked taxis, ensure the return destination is the current zone
+						ElectricTaxi taxi = (ElectricTaxi) veh;
+						int returnZoneID = taxi.getCurrentZone();
+						Zone rz = ContextCreator.getZoneContext().get(returnZoneID);
+						int returnRoadID = (rz != null && rz.getClosestRoad(true) != null)
+								? rz.getClosestRoad(true)
+								: taxi.getDestRoad();
+						ChargingStation cs = ContextCreator.getCityContext().findNearestChargingStation(
+								taxi.getCurrentCoord(), req.chargerType);
+						if (cs == null && req.chargerType == ChargingStation.L3) {
+							cs = ContextCreator.getCityContext().findNearestChargingStation(
+									taxi.getCurrentCoord(), ChargingStation.L2);
+						}
+						if (cs == null) {
+							ContextCreator.logger.warn("goCharging: no suitable station found for taxi " + req.vehID);
+							record.put("STATUS", "KO");
+							jsonData.add(record);
+							continue;
+						}
+						taxi.setOnChargingRoute(true);
+						taxi.setState(Vehicle.CHARGING_TRIP);
+						taxi.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
+						taxi.setNextPlan();
+						taxi.addPlan(returnZoneID, returnRoadID, ContextCreator.getNextTick());
+						taxi.departure();
+					} else {
+						veh.goCharging(req.chargerType);
+					}
+				}
+
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control goCharging: " + e.toString());
+			jsonAns.put("CODE", "KO");
 		}
 		return jsonAns;
 	}

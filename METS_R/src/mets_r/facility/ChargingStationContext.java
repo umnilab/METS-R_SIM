@@ -68,8 +68,10 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 					ContextCreator.logger.error(
 							"Incorrect format for charging station. The incorrect element is"+ result[0]+","+ result[1]+","+ result[2]);
 				}
-				this.put(int_id, cs);
-				int_id = int_id - 1;
+				if (cs != null) {
+					this.put(int_id, cs);
+					int_id = int_id - 1;
+				}
 			}
 			br.close();
 			ContextCreator.logger.info("Charging Station generated, total number: " + (-int_id));

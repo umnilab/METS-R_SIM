@@ -219,6 +219,10 @@ public class Zone {
 		for (Entry<Integer, Integer> oneTrip: ContextCreator.travel_demand.getPrivateEVTravelDemand(privateTripTimeIndex, ID).entrySet()) {
 			ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(oneTrip.getKey());
 			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
+			if (destZone == null) {
+				ContextCreator.logger.warn("generatePrivateEVTrip: destination zone " + oneTrip.getValue() + " not found, skipping trip");
+				continue;
+			}
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
@@ -274,6 +278,10 @@ public class Zone {
 		for (Entry<Integer, Integer> oneTrip: ContextCreator.travel_demand.getPrivateGVTravelDemand(privateTripTimeIndex, ID).entrySet()) {
 			Vehicle v = ContextCreator.getVehicleContext().getPrivateGV(oneTrip.getKey());
 			Zone destZone =  ContextCreator.getZoneContext().get(oneTrip.getValue());
+			if (destZone == null) {
+				ContextCreator.logger.warn("generatePrivateGVTrip: destination zone " + oneTrip.getValue() + " not found, skipping trip");
+				continue;
+			}
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road

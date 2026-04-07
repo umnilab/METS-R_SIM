@@ -286,6 +286,54 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 	}
 	
+	/**
+	 * Schedule stepPart1 and stepPart2 for a single zone that was created at
+	 * runtime (via the addZone control message).
+	 *
+	 * In single-threaded mode every zone must have its own scheduled actions, so
+	 * we add them here starting at the next zone-refresh-aligned tick.
+	 * In multi-threaded mode paraZoneStep() already calls stepPart1 on every
+	 * object returned by getAll(), so no extra scheduling is needed for part1.
+	 * stepPart2 is driven by the partitioner; the new zone will be included in
+	 * the partition lists after the next check_run() interval.
+	 */
+	public static void scheduleNewZone(Zone z) {
+		if (!GlobalVariables.MULTI_THREADING) {
+			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+			double startTick = Math.ceil((getCurrentTick() + 1.0) / GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL)
+					* GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
+			ScheduleParameters params = ScheduleParameters.createRepeating(
+					startTick, GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 2);
+			scheduledActions.add(schedule.schedule(params, z, "stepPart1"));
+			scheduledActions.add(schedule.schedule(params, z, "stepPart2"));
+		}
+		// Multi-threading: stepPart1 covered by getAll() in paraZoneStep;
+		// stepPart2 covered by partitioner at next check_run.
+	}
+
+	/**
+	 * Schedule stepPart1 and stepPart2 for a single charging station created at
+	 * runtime (via the addChargingStation control message).
+	 *
+	 * In single-threaded mode every station must have its own scheduled actions.
+	 * In multi-threaded mode paraChargingStationStep() calls stepPart2 serially on
+	 * getAll(), so that part is already covered. stepPart1 (via partitions) will
+	 * include the new station after the next check_run() interval.
+	 */
+	public static void scheduleNewChargingStation(ChargingStation cs) {
+		if (!GlobalVariables.MULTI_THREADING) {
+			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+			double startTick = Math.ceil((getCurrentTick() + 1.0) / GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL)
+					* GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
+			ScheduleParameters params = ScheduleParameters.createRepeating(
+					startTick, GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
+			scheduledActions.add(schedule.schedule(params, cs, "stepPart1"));
+			scheduledActions.add(schedule.schedule(params, cs, "stepPart2"));
+		}
+		// Multi-threading: stepPart2 covered by getAll() in paraChargingStationStep;
+		// stepPart1 via partition will include cs at next check_run.
+	}
+
 	// Schedule the event for signal updates (multi-thread)
 	public static void scheduleMultiThreadedSignalStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();

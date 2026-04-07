@@ -246,63 +246,75 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 		
-		// Ensure every road has neighboring zone
+		// Ensure every road has a neighboring zone.
+		// When no zones are loaded yet (fully dynamic scenario) the while loops are
+		// skipped so they cannot spin forever.  The coord→road lookup maps are still
+		// populated so that routing works as soon as zones are added at runtime.
+		boolean hasZones = ContextCreator.getZoneContext().size() > 0;
 		for (Road r: roadGeography.getAllObjects()) {
-			Point point1 = geomFac.createPoint(r.getStartCoord());
-			Point point2 = geomFac.createPoint(r.getEndCoord());
-			double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while(r.getNeighboringZone(false) == 0) {
-				double dist = Double.MAX_VALUE;
-				Geometry buffer1 = point1.buffer(searchBuffer);
-				// 1. Gather the raw, unordered results
-				List<Zone> unorderedZones = new ArrayList<>();
-				for (Zone z2 : zoneGeography.getObjectsWithin(buffer1.getEnvelopeInternal(), Zone.class)) {
-				    unorderedZones.add(z2);
-				}
-
-				// 2. Sort the results deterministically by ID
-				unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
-
-				// 3. Process the sorted list
-				for (Zone z : unorderedZones) {
-					dist = this.getDistance(z.getCoord(), r.getStartCoord());
-					if(dist < r.getDistToZone(false)) {
-						r.setNeighboringZone(z.getID(), false);
-						r.setDistToZone(dist, false);
+			if (hasZones) {
+				Point point1 = geomFac.createPoint(r.getStartCoord());
+				Point point2 = geomFac.createPoint(r.getEndCoord());
+				double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+				while(r.getNeighboringZone(false) == 0) {
+					double dist = Double.MAX_VALUE;
+					Geometry buffer1 = point1.buffer(searchBuffer);
+					// 1. Gather the raw, unordered results
+					List<Zone> unorderedZones = new ArrayList<>();
+					for (Zone z2 : zoneGeography.getObjectsWithin(buffer1.getEnvelopeInternal(), Zone.class)) {
+					    unorderedZones.add(z2);
 					}
-				}
-				searchBuffer = searchBuffer * 2;
-			}
-			
-			searchBuffer = GlobalVariables.SEARCHING_BUFFER;
-			while(r.getNeighboringZone(true) == 0) {
-				double dist2 = Double.MAX_VALUE;
-				Geometry buffer2 = point2.buffer(searchBuffer);
-				// 1. Gather the raw, unordered results
-				List<Zone> unorderedZones = new ArrayList<>();
-				for (Zone z2 : zoneGeography.getObjectsWithin(buffer2.getEnvelopeInternal(), Zone.class)) {
-				    unorderedZones.add(z2);
-				}
 
-				// 2. Sort the results deterministically by ID
-				unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+					// 2. Sort the results deterministically by ID
+					unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
 
-				// 3. Process the sorted list
-				for (Zone z : unorderedZones) {
-					dist2 = this.getDistance(z.getCoord(), r.getEndCoord());
-					if(dist2 < r.getDistToZone(true)) {
-						r.setNeighboringZone(z.getID(), true);
-						r.setDistToZone(dist2, true);
+					// 3. Process the sorted list
+					for (Zone z : unorderedZones) {
+						dist = this.getDistance(z.getCoord(), r.getStartCoord());
+						if(dist < r.getDistToZone(false)) {
+							r.setNeighboringZone(z.getID(), false);
+							r.setDistToZone(dist, false);
+						}
 					}
+					searchBuffer = searchBuffer * 2;
 				}
-				searchBuffer = searchBuffer * 2;
+				
+				searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+				while(r.getNeighboringZone(true) == 0) {
+					double dist2 = Double.MAX_VALUE;
+					Geometry buffer2 = point2.buffer(searchBuffer);
+					// 1. Gather the raw, unordered results
+					List<Zone> unorderedZones = new ArrayList<>();
+					for (Zone z2 : zoneGeography.getObjectsWithin(buffer2.getEnvelopeInternal(), Zone.class)) {
+					    unorderedZones.add(z2);
+					}
+
+					// 2. Sort the results deterministically by ID
+					unorderedZones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+
+					// 3. Process the sorted list
+					for (Zone z : unorderedZones) {
+						dist2 = this.getDistance(z.getCoord(), r.getEndCoord());
+						if(dist2 < r.getDistToZone(true)) {
+							r.setNeighboringZone(z.getID(), true);
+							r.setDistToZone(dist2, true);
+						}
+					}
+					searchBuffer = searchBuffer * 2;
+				}
 			}
-			
+
 			if(r.canBeOrigin() && r.canBeDest()) {
 				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-				ContextCreator.getZoneContext().get(r.getNeighboringZone(false)).addNeighboringLink(r.getID(), false);
 				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-				ContextCreator.getZoneContext().get(r.getNeighboringZone(true)).addNeighboringLink(r.getID(), true);
+				if (r.getNeighboringZone(false) != 0) {
+					Zone zDept = ContextCreator.getZoneContext().get(r.getNeighboringZone(false));
+					if (zDept != null) zDept.addNeighboringLink(r.getID(), false);
+				}
+				if (r.getNeighboringZone(true) != 0) {
+					Zone zArr = ContextCreator.getZoneContext().get(r.getNeighboringZone(true));
+					if (zArr != null) zArr.addNeighboringLink(r.getID(), true);
+				}
 			}
 		}
 		

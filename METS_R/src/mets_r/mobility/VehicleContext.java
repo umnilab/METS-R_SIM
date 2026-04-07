@@ -381,6 +381,19 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void registerBus(ElectricBus v) {
 		this.busMap.put(v.getID(), v);
 	}
+
+	/**
+	 * Ensures the available-taxi and relocation-taxi maps contain an entry for
+	 * the given zone. Must be called before adding taxis to a newly created zone.
+	 */
+	public synchronized void initializeZoneMaps(int zoneID) {
+		if (!this.availableTaxiMap.containsKey(zoneID)) {
+			this.availableTaxiMap.put(zoneID, new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
+		}
+		if (!this.relocationTaxiMap.containsKey(zoneID)) {
+			this.relocationTaxiMap.put(zoneID, new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
+		}
+	}
 	
 	public void executeGlobalTransfers() {
 		List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.allTransferringVehicles);

@@ -459,6 +459,81 @@ public class MessageClass{
         }
     }
 	
+    class ZoneParams {
+    	double x;
+    	double y;
+    	boolean transformCoord;
+    	int capacity;
+    	int type;
+
+    	public ZoneParams(double x, double y, boolean transformCoord, int capacity, int type) {
+    		this.x = x;
+    		this.y = y;
+    		this.transformCoord = transformCoord;
+    		this.capacity = capacity;
+    		this.type = type;
+    	}
+    }
+
+    class ChargingStationParams {
+    	double x;
+    	double y;
+    	boolean transformCoord;
+    	int numL2;
+    	int numL3;
+    	int numBus;
+    	double priceL2;
+    	double priceL3;
+
+    	public ChargingStationParams(double x, double y, boolean transformCoord, int numL2, int numL3, int numBus, double priceL2, double priceL3) {
+    		this.x = x;
+    		this.y = y;
+    		this.transformCoord = transformCoord;
+    		this.numL2 = numL2;
+    		this.numL3 = numL3;
+    		this.numBus = numBus;
+    		this.priceL2 = priceL2;
+    		this.priceL3 = priceL3;
+    	}
+    }
+
+    class AddTaxiToZone {
+    	int zoneID;
+    	int num;
+
+    	public AddTaxiToZone(int zoneID, int num) {
+    		this.zoneID = zoneID;
+    		this.num = num;
+    	}
+    }
+
+    class RouteNameNum {
+    	String routeName;
+    	int num;
+
+    	public RouteNameNum(String routeName, int num) {
+    		this.routeName = routeName;
+    		this.num = num;
+    	}
+    }
+
+    // vehType: true = private vehicle (EV/GV), false = public vehicle (taxi)
+    // chargerType: 0 = L2, 1 = L3, 2 = BUS
+    // csID: 0 = auto-select nearest/cheapest; negative integer = specific charging station ID
+    class VehIDVehTypeChargerTypeCSID {
+    	int vehID;
+    	boolean vehType;
+    	int chargerType;
+    	int csID;
+
+    	public VehIDVehTypeChargerTypeCSID(int vehID, boolean vehType, int chargerType, int csID) {
+    		this.vehID = vehID;
+    		this.vehType = vehType;
+    		this.chargerType = chargerType;
+    		this.csID = csID;
+    	}
+    }
+
 	public static void main(String[] args) {
 		Gson gson = new Gson();
 		// IDs
