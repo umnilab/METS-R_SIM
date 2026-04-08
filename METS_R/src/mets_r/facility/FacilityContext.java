@@ -50,4 +50,11 @@ public class FacilityContext<T> extends DefaultContext<T>{
 		List<Integer> facilityIDList = new ArrayList<>(this.facilityDictionary.keySet());
 		return facilityIDList;
 	}
+
+	public void remove(int ID) {
+		T facility = this.facilityDictionary.remove(ID);
+		if (facility != null) {
+			super.remove(facility); // also removes from all Repast projections (e.g. Geography)
+		}
+	}
 }

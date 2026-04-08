@@ -137,15 +137,26 @@ public class CityContext extends DefaultContext<Object> {
 	            NeighboringGraphCache cachedData = mapper.readValue(cacheFile, NeighboringGraphCache.class);
 	            cachedData.load();
 	            
-	            for(Road r: ContextCreator.getRoadContext().getAll()) {
-	            	if(r.canBeOrigin()) {
-	    				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-	    			}
-	    			if(r.canBeDest()) {
-	    				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-	    			}
-	            }
-	            return; // Successfully loaded from cache
+	        for(Road r: ContextCreator.getRoadContext().getAll()) {
+	        	if(r.canBeOrigin()) {
+    				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+    			}
+    			if(r.canBeDest()) {
+    				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
+    			}
+	        }
+	        // If no real zones are configured, reset road-zone assignments from the
+	        // cache (which may reference a previous run's zones) and create the meta zone.
+	        if (ContextCreator.getZoneContext().size() == 0) {
+	        	for (Road r : ContextCreator.getRoadContext().getAll()) {
+	        		r.setNeighboringZone(0, false);
+	        		r.setDistToZone(Double.MAX_VALUE, false);
+	        		r.setNeighboringZone(0, true);
+	        		r.setDistToZone(Double.MAX_VALUE, true);
+	        	}
+	        	createMetaZone(geomFac);
+	        }
+	        return; // Successfully loaded from cache
 	        } catch (IOException e) {
 	            ContextCreator.logger.warn("Failed to load cache. Rebuilding neighboring graph.", e);
 	        }
@@ -317,7 +328,13 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 		}
-		
+
+		// If no real zones were loaded, create a meta zone (ID 0) that covers all roads.
+		// This allows the simulation to start and lets vehicles be dispatched before real
+		// zones are added at runtime via the addZone control message.
+		if (!hasZones) {
+			createMetaZone(geomFac);
+		}
 		
 		// Save full cache
 	    ContextCreator.logger.info("Saving neighboring graph to cache.");
@@ -325,6 +342,7 @@ public class CityContext extends DefaultContext<Object> {
 	    	NeighboringGraphCache cacheData = new NeighboringGraphCache();
 
 	        for (Zone z : ContextCreator.getZoneContext().getAll()) {
+	        	if (z.getID() == 0) continue; // meta zone is a runtime placeholder; do not persist it
 	            cacheData.saveZoneNeighbor(z.getID(), z.getNeighboringZones(), z.getNeighboringLinks(false), z.getNeighboringLinks(true), z.getClosestRoad(false), z.getClosestRoad(true));
 	        }
 	        for (Road r : ContextCreator.getRoadContext().getAll()) {
@@ -340,6 +358,117 @@ public class CityContext extends DefaultContext<Object> {
 	    }
 	}
 	
+	/**
+	 * Creates a meta zone with ID 0 that covers every road in the network.
+	 * Called when no real zones are configured so the simulation can still start
+	 * and vehicles can reference a valid zone. Roads already default to
+	 * neighboringZone=0 so no per-road assignment loop is needed; we only need
+	 * to register the meta zone and build its road links.
+	 */
+	private void createMetaZone(GeometryFactory geomFac) {
+		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
+		double sumX = 0, sumY = 0;
+		int count = 0;
+		Road firstDeptRoad = null, firstArrRoad = null;
+		for (Road r : roadGeography.getAllObjects()) {
+			sumX += r.getStartCoord().x;
+			sumY += r.getStartCoord().y;
+			count++;
+			if (firstDeptRoad == null && r.canBeOrigin()) firstDeptRoad = r;
+			if (firstArrRoad  == null && r.canBeDest())   firstArrRoad  = r;
+		}
+		Coordinate centroid = (count > 0) ? new Coordinate(sumX / count, sumY / count) : new Coordinate(0, 0);
+		Zone metaZone = new Zone(0, Integer.MAX_VALUE, Zone.ZONE);
+		metaZone.setCoord(centroid);
+		ContextCreator.getZoneContext().put(0, metaZone);
+		ContextCreator.getZoneGeography().move(metaZone, geomFac.createPoint(centroid));
+
+		for (Road r : roadGeography.getAllObjects()) {
+			if (r.canBeOrigin()) {
+				r.setNeighboringZone(0, false);
+				metaZone.addNeighboringLink(r.getID(), false);
+			}
+			if (r.canBeDest()) {
+				r.setNeighboringZone(0, true);
+				metaZone.addNeighboringLink(r.getID(), true);
+			}
+		}
+		if (firstDeptRoad != null) {
+			metaZone.setClosestRoad(firstDeptRoad.getID(), false);
+			metaZone.setDistToRoad(0.0, false);
+		}
+		if (firstArrRoad != null) {
+			metaZone.setClosestRoad(firstArrRoad.getID(), true);
+			metaZone.setDistToRoad(0.0, true);
+		}
+		ContextCreator.getZoneContext().ZONE_NUM = 1; // real zones start from ID 1
+		ContextCreator.logger.info("No zones configured; meta zone 0 created covering " + count + " roads.");
+	}
+
+	/**
+	 * Re-assigns roads whose neighboringZone is 0 (formerly pointing to the now-
+	 * removed meta zone) to the nearest real zone via spatial search.
+	 * Also updates zone neighboring-link lists accordingly.
+	 * Called once after the meta zone is removed and at least one real zone exists.
+	 */
+	public void refreshRoadZoneAssignment() {
+		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
+		Geography<Zone> zoneGeography = ContextCreator.getZoneGeography();
+		GeometryFactory geomFac = new GeometryFactory();
+
+		for (Road r : roadGeography.getAllObjects()) {
+			if (r.getNeighboringZone(false) == 0) {
+				r.setDistToZone(Double.MAX_VALUE, false);
+				com.vividsolutions.jts.geom.Point pt1 = geomFac.createPoint(r.getStartCoord());
+				double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+				while (r.getNeighboringZone(false) == 0) {
+					java.util.List<Zone> zones = new java.util.ArrayList<>();
+					for (Zone z2 : zoneGeography.getObjectsWithin(pt1.buffer(searchBuffer).getEnvelopeInternal(), Zone.class))
+						zones.add(z2);
+					zones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+					for (Zone z : zones) {
+						double dist = this.getDistance(z.getCoord(), r.getStartCoord());
+						if (dist < r.getDistToZone(false)) {
+							r.setNeighboringZone(z.getID(), false);
+							r.setDistToZone(dist, false);
+						}
+					}
+					searchBuffer *= 2;
+				}
+			}
+			if (r.getNeighboringZone(true) == 0) {
+				r.setDistToZone(Double.MAX_VALUE, true);
+				com.vividsolutions.jts.geom.Point pt2 = geomFac.createPoint(r.getEndCoord());
+				double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
+				while (r.getNeighboringZone(true) == 0) {
+					java.util.List<Zone> zones = new java.util.ArrayList<>();
+					for (Zone z2 : zoneGeography.getObjectsWithin(pt2.buffer(searchBuffer).getEnvelopeInternal(), Zone.class))
+						zones.add(z2);
+					zones.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+					for (Zone z : zones) {
+						double dist = this.getDistance(z.getCoord(), r.getEndCoord());
+						if (dist < r.getDistToZone(true)) {
+							r.setNeighboringZone(z.getID(), true);
+							r.setDistToZone(dist, true);
+						}
+					}
+					searchBuffer *= 2;
+				}
+			}
+			if (r.canBeOrigin() && r.canBeDest()) {
+				if (r.getNeighboringZone(false) != 0) {
+					Zone z = ContextCreator.getZoneContext().get(r.getNeighboringZone(false));
+					if (z != null) z.addNeighboringLink(r.getID(), false);
+				}
+				if (r.getNeighboringZone(true) != 0) {
+					Zone z = ContextCreator.getZoneContext().get(r.getNeighboringZone(true));
+					if (z != null) z.addNeighboringLink(r.getID(), true);
+				}
+			}
+		}
+		ContextCreator.logger.info("Road-zone assignments refreshed after meta zone removal.");
+	}
+
 	public double getDistance(Coordinate c1, Coordinate c2) {
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(c1.x, c1.y);

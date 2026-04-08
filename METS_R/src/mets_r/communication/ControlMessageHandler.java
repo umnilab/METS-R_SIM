@@ -2002,6 +2002,7 @@ public class ControlMessageHandler extends MessageHandler {
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 			GeometryFactory geomFac = new GeometryFactory();
 			ZoneContext zoneContext = ContextCreator.getZoneContext();
+			boolean metaZonePresent = zoneContext.contains(0);
 
 			for (ZoneParams p : params) {
 				Coordinate coord = new Coordinate(p.x, p.y);
@@ -2055,6 +2056,17 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("STATUS", "OK");
 				jsonData.add(record);
 			}
+			// Remove the meta zone once real zones have been successfully added.
+			// The meta zone was a startup placeholder used when the zone CSV was empty.
+			// refreshRoadZoneAssignment re-maps all roads (which defaulted to zone 0)
+			// to the nearest real zone via spatial search.
+			if (metaZonePresent && !jsonData.isEmpty()) {
+				zoneContext.remove(0);
+				ContextCreator.getVehicleContext().removeZoneMaps(0);
+				ContextCreator.getCityContext().refreshRoadZoneAssignment();
+				ContextCreator.logger.info("Meta zone 0 removed; roads reassigned to " + jsonData.size() + " real zone(s).");
+			}
+
 			jsonAns.put("DATA", jsonData);
 			jsonAns.put("CODE", "OK");
 		} catch (Exception e) {

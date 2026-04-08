@@ -394,6 +394,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			this.relocationTaxiMap.put(zoneID, new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
 		}
 	}
+
+	public synchronized void removeZoneMaps(int zoneID) {
+		this.availableTaxiMap.remove(zoneID);
+		this.relocationTaxiMap.remove(zoneID);
+	}
 	
 	public void executeGlobalTransfers() {
 		List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.allTransferringVehicles);

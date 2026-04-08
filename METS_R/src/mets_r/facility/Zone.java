@@ -186,6 +186,9 @@ public class Zone {
 	}
 	
 	public void stepPart1() {
+		// Guard against a stale scheduled action firing after this zone was removed
+		// (e.g. after the meta zone is removed when real zones are added at runtime).
+		if (ContextCreator.getZoneContext().get(this.getID()) == null) return;
 		// Happens at time step t
 		this.processToAddPassengers();
 		this.servePassengerByTaxi();
@@ -203,6 +206,7 @@ public class Zone {
 	}
 	
 	public void stepPart2() {
+		if (ContextCreator.getZoneContext().get(this.getID()) == null) return;
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) return;
 		// Happens between t and t + 1
 		this.passengerWaitTaxi();
