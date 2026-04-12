@@ -472,9 +472,13 @@ public class CityContext extends DefaultContext<Object> {
 	public double getDistance(Coordinate c1, Coordinate c2) {
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(c1.x, c1.y);
-		calculator.setDestinationGeographicPoint(c2.x, c2.y); 
-		double distance = calculator.getOrthodromicDistance();
-		return distance;
+		calculator.setDestinationGeographicPoint(c2.x, c2.y);
+		double horizontalDist = calculator.getOrthodromicDistance();
+		if (!Double.isNaN(c1.z) && !Double.isNaN(c2.z)) {
+			double dz = c2.z - c1.z;
+			return Math.sqrt(horizontalDist * horizontalDist + dz * dz);
+		}
+		return horizontalDist;
 	}
 	
 	public void buildRoadNetwork() {

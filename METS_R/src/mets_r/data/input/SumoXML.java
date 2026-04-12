@@ -167,8 +167,10 @@ public class SumoXML {
 		ArrayList<Coordinate> coords;
 		double startX = 0;
 		double startY = 0;
+		double startZ = 0;
 		double endX = 0;
 		double endY = 0;
+		double endZ = 0;
 		int nLane = 0;
 		
 		int roadNum = 0;
@@ -344,8 +346,10 @@ public class SumoXML {
 						roads.put(road_id, currentRoad);
 						startX = 0;
 						startY = 0;
+						startZ = 0;
 						endX = 0;
 						endY = 0;
+						endZ = 0;
 						nLane = 0;
 						inRoad = true;
 					}
@@ -372,11 +376,13 @@ public class SumoXML {
 					    currentLane.setSpeed(Double.parseDouble(attributes.getValue("speed")));
 					    currentMaxSpeed = Math.max(currentLane.getSpeed(), currentMaxSpeed);
 					    // get coords
-					    coords = new ArrayList<Coordinate>();
-					    for(String one_coord: attributes.getValue("shape").split(" ")) {
-					    	Coordinate coord = new Coordinate();
-					    	coord.x = Double.parseDouble(one_coord.split(",")[0]) - x_offs;
-					    	coord.y = Double.parseDouble(one_coord.split(",")[1]) - y_offs;
+				    coords = new ArrayList<Coordinate>();
+				    for(String one_coord: attributes.getValue("shape").split(" ")) {
+				    	Coordinate coord = new Coordinate();
+				    	String[] parts = one_coord.split(",");
+				    	coord.x = Double.parseDouble(parts[0]) - x_offs;
+				    	coord.y = Double.parseDouble(parts[1]) - y_offs;
+				    	coord.z = (parts.length > 2) ? Double.parseDouble(parts[2]) : 0.0;
 					    	try {
 								JTS.transform(coord, coord, transform);
 							} catch (TransformException e) {
@@ -391,8 +397,10 @@ public class SumoXML {
 					    
 					    startX += coords.get(0).x;
 					    startY += coords.get(0).y;
+					    startZ += coords.get(0).z;
 					    endX += coords.get(coords.size()-1).x;
 					    endY += coords.get(coords.size()-1).y;
+					    endZ += coords.get(coords.size()-1).z;
 					    nLane++;
 					    lanes.put(currentLane.getID(), currentLane);
 					    currentRoad.addLane(currentLane, 0); // Add lane to the road, lane from the rightmost to the centeriod.
@@ -415,9 +423,10 @@ public class SumoXML {
 					currentJunction.setControlType(junction_id);
 					currentJunction.setControlType(junction_type);
 					
-					Coordinate coord = new Coordinate();
-			    	coord.x = Double.parseDouble(attributes.getValue("x")) - x_offs;
-			    	coord.y = Double.parseDouble(attributes.getValue("y")) - y_offs;
+			Coordinate coord = new Coordinate();
+		    	coord.x = Double.parseDouble(attributes.getValue("x")) - x_offs;
+		    	coord.y = Double.parseDouble(attributes.getValue("y")) - y_offs;
+		    	coord.z = (attributes.getValue("z") != null) ? Double.parseDouble(attributes.getValue("z")) : 0.0;
 			    	try {
 						JTS.transform(coord, coord, transform);
 					} catch (TransformException e) {
@@ -536,10 +545,12 @@ public class SumoXML {
 		    	Coordinate coord1 = new Coordinate();
 		    	coord1.x = startX/nLane;
 		    	coord1.y = startY/nLane;
+		    	coord1.z = startZ/nLane;
 		    	coords.add(coord1);
 		    	Coordinate coord2 = new Coordinate();
 		    	coord2.x = endX/nLane;
 		    	coord2.y = endY/nLane;
+		    	coord2.z = endZ/nLane;
 		    	coords.add(coord2);
 		    	currentRoad.setRoadType(deduceRoadType(currentRoadType, currentMaxSpeed));
 				currentRoad.setCoords(coords);
@@ -747,7 +758,7 @@ public class SumoXML {
 	}
 	
 	public static void main(String[] args) {
-		SumoXML sxml = new SumoXML("data/Birmingham/facility/road/birmingham_final.net.xml");
+		SumoXML sxml = new SumoXML("data/Birmingham/facility/road/birmingham.net.xml");
 //		SumoXML sxml = new SumoXML("data/UA/facility/road/nema.net.xml");
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
 //		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");

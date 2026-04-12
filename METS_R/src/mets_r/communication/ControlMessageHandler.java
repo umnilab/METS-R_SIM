@@ -611,27 +611,28 @@ public class ControlMessageHandler extends MessageHandler {
 						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranBearingXYSpeed.vehID);
 					}
 
-					if (veh != null) {
-						double x = vehIDVehTypeTranBearingXYSpeed.x;
-						double y = vehIDVehTypeTranBearingXYSpeed.y;
-						// Transform coordinates if needed
-						if (vehIDVehTypeTranBearingXYSpeed.transformCoord) {
-							Coordinate coord = new Coordinate(x, y);
-							try {
-								JTS.transform(coord, coord,
-										SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-								x = coord.x;
-								y = coord.y;
-							} catch (TransformException e) {
-								ContextCreator.logger
-										.error("Coordinates transformation failed, input x: " + x + " y:" + y);
-								e.printStackTrace();
-							}
+				if (veh != null) {
+					double x = vehIDVehTypeTranBearingXYSpeed.x;
+					double y = vehIDVehTypeTranBearingXYSpeed.y;
+					double z = vehIDVehTypeTranBearingXYSpeed.z;
+					// Transform XY coordinates if needed (Z is in meters and not transformed)
+					if (vehIDVehTypeTranBearingXYSpeed.transformCoord) {
+						Coordinate coord = new Coordinate(x, y);
+						try {
+							JTS.transform(coord, coord,
+									SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+							x = coord.x;
+							y = coord.y;
+						} catch (TransformException e) {
+							ContextCreator.logger
+									.error("Coordinates transformation failed, input x: " + x + " y:" + y);
+							e.printStackTrace();
 						}
-						
-						veh.setCurrentCoord(new Coordinate(x, y));
-						veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
-						veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
+					}
+					
+					veh.setCurrentCoord(new Coordinate(x, y, z));
+					veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
+					veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
 
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
@@ -2004,13 +2005,13 @@ public class ControlMessageHandler extends MessageHandler {
 			ZoneContext zoneContext = ContextCreator.getZoneContext();
 			boolean metaZonePresent = zoneContext.contains(0);
 
-			for (ZoneParams p : params) {
-				Coordinate coord = new Coordinate(p.x, p.y);
-				if (p.transformCoord) {
-					try {
-						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-					} catch (TransformException e) {
-						ContextCreator.logger.error("addZone: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
+		for (ZoneParams p : params) {
+			Coordinate coord = new Coordinate(p.x, p.y, p.z);
+			if (p.transformCoord) {
+				try {
+					JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+				} catch (TransformException e) {
+					ContextCreator.logger.error("addZone: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
 						jsonData.add("KO");
 						continue;
 					}
@@ -2099,13 +2100,13 @@ public class ControlMessageHandler extends MessageHandler {
 			int nextID = ContextCreator.getChargingStationContext().getIDList().stream()
 					.mapToInt(Integer::intValue).min().orElse(0) - 1;
 
-			for (ChargingStationParams p : params) {
-				Coordinate coord = new Coordinate(p.x, p.y);
-				if (p.transformCoord) {
-					try {
-						JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-					} catch (TransformException e) {
-						ContextCreator.logger.error("addChargingStation: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
+		for (ChargingStationParams p : params) {
+			Coordinate coord = new Coordinate(p.x, p.y, p.z);
+			if (p.transformCoord) {
+				try {
+					JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+				} catch (TransformException e) {
+					ContextCreator.logger.error("addChargingStation: coordinate transform failed at (" + p.x + "," + p.y + "): " + e.getMessage());
 						jsonData.add("KO");
 						continue;
 					}

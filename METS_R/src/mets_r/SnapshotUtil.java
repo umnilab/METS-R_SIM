@@ -11,6 +11,7 @@ import com.google.gson.internal.LinkedTreeMap;
 import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
 
+import mets_r.communication.BSMDataStream;
 import mets_r.facility.*;
 import mets_r.mobility.*;
 
@@ -104,6 +105,7 @@ public class SnapshotUtil {
 		m.put("vehicleState", v.getState());
 		m.put("coordX", v.getCurrentCoord().x);
 		m.put("coordY", v.getCurrentCoord().y);
+		m.put("coordZ", v.getCurrentCoord().z);
 		m.put("roadID", v.getRoad() != null ? v.getRoad().getID() : -1);
 		m.put("laneIndex", (v.getLane() != null && v.getRoad() != null) ? v.getRoad().getLaneIndex(v.getLane()) : -1);
 		m.put("distance", v.getDistanceToNextJunction());
@@ -339,6 +341,7 @@ public class SnapshotUtil {
 		globalState.put("currentTick", ContextCreator.getCurrentTick());
 		globalState.put("agentID", getAgentIDCounter());
 		globalState.put("globalRandom", serializeRandom(GlobalVariables.RandomGenerator));
+		globalState.put("bsmRandom", serializeRandom(BSMDataStream.getRandom()));
 		globalState.put("initTick", ContextCreator.initTick);
 
 		// 2. Collect all vehicle snapshots
@@ -520,6 +523,7 @@ public class SnapshotUtil {
 
 		// Restore the global random generator
 		GlobalVariables.RandomGenerator = deserializeRandom(globalRandomStr);
+		BSMDataStream.setRandom(deserializeRandom((String) globalState.get("bsmRandom")));
 		
 //		ContextCreator.logger.info("Loaded global states");
 
@@ -681,7 +685,8 @@ public class SnapshotUtil {
 			v.setVehicleSensorType(vSensor);
 			v.setState(vState);
 			v.setCurrentCoord(new Coordinate(
-					toDouble(vs.get("coordX")), toDouble(vs.get("coordY"))));
+					toDouble(vs.get("coordX")), toDouble(vs.get("coordY")),
+					vs.containsKey("coordZ") ? toDouble(vs.get("coordZ")) : 0.0));
 			v.setSpeed(toDouble(vs.get("speed")));
 			v.setAccRate(toDouble(vs.get("accRate")));
 			v.setBearing(toDouble(vs.get("bearing")));

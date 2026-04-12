@@ -65,15 +65,17 @@ public class MessageClass{
 	    boolean transformCoord;
 	    double x;
 	    double y;
+	    double z = 0.0;
 
 	    // Constructor
 	    public VehIDVehTypeTranXY(int vehID, boolean vehType, boolean transformCoord, 
-	                                          double x, double y) {
+	                                          double x, double y, double z) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
 	        this.transformCoord = transformCoord;
 	        this.x = x;
 	        this.y = y;
+	        this.z = z;
 	    }
 	}
 	
@@ -84,17 +86,19 @@ public class MessageClass{
 	    double bearing;
 	    double x;
 	    double y;
+	    double z = 0.0;
 	    double speed;
 
 	    // Constructor
 	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
-	                                         double bearing, double x, double y, double speed) {
+	                                         double bearing, double x, double y, double z, double speed) {
 	        this.vehID = vehID;
 	        this.vehType = vehType;
 	        this.transformCoord = transformCoord;
 	        this.bearing = bearing;
 	        this.x = x;
 	        this.y = y;
+	        this.z = z;
 	        this.speed = speed;
 	    }
 	}
@@ -214,16 +218,22 @@ public class MessageClass{
     class OriginCoordDestCoordTransform {
         double origX;
         double origY;
+        double origZ = 0.0;
         double destX;
         double destY;
+        double destZ = 0.0;
         boolean transformCoord;
 
         // Constructor
-        public OriginCoordDestCoordTransform(double origX, double origY, double destX, double destY, boolean transformCoord) {
+        public OriginCoordDestCoordTransform(double origX, double origY, double origZ,
+                                             double destX, double destY, double destZ,
+                                             boolean transformCoord) {
             this.origX = origX;
             this.origY = origY;
+            this.origZ = origZ;
             this.destX = destX;
             this.destY = destY;
+            this.destZ = destZ;
             this.transformCoord = transformCoord;
         }
     }
@@ -231,17 +241,23 @@ public class MessageClass{
     class OriginCoordDestCoordTransformK {
         double origX;
         double origY;
+        double origZ = 0.0;
         double destX;
         double destY;
+        double destZ = 0.0;
         boolean transformCoord;
         int K;
 
         // Constructor
-        public OriginCoordDestCoordTransformK(double origX, double origY, double destX, double destY, boolean transformCoord, int K) {
+        public OriginCoordDestCoordTransformK(double origX, double origY, double origZ,
+                                              double destX, double destY, double destZ,
+                                              boolean transformCoord, int K) {
             this.origX = origX;
             this.origY = origY;
+            this.origZ = origZ;
             this.destX = destX;
             this.destY = destY;
+            this.destZ = destZ;
             this.transformCoord = transformCoord;
             this.K = K;
         }
@@ -462,13 +478,15 @@ public class MessageClass{
     class ZoneParams {
     	double x;
     	double y;
+    	double z = 0.0;
     	boolean transformCoord;
     	int capacity;
     	int type;
 
-    	public ZoneParams(double x, double y, boolean transformCoord, int capacity, int type) {
+    	public ZoneParams(double x, double y, double z, boolean transformCoord, int capacity, int type) {
     		this.x = x;
     		this.y = y;
+    		this.z = z;
     		this.transformCoord = transformCoord;
     		this.capacity = capacity;
     		this.type = type;
@@ -478,6 +496,7 @@ public class MessageClass{
     class ChargingStationParams {
     	double x;
     	double y;
+    	double z = 0.0;
     	boolean transformCoord;
     	int numL2;
     	int numL3;
@@ -485,9 +504,10 @@ public class MessageClass{
     	double priceL2;
     	double priceL3;
 
-    	public ChargingStationParams(double x, double y, boolean transformCoord, int numL2, int numL3, int numBus, double priceL2, double priceL3) {
+    	public ChargingStationParams(double x, double y, double z, boolean transformCoord, int numL2, int numL3, int numBus, double priceL2, double priceL3) {
     		this.x = x;
     		this.y = y;
+    		this.z = z;
     		this.transformCoord = transformCoord;
     		this.numL2 = numL2;
     		this.numL3 = numL3;
@@ -602,8 +622,8 @@ public class MessageClass{
         
         // VehIDVehTypeTranRoadIDXY
         Collection<VehIDVehTypeTranXY> vehIDVehTypeTranXYs = new ArrayList<>();
-        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(0, true, true, 12.34, 56.78));
-        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(1, false, false, 90.12, 34.56));
+        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(0, true, true, 12.34, 56.78, 0.0));
+        vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(1, false, false, 90.12, 34.56, 0.0));
 
         json = gson.toJson(vehIDVehTypeTranXYs);
         System.out.println("Serialized VehIDVehTypeTranRoadIDXY: " + json);
@@ -674,8 +694,8 @@ public class MessageClass{
 
         // OriginCoordDestCoordTransform
         Collection<OriginCoordDestCoordTransform> coordTransformList = new ArrayList<>();
-        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(10.5, 20.6, 30.7, 40.8, true));
-        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(50.1, 60.2, 70.3, 80.4, false));
+        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(10.5, 20.6, 0.0, 30.7, 40.8, 0.0, true));
+        coordTransformList.add(messageClass.new OriginCoordDestCoordTransform(50.1, 60.2, 0.0, 70.3, 80.4, 0.0, false));
 
         json = gson.toJson(coordTransformList);
         System.out.println("Serialized OriginCoordDestCoordTransform: " + json);

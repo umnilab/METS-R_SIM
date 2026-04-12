@@ -66,6 +66,7 @@ public class Lane {
 		Coordinate first_coord = this.coords.get(0);
 		coord.x = first_coord.x;
 		coord.y = first_coord.y;
+		coord.z = first_coord.z;
 		return coord;
 	}
 	
@@ -74,6 +75,7 @@ public class Lane {
 		Coordinate first_coord = this.coords.get(this.coords.size()-1);
 		coord.x = first_coord.x;
 		coord.y = first_coord.y;
+		coord.z = first_coord.z;
 		return coord;
 	}
 	

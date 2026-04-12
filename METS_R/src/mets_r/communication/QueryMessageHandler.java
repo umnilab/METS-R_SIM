@@ -98,6 +98,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("state", vehicle.getState());
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
+					record2.put("z", coord.z);
 					record2.put("bearing", vehicle.getBearing());
 					record2.put("acc", vehicle.currentAcc());
 					record2.put("speed", vehicle.currentSpeed());
@@ -223,8 +224,10 @@ public class QueryMessageHandler extends MessageHandler {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", taxi.getID());
 					record2.put("state", taxi.getState());
-					record2.put("x", taxi.getCurrentCoord().x);
-					record2.put("y", taxi.getCurrentCoord().y);
+					Coordinate currCoord = taxi.getCurrentCoord();
+					record2.put("x", currCoord.x);
+					record2.put("y", currCoord.y);
+					record2.put("z", currCoord.z);
 					record2.put("origin", taxi.getOriginID());
 					record2.put("dest", taxi.getDestID());
 					record2.put("pass_num", taxi.getPassNum());
@@ -319,14 +322,16 @@ public class QueryMessageHandler extends MessageHandler {
 								e.printStackTrace();
 							}
 						}
-						ArrayList<Double> startXY = new ArrayList<Double>();
-						startXY.add(startCoord.x);
-						startXY.add(startCoord.y);
-						res.add(startXY);
-						ArrayList<Double> endXY = new ArrayList<Double>();
-						endXY.add(endCoord.x);
-						endXY.add(endCoord.y);
-						res.add(endXY);
+						ArrayList<Double> startXYZ = new ArrayList<Double>();
+						startXYZ.add(startCoord.x);
+						startXYZ.add(startCoord.y);
+						startXYZ.add(startCoord.z);
+						res.add(startXYZ);
+						ArrayList<Double> endXYZ = new ArrayList<Double>();
+						endXYZ.add(endCoord.x);
+						endXYZ.add(endCoord.y);
+						endXYZ.add(endCoord.z);
+						res.add(endXYZ);
 					}
 					else if(laneIndex < road.getLanes().size()) {
 						if(transformCoord) {
@@ -336,27 +341,29 @@ public class QueryMessageHandler extends MessageHandler {
 									coord2.x = coord.x;
 									coord2.y = coord.y;
 									coord2.z = coord.z;
-									ArrayList<Double> xy = new ArrayList<Double>();
+									ArrayList<Double> xyz = new ArrayList<Double>();
 									try {
 										JTS.transform(coord2, coord2,
 												SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
-										xy.add(coord2.x);
-										xy.add(coord2.y);
+										xyz.add(coord2.x);
+										xyz.add(coord2.y);
+										xyz.add(coord2.z);
 									} catch (TransformException e) {
 										ContextCreator.logger
 												.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
 										e.printStackTrace();
 									}
-									res.add(xy);
+									res.add(xyz);
 								}
 							}
 						}
 						else {
 							for(Coordinate coord: road.getLane(laneIndex).getCoords()) {
-								ArrayList<Double> xy = new ArrayList<Double>();
-								xy.add(coord.x);
-								xy.add(coord.y);
-								res.add(xy);
+								ArrayList<Double> xyz = new ArrayList<Double>();
+								xyz.add(coord.x);
+								xyz.add(coord.y);
+								xyz.add(coord.z);
+								res.add(xyz);
 							}
 						}
 					}
@@ -397,8 +404,10 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("taxi_demand", zone.getTaxiRequestNum());
 					record2.put("bus_demand", zone.getBusRequestNum());
 					record2.put("veh_stock", zone.getVehicleStock());
-					record2.put("x", zone.getCoord().x);
-					record2.put("y", zone.getCoord().y);
+					Coordinate coord = zone.getCoord();
+					record2.put("x", coord.x);
+					record2.put("y", coord.y);
+					record2.put("z", coord.z);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -590,8 +599,10 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bus_charger", cs.numCharger(ChargingStation.BUS));
 					record2.put("num_available_l2", cs.capacity(ChargingStation.L2));
 					record2.put("num_available_dcfc", cs.capacity(ChargingStation.L3));
-					record2.put("x", cs.getCoord().x);
-					record2.put("y", cs.getCoord().y);
+					Coordinate coord = cs.getCoord();
+					record2.put("x", coord.x);
+					record2.put("y", coord.y);
+					record2.put("z", coord.z);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -624,8 +635,8 @@ public class QueryMessageHandler extends MessageHandler {
 			// Obtain the query results
 			for (OriginCoordDestCoordTransform originCoordDestCoordTransform: originCoordDestCoordTransforms) {
 		    	// Get orig and dest road
-				Coordinate orig = new Coordinate(originCoordDestCoordTransform.origX, originCoordDestCoordTransform.origY);
-				Coordinate dest = new Coordinate(originCoordDestCoordTransform.destX, originCoordDestCoordTransform.destY);
+			Coordinate orig = new Coordinate(originCoordDestCoordTransform.origX, originCoordDestCoordTransform.origY, originCoordDestCoordTransform.origZ);
+			Coordinate dest = new Coordinate(originCoordDestCoordTransform.destX, originCoordDestCoordTransform.destY, originCoordDestCoordTransform.destZ);
 				
 				// Transform coordinate if the input is from plain x y coord system
 				if(originCoordDestCoordTransform.transformCoord) {
@@ -733,8 +744,8 @@ public class QueryMessageHandler extends MessageHandler {
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 
 			for (OriginCoordDestCoordTransformK req: requests) {
-				Coordinate orig = new Coordinate(req.origX, req.origY);
-				Coordinate dest = new Coordinate(req.destX, req.destY);
+			Coordinate orig = new Coordinate(req.origX, req.origY, req.origZ);
+			Coordinate dest = new Coordinate(req.destX, req.destY, req.destZ);
 
 				if(req.transformCoord) {
 					try {

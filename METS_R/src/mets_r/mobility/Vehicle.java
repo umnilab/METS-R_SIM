@@ -56,6 +56,9 @@ public class Vehicle {
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 	
+	/* Constants */
+	private static final double GRAVITY = 9.81; // m/s², used for grade resistance
+	
 	/* Private variables that are not visible to descendant classes */
 	private Road destRoad_;
 	private Road originRoad_;
@@ -76,6 +79,7 @@ public class Vehicle {
 	private double maxAcceleration_; // in meter/sec2
 	private double normalDeceleration_; // in meter/sec2
 	private double maxDeceleration_; // in meter/sec2
+	private double currentLaneSlope_; // grade (rise/run) of the current lane, positive = uphill
 	private int deptime;
 	private int endTime;
 	private int originID = -1;
@@ -151,17 +155,18 @@ public class Vehicle {
 		this.rand_route_only = new Random(rand.nextInt());
 		this.rand_relocate_only = new Random(rand.nextInt());
 		this.rand_car_follow_only = new Random(rand.nextInt());
-		this.currentCoord_ = new Coordinate();
+		this.currentCoord_ = new Coordinate(0, 0, 0.0);
 		this.activityPlan = new ArrayList<Plan>(); // Empty plan
 
 		this.length = GlobalVariables.DEFAULT_VEHICLE_LENGTH;
 		this.maxAcceleration_ = 3.0;
 		this.maxDeceleration_ = -4.0;
 		this.normalDeceleration_ = -0.5;
+		this.currentLaneSlope_ = 0;
 		this.accPlan_ = new LinkedList<Double>();
 		this.accDecided_ = false;
 
-		this.previousEpochCoord = new Coordinate();
+		this.previousEpochCoord = new Coordinate(0, 0, 0.0);
 		this.endTime = 0;
 		this.atOrigin = true;
 		this.isReachDest = false;
@@ -780,6 +785,7 @@ public class Vehicle {
 		    
 			this.removeFromCurrentLane();
 			this.insertToLane(plane);
+			this.updateLaneSlope(plane.getCoords());
     }
 }
 
@@ -817,8 +823,9 @@ public class Vehicle {
 				    this.bearing_ = returnVals[1];
 				}
 			}
-			this.insertToLane(plane);
-			this.nextLane_ = null;
+		this.insertToLane(plane);
+		this.nextLane_ = null;
+		this.updateLaneSlope(plane.getCoords());
 		} else {
 			ContextCreator.logger.error("There is no target lane to set!");
 		}
@@ -946,17 +953,18 @@ public class Vehicle {
 					break;
 				}
 			}
-			this.lane = lane;
-			this.lane.addOneVehicle();
-			this.onLane = true;
-			if (coordMap.size() == 0) {
-				ContextCreator.logger.error("Teleport to lane error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
-			}
-		}
-		else {
-			ContextCreator.logger.error("Teleport to lane error, the specified distance" + distance + "is greater than the length of lane " + lane.getID());
+		this.lane = lane;
+		this.lane.addOneVehicle();
+		this.onLane = true;
+		this.updateLaneSlope(coords);
+		if (coordMap.size() == 0) {
+			ContextCreator.logger.error("Teleport to lane error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
 		}
 	}
+	else {
+		ContextCreator.logger.error("Teleport to lane error, the specified distance" + distance + "is greater than the length of lane " + lane.getID());
+	}
+}
 	
 	/**
 	 * Phase 1: evaluate and execute lane-changing decisions.
@@ -1008,13 +1016,14 @@ public class Vehicle {
 				aZ = this.yielding();
 			}
 
-			if (aZ < acc)
-				acc = aZ; // car-following rate
+		if (aZ < acc)
+			acc = aZ; // car-following rate
 
-			if (acc < maxDeceleration_) {
-				acc = maxDeceleration_;
-			}
-		} else {
+		double effMaxDec = effectiveMaxDeceleration();
+		if (acc < effMaxDec) {
+			acc = effMaxDec;
+		}
+	} else {
 			// Vehicle is at an intersection, handle it with a different (here simplified)
 			// process
 			acc = 0;
@@ -1033,22 +1042,25 @@ public class Vehicle {
 	 * @return acc Vehicle acceleration
 	 */
 	public double calcFreeFlowRate() {
+		double effNormalDec = effectiveNormalDeceleration();
+		double effMaxDec    = effectiveMaxDeceleration();
+		
 		// car following and road ends
 		if (this.nextRoad_ != null && this.road.getID() != this.nextRoad_.getID()) {
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			
 			if (nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID())>0) { // edge case 1: brake for the red light
-				double decTime = this.currentSpeed_ / this.normalDeceleration_;
+				double decTime = this.currentSpeed_ / effNormalDec;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
-					return  (Math.max(this.maxDeceleration_, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
+					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
 							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
 				}
 			}
 			
 			if (this.nextRoad_.getSpeedLimit() < this.currentSpeed_) { // edge case 2: brake to prepare for entering the next road
-				double decTime = (this.currentSpeed_ - this.nextRoad_.getSpeedLimit()) / this.normalDeceleration_;
+				double decTime = (this.currentSpeed_ - this.nextRoad_.getSpeedLimit()) / effNormalDec;
 				if (this.distance_ <= 0.5 * (this.currentSpeed_ + this.nextRoad_.getSpeedLimit()) * decTime) {
-					return  (Math.max(this.maxDeceleration_, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
+					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
 							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
 				}
 			}
@@ -1058,7 +1070,7 @@ public class Vehicle {
 		if (this.currentSpeed_ < this.desiredSpeed_) { // accelerate to reach the desired speed
 			return Math.min(this.maxAcceleration(), (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
 		} else { // decelerate if it exceeds the desired speed
-			return Math.max(this.normalDeceleration_, (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
+			return Math.max(effNormalDec, (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
 		}
 	}
 	
@@ -1089,20 +1101,22 @@ public class Vehicle {
 		hupper = GlobalVariables.H_UPPER;
 		hlower = GlobalVariables.H_LOWER;
 
+		double effNormalDec = effectiveNormalDeceleration();
+		
 		// There will be three regimes emergency/free-flow/car-following regime
 		// depending on headway
 		// Emergency regime
 		if (headway < hlower) {
 			double dv = currentSpeed_ - front.currentSpeed_;
 			if (dv < 0.0f) { // the leader is decelerating
-				acc = front.accRate_ + 0.25f * normalDeceleration_;
+				acc = front.accRate_ + 0.25f * effNormalDec;
 			} else {
 				if(space <= 0) {
 					space = 0.01f;
 				}
 				acc = front.accRate_ - 0.5f * dv * dv / space;
 			}
-			acc = Math.min(this.normalDeceleration_, acc);
+			acc = Math.min(effNormalDec, acc);
 			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
 		}
 		// Free-flow regime
@@ -1506,11 +1520,31 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Max acceleration based on IDM model
-	 * @return maximum acceleration
+	 * Max acceleration based on IDM model, adjusted for road grade.
+	 * Uphill (positive slope) reduces available acceleration; downhill increases it.
+	 * @return effective maximum acceleration in m/s²
 	 */
 	public double maxAcceleration() {
-		return maxAcceleration_ * (1 - Math.pow(this.currentSpeed_/this.desiredSpeed_, 4));
+		double gradeComponent = GRAVITY * currentLaneSlope_;
+		return maxAcceleration_ * (1 - Math.pow(this.currentSpeed_/this.desiredSpeed_, 4)) - gradeComponent;
+	}
+	
+	/**
+	 * Effective normal (comfortable) deceleration adjusted for road grade.
+	 * More negative uphill (gravity assists braking); less negative downhill (gravity opposes braking).
+	 * @return effective normal deceleration in m/s² (negative value)
+	 */
+	private double effectiveNormalDeceleration() {
+		return normalDeceleration_ - GRAVITY * currentLaneSlope_;
+	}
+	
+	/**
+	 * Effective maximum (emergency) deceleration adjusted for road grade.
+	 * More negative uphill; less negative downhill.
+	 * @return effective maximum deceleration in m/s² (negative value)
+	 */
+	private double effectiveMaxDeceleration() {
+		return maxDeceleration_ - GRAVITY * currentLaneSlope_;
 	}
 	
 	/**
@@ -2693,6 +2727,25 @@ public class Vehicle {
 	}
 	
 	/**
+	 * Compute the longitudinal grade (rise / horizontal run) of the given polyline.
+	 * Positive values indicate uphill in the direction of travel; negative = downhill.
+	 * Stores the result in currentLaneSlope_.
+	 * @param coords Ordered polyline coordinates of the lane (from start to end)
+	 */
+	private void updateLaneSlope(ArrayList<Coordinate> coords) {
+		if (coords == null || coords.size() < 2) {
+			currentLaneSlope_ = 0;
+			return;
+		}
+		double dz = coords.get(coords.size() - 1).z - coords.get(0).z;
+		double horizontalDist = 0;
+		for (int i = 0; i < coords.size() - 1; i++) {
+			horizontalDist += distance(coords.get(i), coords.get(i + 1));
+		}
+		currentLaneSlope_ = (horizontalDist > 1e-6) ? dz / horizontalDist : 0;
+	}
+	
+	/**
 	 * Distance between two locations
 	 * @param c1
 	 * @param c2
@@ -2729,7 +2782,10 @@ public class Vehicle {
 		double p = distanceTravelled / distanceToTarget;
 		if (p < 0) p = 0;
 		if (p > 1) p = 1;
-		this.setCurrentCoord(new Coordinate((1 - p) * origin.x + p * target.x, (1 - p) * origin.y + +p * target.y));
+		this.setCurrentCoord(new Coordinate(
+			(1 - p) * origin.x + p * target.x,
+			(1 - p) * origin.y + p * target.y,
+			(1 - p) * origin.z + p * target.z));
 	}
 	
 	/**
