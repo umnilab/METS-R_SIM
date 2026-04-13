@@ -79,7 +79,8 @@ public class Vehicle {
 	private double maxAcceleration_; // in meter/sec2
 	private double normalDeceleration_; // in meter/sec2
 	private double maxDeceleration_; // in meter/sec2
-	private double currentLaneSlope_; // grade (rise/run) of the current lane, positive = uphill
+	private double currentLaneSlope_; // grade (rise/run) of the current segment, positive = uphill
+	private int currentSegmentIdx_;   // index into lane.segmentSlopes[] for the segment being travelled
 	private int deptime;
 	private int endTime;
 	private int originID = -1;
@@ -163,6 +164,7 @@ public class Vehicle {
 		this.maxDeceleration_ = -4.0;
 		this.normalDeceleration_ = -0.5;
 		this.currentLaneSlope_ = 0;
+		this.currentSegmentIdx_ = 0;
 		this.accPlan_ = new LinkedList<Double>();
 		this.accDecided_ = false;
 
@@ -783,9 +785,10 @@ public class Vehicle {
 		    this.coordMap.clear();
 		    this.coordMap.addAll(newCoordMap);
 		    
-			this.removeFromCurrentLane();
-			this.insertToLane(plane);
-			this.updateLaneSlope(plane.getCoords());
+		this.removeFromCurrentLane();
+		this.insertToLane(plane);
+		currentSegmentIdx_ = segIdx - 1;
+		currentLaneSlope_ = plane.getSegmentSlope(currentSegmentIdx_);
     }
 }
 
@@ -797,35 +800,36 @@ public class Vehicle {
 		if (plane != null) {
 			this.distance_ = this.distance_ + plane.getLength();
 			
-			ArrayList<Coordinate> coords = plane.getCoords();
-			double accDist = plane.getLength();
-			for (int i = 0; i < coords.size() - 1; i++) {
-				accDist -= distance(coords.get(i), coords.get(i+1));
-				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
-					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
-						coordMap.add(coords.get(j));
-					}
-					break;
+		ArrayList<Coordinate> coords = plane.getCoords();
+		double accDist = plane.getLength();
+		for (int i = 0; i < coords.size() - 1; i++) {
+			accDist -= distance(coords.get(i), coords.get(i+1));
+			if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
+				for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
+					coordMap.add(coords.get(j));
 				}
+				currentSegmentIdx_ = i;
+				currentLaneSlope_ = plane.getSegmentSlope(i);
+				break;
 			}
-			if (coordMap.size() == 0) {
-				ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
+		}
+		if (coordMap.size() == 0) {
+			ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
+		}
+		else {
+			// Update bearing to be the directions of the first two consecutive coord in coordMap
+			if(this.coordMap.size() >= 1) {
+				Coordinate c1 = this.getCurrentCoord();
+			    Coordinate c2 = this.coordMap.get(0);
+			    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
+			    double[] returnVals = new double[2];
+			    this.distance2(c1, c2, returnVals);
+			    
+			    this.bearing_ = returnVals[1];
 			}
-			else {
-				// Update bearing to be the directions of the first two consecutive coord in coordMap
-				if(this.coordMap.size() >= 1) {
-					Coordinate c1 = this.getCurrentCoord();
-				    Coordinate c2 = this.coordMap.get(0);
-				    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
-				    double[] returnVals = new double[2];
-				    this.distance2(c1, c2, returnVals);
-				    
-				    this.bearing_ = returnVals[1];
-				}
-			}
-		this.insertToLane(plane);
-		this.nextLane_ = null;
-		this.updateLaneSlope(plane.getCoords());
+		}
+	this.insertToLane(plane);
+	this.nextLane_ = null;
 		} else {
 			ContextCreator.logger.error("There is no target lane to set!");
 		}
@@ -947,16 +951,17 @@ public class Vehicle {
 					this.nextDistance_ = (this.distance_ - accDist);
 					this.bearing_ = distAndAngle[1];
 					
-					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
-						coordMap.add(coords.get(j));
-					}
-					break;
+				for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
+					coordMap.add(coords.get(j));
 				}
+				currentSegmentIdx_ = i;
+				currentLaneSlope_ = lane.getSegmentSlope(i);
+				break;
 			}
-		this.lane = lane;
-		this.lane.addOneVehicle();
-		this.onLane = true;
-		this.updateLaneSlope(coords);
+		}
+	this.lane = lane;
+	this.lane.addOneVehicle();
+	this.onLane = true;
 		if (coordMap.size() == 0) {
 			ContextCreator.logger.error("Teleport to lane error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
 		}
@@ -1361,12 +1366,16 @@ public class Vehicle {
 					this.coordMap.add(this.currentCoord_);
 					this.onLane = false; // add to junction
 					break;
-				} else {
-					this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
-					this.distance_ -= this.nextDistance_;
-					this.nextDistance_ = distAndAngle[0];
-					this.bearing_ = distAndAngle[1];
+			} else {
+				this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
+				this.distance_ -= this.nextDistance_;
+				this.nextDistance_ = distAndAngle[0];
+				this.bearing_ = distAndAngle[1];
+				if (this.onLane && this.lane != null) {
+					currentSegmentIdx_++;
+					currentLaneSlope_ = this.lane.getSegmentSlope(currentSegmentIdx_);
 				}
+			}
 			}
 			// Otherwise move as far as we can 
 			else {
@@ -2726,24 +2735,6 @@ public class Vehicle {
 		return distance;
 	}
 	
-	/**
-	 * Compute the longitudinal grade (rise / horizontal run) of the given polyline.
-	 * Positive values indicate uphill in the direction of travel; negative = downhill.
-	 * Stores the result in currentLaneSlope_.
-	 * @param coords Ordered polyline coordinates of the lane (from start to end)
-	 */
-	private void updateLaneSlope(ArrayList<Coordinate> coords) {
-		if (coords == null || coords.size() < 2) {
-			currentLaneSlope_ = 0;
-			return;
-		}
-		double dz = coords.get(coords.size() - 1).z - coords.get(0).z;
-		double horizontalDist = 0;
-		for (int i = 0; i < coords.size() - 1; i++) {
-			horizontalDist += distance(coords.get(i), coords.get(i + 1));
-		}
-		currentLaneSlope_ = (horizontalDist > 1e-6) ? dz / horizontalDist : 0;
-	}
 	
 	/**
 	 * Distance between two locations

@@ -27,6 +27,7 @@ public class Lane {
 	private int index;
 	private ArrayList<Coordinate> coords;
 	private double length;
+	private double[] segmentSlopes; // slope[i] = dz/horizontal for segment coords[i]→coords[i+1]
 	
 	// Connection with other facilities
 	private ArrayList<Integer> upStreamLanes;// Upstream lanes that connect to this
@@ -143,6 +144,15 @@ public class Lane {
 
 	public double getLength() {
 		return length;
+	}
+
+	public void setSegmentSlopes(double[] slopes) {
+		this.segmentSlopes = slopes;
+	}
+
+	public double getSegmentSlope(int i) {
+		if (segmentSlopes == null || i < 0 || i >= segmentSlopes.length) return 0.0;
+		return segmentSlopes[i];
 	}
 	
 	public double getTurningDist(int targetLaneID) {

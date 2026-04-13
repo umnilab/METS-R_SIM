@@ -73,12 +73,25 @@ public class CityContext extends DefaultContext<Object> {
 	private void initializeLaneDistance() {
 		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
 			ArrayList<Coordinate> coords = lane.getCoords();
-			double distance = 0;
-			for (int i = 0; i < coords.size() - 1; i++) {
-				distance += getDistance(coords.get(i), coords.get(i+1));
+			int n = coords.size();
+			double length3D = 0;
+			double[] slopes = new double[Math.max(n - 1, 0)];
+			for (int i = 0; i < n - 1; i++) {
+				double h = getHorizontalDistance(coords.get(i), coords.get(i + 1));
+				double dz = coords.get(i + 1).z - coords.get(i).z;
+				length3D += Math.sqrt(h * h + dz * dz);
+				slopes[i] = (h > 1e-6) ? dz / h : 0.0;
 			}
-			lane.setLength(distance);
+			lane.setLength(length3D);
+			lane.setSegmentSlopes(slopes);
 		}
+	}
+
+	private double getHorizontalDistance(Coordinate c1, Coordinate c2) {
+		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
+		calculator.setStartingGeographicPoint(c1.x, c1.y);
+		calculator.setDestinationGeographicPoint(c2.x, c2.y);
+		return calculator.getOrthodromicDistance();
 	}
 	
 	/**
