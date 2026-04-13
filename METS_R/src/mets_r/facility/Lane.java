@@ -86,6 +86,7 @@ public class Lane {
 	public void setCoords(ArrayList<Coordinate> coords) {
 		this.coords = coords;
 	}
+
 	
 	public ArrayList<Coordinate> getCoords() {
 		// Deep copy to avoid being modified somewhere

@@ -7,6 +7,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
@@ -47,8 +49,10 @@ public class ZoneContext extends FacilityContext<Zone> {
 				if(zone.getZoneType() == Zone.HUB){
 					HUB_INDEXES.add(int_id);
 				}
-				int_id += 1;
-				zone.setCoord(zoneGeography.getGeometry(zone).getCentroid().getCoordinate());
+			int_id += 1;
+			Coordinate zCoord = zoneGeography.getGeometry(zone).getCentroid().getCoordinate();
+			zCoord.z = 0.0;
+			zone.setCoord(zCoord);
 			}
 			br.close();
 			ZONE_NUM = int_id;

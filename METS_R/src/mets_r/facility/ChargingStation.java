@@ -29,6 +29,7 @@ public class ChargingStation {
 	/* Private variables */
 	private int ID;
 	private Random rand;
+	private Coordinate coord;
 	
 	private Integer closestDepartureRoad; // Exit of the facility
 	private Integer closestArrivalRoad; // Entrance of the facility
@@ -374,8 +375,12 @@ public class ChargingStation {
 		return this.ID;
 	}
 
+	public void setCoord(Coordinate coord) {
+		this.coord = coord;
+	}
+
 	public Coordinate getCoord() {
-		return ContextCreator.getChargingStationGeography().getGeometry(this).getCentroid().getCoordinate();
+		return this.coord;
 	}
 	
 	 /**

@@ -9,8 +9,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
-import com.vividsolutions.jts.geom.Geometry;
-
 import mets_r.*;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
@@ -278,19 +276,15 @@ public class Road {
 	}
 	
 	public Coordinate getStartCoord() {
-		Coordinate coord = new Coordinate();
 		Coordinate first_coord = this.coords.get(0);
-		coord.x = first_coord.x;
-		coord.y = first_coord.y;
-		return coord;
+		return new Coordinate(first_coord.x, first_coord.y,
+				Double.isNaN(first_coord.z) ? 0.0 : first_coord.z);
 	}
 	
 	public Coordinate getEndCoord() {
-		Coordinate coord = new Coordinate();
-		Coordinate first_coord = this.coords.get(this.coords.size()-1);
-		coord.x = first_coord.x;
-		coord.y = first_coord.y;
-		return coord;
+		Coordinate last_coord = this.coords.get(this.coords.size()-1);
+		return new Coordinate(last_coord.x, last_coord.y,
+				Double.isNaN(last_coord.z) ? 0.0 : last_coord.z);
 	}
 	
 	public void setCoords(Coordinate[] coordinates) {
@@ -300,6 +294,7 @@ public class Road {
 	public void setCoords(ArrayList<Coordinate> coordinates) {
 		this.coords = coordinates;
 	}
+
 	
 	public ArrayList<Coordinate> getCoords() {
 		// Deep copy to avoid being modified somewhere
@@ -599,12 +594,9 @@ public class Road {
 	}
 
 	public void printRoadCoordinate() {
-		Geometry roadGeom = ContextCreator.getRoadGeography().getGeometry(this);
-		Coordinate start = roadGeom.getCoordinates()[0];
-		Coordinate end = roadGeom.getCoordinates()[roadGeom.getNumPoints() - 1];
 		ContextCreator.logger.info("Coordinate of road: " + this.getID());
-		ContextCreator.logger.info("Starting point: " + start);
-		ContextCreator.logger.info("Ending point: " + end);
+		ContextCreator.logger.info("Starting point: " + this.getStartCoord());
+		ContextCreator.logger.info("Ending point: " + this.getEndCoord());
 	}
 
 	/*

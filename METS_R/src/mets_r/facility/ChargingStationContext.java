@@ -5,6 +5,8 @@ import java.io.File;
 import java.io.FileReader;
 import java.net.URI;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
@@ -68,10 +70,13 @@ public class ChargingStationContext extends FacilityContext<ChargingStation> {
 					ContextCreator.logger.error(
 							"Incorrect format for charging station. The incorrect element is"+ result[0]+","+ result[1]+","+ result[2]);
 				}
-				if (cs != null) {
-					this.put(int_id, cs);
-					int_id = int_id - 1;
-				}
+			if (cs != null) {
+				this.put(int_id, cs);
+				Coordinate csCoord = chargingStationGeography.getGeometry(cs).getCentroid().getCoordinate();
+				if (Double.isNaN(csCoord.z)) csCoord.z = 0.0;
+				cs.setCoord(csCoord);
+				int_id = int_id - 1;
+			}
 			}
 			br.close();
 			ContextCreator.logger.info("Charging Station generated, total number: " + (-int_id));

@@ -377,7 +377,7 @@ public class CityContext extends DefaultContext<Object> {
 			if (firstDeptRoad == null && r.canBeOrigin()) firstDeptRoad = r;
 			if (firstArrRoad  == null && r.canBeDest())   firstArrRoad  = r;
 		}
-		Coordinate centroid = (count > 0) ? new Coordinate(sumX / count, sumY / count) : new Coordinate(0, 0);
+		Coordinate centroid = (count > 0) ? new Coordinate(sumX / count, sumY / count, 0.0) : new Coordinate(0, 0, 0.0);
 		Zone metaZone = new Zone(0, Integer.MAX_VALUE, Zone.ZONE);
 		metaZone.setCoord(centroid);
 		ContextCreator.getZoneContext().put(0, metaZone);
@@ -482,8 +482,6 @@ public class CityContext extends DefaultContext<Object> {
 	}
 	
 	public void buildRoadNetwork() {
-		// Get lane geography
-		Geography<Road> roadGeography = ContextCreator.getRoadGeography();
 		Geography<Junction> junctionGeography = ContextCreator.getJunctionGeography();
 		JunctionContext junctionContext = ContextCreator.getJunctionContext();
 		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
@@ -493,9 +491,8 @@ public class CityContext extends DefaultContext<Object> {
 		if (GlobalVariables.NETWORK_FILE.length() == 0) {
 			// Case 1: junction is not provided so we infer it from roads and lanes, shp case
 			for (Road road : ContextCreator.getRoadContext().getAll()) {
-				Geometry roadGeom = roadGeography.getGeometry(road);
-				Coordinate c1 = roadGeom.getCoordinates()[0];
-				Coordinate c2 = roadGeom.getCoordinates()[roadGeom.getNumPoints() - 1];
+				Coordinate c1 = road.getStartCoord();
+				Coordinate c2 = road.getEndCoord();
 				// Create Junctions from road coordinates and add them to the
 				// JunctionGeography (if they haven't been created already)
 				Junction junc1, junc2;

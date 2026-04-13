@@ -2113,10 +2113,10 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 
 				int csID = nextID--;
-				ChargingStation cs = new ChargingStation(csID, p.numL2, p.numL3, p.numBus, p.priceL2, p.priceL3);
-				ContextCreator.getChargingStationContext().put(csID, cs);
-				// Register in geography so cs.getCoord() (which queries the geography) works
-				ContextCreator.getChargingStationGeography().move(cs, geomFac.createPoint(coord));
+			ChargingStation cs = new ChargingStation(csID, p.numL2, p.numL3, p.numBus, p.priceL2, p.priceL3);
+			cs.setCoord(coord);
+			ContextCreator.getChargingStationContext().put(csID, cs);
+			ContextCreator.getChargingStationGeography().move(cs, geomFac.createPoint(coord));
 
 				// Find and attach the nearest departure and arrival roads
 				Road deptRoad = ContextCreator.getCityContext().findRoadAtCoordinates(coord, false);

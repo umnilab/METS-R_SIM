@@ -383,12 +383,12 @@ public class SumoXML {
 				    	coord.x = Double.parseDouble(parts[0]) - x_offs;
 				    	coord.y = Double.parseDouble(parts[1]) - y_offs;
 				    	coord.z = (parts.length > 2) ? Double.parseDouble(parts[2]) : 0.0;
-					    	try {
-								JTS.transform(coord, coord, transform);
-							} catch (TransformException e) {
-								e.printStackTrace();
-							}
-					    	coords.add(coord);
+				    	try {
+							JTS.transform(coord, coord, transform);
+						} catch (TransformException e) {
+							e.printStackTrace();
+						}
+				    	coords.add(coord);
 					    }
 					    currentLane.setCoords(coords);
 					    
