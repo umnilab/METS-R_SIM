@@ -427,6 +427,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// vehicle IDs from the previous run before set_cosim_road is called again.
 		coSimRoads.clear();
 		
+		// Re-populate the network event queue so events replay from tick 0
+		eventHandler.reinitialize();
+		
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
@@ -491,6 +494,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Release stale Road references so query_coSimVehicle cannot return
 		// vehicle IDs from the previous run before set_cosim_road is called again.
 		coSimRoads.clear();
+		
+		// Re-populate the network event queue so events replay correctly
+		eventHandler.reinitialize();
 		
 		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		

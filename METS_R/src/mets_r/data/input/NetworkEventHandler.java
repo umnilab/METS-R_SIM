@@ -79,6 +79,17 @@ public class NetworkEventHandler {
 		}
 	}
 
+	/**
+	 * Called on simulation reset: clears any running events (road speed changes
+	 * have already been wiped by the new CityContext) and re-populates the pending
+	 * queue from the event file so the next run replays all events from tick 0.
+	 */
+	public void reinitialize() {
+		this.runningQueue.clear();
+		GlobalVariables.newEventQueue.clear();
+		readEventFile();
+	}
+
 	// To be scheduled at every tick in Context Creator
 	public void checkEvents() {
 		// Get current tick

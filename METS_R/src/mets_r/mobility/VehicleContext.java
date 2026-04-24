@@ -426,9 +426,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    	currentVehicle.reachDest();
 	    }
 	    
-	    this.allTransferringVehicles.clear();
-	    this.allTransferringVehicles.clear();
-	}
+    this.allTransferringVehicles.clear();
+    this.allArrivingVehicles.clear();
+}
 	
 	public void addArrivalVehicles(Vehicle v) {
 		this.allArrivingVehicles.add(v);
