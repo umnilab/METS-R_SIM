@@ -326,14 +326,20 @@ public class ControlMessageHandler extends MessageHandler {
 					Zone originZone = null;
 					Zone destZone = null;
 					
-					if(originID >= 0) {
+					if(originID > 0) {
 						originZone = ContextCreator.getZoneContext().get(originID);
 						
 					}
 					else {
-						// randomly select a zone as origin
-						originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
-						originZone = ContextCreator.getZoneContext().get(originID);
+						if(ContextCreator.getZoneContext().ZONE_NUM == 1) {
+							originID = 0;
+							originZone = ContextCreator.getZoneContext().get(originID);
+						}
+						else {
+							// randomly select a zone as origin
+							originID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM - 1) + 1;
+							originZone = ContextCreator.getZoneContext().get(originID);
+						}
 					}
 					if(originZone == null) {
 						ContextCreator.logger.warn("Cannot find the origin with ID: " + originID);
@@ -352,14 +358,19 @@ public class ControlMessageHandler extends MessageHandler {
 						continue;
 					}
 					
-					if(destID >= 0) {
+					if(destID > 0) {
 						destZone = ContextCreator.getZoneContext().get(destID);
-						
 					}
 					else {
-						// randomly select a zone as destination
-						destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM);
-						destZone = ContextCreator.getZoneContext().get(destID);
+						if(ContextCreator.getZoneContext().ZONE_NUM == 1) {
+							destID = 0;
+							destZone = ContextCreator.getZoneContext().get(destID);
+						}
+						else {
+							// randomly select a zone as destination
+							destID = GlobalVariables.RandomGenerator.nextInt(ContextCreator.getZoneContext().ZONE_NUM - 1) + 1;
+							destZone = ContextCreator.getZoneContext().get(destID);
+						}
 					} 
 					if(destZone == null) {
 						ContextCreator.logger.warn("Cannot find the dest with ID: " + destID);
