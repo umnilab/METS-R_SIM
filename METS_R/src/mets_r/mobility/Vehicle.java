@@ -96,6 +96,12 @@ public class Vehicle {
 	private double prevDistance;
 	private double prevSpeed;
 	
+	// Speed snapshot taken at the start of each move() tick, used to keep
+	// the speed unchanged within the tick a vehicle transitions onto a
+	// CoSim road (so CARLA reads the entering speed rather than an
+	// in-tick clamped value).
+	private double tickStartSpeed_;
+	
 	// Vehicle class, status, and sensorType
 	protected int vehicleState; 
 	protected int vehicleClass; 
@@ -343,7 +349,8 @@ public class Vehicle {
 			}
 			
 			if (canEnter) {
-				this.currentSpeed_ = 0.0; // The initial speed
+				// Initial speed when departing directly onto a CoSim road.
+				this.currentSpeed_ = 0;
 				this.distance_ = 0;
 				this.setPreviousEpochCoord(lane.getStartCoord());
 				this.setCurrentCoord(lane.getStartCoord());
@@ -1290,6 +1297,14 @@ public class Vehicle {
 		/* Load the acc decision */
 		accRate_ = accPlan_.pop();
 		
+		// Snapshot the speed at the start of this tick. If this tick ends
+		// with the vehicle transitioning onto a CoSim road,
+		// executeRoadTransition() will restore this value so the speed
+		// reported to CARLA matches the speed the vehicle had when it
+		// entered the tick (in-tick braking / collision clamping is not
+		// applied to the entering speed seen by CARLA).
+		this.tickStartSpeed_ = this.currentSpeed_;
+		
 		/* Sanity check */
 		if (distance_ < -0.001 || Double.isNaN(distance_))
 			ContextCreator.logger.error("Vehicle.move(): distance_=" + distance_ + " " + this);
@@ -1519,11 +1534,27 @@ public class Vehicle {
 	 * Transitions the vehicle to the next lane and road
 	 */
 	public void executeRoadTransition(Lane targetLane, Road targetRoad) {
+        // Capture the current (source) road BEFORE we detach from it so we
+        // can detect a regular-road -> CoSim-road crossing in this tick.
+        Road sourceRoad = this.road;
+        
         this.enterNextLane(targetLane);
         this.removeFromCurrentLane();
         this.removeFromCurrentRoad();
         this.appendToLane(targetLane);
         this.appendToRoad(targetRoad);
+        
+        // When the vehicle enters a CoSim road this tick, freeze its speed
+        // at the value it had at the start of the tick. METS-R does not
+        // step dynamics on CoSim roads, so currentSpeed_ on the CoSim side
+        // is what CARLA reads via veh_inform['speed'] when (re)creating
+        // the vehicle. In-tick deceleration / collision clamping in move()
+        // can drive currentSpeed_ to ~0, which would make the CARLA-side
+        // vehicle stop abruptly at the boundary and risk rear-end collisions.
+        if (targetRoad.getControlType() == Road.COSIM
+                && (sourceRoad == null || sourceRoad.getControlType() != Road.COSIM)) {
+            this.currentSpeed_ = this.tickStartSpeed_;
+        }
 	}
 	/**
 	 * Check if the vehicle is close to a road, used when the vehicle attempts to depart from its closest road
