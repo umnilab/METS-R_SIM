@@ -191,9 +191,18 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		}
 		int privateEVOnRoad = 0;
 		int privateEVTotal = 0;
+		int privateEVStateNone = 0;
+		int privateEVStatePrivate = 0;
+		int privateEVStateCharging = 0;
+		int privateEVStateOther = 0;
 		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
 			privateEVTotal++;
 			if (ev.getRoad() != null) privateEVOnRoad++;
+			int st = ev.getState();
+			if (st == Vehicle.NONE_OF_THE_ABOVE) privateEVStateNone++;
+			else if (st == Vehicle.PRIVATE_TRIP) privateEVStatePrivate++;
+			else if (st == Vehicle.CHARGING_TRIP) privateEVStateCharging++;
+			else privateEVStateOther++;
 		}
 		int privateGVOnRoad = 0;
 		int privateGVTotal = 0;
@@ -206,6 +215,8 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.logger.warn("tick=" + currentTick + " vehicleOnRoad breakdown disagreement: "
 					+ "taxis=" + taxisOnRoad + " buses=" + busesOnRoad
 					+ " privateEV=" + privateEVOnRoad + "/" + privateEVTotal
+					+ " (none=" + privateEVStateNone + " priv=" + privateEVStatePrivate
+					+ " chg=" + privateEVStateCharging + " other=" + privateEVStateOther + ")"
 					+ " privateGV=" + privateGVOnRoad + "/" + privateGVTotal
 					+ " sum=" + byCategorySum + " vs vehicleOnRoad=" + vehicleOnRoad);
 		}

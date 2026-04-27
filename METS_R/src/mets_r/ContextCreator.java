@@ -28,6 +28,7 @@ import mets_r.communication.StepMessageHandler;
 import mets_r.data.input.BackgroundTraffic;
 import mets_r.data.input.BusSchedule;
 import mets_r.data.input.NetworkEventHandler;
+import mets_r.data.input.SumoXML;
 import mets_r.data.input.TravelDemand;
 import mets_r.data.output.*;
 import mets_r.facility.*;
@@ -430,6 +431,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Re-populate the network event queue so events replay from tick 0
 		eventHandler.reinitialize();
 		
+		// CRITICAL: drop the SumoXML singleton so the next getData() call re-parses
+		// the network file. Without this, RoadContext/LaneContext/CityContext would
+		// reuse the SAME Road/Lane/Junction/Signal objects from the previous run,
+		// carrying over nVehicles_, firstVehicle_/lastVehicle_ macro-list pointers,
+		// departureVehMap, toAddDepartureVeh, travelTime, currentFlow, etc. That is
+		// what produced the cross-run vehicleOnRoad inflation (e.g. 766 -> 1418 ->
+		// 1788 -> 2102 at tick=0 over successive resets even with zero fleet).
+		SumoXML.data = null;
+		
 		// Reload variables 
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
@@ -444,6 +454,41 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		// Regenerate the sub-contexts
 		buildSubContexts();
+		
+		// Post-reset integrity check: verify the new road network is truly fresh.
+		// If any road still reports a non-zero vehicle count immediately after
+		// rebuilding, it means we are still pointing at stale Road objects from a
+		// previous run (or removeSubContext did not actually drop the old subgraph).
+		// This is the diagnostic the inter-run vehOnRoad inflation needs.
+		int leakedRoads = 0;
+		int leakedTotal = 0;
+		int firstLeakedID = -1;
+		int firstLeakedCount = 0;
+		for (Road r : getRoadContext().getAll()) {
+			int n = r.getVehicleNum();
+			if (n != 0) {
+				leakedRoads++;
+				leakedTotal += n;
+				if (firstLeakedID < 0) {
+					firstLeakedID = r.getID();
+					firstLeakedCount = n;
+				}
+			}
+		}
+		int privEV = getVehicleContext().getPrivateEVs().size();
+		int privGV = getVehicleContext().getPrivateGVs().size();
+		int taxis = getVehicleContext().getTaxis().size();
+		int buses = getVehicleContext().getBuses().size();
+		int roadCount = getRoadContext().getAll().size();
+		if (leakedRoads > 0) {
+			logger.warn("POST-RESET LEAK: " + leakedRoads + " road(s) still have nVehicles_>0; "
+					+ "first road=" + firstLeakedID + " count=" + firstLeakedCount
+					+ " total=" + leakedTotal + " over " + roadCount + " roads");
+		} else {
+			logger.info("POST-RESET OK: all " + roadCount + " roads have nVehicles_=0");
+		}
+		logger.info("POST-RESET fleet: privateEV=" + privEV + " privateGV=" + privGV
+				+ " taxis=" + taxis + " buses=" + buses + " (initTick=" + initTick + ")");
 		
 		// Clear and reinitialize the scheduled actions
 		scheduleEvents();
@@ -497,6 +542,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		// Re-populate the network event queue so events replay correctly
 		eventHandler.reinitialize();
+		
+		// Drop the SumoXML singleton (see reset() for rationale): forces a fresh
+		// parse so RoadContext/LaneContext/CityContext do NOT reuse facility
+		// objects (Road/Lane/Junction/Signal) carrying state from the prior run.
+		SumoXML.data = null;
 		
 		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		
