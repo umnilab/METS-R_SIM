@@ -295,6 +295,18 @@ public class Vehicle {
 		// Sanity check
 		if(lane.getRoad() != road) return false;
 		
+		// Guard: if vehicle is already counted on a road, remove it first to
+		// prevent double-incrementing nVehicles_ (e.g. when a vehicle ended up
+		// in two departure queues due to a stale pending-queue entry).
+		if (this.isOnRoad()) {
+			ContextCreator.logger.warn("enterNetwork called on vehicle " + this.getID()
+					+ " that is already on road " + this.road.getID() + " – removing first to avoid double-count");
+			this.removeFromCurrentLane();
+			this.removeFromCurrentRoad();
+			this.onLane = false;
+			this.onRoad = false;
+		}
+		
 		if(road.getControlType()!=Road.COSIM) {
 			double gap = entranceGap(lane);
 			if (gap >= 1.2 * this.length()) {
@@ -1927,6 +1939,7 @@ public class Vehicle {
 		this.removeFromCurrentRoad();
 		this.onLane = false;
 		this.onRoad = false;
+		this.isReachDest = false; // Reset so a recycled vehicle enters roads normally
 		this.endTime = 0;
 		this.atOrigin = true;
 		this.accRate_ = 0;

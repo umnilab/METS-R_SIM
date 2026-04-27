@@ -187,7 +187,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
 		for (Road r : getRoadContext().getObjects(Road.class)) {
-			schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed");
+			scheduledActions.add(schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed"));
 		}
 	}
 
