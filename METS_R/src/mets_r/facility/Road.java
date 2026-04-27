@@ -179,7 +179,14 @@ public class Road {
 		    Vehicle v = this.departureVehicleQueueHead();
 		    int departTime = v.getDepTime();
 		    if (tickcount >= departTime) {
-		        if (v.getCurrentCoord() == v.getDestCoord() || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
+		        // Use value-based equality for Coordinates: getCurrentCoord()/getDestCoord() return
+		        // freshly allocated Coordinate copies, so '==' would always be false and the
+		        // origin-equals-destination shortcut would never trigger, leaving such trips
+		        // stranded in the network and inflating nVehicles_.
+		        Coordinate cur = v.getCurrentCoord();
+		        Coordinate dst = v.getDestCoord();
+		        boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
+		        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
 		            this.removeVehicleFromNewQueue(departTime, v);
 		            ContextCreator.getVehicleContext().addArrivalVehicles(v);
 		        } else if (v.enterNetwork(this)) {

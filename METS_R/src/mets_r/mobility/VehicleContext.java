@@ -328,6 +328,14 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			return null;
 		}
 	}
+
+	public Collection<ElectricVehicle> getPrivateEVs() {
+		return this.privateEVMap.values();
+	}
+
+	public Collection<Vehicle> getPrivateGVs() {
+		return this.privateGVMap.values();
+	}
 	
 	public synchronized void registerPrivateEV(int vid, ElectricVehicle ev) {
 		if(!this.vidToAgentMap.containsKey(vid)) {

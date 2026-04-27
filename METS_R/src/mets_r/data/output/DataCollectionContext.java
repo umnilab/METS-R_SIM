@@ -7,7 +7,10 @@ import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Vehicle;
 import repast.simphony.context.DefaultContext;
 
 /**
@@ -123,8 +126,18 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			}
 		}
 
+		// Diagnostic: detect a mismatch between the atomic vehicle counter (nVehicles_)
+		// and the actual macro-list size on each road. A non-zero discrepancy indicates
+		// that vehicles are leaking the counter (incremented without a matching decrement,
+		// or vice versa) or that the macro linked list has been corrupted.
+		int macroListVehicles = 0;
+		int roadsWithMismatch = 0;
+		int firstMismatchRoad = -1;
+		int firstMismatchCounter = 0;
+		int firstMismatchActual = 0;
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
-			vehicleOnRoad += r.getVehicleNum();
+			int counter = r.getVehicleNum();
+			vehicleOnRoad += counter;
 			int currentFlow =  r.getAndResetCurrentFlow();
 			if (currentFlow > 0) {
 				String formated_msg = currentTick + "," + r.getID() + "," + currentFlow + ","
@@ -136,6 +149,65 @@ public class DataCollectionContext extends DefaultContext<Object> {
 					e.printStackTrace();
 				}
 			}
+
+			// Walk the macro linked list and count vehicles.
+			int actual = 0;
+			Vehicle iv = r.firstVehicle();
+			int safety = 0;
+			while (iv != null && safety < 100000) {
+				actual++;
+				safety++;
+				Vehicle next = iv.macroTrailing();
+				if (next == iv) { break; } // self-loop guard
+				iv = next;
+			}
+			macroListVehicles += actual;
+			if (actual != counter) {
+				roadsWithMismatch++;
+				if (firstMismatchRoad < 0) {
+					firstMismatchRoad = r.getID();
+					firstMismatchCounter = counter;
+					firstMismatchActual = actual;
+				}
+			}
+		}
+		if (roadsWithMismatch > 0) {
+			ContextCreator.logger.warn("tick=" + currentTick + " nVehicles_/macro-list mismatch on "
+					+ roadsWithMismatch + " road(s); first road=" + firstMismatchRoad
+					+ " counter=" + firstMismatchCounter + " actual=" + firstMismatchActual
+					+ " (totals: counter=" + vehicleOnRoad + " macro=" + macroListVehicles + ")");
+		}
+
+		// Breakdown of vehicleOnRoad by vehicle category so the user can see whether
+		// the rising count comes from manually generated trips, autoloaded private
+		// trips, taxis, or buses. Helps separate "auto-generated traffic" from a leak.
+		int taxisOnRoad = 0;
+		for (ElectricTaxi t : ContextCreator.getVehicleContext().getTaxis()) {
+			if (t.getRoad() != null) taxisOnRoad++;
+		}
+		int busesOnRoad = 0;
+		for (ElectricBus b : ContextCreator.getVehicleContext().getBuses()) {
+			if (b.getRoad() != null) busesOnRoad++;
+		}
+		int privateEVOnRoad = 0;
+		int privateEVTotal = 0;
+		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
+			privateEVTotal++;
+			if (ev.getRoad() != null) privateEVOnRoad++;
+		}
+		int privateGVOnRoad = 0;
+		int privateGVTotal = 0;
+		for (Vehicle gv : ContextCreator.getVehicleContext().getPrivateGVs()) {
+			privateGVTotal++;
+			if (gv.getRoad() != null) privateGVOnRoad++;
+		}
+		int byCategorySum = taxisOnRoad + busesOnRoad + privateEVOnRoad + privateGVOnRoad;
+		if (byCategorySum != vehicleOnRoad) {
+			ContextCreator.logger.warn("tick=" + currentTick + " vehicleOnRoad breakdown disagreement: "
+					+ "taxis=" + taxisOnRoad + " buses=" + busesOnRoad
+					+ " privateEV=" + privateEVOnRoad + "/" + privateEVTotal
+					+ " privateGV=" + privateGVOnRoad + "/" + privateGVTotal
+					+ " sum=" + byCategorySum + " vs vehicleOnRoad=" + vehicleOnRoad);
 		}
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
