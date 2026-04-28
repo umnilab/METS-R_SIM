@@ -306,62 +306,84 @@ public class Vehicle {
 		// in two departure queues due to a stale pending-queue entry).
 		if (this.isOnRoad()) {
 			ContextCreator.logger.warn("enterNetwork called on vehicle " + this.getID()
-					+ " that is already on road " + this.road.getID() + " – removing first to avoid double-count");
-			this.removeFromCurrentLane();
-			this.removeFromCurrentRoad();
-			this.onLane = false;
-			this.onRoad = false;
+					+ " that is already on road " + this.road.getID() + " – rejecting enterNetwork call to avoid corrupting state");
+			return false;
 		}
 		
-		if(road.getControlType()!=Road.COSIM) {
-			double gap = entranceGap(lane);
-			if (gap >= 1.2 * this.length()) {
-				this.currentSpeed_ = 0.0; // The initial speed
-				this.distance_ = 0;
-				this.setPreviousEpochCoord(lane.getStartCoord());
-				this.setCurrentCoord(lane.getStartCoord());
-				this.appendToLane(lane);
-				this.appendToRoad(road);
-				return true;
-			}
-		}
-		else {
-			// This is a cosim road, we need to check the entrance condition using coordinates
-			Vehicle lastVeh1 = lane.lastVehicle();
-			Vehicle lastVeh2 = road.lastVehicle();
-			boolean canEnter = true;
-			
-			if(lastVeh1 != null) {
-				Coordinate c1 = lastVeh1.getCurrentCoord();
-				Coordinate c2 = lane.getStartCoord();
-				// Check if the gap is large enough (1.2x vehicle length)
-			    if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
-			        canEnter = false;
-			    }
-			}
-			if((lastVeh2 != null) && (lastVeh2 != lastVeh1)) {
-				Coordinate c1 = lastVeh2.getCurrentCoord();
-				Coordinate c2 = lane.getStartCoord();
-				// Check if the gap is large enough (1.2x vehicle length)
-			    if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
-			        canEnter = false;
-			    }
-			}
-			
-			if (canEnter) {
-				// Initial speed when departing directly onto a CoSim road.
-				this.currentSpeed_ = 0;
-				this.distance_ = 0;
-				this.setPreviousEpochCoord(lane.getStartCoord());
-				this.setCurrentCoord(lane.getStartCoord());
-				this.appendToLane(lane);
-				this.appendToRoad(road);
-				return true;
-			}
-			
-		}
-		
-		return false;
+		boolean canEnter = false;
+
+	    if (road.getControlType() != Road.COSIM) {
+	        double gap = entranceGap(lane);
+
+	        if (gap >= 1.2 * this.length()) {
+	            canEnter = true;
+	        }
+	    } else {
+	        canEnter = true;
+
+	        Vehicle lastVeh1 = lane.lastVehicle();
+	        Vehicle lastVeh2 = road.lastVehicle();
+
+	        if (lastVeh1 != null) {
+	            Coordinate c1 = lastVeh1.getCurrentCoord();
+	            Coordinate c2 = lane.getStartCoord();
+
+	            if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
+	                canEnter = false;
+	            }
+	        }
+
+	        if ((lastVeh2 != null) && (lastVeh2 != lastVeh1)) {
+	            Coordinate c1 = lastVeh2.getCurrentCoord();
+	            Coordinate c2 = lane.getStartCoord();
+
+	            if (ContextCreator.getCityContext().getDistance(c1, c2) < 1.2 * this.length()) {
+	                canEnter = false;
+	            }
+	        }
+	    }
+	    
+	    if (canEnter) {
+	    	// Check the upStream road
+	    	for (int lid : lane.getUpStreamLanes()) {
+	            Lane l = ContextCreator.getLaneContext().get(lid);
+	            if (l == null) continue;
+	            
+	            if(l.getRoad().getControlType() != Road.COSIM) {
+	            	Vehicle v = l.firstVehicle();
+	                if (v != null) {
+	                    if (v.getDistanceToNextJunction() < 0.5 * (v.currentSpeed()/ v.maxDeceleration_) * (v.currentSpeed()/ v.maxDeceleration_)) {
+	                        canEnter = false;
+	                        break;
+	                    }
+	                }
+	            }
+	            else {
+	            	Vehicle v = l.firstVehicle();
+		            if (v != null) {
+		                Coordinate c1 = v.getCurrentCoord();
+		                Coordinate c2 = lane.getStartCoord();
+
+		                if (ContextCreator.getCityContext().getDistance(c1, c2) < 0.5 * (v.currentSpeed()/ v.maxDeceleration_) * (v.currentSpeed()/ v.maxDeceleration_)) {
+		                    canEnter = false;
+		                    break;
+		                }
+		            }
+	            }
+	            
+	        }
+	    }
+
+	    if (!canEnter) return false;
+
+	    this.currentSpeed_ = 0.0;
+	    this.distance_ = 0;
+	    this.setPreviousEpochCoord(lane.getStartCoord());
+	    this.setCurrentCoord(lane.getStartCoord());
+	    this.appendToLane(lane);
+	    this.appendToRoad(road);
+
+	    return true;
 	}
 	
 	
