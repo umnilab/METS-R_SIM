@@ -51,6 +51,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
 	}
 
 	public void stopCollecting() {
+		if (this.jsonOutputWriter != null) {
+	        ContextCreator.dataCollector.deregisterDataConsumer(this.jsonOutputWriter);
+	        this.jsonOutputWriter = null;
+	    }
 		ContextCreator.dataCollector.stopDataCollection();
 	}
 
