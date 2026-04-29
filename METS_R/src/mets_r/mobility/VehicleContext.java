@@ -34,8 +34,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private Map<Integer, Integer> privateVIDMap; // key is the agentID, value is the ID in the TravelDemand JSON
 	private Map<Integer, Integer> vidToAgentMap; // reverse of privateVIDMap: key is vid, value is agentID
 	
-	ConcurrentLinkedQueue<Vehicle> allTransferringVehicles = new ConcurrentLinkedQueue<Vehicle>();
-	ConcurrentLinkedQueue<Vehicle> allArrivingVehicles = new ConcurrentLinkedQueue<Vehicle>();
+	ConcurrentLinkedQueue<Vehicle> allTransferringVehicles;
+	ConcurrentLinkedQueue<Vehicle> allArrivingVehicles;
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -78,6 +78,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				this.relocationTaxiMap.put(z.getID(), new TreeSet<ElectricTaxi>(TAXI_ID_ORDER));
 			}
 		}
+		
+		allTransferringVehicles = new ConcurrentLinkedQueue<Vehicle>();
+		allArrivingVehicles = new ConcurrentLinkedQueue<Vehicle>();
 	}
 
 	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {

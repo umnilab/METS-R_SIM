@@ -2547,7 +2547,7 @@ public class Vehicle {
 	 */
 	public Vehicle leadVehicle(Lane plane, double dist) {
 	    
-	    // 1. First check if a macro-lagging vehicle could actually be the new leader 
+	    // 1. First check if a macro-trailing vehicle could actually be the new leader 
 	    // due to lane projection/geometry differences.
 	    Vehicle candidate = this.macroTrailing_;
 	    while (candidate != null) {
@@ -2562,8 +2562,8 @@ public class Vehicle {
 	            }
 	        }
 	        
-	        // If the distance gets too large, we are too far behind our projected spot.
-	        if (candidate.getDistanceToNextJunction() > dist) {
+	        // If the distance gets too large, we are too far behind our projected spot, 31.459 = \pi * 10 m diameter difference on a circular road
+	        if (candidate.getDistanceToNextJunction() > dist + 31.459) {
 	            break;
 	        }
 	        candidate = candidate.macroTrailing_;
@@ -2612,7 +2612,7 @@ public class Vehicle {
 	        
 	        // If the candidate's distance becomes smaller than our projected distance, 
 	        // we are looking too far ahead in the queue to find someone behind us.
-	        if (candidate.getDistanceToNextJunction() <= dist) {
+	        if (candidate.getDistanceToNextJunction() <= dist - 31.459) {
 	            break;
 	        }
 	        candidate = candidate.macroLeading_;
