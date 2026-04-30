@@ -418,31 +418,35 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	/**
-	 * Performs a reset that is safe with respect to Repast's scheduler.
+	 * Drives the scheduler forward by exactly one tick from the connection
+	 * thread, blocking until that tick has reached its LAST_PRIORITY slot.
 	 *
-	 * Repast's removeAction() can return false for actions that are sitting in
-	 * the scheduler's mid-tick "on-deck" state, leaving recurring actions
-	 * orphaned in the schedule across resets. To avoid that we first force the
-	 * scheduler to complete one full tick (so every recurring action has been
-	 * rescheduled into the main queue with a future nextTime), and only then
-	 * call reset() on the connection thread.
+	 * Why: Repast's removeAction() can return false for actions sitting in the
+	 * scheduler's mid-tick "on-deck" state (already polled out of the queue
+	 * for execution this tick, not yet rescheduled). Tearing down the
+	 * simulation while any actions are in that state leaves recurring actions
+	 * orphaned in the schedule, which then keep firing on the static
+	 * singletons (tscheduler, eventHandler) and pin per-run heap state
+	 * (cityContext, dataContext, partitioner, ...) for garbage collection.
 	 *
-	 * Cost: one additional simulation tick is consumed per reset call. In the
-	 * synchronized control loop the side effects of that tick are (i) a final
-	 * advance of the soon-to-be-discarded simulation, and (ii) the new run
-	 * starts at the Repast tick that immediately follows.
+	 * After this method returns, every previously-recurring action has been
+	 * rescheduled into the main queue with a future nextTime, so a subsequent
+	 * removeAction() will succeed for every entry in scheduledActions.
+	 *
+	 * Cost: one extra simulation tick. In SYNCHRONIZED mode that tick runs
+	 * normally on the soon-to-be-discarded contexts and then the schedule is
+	 * torn down by the caller.
+	 *
+	 * Returns false if the wait timed out or was interrupted (caller may
+	 * still proceed but should expect the on-deck leak).
 	 *
 	 * Thread safety: must be called from the connection (control) thread, not
-	 * from inside a scheduled action.
+	 * from inside a scheduled action. In free-running mode this is a no-op
+	 * (returns false) since waitForNextStepCommand is not in the schedule.
 	 */
-	public static void deferredReset() {
+	private static boolean waitForScheduleQuiescence(String callerLabel) {
 		if (!GlobalVariables.SYNCHRONIZED) {
-			// In free-running mode the connection thread is not synchronized
-			// with the scheduler via waitForNextStepCommand, so we cannot
-			// safely roll the schedule forward by one tick from here. Fall
-			// back to the inline reset.
-			reset();
-			return;
+			return false;
 		}
 		long startTickCount = completedTickCount;
 		// Wake the parked scheduler so it executes one more tick.
@@ -456,17 +460,51 @@ public class ContextCreator implements ContextBuilder<Object> {
 				Thread.sleep(1);
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
-				logger.warn("deferredReset interrupted while waiting for tick to complete");
-				break;
+				logger.warn(callerLabel + " interrupted while waiting for tick to complete");
+				return false;
 			}
 			if (System.currentTimeMillis() - startWait > 30000) {
-				logger.error("deferredReset timed out waiting for tick to complete; "
-						+ "falling back to inline reset (some scheduled actions may leak).");
-				break;
+				logger.error(callerLabel + " timed out waiting for tick to complete; "
+						+ "proceeding inline (some scheduled actions may leak).");
+				return false;
 			}
 		}
+		return true;
+	}
+
+	/**
+	 * Performs a reset that is safe with respect to Repast's scheduler.
+	 *
+	 * See {@link #waitForScheduleQuiescence(String)} for why this is needed.
+	 * Cost: one additional simulation tick per call.
+	 *
+	 * Thread safety: must be called from the connection (control) thread.
+	 */
+	public static void deferredReset() {
+		waitForScheduleQuiescence("deferredReset");
 		// Schedule queue is now quiescent; safe to remove actions cleanly.
 		reset();
+	}
+
+	/**
+	 * Performs a load that is safe with respect to Repast's scheduler.
+	 *
+	 * load() ultimately calls rebuildForLoad(), which (like reset()) removes
+	 * every tracked recurring action and rebuilds all sub-contexts. Without
+	 * deferral, the same on-deck-queue leak that affected reset would apply
+	 * here: ~5 recurring actions per load remain in the schedule, pinning
+	 * the prior run's heap state and firing every tick on the static
+	 * singletons against the freshly-loaded contexts.
+	 *
+	 * Cost: one additional simulation tick per call.
+	 *
+	 * Thread safety: must be called from the connection (control) thread.
+	 */
+	public static void deferredLoad(String zipPath) {
+		waitForScheduleQuiescence("deferredLoad");
+		// Schedule queue is now quiescent; rebuildForLoad() will remove
+		// every tracked action cleanly.
+		load(zipPath);
 	}
 
 	// The reset function
@@ -600,11 +638,18 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void rebuildForLoad(int savedInitTick, int savedTick) {
 		logger.info("Rebuilding simulation infrastructure for load...");
 		
-		// Clear scheduled actions
+		// Clear scheduled actions (mirror of reset(): track removal so the
+		// on-deck-queue leak is visible if deferredLoad ever fails to land in
+		// a quiescent state)
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		int sizeBefore = scheduledActions.size();
+		int actuallyRemoved = 0;
 		for (ISchedulableAction scheduledAction : scheduledActions) {
-			schedule.removeAction(scheduledAction);
+			if (schedule.removeAction(scheduledAction)) {
+				actuallyRemoved++;
+			}
 		}
+		logger.info("LOAD-SCHED: tracked=" + sizeBefore + " removed=" + actuallyRemoved);
 		scheduledActions = new ArrayList<ISchedulableAction>();
 		dataContext.stopCollecting();
 		agg_logger.close();
@@ -639,6 +684,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition);
 		waitNextStepCommand = GlobalVariables.SYNCHRONIZED ? 0 : -1;
+		// Clear per-tick idempotency guards on the singleton schedulers so the
+		// first tick after load is never treated as a duplicate call from an
+		// orphaned scheduled action (defense-in-depth; mirrors reset()).
+		if (tscheduler != null) {
+			tscheduler.resetTickGuards();
+		}
 		
 		// Rebuild city context (roads, zones, charging stations from data.properties)
 		cityContext = new CityContext();

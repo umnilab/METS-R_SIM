@@ -184,7 +184,11 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonAns.put("WARN", "Missing 'path' in DATA");
 					jsonAns.put("CODE", "KO");
 				} else {
-					ContextCreator.load(zipPath);
+					// Use the deferred variant so the scheduler has fully
+					// completed the current tick (every recurring action
+					// rescheduled into the main queue) before rebuildForLoad
+					// removes them. Same on-deck-queue rationale as reset.
+					ContextCreator.deferredLoad(zipPath);
 					jsonAns.put("CODE", "OK");
 					jsonAns.put("path", zipPath);
 					jsonAns.put("tick", ContextCreator.getCurrentTick());
