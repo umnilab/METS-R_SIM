@@ -110,8 +110,14 @@ public class ControlMessageHandler extends MessageHandler {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		
 		try {
-			// Call the reset function
-			ContextCreator.reset();
+			// Use the deferred variant so the scheduler has fully completed
+			// the current tick (every recurring action rescheduled into the
+			// main queue) before we attempt to remove them. This eliminates
+			// the on-deck-queue leak that previously left ~5 recurring
+			// actions per reset firing on stale targets, which both pinned
+			// per-run heap state and inflated trip-completion counts across
+			// successive resets.
+			ContextCreator.deferredReset();
 			jsonAns.put("CODE", "OK");
 		}
 		catch (Exception e) {

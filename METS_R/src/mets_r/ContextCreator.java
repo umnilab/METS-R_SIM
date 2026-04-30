@@ -90,6 +90,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Volatile for thread-read-safe 
 	public static volatile int waitNextStepCommand = GlobalVariables.SYNCHRONIZED?0:-1;
 	
+	/**
+	 * Number of ticks for which waitForNextStepCommand() has fired (i.e. ticks
+	 * whose LAST_PRIORITY action has been reached). The connection thread uses
+	 * this to know when a full tick has completed and every recurring action
+	 * has been rescheduled, so that reset() can remove them cleanly.
+	 */
+	public static volatile long completedTickCount = 0;
+	
 	/* For enable the reset function*/
 	public static int initTick = 0;
 	private static List<ISchedulableAction> scheduledActions = new ArrayList<ISchedulableAction>();
@@ -409,6 +417,58 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return context;
 	}
 	
+	/**
+	 * Performs a reset that is safe with respect to Repast's scheduler.
+	 *
+	 * Repast's removeAction() can return false for actions that are sitting in
+	 * the scheduler's mid-tick "on-deck" state, leaving recurring actions
+	 * orphaned in the schedule across resets. To avoid that we first force the
+	 * scheduler to complete one full tick (so every recurring action has been
+	 * rescheduled into the main queue with a future nextTime), and only then
+	 * call reset() on the connection thread.
+	 *
+	 * Cost: one additional simulation tick is consumed per reset call. In the
+	 * synchronized control loop the side effects of that tick are (i) a final
+	 * advance of the soon-to-be-discarded simulation, and (ii) the new run
+	 * starts at the Repast tick that immediately follows.
+	 *
+	 * Thread safety: must be called from the connection (control) thread, not
+	 * from inside a scheduled action.
+	 */
+	public static void deferredReset() {
+		if (!GlobalVariables.SYNCHRONIZED) {
+			// In free-running mode the connection thread is not synchronized
+			// with the scheduler via waitForNextStepCommand, so we cannot
+			// safely roll the schedule forward by one tick from here. Fall
+			// back to the inline reset.
+			reset();
+			return;
+		}
+		long startTickCount = completedTickCount;
+		// Wake the parked scheduler so it executes one more tick.
+		waitNextStepCommand = 1;
+		// Block until that tick has reached its LAST_PRIORITY slot, which
+		// means every other action of the tick has executed AND been
+		// rescheduled into the queue with a future nextTime.
+		long startWait = System.currentTimeMillis();
+		while (completedTickCount == startTickCount) {
+			try {
+				Thread.sleep(1);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				logger.warn("deferredReset interrupted while waiting for tick to complete");
+				break;
+			}
+			if (System.currentTimeMillis() - startWait > 30000) {
+				logger.error("deferredReset timed out waiting for tick to complete; "
+						+ "falling back to inline reset (some scheduled actions may leak).");
+				break;
+			}
+		}
+		// Schedule queue is now quiescent; safe to remove actions cleanly.
+		reset();
+	}
+
 	// The reset function
 	public static void reset() {
 		logger.info("Restart the simulation!");
@@ -631,6 +691,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	public void waitForNextStepCommand() {
+		// Mark the current tick's LAST_PRIORITY slot as reached. Every other
+		// scheduled action for this tick has finished executing and Repast has
+		// already put its repeating instance back into the schedule queue, so
+		// from this moment until waitNextStepCommand is bumped, the schedule is
+		// in a fully quiescent state where removeAction() works reliably.
+		completedTickCount++;
 		long prevTime = -10001; // for the first tick
 		while(waitNextStepCommand == 0) {
 			try{
