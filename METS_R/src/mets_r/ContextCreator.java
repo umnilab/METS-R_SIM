@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Random;
+
 import javax.measure.unit.NonSI;
 import javax.measure.unit.SI;
 
@@ -20,6 +22,7 @@ import repast.simphony.space.graph.Network;
 import org.apache.log4j.Logger;
 import galois.partition.*;
 import mets_r.GlobalVariables;
+import mets_r.communication.BSMDataStream;
 import mets_r.communication.Connection;
 import mets_r.communication.ConnectionManager;
 import mets_r.communication.ControlMessageHandler;
@@ -412,10 +415,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		// 0. Clear scheduled actions and variables
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		for(ISchedulableAction scheduledAction : scheduledActions) {
-			schedule.removeAction(scheduledAction);
-		}
-		scheduledActions = new ArrayList<ISchedulableAction>();
+	    int sizeBefore = scheduledActions.size();
+	    int actuallyRemoved = 0;
+	    for(ISchedulableAction scheduledAction : scheduledActions) {
+	        if (schedule.removeAction(scheduledAction)) {
+	            actuallyRemoved++;
+	        }
+	    }
+	    logger.info("RESET-SCHED: tracked=" + sizeBefore + " removed=" + actuallyRemoved);
+	    scheduledActions = new ArrayList<ISchedulableAction>();
 		dataContext.stopCollecting();
 		agg_logger.close();
 		travel_demand.close();
@@ -445,6 +453,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		agentID = 0;
 		GlobalVariables.RandomGenerator = new java.util.Random(GlobalVariables.RANDOM_SEED);
+		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
+		BSMDataStream.RANDOM = new Random(GlobalVariables.RandomGenerator.nextInt()); 
+		BusSchedule.route_num = 0;
+		
 		agg_logger = new AggregatedLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
