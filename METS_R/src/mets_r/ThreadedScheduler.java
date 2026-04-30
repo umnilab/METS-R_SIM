@@ -20,6 +20,18 @@ public class ThreadedScheduler {
 	private int avg_para_time;
 	private int seq_time;
 
+	// Per-tick idempotency guards: Repast's schedule.removeAction() may silently
+	// leave recurring actions in its internal "on-deck" queue across reset(),
+	// so the same scheduled method can fire multiple times per tick (once from
+	// the new registration, once from each orphaned registration). Without these
+	// guards, the roads/zones/charging/signals would be advanced multiple times
+	// per tick, accelerating vehicle movement and inflating trip completions
+	// across successive resets.
+	private int lastRoadStepTick = -1;
+	private int lastZoneStepTick = -1;
+	private int lastChargingStationStepTick = -1;
+	private int lastSignalStepTick = -1;
+
 	public ThreadedScheduler(int N_threads) {
 		this.N_threads = N_threads;
 		this.executor = Executors.newFixedThreadPool(this.N_threads);
@@ -31,7 +43,26 @@ public class ThreadedScheduler {
 		this.seq_time = 0;
 	}
 
-	public void paraRoadStep() {		
+	/**
+	 * Called from ContextCreator.reset() so orphaned scheduled actions from a
+	 * previous run cannot fire-and-skip new actions that happen to share the
+	 * same tick value across resets (getCurrentTick() is relative to initTick).
+	 */
+	public synchronized void resetTickGuards() {
+		this.lastRoadStepTick = -1;
+		this.lastZoneStepTick = -1;
+		this.lastChargingStationStepTick = -1;
+		this.lastSignalStepTick = -1;
+	}
+
+	public void paraRoadStep() {
+		synchronized (this) {
+			int currentTick = ContextCreator.getCurrentTick();
+			if (this.lastRoadStepTick == currentTick) {
+				return; // orphaned recurring action from a previous reset
+			}
+			this.lastRoadStepTick = currentTick;
+		}
 		// Load the partitions, each partition is a subgraph of the road network
 		ArrayList<ArrayList<Road>> partitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
 		// Creates tasks to run road.step() function in each partition 
@@ -94,6 +125,13 @@ public class ThreadedScheduler {
 	}
 
 	public void paraZoneStep() {
+		synchronized (this) {
+			int currentTick = ContextCreator.getCurrentTick();
+			if (this.lastZoneStepTick == currentTick) {
+				return;
+			}
+			this.lastZoneStepTick = currentTick;
+		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			z.stepPart1();
 		}
@@ -140,6 +178,13 @@ public class ThreadedScheduler {
 	}
 
 	public void paraChargingStationStep() {
+		synchronized (this) {
+			int currentTick = ContextCreator.getCurrentTick();
+			if (this.lastChargingStationStepTick == currentTick) {
+				return;
+			}
+			this.lastChargingStationStepTick = currentTick;
+		}
 		// Load the partitions, each partition is a subset of Charging stations
 		ArrayList<ArrayList<ChargingStation>> patitionChargingStations = ContextCreator.partitioner
 				.getpartitionedChargingStations();
@@ -168,6 +213,13 @@ public class ThreadedScheduler {
 	}
 	
 	public void paraSignalStep() {
+		synchronized (this) {
+			int currentTick = ContextCreator.getCurrentTick();
+			if (this.lastSignalStepTick == currentTick) {
+				return;
+			}
+			this.lastSignalStepTick = currentTick;
+		}
 		// Load the partitions, each partition is a subset of Charging stations
 		ArrayList<ArrayList<Signal>> patitionSignals = ContextCreator.partitioner
 				.getpartitionedSignals();

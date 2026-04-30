@@ -24,6 +24,12 @@ public class NetworkEventHandler {
 	// key
 	private TreeMap<Integer, ArrayList<NetworkEventObject>> runningQueue;
 
+	// Per-tick idempotency guard for checkEvents(): Repast's removeAction() can
+	// leak recurring actions across reset(), and since eventHandler is a single
+	// static instance, orphaned registrations would otherwise re-check events
+	// multiple times per tick.
+	private int lastCheckEventsTick = -1;
+
 	// Constructor: initialize everything
 	public NetworkEventHandler() {
 		runningQueue = new TreeMap<Integer, ArrayList<NetworkEventObject>>();
@@ -87,13 +93,20 @@ public class NetworkEventHandler {
 	public void reinitialize() {
 		this.runningQueue.clear();
 		GlobalVariables.newEventQueue.clear();
+		this.lastCheckEventsTick = -1;
 		readEventFile();
 	}
 
 	// To be scheduled at every tick in Context Creator
-	public void checkEvents() {
+	public synchronized void checkEvents() {
 		// Get current tick
 		int tickcount = ContextCreator.getCurrentTick();
+		// Skip if an orphaned scheduled action (leaked across reset()) already
+		// processed this tick.
+		if (this.lastCheckEventsTick == tickcount) {
+			return;
+		}
+		this.lastCheckEventsTick = tickcount;
 		// check new events
 		checkNewEvents(tickcount);
 		// terminate old events

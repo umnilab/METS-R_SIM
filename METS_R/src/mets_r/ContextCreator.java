@@ -463,6 +463,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
 		waitNextStepCommand = 0;
+		// Clear per-tick idempotency guards on the singleton schedulers so that
+		// the first tick of the new run is never treated as a duplicate call
+		// from an orphaned scheduled action.
+		if (tscheduler != null) {
+			tscheduler.resetTickGuards();
+		}
 		
 		// Regenerate the sub-contexts
 		buildSubContexts();
