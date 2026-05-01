@@ -132,9 +132,23 @@ public class BusSchedule {
 			ArrayList<Road> stopRoads = new ArrayList<Road>();
 			for(int zoneID: oneRoute) {
 				Zone z = ContextCreator.getZoneContext().get(zoneID);
-				stopRoads.add(ContextCreator.getRoadContext().get(z.getClosestRoad(false)));
+				Integer closestRoadID = z.getClosestRoad(false);
+				if (closestRoadID == null) {
+					ContextCreator.logger.error("Route " + rID + ": zone " + zoneID + " has no reachable destination road; route will be skipped.");
+					stopRoads = null;
+					break;
+				}
+				Road r = ContextCreator.getRoadContext().get(closestRoadID);
+				if (r == null) {
+					ContextCreator.logger.error("Route " + rID + ": zone " + zoneID + " closest road ID " + closestRoadID + " not found in road context; route will be skipped.");
+					stopRoads = null;
+					break;
+				}
+				stopRoads.add(r);
 			}
-			toVisitRoads.put(rID, stopRoads);
+			if (stopRoads != null) {
+				toVisitRoads.put(rID, stopRoads);
+			}
 		}
 		
 		// Translate bus route into bus schedules
@@ -166,7 +180,17 @@ public class BusSchedule {
 		ArrayList<Road> stopRoads = new ArrayList<Road>();
 		for(int zoneID: stopZones) {
 			Zone z = ContextCreator.getZoneContext().get(zoneID);
-			stopRoads.add(ContextCreator.getRoadContext().get(z.getClosestRoad(false)));
+			Integer closestRoadID = z.getClosestRoad(false);
+			if (closestRoadID == null) {
+				ContextCreator.logger.error("insertNewRoute " + routeName + ": zone " + zoneID + " has no reachable destination road.");
+				return false;
+			}
+			Road r = ContextCreator.getRoadContext().get(closestRoadID);
+			if (r == null) {
+				ContextCreator.logger.error("insertNewRoute " + routeName + ": zone " + zoneID + " closest road ID " + closestRoadID + " not found.");
+				return false;
+			}
+			stopRoads.add(r);
 		}
 		return insertNewRoute(routeName, stopZones, stopRoads, null);
 	}

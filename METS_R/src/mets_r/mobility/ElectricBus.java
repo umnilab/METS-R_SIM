@@ -69,6 +69,18 @@ public class ElectricBus extends ElectricVehicle {
 		initializeEVFields(GlobalVariables.BUS_BATTERY, 18000, 666, GlobalVariables.BUS_RECHARGE_LEVEL_LOW, GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);
 		this.routeID = routeID;
 		this.stopZones = route;
+		// Add stop Roads
+		this.stopRoads = new ArrayList<Road>();
+		for(int zid: this.stopZones) {
+			Zone z = ContextCreator.getZoneContext().get(zid);
+			Integer closestRoadID = z.getClosestRoad(false);
+			if (closestRoadID == null) {
+				ContextCreator.logger.error("ElectricBus constructor: zone " + zid + " has no reachable destination road.");
+				this.stopRoads.add(null);
+				continue;
+			}
+			this.stopRoads.add(ContextCreator.getRoadContext().get(closestRoadID));
+		}
 		this.zoneStops = new HashMap<Integer, Integer>();
 		for (int i = 0; i < route.size(); i++) {
 			zoneStops.put(route.get(i), i);
@@ -205,15 +217,19 @@ public class ElectricBus extends ElectricVehicle {
 				} else if (GlobalVariables.PROACTIVE_CHARGING && batteryLevel <= higherBatteryRechargeLevel_
 						&& !ContextCreator.bus_schedule.hasSchedule(this.stopZones.get(0))) {
 					this.goCharging(ChargingStation.BUS);
-				} else {
-					ContextCreator.bus_schedule.popSchedule(this.stopZones.get(0), this);
-					super.leaveNetwork();
+			} else {
+				ContextCreator.bus_schedule.popSchedule(this.stopZones.get(0), this);
+				super.leaveNetwork();
+				// stopRoads is null when popSchedule found no pending schedule and called
+				// updateSchedule(null); in that case the bus stays idle rather than departing.
+				if (stopRoads != null) {
 					this.addPlan(stopZones.get(nextStop),
 							stopRoads.get(nextStop).getID(),
 							Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop)));
 					this.setNextPlan();
 					this.departure();
 				}
+			}
 			} else {
 				// Passengers get on board
 				Zone arrivedZone = ContextCreator.getZoneContext().get(this.stopZones.get(this.nextStop));
