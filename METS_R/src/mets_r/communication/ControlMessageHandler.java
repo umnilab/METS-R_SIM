@@ -1048,7 +1048,7 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 					// generate request
 					ArrayList<Request> plist = new ArrayList<Request>();
-					Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), vehIDOrigDestNum.num);
+					Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z2.sampleRoad(true), vehIDOrigDestNum.num);
 						if(veh.getState() == Vehicle.PARKING) {
 							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
 						}
@@ -1174,7 +1174,7 @@ public class ControlMessageHandler extends MessageHandler {
 					Zone z2 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.dest);
 					if(z1 != null && z2 != null) {
 						// generate request
-						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z1.sampleRoad(true), zoneIDOrigDestNum.num);
+						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z2.sampleRoad(true), zoneIDOrigDestNum.num);
 						z1.insertTaxiPass(p);
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
