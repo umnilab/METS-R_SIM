@@ -163,6 +163,29 @@ public class MessageClass{
     	}
     }
     
+    // For dispatchTaxi / dispTaxiBwRoads: pair an available taxi with an
+    // already-pending request (added via addTaxiRequests or addTaxiReqBwRoads).
+    class VehIDReqID{
+    	int vehID;
+    	int reqID;
+    	
+    	public VehIDReqID(int vehID, int reqID) {
+    		this.vehID = vehID;
+    		this.reqID = reqID;
+    	}
+    }
+    
+    // For repositionTaxi: send an idle/cruising taxi to a destination zone.
+    class VehIDZoneID{
+    	int vehID;
+    	int zoneID;
+    	
+    	public VehIDZoneID(int vehID, int zoneID) {
+    		this.vehID = vehID;
+    		this.zoneID = zoneID;
+    	}
+    }
+    
     class ZoneIDOrigDestRouteNameNum{
     	int zoneID;
     	int dest;

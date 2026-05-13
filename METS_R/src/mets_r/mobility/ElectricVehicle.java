@@ -120,7 +120,10 @@ public class ElectricVehicle extends Vehicle {
 		    	this.setNextPlan();
 		    	this.departure();
 		    }
-			else if(batteryLevel <= lowerBatteryRechargeLevel_) {
+			else if(batteryLevel <= lowerBatteryRechargeLevel_
+					&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
+				// Built-in charging trigger is bypassed when an external
+				// Control API owns charging decisions.
 				super.reachDestButNotLeave(); // Go charging
 				this.goCharging();
 			}

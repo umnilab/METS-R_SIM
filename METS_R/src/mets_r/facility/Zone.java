@@ -191,9 +191,16 @@ public class Zone {
 		if (ContextCreator.getZoneContext().get(this.getID()) == null) return;
 		// Happens at time step t
 		this.processToAddPassengers();
-		this.servePassengerByTaxi();
-		this.handleParkingRequests();
-		this.relocateTaxi();
+		// Built-in dispatching is bypassed when an external Control API owns it.
+		if (!GlobalVariables.DISPATCHING_CONTROLLED_BY_CONTROL_APIS) {
+			this.servePassengerByTaxi();
+		}
+		// Built-in repositioning (parking handoff + proactive relocation) is
+		// bypassed when an external Control API owns it.
+		if (!GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS) {
+			this.handleParkingRequests();
+			this.relocateTaxi();
+		}
 		
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) return;
 		// Handle private vehicle first
@@ -992,6 +999,11 @@ public class Zone {
 	public Queue<Request> getTaxiRequestQueue() { return this.requestInQueueForTaxi; }
 	public Queue<Request> getBusRequestQueue() { return this.requestInQueueForBus; }
 	public Map<Integer, Queue<Request>> getSharableRequestForTaxi() { return this.sharableRequestForTaxi; }
+	// Requests inserted via insertTaxiPass/insertBusPass that haven't been
+	// drained by processToAddPassengers yet. Exposed so the Control API can
+	// look up / cancel requests in the same tick they were inserted.
+	public Queue<Request> getToAddTaxiRequestQueue() { return this.toAddRequestForTaxi; }
+	public Queue<Request> getToAddBusRequestQueue() { return this.toAddRequestForBus; }
 	public void setFutureDemand(double v) { this.futureDemand = v; }
 	public void setFutureSupply(int v) { this.futureSupply.set(v); }
 	public void setVehicleSurplus(double v) { this.vehicleSurplus = v; }

@@ -2,8 +2,10 @@ package mets_r.communication;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Queue;
 import java.util.Random;
 
 import org.geotools.geometry.jts.JTS;
@@ -25,6 +27,7 @@ import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
 import mets_r.routing.RouteContext;
 import mets_r.communication.MessageClass.*;
@@ -33,24 +36,61 @@ public class QueryMessageHandler extends MessageHandler {
 	private Random rand_route = new Random(GlobalVariables.RandomGenerator.nextInt());
 	
 	public QueryMessageHandler() {
+        // =============================================================
+        // Vehicles
+        // =============================================================
         messageHandlers.put("vehicle", this::getVehicle);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
         messageHandlers.put("bus", this::getBus);
+        messageHandlers.put("availableTaxis", this::getAvailableTaxis);
+        
+        // =============================================================
+        // Roads & geometry
+        // =============================================================
         messageHandlers.put("road", this::getRoad);
-        messageHandlers.put("zone", this::getZone);
-        messageHandlers.put("signal", this::getSignal);
-        messageHandlers.put("signalGroup", this::getSignalGroup);
-        messageHandlers.put("signalForConnection", this::getSignalForConnection);
-        messageHandlers.put("chargingStation", this::getChargingStation);
+        messageHandlers.put("centerLine", this::getCenterLine);
+        
+        // =============================================================
+        // Routes & routing weights
+        // =============================================================
         messageHandlers.put("routesBwCoords", this::getRoutesBwCoords);
         messageHandlers.put("routesBwRoads", this::getRoutesBwRoads);
         messageHandlers.put("multiRoutesBwCoords", this::getKRoutesBwCoords);
         messageHandlers.put("multiRoutesBwRoads", this::getKRoutesBwRoads);
         messageHandlers.put("edgeWeight", this::getEdgeWeight);
+        
+        // =============================================================
+        // Zones
+        // =============================================================
+        messageHandlers.put("zone", this::getZone);
+        
+        // =============================================================
+        // Charging stations
+        // =============================================================
+        messageHandlers.put("chargingStation", this::getChargingStation);
+        
+        // =============================================================
+        // Bus routes
+        // =============================================================
         messageHandlers.put("busRoute", this::getBusRoute);
         messageHandlers.put("busWithRoute", this::getBusWithRoute);
-        messageHandlers.put("centerLine", this::getCenterLine);  
+        
+        // =============================================================
+        // Traffic signals
+        // =============================================================
+        messageHandlers.put("signal", this::getSignal);
+        messageHandlers.put("signalGroup", this::getSignalGroup);
+        messageHandlers.put("signalForConnection", this::getSignalForConnection);
+        
+        // =============================================================
+        // Ride-hailing requests
+        // =============================================================
+        messageHandlers.put("pendingRequests", this::getPendingRequests);
+        messageHandlers.put("request", this::getRequest);
+        // Backward-compat aliases for earlier names
+        messageHandlers.put("queryPendingRequests", this::getPendingRequests);
+        messageHandlers.put("queryRequest", this::getRequest);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -61,8 +101,22 @@ public class QueryMessageHandler extends MessageHandler {
         return JSONObject.toJSONString(jsonAns);
 	}
 	
+	// =============================================================
+	// VEHICLES
+	// =============================================================
+	
+	/**
+	 * Fetch live state for one or more vehicles.
+	 *
+	 * <p>Input DATA (optional): list of {@code {vehID, vehType,
+	 * transformCoord}}. If omitted, returns {@code public_vids} and
+	 * {@code private_vids} ID lists instead of per-vehicle records.
+	 *
+	 * <p>Output DATA: list of records carrying ID, vehicle class, state,
+	 * (x, y, z) coords, bearing, acceleration, speed, plus road / lane /
+	 * distance-to-next-junction if the vehicle is on a road.
+	 */
 	public HashMap<String, Object> getVehicle(JSONObject jsonMsg) {
-		// vid, vtype, x, y, bearing, acc, speed, currRoad, currLane, o, d, oroad, droad, roadlists
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonObj.put("public_vids", ContextCreator.getVehicleContext().getPublicVehicleIDList());
@@ -128,9 +182,17 @@ public class QueryMessageHandler extends MessageHandler {
 	    
 	}
 	
-	// 0. Mapping CARLA ROAD to METS-R Road (coSimRoads, id: CARLA/SUMO road ID, value: METS-R road)
-	// 1. Get in road vehicle
-	// 2. Send the vehicle id in two lists
+	/**
+	 * Snapshot of every vehicle currently on a co-simulation road
+	 * (i.e. roads previously marked via the {@code setCoSimRoad} control
+	 * API). Used by the bridge to a CARLA / SUMO simulator.
+	 *
+	 * <p>Output DATA: list of {@code {ID, v_type, coord_map, route}} for
+	 * each vehicle currently inhabiting a co-sim road, where
+	 * {@code coord_map} is a short trail of recent coordinates and
+	 * {@code v_type} is {@code true} for private, {@code false} for
+	 * public.
+	 */
 	public  HashMap<String, Object> getCoSimVehicle(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		
@@ -168,6 +230,15 @@ public class QueryMessageHandler extends MessageHandler {
 		return jsonObj;
 	}
 	
+	/**
+	 * Fetch live status for one or more buses.
+	 *
+	 * <p>Input DATA (optional): list of integer bus IDs. If omitted,
+	 * returns the {@code id_list} of all known buses.
+	 *
+	 * <p>Output DATA: list of {@code {ID, route, current_stop, pass_num,
+	 * battery_state}} records.
+	 */
 	public  HashMap<String, Object> getBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -206,6 +277,16 @@ public class QueryMessageHandler extends MessageHandler {
 		}		
 	}
 	
+	/**
+	 * Fetch live status for one or more taxis (any state).
+	 * For only-idle taxis use {@link #getAvailableTaxis} instead.
+	 *
+	 * <p>Input DATA (optional): list of integer taxi IDs. If omitted,
+	 * returns the {@code id_list} of all known taxis.
+	 *
+	 * <p>Output DATA: list of {@code {ID, state, x, y, z, origin, dest,
+	 * pass_num}} records.
+	 */
 	public HashMap<String, Object> getTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -246,6 +327,21 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// ROADS & GEOMETRY
+	// =============================================================
+	
+	/**
+	 * Fetch live state for one or more roads.
+	 *
+	 * <p>Input DATA (optional): list of original road IDs. If omitted,
+	 * returns the {@code id_list} (internal IDs) and {@code orig_id}
+	 * (external original IDs) of all roads.
+	 *
+	 * <p>Output DATA: list of {@code {ID, r_type, num_veh, speed_limit,
+	 * avg_travel_time, length, energy_consumed, down_stream_road}}
+	 * records.
+	 */
 	public HashMap<String, Object> getRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -286,6 +382,18 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	/**
+	 * Fetch the polyline of a road or one of its lanes.
+	 *
+	 * <p>Input DATA: list of {@code {roadID, laneIndex, transformCoord}}.
+	 * Use {@code laneIndex = -1} for the road's start/end coordinates;
+	 * otherwise the coordinates of the specified lane are returned. If
+	 * {@code transformCoord} is {@code true} the coordinates are
+	 * back-transformed into the network file's source CRS.
+	 *
+	 * <p>Output DATA: list of {@code {ID, centerline}} records where
+	 * {@code centerline} is an array of {@code [x, y, z]} points.
+	 */
 	public HashMap<String, Object> getCenterLine(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -383,6 +491,19 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// ZONES
+	// =============================================================
+	
+	/**
+	 * Fetch live state for one or more zones.
+	 *
+	 * <p>Input DATA (optional): list of integer zone IDs. If omitted,
+	 * returns the {@code id_list} of all zones.
+	 *
+	 * <p>Output DATA: list of {@code {ID, z_type, taxi_demand, bus_demand,
+	 * veh_stock, x, y, z}} records.
+	 */
 	public HashMap<String, Object> getZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -423,6 +544,19 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// TRAFFIC SIGNALS
+	// =============================================================
+	
+	/**
+	 * Fetch live state for one or more traffic signals.
+	 *
+	 * <p>Input DATA (optional): list of integer signal IDs. If omitted,
+	 * returns the {@code id_list} of all signals.
+	 *
+	 * <p>Output DATA: list of {@code {ID, groupID, state, nex_state,
+	 * next_update_time, phase_ticks}} records.
+	 */
 	public HashMap<String, Object> getSignal(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -460,7 +594,16 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
-	// Query signals based on its origID (in the SUMO xml)
+	/**
+	 * Resolve a signal group (the SUMO origID identifying a co-located
+	 * group of signal heads) to the internal METS-R signal IDs belonging
+	 * to it.
+	 *
+	 * <p>Input DATA (optional): list of signal group origIDs. If omitted,
+	 * returns the {@code id_list} of all known group origIDs.
+	 *
+	 * <p>Output DATA: list of {@code {groupID, signalIDs}} records.
+	 */
 	public HashMap<String, Object> getSignalGroup(JSONObject jsonMsg){
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -494,9 +637,17 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
-	// Query signal ID for a connection between two consecutive roads
-	// Input: upstream road ID, downstream road ID (using original road IDs)
-	// Returns: signal ID, current state, next state, next update tick, phase timing
+	/**
+	 * Resolve the signal controlling a specific upstream-to-downstream
+	 * road connection (i.e. a turning movement at a junction).
+	 *
+	 * <p>Input DATA: list of {@code {upStreamRoad, downStreamRoad}} where
+	 * both are original road IDs.
+	 *
+	 * <p>Output DATA: list of {@code {upStreamRoad, downStreamRoad,
+	 * signalID, state, next_state, next_update_tick, phase_ticks,
+	 * junction_id, STATUS, REASON?}} records.
+	 */
 	public HashMap<String, Object> getSignalForConnection(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -575,6 +726,20 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// CHARGING STATIONS
+	// =============================================================
+	
+	/**
+	 * Fetch live state for one or more charging stations.
+	 *
+	 * <p>Input DATA (optional): list of integer station IDs. If omitted,
+	 * returns the {@code id_list} of all stations.
+	 *
+	 * <p>Output DATA: list of {@code {ID, l2_charger, dcfc_charger,
+	 * l2_price, dcfc_price, bus_charger, num_available_l2,
+	 * num_available_dcfc, x, y, z}} records.
+	 */
 	public HashMap<String, Object> getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -618,7 +783,21 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
-	// Place holders for APIs to be implemented
+	// =============================================================
+	// ROUTES & ROUTING WEIGHTS
+	// =============================================================
+	
+	/**
+	 * Single shortest-path route between two world coordinates.
+	 *
+	 * <p>Input DATA: list of {@code {origX, origY, origZ, destX, destY,
+	 * destZ, transformCoord}}. With {@code transformCoord = true} the
+	 * coordinates are first transformed from the network file's source
+	 * CRS into METS-R's internal CRS.
+	 *
+	 * <p>Output DATA: list of {@code {road_list}} records (original road
+	 * IDs along the path), or {@code "KO"} for unreachable pairs.
+	 */
 	public HashMap<String, Object> getRoutesBwCoords(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -682,6 +861,13 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	/**
+	 * Like {@link #getRoutesBwCoords} but with origin/destination
+	 * specified as road IDs.
+	 *
+	 * <p>Input DATA: list of {@code {orig, dest}}.
+	 * <p>Output DATA: list of {@code {road_list}} records.
+	 */
 	public HashMap<String, Object> getRoutesBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -730,6 +916,14 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	/**
+	 * Top-K shortest paths between two world coordinates.
+	 *
+	 * <p>Input DATA: list of {@code {origX, origY, origZ, destX, destY,
+	 * destZ, transformCoord, K}}.
+	 * <p>Output DATA: list of {@code {road_lists}} records where
+	 * {@code road_lists} is an array of K route arrays.
+	 */
 	public HashMap<String, Object> getKRoutesBwCoords(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -785,6 +979,12 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 
+	/**
+	 * Top-K shortest paths between two road IDs.
+	 *
+	 * <p>Input DATA: list of {@code {orig, dest, K}}.
+	 * <p>Output DATA: list of {@code {road_lists}} records.
+	 */
 	public HashMap<String, Object> getKRoutesBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -832,6 +1032,17 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 
+	/**
+	 * Fetch the current routing weight of one or more road edges (i.e.
+	 * the value used by online shortest-path computation, which may have
+	 * been overridden via the {@code updateEdgeWeight} control API).
+	 *
+	 * <p>Input DATA (optional): list of original road IDs. If omitted,
+	 * returns {@code id_list} / {@code orig_id} of all roads.
+	 *
+	 * <p>Output DATA: list of {@code {ID, r_type, avg_travel_time, length,
+	 * weight}} records.
+	 */
 	public HashMap<String, Object> getEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -871,6 +1082,20 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// BUS ROUTES
+	// =============================================================
+	
+	/**
+	 * Fetch the stop list of one or more bus routes.
+	 *
+	 * <p>Input DATA (optional): list of route names. If omitted, returns
+	 * {@code id_list} (route IDs) and {@code orig_id} (route names) of all
+	 * known routes.
+	 *
+	 * <p>Output DATA: list of {@code {routeName, routeID, stopZones,
+	 * stopRoads}} records.
+	 */
 	public HashMap<String, Object> getBusRoute(JSONObject jsonMsg){
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -909,6 +1134,296 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	
+	// =============================================================
+	// RIDE-HAILING REQUESTS & AVAILABLE TAXIS
+	// =============================================================
+	
+	/**
+	 * Query pending taxi/bus requests waiting in zone queues.
+	 *
+	 * <p>Registered keys: {@code "pendingRequests"} (canonical),
+	 * {@code "queryPendingRequests"} (backward-compat alias).
+	 *
+	 * <p>Input DATA (optional): a single integer zoneID. If omitted,
+	 * pending requests from all zones are returned.
+	 *
+	 * <p>Output DATA: list of request summaries; each entry includes the
+	 * request ID, origin/destination zone &amp; road, party size, generation
+	 * &amp; current waiting time, and a {@code "status"} tag indicating which
+	 * queue the request was found in (one of {@code "pending_taxi"},
+	 * {@code "pending_taxi_sharable"}, {@code "pending_taxi_toAdd"},
+	 * {@code "pending_bus"}, or {@code "pending_bus_toAdd"}).
+	 */
+	public HashMap<String, Object> getPendingRequests(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			Collection<Zone> zonesToCheck;
+			if (!jsonMsg.containsKey("DATA")) {
+				zonesToCheck = ContextCreator.getZoneContext().getAll();
+			} else {
+				int zoneID;
+				try {
+					zoneID = Integer.parseInt(jsonMsg.get("DATA").toString().trim());
+				} catch (NumberFormatException nfe) {
+					jsonObj.put("WARN", "DATA must be a zone ID (integer)");
+					jsonObj.put("CODE", "KO");
+					return jsonObj;
+				}
+				Zone z = ContextCreator.getZoneContext().get(zoneID);
+				if (z == null) {
+					jsonObj.put("WARN", "Zone " + zoneID + " not found");
+					jsonObj.put("CODE", "KO");
+					return jsonObj;
+				}
+				zonesToCheck = Collections.singletonList(z);
+			}
+			
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (Zone z : zonesToCheck) {
+				for (Request r : z.getTaxiRequestQueue()) {
+					jsonData.add(requestSummary(r, "pending_taxi", z.getID()));
+				}
+				for (Queue<Request> sq : z.getSharableRequestForTaxi().values()) {
+					for (Request r : sq) {
+						jsonData.add(requestSummary(r, "pending_taxi_sharable", z.getID()));
+					}
+				}
+				// Requests inserted in this tick that haven't been drained
+				// into requestInQueueForTaxi by processToAddPassengers yet
+				for (Request r : z.getToAddTaxiRequestQueue()) {
+					jsonData.add(requestSummary(r, "pending_taxi_toAdd", z.getID()));
+				}
+				for (Request r : z.getBusRequestQueue()) {
+					jsonData.add(requestSummary(r, "pending_bus", z.getID()));
+				}
+				for (Request r : z.getToAddBusRequestQueue()) {
+					jsonData.add(requestSummary(r, "pending_bus_toAdd", z.getID()));
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getPendingRequests: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+	
+	/**
+	 * Fetch the current info for one or more requests by ID. Searches
+	 * pending queues across all zones plus on-board / to-board passenger
+	 * lists on active taxis and buses, so requests can be tracked through
+	 * their full lifecycle. Returns {@code {"ID": reqID, "STATUS": "KO"}}
+	 * for any unknown ID.
+	 *
+	 * <p>Registered keys: {@code "request"} (canonical),
+	 * {@code "queryRequest"} (backward-compat alias).
+	 *
+	 * <p>Input DATA: collection of integer request IDs.
+	 */
+	public HashMap<String, Object> getRequest(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("WARN", "No DATA field found. Expected a list of request IDs.");
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+			Collection<Integer> reqIDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			for (int reqID : reqIDs) {
+				HashMap<String, Object> rec = findRequestInfo(reqID);
+				if (rec != null) {
+					jsonData.add(rec);
+				} else {
+					HashMap<String, Object> ko = new HashMap<String, Object>();
+					ko.put("ID", reqID);
+					ko.put("STATUS", "KO");
+					jsonData.add(ko);
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getRequest: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+	
+	// Build a uniform JSON-friendly view of a Request. zoneID is the
+	// containing zone for pending requests, or -1 once the request has
+	// been picked up by a vehicle (vehID is added by the caller in that case).
+	private HashMap<String, Object> requestSummary(Request r, String status, int zoneID) {
+		HashMap<String, Object> rec = new HashMap<String, Object>();
+		rec.put("ID", r.getID());
+		rec.put("origin", r.getOriginZone());
+		rec.put("destination", r.getDestZone());
+		rec.put("originRoad", r.getOriginRoad());
+		rec.put("destRoad", r.getDestRoad());
+		rec.put("numPeople", r.getNumPeople());
+		rec.put("generationTime", r.generationTime);
+		rec.put("matchedTime", r.matchedTime);
+		rec.put("pickupTime", r.pickupTime);
+		rec.put("arriveTime", r.arriveTIme);
+		rec.put("maxWaitingTime", r.getMaxWaitingTime());
+		rec.put("currentWaitingTime", r.getCurrentWaitingTime());
+		rec.put("shareable", r.isShareable());
+		rec.put("busRoute", r.getBusRoute());
+		rec.put("status", status);
+		rec.put("zoneID", zoneID);
+		rec.put("STATUS", "OK");
+		return rec;
+	}
+	
+	/**
+	 * Query taxis that are currently in the available pool (parked or
+	 * cruising and waiting for a dispatch).
+	 *
+	 * <p>Registered keys: {@code "availableTaxis"} (canonical),
+	 * {@code "queryAvailableTaxis"} (backward-compat alias).
+	 *
+	 * <p>Input DATA (optional): a single integer zoneID. If omitted,
+	 * available taxis across every zone are returned.
+	 *
+	 * <p>Output DATA: flat list of taxi info entries, each carrying
+	 * {@code {ID, zoneID, state, x, y, z, battery, hasEnoughBattery,
+	 * passNum}}. The {@code zoneID} on each entry is the zone whose
+	 * available-taxi pool the taxi belongs to (i.e. the same key used by
+	 * {@code removeAvailableTaxi}).
+	 */
+	public HashMap<String, Object> getAvailableTaxis(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			Collection<Zone> zonesToCheck;
+			if (!jsonMsg.containsKey("DATA")) {
+				zonesToCheck = ContextCreator.getZoneContext().getAll();
+			} else {
+				int zoneID;
+				try {
+					zoneID = Integer.parseInt(jsonMsg.get("DATA").toString().trim());
+				} catch (NumberFormatException nfe) {
+					jsonObj.put("WARN", "DATA must be a zone ID (integer)");
+					jsonObj.put("CODE", "KO");
+					return jsonObj;
+				}
+				Zone z = ContextCreator.getZoneContext().get(zoneID);
+				if (z == null) {
+					jsonObj.put("WARN", "Zone " + zoneID + " not found");
+					jsonObj.put("CODE", "KO");
+					return jsonObj;
+				}
+				zonesToCheck = Collections.singletonList(z);
+			}
+			
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (Zone z : zonesToCheck) {
+				for (ElectricTaxi t : ContextCreator.getVehicleContext().getAvailableTaxisSorted(z.getID())) {
+					HashMap<String, Object> rec = new HashMap<String, Object>();
+					rec.put("ID", t.getID());
+					rec.put("zoneID", z.getID());
+					rec.put("state", t.getState());
+					Coordinate c = t.getCurrentCoord();
+					if (c != null) {
+						rec.put("x", c.x);
+						rec.put("y", c.y);
+						rec.put("z", c.z);
+					}
+					rec.put("battery", t.getBatteryLevel());
+					rec.put("hasEnoughBattery", t.hasEnoughBattery());
+					rec.put("passNum", t.getPassNum());
+					jsonData.add(rec);
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getAvailableTaxis: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+	
+	private HashMap<String, Object> findRequestInfo(int reqID) {
+		// Pending in zones
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			for (Request r : z.getTaxiRequestQueue()) {
+				if (r.getID() == reqID) return requestSummary(r, "pending_taxi", z.getID());
+			}
+			for (Queue<Request> sq : z.getSharableRequestForTaxi().values()) {
+				for (Request r : sq) {
+					if (r.getID() == reqID) return requestSummary(r, "pending_taxi_sharable", z.getID());
+				}
+			}
+			for (Request r : z.getToAddTaxiRequestQueue()) {
+				if (r.getID() == reqID) return requestSummary(r, "pending_taxi_toAdd", z.getID());
+			}
+			for (Request r : z.getBusRequestQueue()) {
+				if (r.getID() == reqID) return requestSummary(r, "pending_bus", z.getID());
+			}
+			for (Request r : z.getToAddBusRequestQueue()) {
+				if (r.getID() == reqID) return requestSummary(r, "pending_bus_toAdd", z.getID());
+			}
+		}
+		// Active taxis (matched, en route to pickup, or carrying passengers)
+		for (ElectricTaxi t : ContextCreator.getVehicleContext().getTaxis()) {
+			for (Request r : t.getToBoardRequests()) {
+				if (r.getID() == reqID) {
+					HashMap<String, Object> rec = requestSummary(r, "matched_to_taxi", -1);
+					rec.put("vehID", t.getID());
+					return rec;
+				}
+			}
+			for (Request r : t.getOnBoardRequests()) {
+				if (r.getID() == reqID) {
+					HashMap<String, Object> rec = requestSummary(r, "on_board_taxi", -1);
+					rec.put("vehID", t.getID());
+					return rec;
+				}
+			}
+		}
+		// Active buses
+		for (ElectricBus b : ContextCreator.getVehicleContext().getBuses()) {
+			for (Queue<Request> sq : b.getToBoardRequests()) {
+				for (Request r : sq) {
+					if (r.getID() == reqID) {
+						HashMap<String, Object> rec = requestSummary(r, "matched_to_bus", -1);
+						rec.put("vehID", b.getID());
+						return rec;
+					}
+				}
+			}
+			for (Queue<Request> sq : b.getOnBoardRequests()) {
+				for (Request r : sq) {
+					if (r.getID() == reqID) {
+						HashMap<String, Object> rec = requestSummary(r, "on_board_bus", -1);
+						rec.put("vehID", b.getID());
+						return rec;
+					}
+				}
+			}
+		}
+		return null;
+	}
+	
+	/**
+	 * List the bus IDs currently assigned to each named bus route.
+	 *
+	 * <p>Input DATA (optional): list of route names. If omitted, returns
+	 * {@code id_list} / {@code orig_id} of all known routes.
+	 *
+	 * <p>Output DATA: list of {@code {routeName, routeID, busIDs}}
+	 * records.
+	 */
 	public HashMap<String, Object> getBusWithRoute(JSONObject jsonMsg){
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {

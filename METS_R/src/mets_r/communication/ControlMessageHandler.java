@@ -3,6 +3,10 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.Map;
+import java.util.Queue;
 
 import org.geotools.geometry.jts.JTS;
 import org.json.simple.JSONObject;
@@ -29,6 +33,8 @@ import mets_r.communication.MessageClass.RouteNameZonesRoads;
 import mets_r.communication.MessageClass.RouteNameZonesRoadsPath;
 import mets_r.communication.MessageClass.VehIDOrigDestNum;
 import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
+import mets_r.communication.MessageClass.VehIDReqID;
+import mets_r.communication.MessageClass.VehIDZoneID;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
 import mets_r.communication.MessageClass.VehIDVehTypeRoad;
@@ -59,43 +65,89 @@ import mets_r.mobility.Vehicle;
 public class ControlMessageHandler extends MessageHandler {
 	
 	public ControlMessageHandler() {
+		// =============================================================
+		// Simulation lifecycle
+		// =============================================================
 		messageHandlers.put("end", this::endSim);
 		messageHandlers.put("reset", this::resetSim);
 		messageHandlers.put("save", this::saveSim);
 		messageHandlers.put("load", this::loadSim);
-		messageHandlers.put("teleportCoSimVeh", this::teleportCoSimVeh);
-		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
-		messageHandlers.put("controlVeh", this::controlVeh);
-		messageHandlers.put("enterNextRoad", this::enterNextRoad);
-		messageHandlers.put("addBusRoute", this::addBusRoute);
-		messageHandlers.put("addBusRouteWithPath", this::addBusRouteWithPath);
-		messageHandlers.put("addBusRun", this::addBusRun);
-		messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
-		messageHandlers.put("dispTaxiBwRoads", this::dispTaxiBwRoads);
-		messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
-		messageHandlers.put("addBusRequests", this::addBusRequests);
-		messageHandlers.put("addTaxiRequests", this::addTaxiRequests);
-		messageHandlers.put("addTaxiReqBwRoads", this::addTaxiReqBwRoads);
-		messageHandlers.put("generateTrip", this::generateTrip);
-		messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
+		
+		// =============================================================
+		// Co-simulation: road handover & vehicle teleport
+		// =============================================================
 		messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
 		messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
-		messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
+		messageHandlers.put("teleportCoSimVeh", this::teleportCoSimVeh);
+		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
+		
+		// =============================================================
+		// Vehicle runtime control
+		// =============================================================
+		messageHandlers.put("controlVeh", this::controlVeh);
+		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("reachDest", this::reachDest);
+		messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
 		messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
+		
+		// =============================================================
+		// Routing weights
+		// =============================================================
 		messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
-		messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
-		messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
-		messageHandlers.put("updateChargingPrice", this::updateChargingPrice);
+		
+		// =============================================================
+		// Traffic signals
+		// =============================================================
 		messageHandlers.put("updateSignal", this::updateSignal);
 		messageHandlers.put("updateSignalTiming", this::updateSignalTiming);
 		messageHandlers.put("setSignalPhasePlan", this::setSignalPhasePlan);
 		messageHandlers.put("setSignalPhasePlanTicks", this::setSignalPhasePlanTicks);
+		
+		// =============================================================
+		// Charging
+		// =============================================================
+		messageHandlers.put("updateChargingPrice", this::updateChargingPrice);
+		messageHandlers.put("goCharging", this::goCharging);
+		
+		// =============================================================
+		// Private-vehicle trip generation
+		// =============================================================
+		messageHandlers.put("generateTrip", this::generateTrip);
+		messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
+		
+		// =============================================================
+		// Ride-hailing: add pending requests
+		// These are the ONLY entry points that create Request objects;
+		// dispatch endpoints below only match a vehicle to an existing
+		// pending request.
+		// =============================================================
+		messageHandlers.put("addTaxiRequests", this::addTaxiRequests);
+		messageHandlers.put("addTaxiReqBwRoads", this::addTaxiReqBwRoads);
+		messageHandlers.put("addBusRequests", this::addBusRequests);
+		
+		// =============================================================
+		// Ride-hailing: dispatch & repositioning
+		// =============================================================
+		messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
+		messageHandlers.put("repositionTaxi", this::repositionTaxi);
+		messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
+		
+		// =============================================================
+		// Bus routes & stops
+		// =============================================================
+		messageHandlers.put("addBusRoute", this::addBusRoute);
+		messageHandlers.put("addBusRouteWithPath", this::addBusRouteWithPath);
+		messageHandlers.put("addBusRun", this::addBusRun);
+		messageHandlers.put("insertStopToRoute", this::insertStopToRoute);
+		messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
+		
+		// =============================================================
+		// Dynamic infrastructure & fleet additions
+		// =============================================================
 		messageHandlers.put("addZone", this::addZone);
 		messageHandlers.put("addChargingStation", this::addChargingStation);
 		messageHandlers.put("addTaxi", this::addTaxi);
 		messageHandlers.put("addBus", this::addBus);
-		messageHandlers.put("goCharging", this::goCharging);
 	}
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -106,6 +158,16 @@ public class ControlMessageHandler extends MessageHandler {
 		return JSONObject.toJSONString(jsonAns);
 	}
 	
+	// =============================================================
+	// SIMULATION LIFECYCLE
+	// =============================================================
+	
+	/**
+	 * Reset the simulation back to its initial loaded state, cancelling
+	 * every scheduled action and re-running the seed-and-load pipeline.
+	 * Uses the deferred variant of reset to avoid leaking on-deck recurring
+	 * actions that would otherwise fire on stale targets after the reset.
+	 */
 	private HashMap<String, Object> resetSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		
@@ -128,6 +190,11 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Terminate the simulation cleanly, notifying any connected external
+	 * controllers that the run is finishing before invoking
+	 * {@link ContextCreator#end()}.
+	 */
 	private HashMap<String, Object> endSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		
@@ -140,6 +207,12 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Save a snapshot of the current simulation state to the specified
+	 * zip archive.
+	 *
+	 * <p>Input DATA: {@code {"path": "<zip file path>"}}.
+	 */
 	private HashMap<String, Object> saveSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
@@ -168,6 +241,13 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Reload simulation state from a previously-saved zip archive,
+	 * replacing the current run. Uses the deferred variant of load for
+	 * the same on-deck-queue rationale as {@link #resetSim}.
+	 *
+	 * <p>Input DATA: {@code {"path": "<zip file path>"}}.
+	 */
 	private HashMap<String, Object> loadSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
@@ -201,6 +281,18 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	// =============================================================
+	// CO-SIMULATION: ROAD HANDOVER
+	// =============================================================
+	
+	/**
+	 * Mark one or more roads as co-simulation roads. Vehicles on these
+	 * roads stop being stepped by METS-R's car-following logic; an
+	 * external simulator is expected to drive them via {@link #teleportCoSimVeh}
+	 * and {@link #enterNextRoad}.
+	 *
+	 * <p>Input DATA: list of original road IDs.
+	 */
 	private HashMap<String, Object> setCoSimRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -254,6 +346,12 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Revert one or more roads from co-simulation control back to native
+	 * METS-R control.
+	 *
+	 * <p>Input DATA: list of original road IDs.
+	 */
 	private HashMap<String, Object> releaseCosimRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -298,7 +396,18 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Generate trip for private vehicles
+	// =============================================================
+	// PRIVATE-VEHICLE TRIP GENERATION
+	// =============================================================
+	
+	/**
+	 * Generate a one-shot private-EV trip between two zones. If a vehicle
+	 * with the given {@code vehID} is not yet registered, a new
+	 * {@link ElectricVehicle} is created on the fly.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
+	 * {@code orig}/{@code dest} are zone IDs (use {@code <= 0} for random).
+	 */
     private HashMap<String, Object> generateTrip(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
     	if(!jsonMsg.containsKey("DATA")) {
@@ -425,7 +534,13 @@ public class ControlMessageHandler extends MessageHandler {
     	return jsonAns;
     }
     
-    // Generate trip between roads for private vehicles
+    /**
+     * Like {@link #generateTrip} but with origin/destination specified as
+     * road IDs instead of zone IDs.
+     *
+     * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
+     * {@code orig} and {@code dest} are original road IDs.
+     */
     private HashMap<String, Object> generateTripBwRoads(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
     	if(!jsonMsg.containsKey("DATA")) {
@@ -527,6 +642,19 @@ public class ControlMessageHandler extends MessageHandler {
     	return jsonAns;
     }
 	
+    // =============================================================
+    // VEHICLE TELEPORT & RUNTIME CONTROL
+    // =============================================================
+    
+    /**
+     * Teleport an existing vehicle to a given lane and offset for trace
+     * replay scenarios. The vehicle is removed from its current
+     * lane/road and re-inserted at the target position.
+     *
+     * <p>Input DATA: list of {@code {vehID, vehType, roadID, laneID, dist}}
+     * where {@code vehType=true} selects a private vehicle and
+     * {@code vehType=false} selects a public one.
+     */
     private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg){
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) { 
@@ -608,6 +736,14 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
     }
     
+	/**
+	 * Teleport a co-simulation vehicle to an absolute (x, y, z) world
+	 * coordinate, optionally transforming from the external simulator's
+	 * coordinate system, and update its bearing and speed.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, x, y, z, bearing,
+	 * speed, transformCoord}}.
+	 */
 	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) { 
@@ -678,8 +814,13 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// This need to be made at t, and takes effect during t to t+1
-	// This essentially alternate the acceleration decisions
+	/**
+	 * Override a vehicle's acceleration for the next tick. Must be called
+	 * at tick t to take effect during the t-to-t+1 interval; it bypasses
+	 * the car-following model's acceleration decision.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, acc}}.
+	 */
 	private HashMap<String, Object> controlVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -729,7 +870,16 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Take a road as input, check whether the road
+	/**
+	 * Force a vehicle to enter the specified next road, used by the
+	 * co-simulation bridge when an external simulator authoritatively
+	 * decides road transitions. If the standard {@code changeRoad()}
+	 * gap check fails, the transition is forced anyway since the
+	 * co-simulator is considered authoritative.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, roadID}}. If
+	 * {@code roadID} is empty the vehicle follows its existing route.
+	 */
 	private HashMap<String, Object> enterNextRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -919,8 +1069,13 @@ public class ControlMessageHandler extends MessageHandler {
 //		return jsonAns;	
 //	}
 //	
-	// Reach dest, teleport the vehicle to the destination, used when 
-	// the destination road belongs to the co-simulation road
+	/**
+	 * Mark a vehicle as having reached its destination. Mainly used when
+	 * the destination road is under co-simulation control, where METS-R
+	 * cannot observe arrival natively.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType}}.
+	 */
 	private HashMap<String, Object> reachDest(JSONObject jsonMsg){
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -968,7 +1123,12 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Update sensorType of a vehicle
+	/**
+	 * Update the sensor-type tag of one or more vehicles. The tag is
+	 * consumed by sensor-dependent logic such as perception models.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, sensorType}}.
+	 */
 	private HashMap<String, Object> updateVehicleSensorType(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1017,145 +1177,318 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Taxi dispatching
-	// Find a taxi, add a pickup trip and a request
-	// If not departure, make it departure
+	// =============================================================
+	// RIDE-HAILING: DISPATCH & REPOSITIONING
+	// =============================================================
+	
+	/**
+	 * Dispatch a taxi to serve an already-pending request.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, reqID}}. The request must have
+	 * been added via {@code addTaxiRequests} or {@code addTaxiReqBwRoads}
+	 * (or generated by the simulation itself) and must still be pending.
+	 * This endpoint does NOT fabricate new requests &mdash; it only matches
+	 * an available taxi to an existing pending request, takes the taxi out
+	 * of its zone's available pool / parking stock, and starts its pickup
+	 * trip via {@link ElectricTaxi#servePassenger(java.util.ArrayList)}.
+	 *
+	 * <p>Both {@code "dispatchTaxi"} and {@code "dispTaxiBwRoads"} message
+	 * types route to this handler; the {@code BwRoads} suffix is preserved
+	 * only as a backward-compatibility alias.
+	 *
+	 * <p>Output DATA: list of {@code {ID: vehID, reqID, origZone, destZone,
+	 * STATUS, WARN?}} entries.
+	 */
 	private HashMap<String, Object> dispatchTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
 			jsonAns.put("CODE", "KO");
+			return jsonAns;
 		}
-		else {
-			try {
-				Gson gson = new Gson();
-				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
-				Collection<VehIDOrigDestNum> vehIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-				ArrayList<Object> jsonData = new ArrayList<Object>();
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDReqID>> collectionType = new TypeToken<Collection<VehIDReqID>>() {};
+			Collection<VehIDReqID> entries = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			for(VehIDReqID entry: entries) {
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", entry.vehID);
+				record.put("reqID", entry.reqID);
 				
-				for(VehIDOrigDestNum vehIDOrigDestNum: vehIDOrigDestNums) {
-					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigDestNum.vehID);
-					Zone z1 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.orig);
-					Zone z2 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.dest);
-				if(veh != null && z1 != null && z2 != null) {
-					if(z1.getClosestRoad(false) == null || z2.getClosestRoad(true) == null) {
-						ContextCreator.logger.warn("dispatchTaxi: zone " + (z1.getClosestRoad(false) == null ? z1.getID() : z2.getID()) + " has no road assigned yet");
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						record2.put("ID", vehIDOrigDestNum.vehID);
-						record2.put("STATUS", "KO");
-						jsonData.add(record2);
-						continue;
-					}
-					// generate request
-					ArrayList<Request> plist = new ArrayList<Request>();
-					Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z2.sampleRoad(true), vehIDOrigDestNum.num);
-						if(veh.getState() == Vehicle.PARKING) {
-							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
-						}
-						p.matchedTime = ContextCreator.getCurrentTick();
-						z1.taxiPickupRequest += 1;
-						z2.addFutureSupply();
-						plist.add(p);
-						
-						veh.servePassenger(plist);
-						
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", vehIDOrigDestNum.vehID);
-			    		record2.put("STATUS", "OK");
-						jsonData.add(record2);
-					}
-					else {
-			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", vehIDOrigDestNum.vehID);
-			    		record2.put("STATUS", "KO");
-						jsonData.add(record2);
-			    	}
+				ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(entry.vehID);
+				if (veh == null) {
+					ContextCreator.logger.warn("dispatchTaxi: vehicle " + entry.vehID + " not found");
+					record.put("STATUS", "KO");
+					record.put("WARN", "vehicle not found");
+					jsonData.add(record);
+					continue;
 				}
 				
-				jsonAns.put("DATA", jsonData);
-			    jsonAns.put("CODE", "OK");
+				PendingTaxiRequestRef found = findAndRemovePendingTaxiRequest(entry.reqID);
+				if (found == null) {
+					ContextCreator.logger.warn("dispatchTaxi: request " + entry.reqID + " not found in any pending taxi queue");
+					record.put("STATUS", "KO");
+					record.put("WARN", "request not pending");
+					jsonData.add(record);
+					continue;
+				}
+				
+				Zone origZone = found.zone;
+				Zone destZone = ContextCreator.getZoneContext().get(found.request.getDestZone());
+				if (destZone == null) {
+					ContextCreator.logger.warn("dispatchTaxi: destination zone " + found.request.getDestZone() + " for request " + entry.reqID + " not found; re-queueing request");
+					reinsertPendingTaxiRequest(found);
+					record.put("STATUS", "KO");
+					record.put("WARN", "destination zone not found");
+					jsonData.add(record);
+					continue;
+				}
+				
+				// Take the taxi out of its current zone's available pool and
+				// parking stock (mirrors what Zone.servePassengerByTaxi does).
+				int curZoneID = veh.getCurrentZone();
+				ContextCreator.getVehicleContext().removeAvailableTaxi(veh, curZoneID);
+				if (veh.getState() == Vehicle.PARKING) {
+					Zone parkedZone = ContextCreator.getZoneContext().get(curZoneID);
+					if (parkedZone != null) parkedZone.removeOneParkingVehicle();
+				}
+				
+				Request p = found.request;
+				p.matchedTime = ContextCreator.getCurrentTick();
+				origZone.taxiPickupRequest += 1;
+				origZone.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
+				destZone.addFutureSupply();
+				
+				ArrayList<Request> plist = new ArrayList<Request>();
+				plist.add(p);
+				veh.servePassenger(plist);
+				
+				record.put("origZone", origZone.getID());
+				record.put("destZone", destZone.getID());
+				record.put("STATUS", "OK");
+				jsonData.add(record);
 			}
-			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
-			    jsonAns.put("CODE", "KO");
-			}
+			
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing dispatchTaxi: " + e.toString());
+			jsonAns.put("CODE", "KO");
 		}
 		return jsonAns;
 	}
 	
-	private HashMap<String, Object> dispTaxiBwRoads(JSONObject jsonMsg) {
+	/**
+	 * Reposition a taxi to a destination zone.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, zoneID}}. The taxi must
+	 * currently be idle (state {@code PARKING}, {@code CRUISING_TRIP}, or
+	 * {@code NONE_OF_THE_ABOVE}); it is removed from its current zone's
+	 * available pool / parking stock and dispatched on an
+	 * {@code INACCESSIBLE_RELOCATION_TRIP} to a road sampled from the
+	 * destination zone. On arrival, the existing {@code reachDest} logic
+	 * handles parking / cruising as usual.
+	 *
+	 * <p>Output DATA: list of {@code {ID: vehID, zoneID, origZone, STATUS,
+	 * WARN?}} entries.
+	 */
+	private HashMap<String, Object> repositionTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
 			jsonAns.put("CODE", "KO");
+			return jsonAns;
 		}
-		else {
-			try {
-				Gson gson = new Gson();
-				TypeToken<Collection<VehIDOrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<VehIDOrigRoadDestRoadNum>>() {};
-				Collection<VehIDOrigRoadDestRoadNum> vehIDOrigRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-				ArrayList<Object> jsonData = new ArrayList<Object>();
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDZoneID>> collectionType = new TypeToken<Collection<VehIDZoneID>>() {};
+			Collection<VehIDZoneID> entries = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			
+			for(VehIDZoneID entry: entries) {
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", entry.vehID);
+				record.put("zoneID", entry.zoneID);
 				
-				for(VehIDOrigRoadDestRoadNum vehIDOrigRoadDestRoadNum: vehIDOrigRoadDestRoadNums) {
-					ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigRoadDestRoadNum.vehID);
-					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.orig);
-					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(vehIDOrigRoadDestRoadNum.dest);
-				if(veh != null && r1 != null && r2 != null) {
-					// generate request
-					ArrayList<Request> plist = new ArrayList<Request>();
-					Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
-					Zone z2 = ContextCreator.getZoneContext().get(r2.getNeighboringZone(true));
-					if(z1 == null || z2 == null) {
-						ContextCreator.logger.warn("dispTaxiBwRoads: road " + (z1 == null ? vehIDOrigRoadDestRoadNum.orig : vehIDOrigRoadDestRoadNum.dest) + " has no neighboring zone assigned");
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
-						record2.put("STATUS", "KO");
-						jsonData.add(record2);
-						continue;
-					}
-					Request p = new Request(z1.getID(),z2.getID(), r1.getID(), r2.getID(), vehIDOrigRoadDestRoadNum.num);
-						
-						if(veh.getState() == Vehicle.PARKING) {
-							ContextCreator.getZoneContext().get(veh.getCurrentZone()).removeOneParkingVehicle();
-						}
-						
-						p.matchedTime = ContextCreator.getCurrentTick();
-						z1.taxiPickupRequest += 1;
-						z2.addFutureSupply();
-						
-						plist.add(p);
-						
-						ContextCreator.getVehicleContext().removeAvailableTaxi(veh, z1.getID());
-						veh.servePassenger(plist);
-						
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
-			    		record2.put("STATUS", "OK");
-						jsonData.add(record2);
-					}
-					else {
-			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", vehIDOrigRoadDestRoadNum.vehID);
-			    		record2.put("STATUS", "KO");
-						jsonData.add(record2);
-			    	}
+				ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(entry.vehID);
+				if (veh == null) {
+					ContextCreator.logger.warn("repositionTaxi: vehicle " + entry.vehID + " not found");
+					record.put("STATUS", "KO");
+					record.put("WARN", "vehicle not found");
+					jsonData.add(record);
+					continue;
 				}
 				
-				jsonAns.put("DATA", jsonData);
-			    jsonAns.put("CODE", "OK");
+				Zone destZone = ContextCreator.getZoneContext().get(entry.zoneID);
+				if (destZone == null) {
+					ContextCreator.logger.warn("repositionTaxi: destination zone " + entry.zoneID + " not found");
+					record.put("STATUS", "KO");
+					record.put("WARN", "destination zone not found");
+					jsonData.add(record);
+					continue;
+				}
+				if (destZone.getClosestRoad(true) == null) {
+					ContextCreator.logger.warn("repositionTaxi: destination zone " + entry.zoneID + " has no road assigned yet");
+					record.put("STATUS", "KO");
+					record.put("WARN", "destination zone has no road");
+					jsonData.add(record);
+					continue;
+				}
+				
+				int state = veh.getState();
+				if (state != Vehicle.PARKING && state != Vehicle.CRUISING_TRIP && state != Vehicle.NONE_OF_THE_ABOVE) {
+					ContextCreator.logger.warn("repositionTaxi: vehicle " + entry.vehID + " not in a relocatable state (state=" + state + ")");
+					record.put("STATUS", "KO");
+					record.put("WARN", "vehicle not idle");
+					jsonData.add(record);
+					continue;
+				}
+				
+				int curZoneID = veh.getCurrentZone();
+				Zone origZone = ContextCreator.getZoneContext().get(curZoneID);
+				
+				ContextCreator.getVehicleContext().removeAvailableTaxi(veh, curZoneID);
+				if (state == Vehicle.PARKING && origZone != null) {
+					origZone.removeOneParkingVehicle();
+				}
+				
+				destZone.addFutureSupply();
+				if (origZone != null) origZone.numberOfRelocatedVehicles += 1;
+				
+				// ElectricTaxi.relocation handles stopCruising if needed and
+				// enters INACCESSIBLE_RELOCATION_TRIP state.
+				veh.relocation(destZone.getID(), destZone.sampleRoad(true));
+				
+				record.put("origZone", curZoneID);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
 			}
-			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
-			    jsonAns.put("CODE", "KO");
-			}
+			
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing repositionTaxi: " + e.toString());
+			jsonAns.put("CODE", "KO");
 		}
 		return jsonAns;
 	}
 	
-	// Taxi dispatching
-	// Find a zone, add a request
+	// Lightweight record locating a pending taxi request inside the
+	// simulation. Used by dispatchTaxi to atomically remove a request from
+	// its host queue and re-queue on failure.
+	private static class PendingTaxiRequestRef {
+		Zone zone;
+		Request request;
+		// One of: "queue", "sharable", "toAdd"
+		String source;
+		int sharableDestination;
+	}
+	
+	/**
+	 * Search every zone's pending-taxi structures for the given request ID,
+	 * remove it from the first container that contains it, and adjust
+	 * zone-level counters. Returns null if no pending request matches.
+	 *
+	 * Containers searched, in order:
+	 *   - Zone.requestInQueueForTaxi (counted in nRequestForTaxi)
+	 *   - Zone.sharableRequestForTaxi (counted in nRequestForTaxi)
+	 *   - Zone.toAddRequestForTaxi (NOT yet counted; populated by
+	 *     insertTaxiPass and drained by processToAddPassengers)
+	 */
+	private PendingTaxiRequestRef findAndRemovePendingTaxiRequest(int reqID) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			Iterator<Request> it = z.getTaxiRequestQueue().iterator();
+			while (it.hasNext()) {
+				Request r = it.next();
+				if (r.getID() == reqID) {
+					it.remove();
+					z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
+					PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+					ref.zone = z;
+					ref.request = r;
+					ref.source = "queue";
+					return ref;
+				}
+			}
+			for (Map.Entry<Integer, Queue<Request>> e : z.getSharableRequestForTaxi().entrySet()) {
+				Iterator<Request> sit = e.getValue().iterator();
+				while (sit.hasNext()) {
+					Request r = sit.next();
+					if (r.getID() == reqID) {
+						sit.remove();
+						z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
+						PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+						ref.zone = z;
+						ref.request = r;
+						ref.source = "sharable";
+						ref.sharableDestination = e.getKey();
+						return ref;
+					}
+				}
+			}
+			Iterator<Request> tit = z.getToAddTaxiRequestQueue().iterator();
+			while (tit.hasNext()) {
+				Request r = tit.next();
+				if (r.getID() == reqID) {
+					tit.remove();
+					PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+					ref.zone = z;
+					ref.request = r;
+					ref.source = "toAdd";
+					return ref;
+				}
+			}
+		}
+		return null;
+	}
+	
+	/**
+	 * Restore a previously-removed pending taxi request back to its
+	 * original container. Used when dispatch fails after we've already
+	 * pulled the request out, so the next dispatch attempt can still find it.
+	 */
+	private void reinsertPendingTaxiRequest(PendingTaxiRequestRef ref) {
+		Zone z = ref.zone;
+		Request r = ref.request;
+		if ("sharable".equals(ref.source)) {
+			Map<Integer, Queue<Request>> map = z.getSharableRequestForTaxi();
+			Queue<Request> q = map.get(ref.sharableDestination);
+			if (q == null) {
+				q = new LinkedList<Request>();
+				map.put(ref.sharableDestination, q);
+			}
+			q.add(r);
+			z.setNRequestForTaxi(z.getTaxiRequestNum() + 1);
+		} else if ("toAdd".equals(ref.source)) {
+			z.getToAddTaxiRequestQueue().add(r);
+		} else {
+			z.getTaxiRequestQueue().add(r);
+			z.setNRequestForTaxi(z.getTaxiRequestNum() + 1);
+		}
+	}
+	
+	// =============================================================
+	// RIDE-HAILING: ADD PENDING REQUESTS / BUS ASSIGNMENT
+	// (the only entry points that create Request objects)
+	// =============================================================
+	
+	/**
+	 * Add one or more pending taxi requests to a zone's pending queue
+	 * (specified by zone IDs).
+	 *
+	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num}} where
+	 * {@code zoneID} is the origin zone, {@code dest} is the destination
+	 * zone, and {@code num} is the party size.
+	 *
+	 * <p>Output DATA: list of {@code {ID: zoneID, reqID, STATUS}} entries.
+	 * The returned {@code reqID} is the canonical handle the caller should
+	 * use to dispatch the request later via {@link #dispatchTaxi} or to
+	 * inspect it via the query API.
+	 */
 	private HashMap<String, Object> addTaxiRequests(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1179,6 +1512,7 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
+			    		record2.put("reqID", p.getID());
 			    		record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}
@@ -1202,6 +1536,16 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Add one or more pending taxi requests, specified by origin and
+	 * destination road IDs instead of zone IDs. The origin road's
+	 * neighboring zone is used as the request's origin zone.
+	 *
+	 * <p>Input DATA: list of {@code {orig, dest, num}} where {@code orig}
+	 * and {@code dest} are original road IDs.
+	 *
+	 * <p>Output DATA: list of {@code {ID: orig, reqID, STATUS}} entries.
+	 */
 	private HashMap<String, Object> addTaxiReqBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1226,6 +1570,7 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", origRoadDestRoadNum.orig);
+			    		record2.put("reqID", p.getID());
 			    		record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}
@@ -1249,8 +1594,21 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Assign request to a specific bus
-	// TODO: revise to consider bus routes
+	/**
+	 * Match a bus request to a specific bus along its current route.
+	 * Searches the bus's remaining stops for one matching the requested
+	 * origin and a later one matching the destination; if found, a new
+	 * {@link Request} is created and added to the bus's to-board list.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
+	 * {@code orig} and {@code dest} are zone IDs that must appear (in
+	 * order) on the bus's route after its current stop.
+	 *
+	 * <p>Output DATA: list of {@code {ID: vehID, STATUS}} entries.
+	 *
+	 * <p>TODO: extend to consider arbitrary bus routes rather than only
+	 * the bus's current assigned route.
+	 */
 	private HashMap<String, Object> assignRequestToBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1312,7 +1670,15 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Add a bus request in a zone
+	/**
+	 * Add one or more pending bus requests to a zone's bus queue. The
+	 * origin and destination zones must both appear (in order) on the
+	 * specified bus route.
+	 *
+	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num}}.
+	 *
+	 * <p>Output DATA: list of {@code {ID: zoneID, STATUS}} entries.
+	 */
 	private HashMap<String, Object> addBusRequests(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1376,6 +1742,18 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	 
+	// =============================================================
+	// BUS ROUTES, RUNS & STOPS
+	// (insertStopToRoute / removeStopFromRoute live further down,
+	// near updateVehicleRoute, but logically belong with this group.)
+	// =============================================================
+	
+	/**
+	 * Register a new named bus route by listing its ordered stops (zones)
+	 * and the road segments connecting them.
+	 *
+	 * <p>Input DATA: list of {@code {routeName, zones, roads}}.
+	 */
 	private HashMap<String, Object> addBusRoute(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1417,6 +1795,12 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Like {@link #addBusRoute} but with explicitly-provided per-segment
+	 * driving paths, so the system doesn't have to compute them.
+	 *
+	 * <p>Input DATA: list of {@code {routeName, zones, roads, paths}}.
+	 */
 	private HashMap<String, Object> addBusRouteWithPath(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1458,6 +1842,13 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Schedule one or more new bus runs (departures) on an existing
+	 * named route.
+	 *
+	 * <p>Input DATA: list of {@code {routeName, departTime}} where
+	 * {@code departTime} is in simulation ticks.
+	 */
 	private HashMap<String, Object> addBusRun(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1499,9 +1890,18 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Traffic signal phase control
-	// Update the signal phase given signal ID and target phase (optionally with phase time offset)
-	// If only phase is provided, starts from the beginning of that phase (phaseTime = 0)
+	// =============================================================
+	// TRAFFIC SIGNALS
+	// =============================================================
+	
+	/**
+	 * Force a traffic signal into a specified phase, optionally with a
+	 * non-zero phase-time offset.
+	 *
+	 * <p>Input DATA: list of {@code {signalID, targetPhase, phaseTime?}}
+	 * where {@code targetPhase} is {@code 0=Green / 1=Yellow / 2=Red} and
+	 * {@code phaseTime} defaults to 0.
+	 */
 	private HashMap<String, Object> updateSignal(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1555,7 +1955,13 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Update signal phase timing (green, yellow, red durations)
+	/**
+	 * Update only the phase durations of a traffic signal, leaving its
+	 * current phase and starting offset unchanged.
+	 *
+	 * <p>Input DATA: list of {@code {signalID, greenTime, yellowTime,
+	 * redTime}} where times are in seconds.
+	 */
 	private HashMap<String, Object> updateSignalTiming(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1612,8 +2018,14 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Set a complete new phase plan for a signal (phase timing + starting state + offset)
-	// Time values are in seconds
+	/**
+	 * Set a complete new phase plan for a signal: phase durations, the
+	 * starting phase, and an optional offset into that phase.
+	 *
+	 * <p>Input DATA: list of {@code {signalID, greenTime, yellowTime,
+	 * redTime, startPhase, phaseOffset?}} where times are in seconds.
+	 * For tick-level precision use {@link #setSignalPhasePlanTicks}.
+	 */
 	private HashMap<String, Object> setSignalPhasePlan(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1672,8 +2084,13 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Set a complete new phase plan with tick-level precision
-	// Time values are in simulation ticks for more precise control
+	/**
+	 * Tick-precise variant of {@link #setSignalPhasePlan}: phase durations
+	 * are given in simulation ticks rather than seconds.
+	 *
+	 * <p>Input DATA: list of {@code {signalID, greenTicks, yellowTicks,
+	 * redTicks, startPhase, tickOffset?}}.
+	 */
 	private HashMap<String, Object> setSignalPhasePlanTicks(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1732,7 +2149,17 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Route for one vehicle trip
+	// =============================================================
+	// ROUTING (per-vehicle reroute & per-bus stop edits)
+	// =============================================================
+	
+	/**
+	 * Override the remaining route of a vehicle's current trip with the
+	 * specified ordered sequence of road names.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, route}} where
+	 * {@code route} is an array of original road IDs.
+	 */
 	private HashMap<String, Object> updateVehicleRoute(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1786,7 +2213,14 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Route for one bus
+	/**
+	 * Insert a new stop into a bus's remaining route at the given index.
+	 *
+	 * <p>Input DATA: list of {@code {busID, routeName, zone, road,
+	 * stopIndex}} where {@code routeName} must match the bus's currently
+	 * assigned route and {@code stopIndex} is 0-based, relative to the
+	 * bus's remaining stops.
+	 */
 	private HashMap<String, Object> insertStopToRoute(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1849,6 +2283,11 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
+	/**
+	 * Remove a stop at the given index from a bus's remaining route.
+	 *
+	 * <p>Input DATA: list of {@code {busID, routeName, stopIndex}}.
+	 */
 	private HashMap<String, Object> removeStopFromRoute(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1912,7 +2351,17 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	
 	
-	// Weight for online shortest path
+	// =============================================================
+	// ROUTING WEIGHTS
+	// =============================================================
+	
+	/**
+	 * Override the routing weight of one or more road edges. Used by
+	 * external routing components to bias the on-the-fly shortest-path
+	 * search. Negative weights are clamped to a small positive value.
+	 *
+	 * <p>Input DATA: list of {@code {roadID, weight}}.
+	 */
 	private HashMap<String, Object> updateEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -1957,7 +2406,20 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	// Price for searching charging stations
+	// =============================================================
+	// CHARGING
+	// (the goCharging handler lives at the very end of the file,
+	// after the dynamic-infrastructure block.)
+	// =============================================================
+	
+	/**
+	 * Update the price of a specific charger type at a charging station.
+	 * The price is used by the EV charging-station search heuristic.
+	 *
+	 * <p>Input DATA: list of {@code {chargerID, chargerType, weight}}
+	 * where {@code chargerType} is one of {@code ChargingStation.L2 / L3 /
+	 * BUS}.
+	 */
 	private HashMap<String, Object> updateChargingPrice(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -2005,10 +2467,16 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 
+	// =============================================================
+	// DYNAMIC INFRASTRUCTURE & FLEET ADDITIONS
+	// =============================================================
+	
 	/**
 	 * Dynamically adds one or more zones at given coordinates.
-	 * Input DATA: list of {x, y, transformCoord, capacity, type}
-	 * Returns the assigned zone IDs.
+	 * <p>Input DATA: list of {@code {x, y, z, transformCoord, capacity,
+	 * type}}.
+	 * <p>Output DATA: list of {@code {ID, STATUS}} with the assigned
+	 * zone IDs.
 	 */
 	private HashMap<String, Object> addZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2100,8 +2568,10 @@ public class ControlMessageHandler extends MessageHandler {
 
 	/**
 	 * Dynamically adds one or more charging stations at given coordinates.
-	 * Input DATA: list of {x, y, transformCoord, numL2, numL3, numBus, priceL2, priceL3}
-	 * Returns the assigned (negative) station IDs.
+	 * <p>Input DATA: list of {@code {x, y, z, transformCoord, numL2,
+	 * numL3, numBus, priceL2, priceL3}}.
+	 * <p>Output DATA: list of {@code {ID, STATUS}} with the assigned
+	 * (negative) station IDs.
 	 */
 	private HashMap<String, Object> addChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2175,8 +2645,9 @@ public class ControlMessageHandler extends MessageHandler {
 
 	/**
 	 * Dynamically spawns e-taxis parked at a specified zone.
-	 * Input DATA: list of {zoneID, num}
-	 * Returns the assigned vehicle IDs.
+	 * <p>Input DATA: list of {@code {zoneID, num}}.
+	 * <p>Output DATA: list of {@code {zoneID, IDs, STATUS}} with the
+	 * assigned vehicle IDs.
 	 */
 	private HashMap<String, Object> addTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2236,8 +2707,9 @@ public class ControlMessageHandler extends MessageHandler {
 
 	/**
 	 * Dynamically spawns e-buses on an existing named route.
-	 * Input DATA: list of {routeName, num}
-	 * Returns the assigned vehicle IDs.
+	 * <p>Input DATA: list of {@code {routeName, num}}.
+	 * <p>Output DATA: list of {@code {routeName, IDs, STATUS}} with the
+	 * assigned vehicle IDs.
 	 */
 	private HashMap<String, Object> addBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2307,18 +2779,29 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 
+	// =============================================================
+	// CHARGING (continued)
+	// =============================================================
+	
 	/**
 	 * Command a vehicle to interrupt its current activity and go charge.
-	 * After charging it will return to its pre-charging destination.
+	 * After charging it returns to its pre-charging destination.
 	 *
-	 * Input DATA: list of {vehID, vehType, chargerType, csID} where:
-	 *   vehType    true  = private EV, false = public taxi
-	 *   chargerType ChargingStation.L2 / L3 / BUS
-	 *   csID       0 = auto-select nearest/cheapest; negative = specific station ID
+	 * <p>Input DATA: list of {@code {vehID, vehType, chargerType, csID}}
+	 * where:
+	 * <ul>
+	 *   <li>{@code vehType} &mdash; {@code true} = private EV,
+	 *       {@code false} = public taxi.</li>
+	 *   <li>{@code chargerType} &mdash; {@code ChargingStation.L2 / L3 /
+	 *       BUS}.</li>
+	 *   <li>{@code csID} &mdash; {@code 0} for auto-select
+	 *       (nearest/cheapest with fallback), or a negative station ID for
+	 *       a specific station.</li>
+	 * </ul>
 	 *
-	 * For parking taxis the vehicle is removed from the available-taxi pool first
-	 * and the "return destination" is set to its current zone so it comes back
-	 * after charging.
+	 * <p>For parking taxis the vehicle is removed from the available-taxi
+	 * pool first and the return destination is set to its current zone so
+	 * it comes back after charging.
 	 */
 	private HashMap<String, Object> goCharging(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();

@@ -231,20 +231,29 @@ public class ElectricTaxi extends ElectricVehicle {
 					this.departure();
 				}
 				else { // charging or join the current zone
-					if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
-							&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(1))) {
+					// Built-in charging trigger is bypassed when CHARGING is
+					// controlled by an external Control API.
+					if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+							&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(1)))
+							&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 						this.goCharging(ChargingStation.L3);
 					}
 					else { 
-						// join the current zone
-						if(z.getCapacity() > 0) { // Has capacity
-							z.addOneParkingVehicle();
-		                	this.getParked(z);
-					    }
-		                else {
-		                	// Select a neighboring link and cruise to there
-		                	this.goCruising(z);
-		                }
+						// Built-in parking/cruising (repositioning) is
+						// bypassed when REPOSITIONING is controlled by an
+						// external Control API; the taxi is still registered
+						// as available so the external dispatcher can see it.
+						if (!GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS) {
+							// join the current zone
+							if(z.getCapacity() > 0) { // Has capacity
+								z.addOneParkingVehicle();
+			                	this.getParked(z);
+						    }
+			                else {
+			                	// Select a neighboring link and cruise to there
+			                	this.goCruising(z);
+			                }
+						}
 						ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
 					}
 				}
@@ -270,8 +279,12 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.departure();
 			}
 			else if (this.getState() == Vehicle.CRUISING_TRIP) {
-				if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
-						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(1))) {
+				// Built-in charging trigger is bypassed when CHARGING is
+				// controlled by an external Control API. Parking/cruising at
+				// the end of a sim-initiated cruise remains sim-controlled.
+				if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(1)))
+						&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 					ContextCreator.getVehicleContext().removeAvailableTaxi(this, z.getID());
 					this.goCharging(ChargingStation.L3);
 				}
@@ -298,8 +311,13 @@ public class ElectricTaxi extends ElectricVehicle {
 				if (this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP)
 					ContextCreator.getVehicleContext().removeRelocationTaxi(this);
 				z.removeFutureSupply();
-				if(this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
-						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5))) {
+				// Built-in charging trigger is bypassed when CHARGING is
+				// controlled by an external Control API. Parking/cruising at
+				// the end of a sim-initiated relocation/charging-return trip
+				// remains sim-controlled.
+				if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
+						&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 					this.goCharging(ChargingStation.L3);
 				}
 				else { // join the current zone

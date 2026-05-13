@@ -97,6 +97,12 @@ public class GlobalVariables {
 	
 	public static boolean DEMAND_DIFFUSION = Boolean.valueOf(loadConfig("DEMAND_DIFFUSION"));
 	
+	// When true, the corresponding built-in simulation logic is bypassed so an
+	// external Control API can take over that responsibility.
+	public static boolean DISPATCHING_CONTROLLED_BY_CONTROL_APIS = Boolean.valueOf(loadConfig("DISPATCHING_CONTROLLED_BY_CONTROL_APIS"));
+	public static boolean REPOSITIONING_CONTROLLED_BY_CONTROL_APIS = Boolean.valueOf(loadConfig("REPOSITIONING_CONTROLLED_BY_CONTROL_APIS"));
+	public static boolean CHARGING_CONTROLLED_BY_CONTROL_APIS = Boolean.valueOf(loadConfig("CHARGING_CONTROLLED_BY_CONTROL_APIS"));
+	
 	public static int HOUR_OF_DEMAND = (int) Math.ceil(SIMULATION_STOP_TIME / (SIMULATION_DEMAND_REFRESH_INTERVAL + 0.0));
 	public static int HOUR_OF_SPEED = (int) Math.ceil(SIMULATION_STOP_TIME / (SIMULATION_SPEED_REFRESH_INTERVAL + 0.0));
 	
