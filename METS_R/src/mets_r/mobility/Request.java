@@ -20,6 +20,7 @@ public class Request {
 	private int originRoad;
 	private int destRoad;
 	private int maxWaitingTime;
+	private boolean maxWaitingTimeExplicit;
 	private int currentWaitingTime;
 	private int numPeople;
 	
@@ -42,6 +43,7 @@ public class Request {
 		this.originRoad = originRoad;
 		this.destRoad = destRoad;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME; // The passenger will not leave by default
+		this.maxWaitingTimeExplicit = false;
 		this.currentWaitingTime = 0;
 		this.numPeople = numPeople;
 		
@@ -52,6 +54,7 @@ public class Request {
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = activityPlan;
 		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
+		this.maxWaitingTimeExplicit = false;
 		this.currentWaitingTime = 0;	
 		this.origin = origin;
 		this.originRoad = originRoad;
@@ -85,6 +88,15 @@ public class Request {
 	
 	public void setMaxWaitingTime(int waiting_time) {
 		this.maxWaitingTime = waiting_time;
+		this.maxWaitingTimeExplicit = true;
+	}
+
+	public void setGeneratedMaxWaitingTime(int waiting_time) {
+		this.maxWaitingTime = waiting_time;
+	}
+
+	public boolean hasExplicitMaxWaitingTime() {
+		return this.maxWaitingTimeExplicit;
 	}
 	
 	public void setOrigin(int origin){

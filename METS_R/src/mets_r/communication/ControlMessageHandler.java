@@ -26,7 +26,8 @@ import mets_r.communication.MessageClass.SignalIDPhase;
 import mets_r.communication.MessageClass.SignalIDPhaseTiming;
 import mets_r.communication.MessageClass.SignalPhasePlan;
 import mets_r.communication.MessageClass.SignalPhasePlanTicks;
-import mets_r.communication.MessageClass.OrigRoadDestRoadNum;
+import mets_r.communication.MessageClass.OrigRoadDestRoadNumMaxW;
+import mets_r.communication.MessageClass.OriginDestNumMaxW;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
 import mets_r.communication.MessageClass.RouteNameZonesRoads;
@@ -46,7 +47,6 @@ import mets_r.communication.MessageClass.AddTaxiToZone;
 import mets_r.communication.MessageClass.ChargingStationParams;
 import mets_r.communication.MessageClass.RouteNameNum;
 import mets_r.communication.MessageClass.VehIDVehTypeChargerTypeCSID;
-import mets_r.communication.MessageClass.ZoneIDOrigDestRouteNameNum;
 import mets_r.communication.MessageClass.ZoneParams;
 import mets_r.facility.ZoneContext;
 import mets_r.data.input.SumoXML;
@@ -1473,13 +1473,51 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	/**
 	 * Override {@link Request} maximum waiting tolerance when the caller
-	 * specifies a positive value ({@code maxWaitingTime} in ticks). Same units
+	 * specifies a positive value ({@code max_waiting_time} in ticks). Same units
 	 * as {@link Request#getCurrentWaitingTime()} accumulation per zone refresh.
 	 */
 	private static void applyOptionalMaxWaitingTime(Request req, Integer maxWaitingTicks) {
 		if (maxWaitingTicks != null && maxWaitingTicks > 0) {
 			req.setMaxWaitingTime(maxWaitingTicks);
 		}
+	}
+
+	private static class BusRequestMatch {
+		int routeID;
+		int originStopIndex;
+		int destStopIndex;
+
+		BusRequestMatch(int routeID, int originStopIndex, int destStopIndex) {
+			this.routeID = routeID;
+			this.originStopIndex = originStopIndex;
+			this.destStopIndex = destStopIndex;
+		}
+	}
+
+	private static BusRequestMatch findBusRequestMatch(int originZoneID, int destZoneID) {
+		ArrayList<Integer> routeIDs = new ArrayList<Integer>();
+		Zone originZone = ContextCreator.getZoneContext().get(originZoneID);
+		if (originZone != null && originZone.traversingBusRoutes.containsKey(destZoneID)) {
+			routeIDs.addAll(originZone.traversingBusRoutes.get(destZoneID));
+		} else {
+			routeIDs.addAll(ContextCreator.bus_schedule.getRouteIDs());
+		}
+
+		for (int rID : routeIDs) {
+			ArrayList<Integer> stops = ContextCreator.bus_schedule.getStopZones(rID);
+			if (stops == null) continue;
+			for (int i = 0; i < stops.size(); i++) {
+				if (!stops.get(i).equals(originZoneID)) continue;
+				for (int j = i + 1; j < stops.size(); j++) {
+					if (!stops.get(j).equals(destZoneID)) continue;
+					if (ContextCreator.bus_schedule.getStopRoad(rID, i) != null
+							&& ContextCreator.bus_schedule.getStopRoad(rID, j) != null) {
+						return new BusRequestMatch(rID, i, j);
+					}
+				}
+			}
+		}
+		return null;
 	}
 	
 	// =============================================================
@@ -1491,16 +1529,13 @@ public class ControlMessageHandler extends MessageHandler {
 	 * Add one or more pending taxi requests to a zone's pending queue
 	 * (specified by zone IDs).
 	 *
-	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num,
-	 * maxWaitingTime?}} where {@code zoneID} is the origin zone,
+	 * <p>Input DATA: list of {@code {zoneID, dest, num,
+	 * max_waiting_time?}} where {@code zoneID} is the origin zone,
 	 * {@code dest} is the destination zone, and {@code num} is the party
-	 * size. Optional {@code maxWaitingTime}: positive integer, maximum wait
+	 * size. Optional {@code max_waiting_time}: positive integer, maximum wait
 	 * before the passenger abandons the queue ({@link Request#setMaxWaitingTime(int)}
-	 * in simulation ticks); if omitted or non-positive, the default tolerance
-	 * applies (typically no abandonment before end of simulation).
-	 *
-	 * <p>The {@code routeName} field is kept for Gson compatibility but is unused
-	 * for taxi inserts.
+	 * in simulation ticks); if omitted or non-positive, the zone's default
+	 * taxi waiting tolerance applies.
 	 *
 	 * <p>Output DATA: list of {@code {ID: zoneID, reqID, STATUS}} entries.
 	 * The returned {@code reqID} is the canonical handle the caller should
@@ -1516,11 +1551,11 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<ZoneIDOrigDestRouteNameNum>> collectionType = new TypeToken<Collection<ZoneIDOrigDestRouteNameNum>>() {};
-				Collection<ZoneIDOrigDestRouteNameNum> zoneIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<OriginDestNumMaxW>> collectionType = new TypeToken<Collection<OriginDestNumMaxW>>() {};
+				Collection<OriginDestNumMaxW> zoneIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
-				for(ZoneIDOrigDestRouteNameNum zoneIDOrigDestNum: zoneIDOrigDestNums) {
+				for(OriginDestNumMaxW zoneIDOrigDestNum: zoneIDOrigDestNums) {
 					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.zoneID);
 					Zone z2 = ContextCreator.getZoneContext().get(zoneIDOrigDestNum.dest);
 					if(z1 != null && z2 != null) {
@@ -1574,17 +1609,18 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<OrigRoadDestRoadNum>> collectionType = new TypeToken<Collection<OrigRoadDestRoadNum>>() {};
-				Collection<OrigRoadDestRoadNum> origRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<OrigRoadDestRoadNumMaxW>> collectionType = new TypeToken<Collection<OrigRoadDestRoadNumMaxW>>() {};
+				Collection<OrigRoadDestRoadNumMaxW> origRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
-				for(OrigRoadDestRoadNum origRoadDestRoadNum: origRoadDestRoadNums) {
+				for(OrigRoadDestRoadNumMaxW origRoadDestRoadNum: origRoadDestRoadNums) {
 					Road r1 = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoadNum.orig);
 					Road r2 = ContextCreator.getCityContext().findRoadWithOrigID(origRoadDestRoadNum.dest);
 					if(r1 != null && r2 != null) {
 						Zone z1 = ContextCreator.getZoneContext().get(r1.getNeighboringZone(false));
 						// generate request
 						Request p = new Request(z1.getID(), r2.getNeighboringZone(true), r1.getID(), r2.getID(), origRoadDestRoadNum.num);
+						applyOptionalMaxWaitingTime(p, origRoadDestRoadNum.maxWaitingTime);
 						z1.insertTaxiPass(p);
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -1692,13 +1728,12 @@ public class ControlMessageHandler extends MessageHandler {
 	/**
 	 * Add one or more pending bus requests to a zone's bus queue. The
 	 * origin and destination zones must both appear (in order) on the
-	 * specified bus route.
+	 * same bus route.
 	 *
-	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num,
-	 * maxWaitingTime?}}. Optional {@code maxWaitingTime}: positive integer,
+	 * <p>Input DATA: list of {@code {zoneID, dest, num,
+	 * max_waiting_time?}}. Optional {@code max_waiting_time}: positive integer,
 	 * maximum wait before the passenger abandons the queue (simulation ticks);
-	 * if omitted or non-positive, the default tolerance applies (typically bus
-	 * passengers keep waiting until the end of simulation).
+	 * if omitted or non-positive, the default bus tolerance applies.
 	 *
 	 * <p>Output DATA: list of {@code {ID: zoneID, STATUS}} entries.
 	 */
@@ -1711,34 +1746,18 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<ZoneIDOrigDestRouteNameNum>> collectionType = new TypeToken<Collection<ZoneIDOrigDestRouteNameNum>>() {};
-				Collection<ZoneIDOrigDestRouteNameNum> zoneIDOrigDestRouteNameNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<OriginDestNumMaxW>> collectionType = new TypeToken<Collection<OriginDestNumMaxW>>() {};
+				Collection<OriginDestNumMaxW> zoneIDOrigDestRouteNameNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
-				for(ZoneIDOrigDestRouteNameNum zoneIDOrigDestRouteNameNum: zoneIDOrigDestRouteNameNums) {
+				for(OriginDestNumMaxW zoneIDOrigDestRouteNameNum: zoneIDOrigDestRouteNameNums) {
 					Zone z1 = ContextCreator.getZoneContext().get(zoneIDOrigDestRouteNameNum.zoneID);
 					Zone z2 = ContextCreator.getZoneContext().get(zoneIDOrigDestRouteNameNum.dest);
-					
-					int rID = ContextCreator.bus_schedule.getRouteID(zoneIDOrigDestRouteNameNum.routeName);
-					int idx0 = -1;
-					int idx1 = -1;
-					
-					if(rID != -1) {
-						ArrayList<Integer> stops = ContextCreator.bus_schedule.getStopZones(rID);
-						
-						for (int i = 0; i < stops.size(); i++) {
-					        if (!stops.get(i).equals(zoneIDOrigDestRouteNameNum.zoneID)) continue;
-					        for (int j = i+1; j < stops.size(); j++) {
-					        	if(!stops.get(j).equals(zoneIDOrigDestRouteNameNum.dest)) continue;
-					        	idx0 = i;
-					        	idx1 = j;
-					        }
-						}
-					}
-					
-					if(idx0 >= 0 && idx1 > idx0 && rID != -1) {
+					BusRequestMatch match = findBusRequestMatch(zoneIDOrigDestRouteNameNum.zoneID, zoneIDOrigDestRouteNameNum.dest);
+					if(z1 != null && z2 != null && match != null) {
 						// generate request
-						Request p = new Request(z1.getID(), z2.getID(), ContextCreator.bus_schedule.getStopRoad(rID, idx0).getID(), ContextCreator.bus_schedule.getStopRoad(rID, idx1).getID(), zoneIDOrigDestRouteNameNum.num);
+						Request p = new Request(z1.getID(), z2.getID(), ContextCreator.bus_schedule.getStopRoad(match.routeID, match.originStopIndex).getID(), ContextCreator.bus_schedule.getStopRoad(match.routeID, match.destStopIndex).getID(), zoneIDOrigDestRouteNameNum.num);
+						p.setBusRoute(match.routeID);
 						applyOptionalMaxWaitingTime(p, zoneIDOrigDestRouteNameNum.maxWaitingTime);
 						z1.insertBusPass(p);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();

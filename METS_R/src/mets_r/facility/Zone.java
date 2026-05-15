@@ -818,13 +818,17 @@ public class Zone {
 
 	protected void addTaxiPass(Request new_pass) {
 		this.nRequestForTaxi += 1;
-		new_pass.setMaxWaitingTime(this.generateWaitingTimeForTaxi());
+		if (!new_pass.hasExplicitMaxWaitingTime()) {
+			new_pass.setGeneratedMaxWaitingTime(this.generateWaitingTimeForTaxi());
+		}
 		this.requestInQueueForTaxi.add(new_pass);
 	}
 
 	protected void addSharableTaxiPass(Request new_pass, int destination) {
 		this.nRequestForTaxi += 1;
-		new_pass.setMaxWaitingTime(this.generateWaitingTimeForTaxi());
+		if (!new_pass.hasExplicitMaxWaitingTime()) {
+			new_pass.setGeneratedMaxWaitingTime(this.generateWaitingTimeForTaxi());
+		}
 		if (!this.sharableRequestForTaxi.containsKey(destination)) {
 			this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
 		}
@@ -833,7 +837,9 @@ public class Zone {
 	
 	protected void addBusPass(Request new_pass) {
 		this.nRequestForBus += 1;
-		new_pass.setMaxWaitingTime(this.generateWaitingTimeForBus());
+		if (!new_pass.hasExplicitMaxWaitingTime()) {
+			new_pass.setGeneratedMaxWaitingTime(this.generateWaitingTimeForBus());
+		}
 		this.requestInQueueForBus.add(new_pass);
 	}
 	
