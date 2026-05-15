@@ -19,6 +19,7 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.MessageClass.BusIDReqID;
 import mets_r.communication.MessageClass.BusIDRouteNameStopIndex;
 import mets_r.communication.MessageClass.BusIDRouteNameZoneRoadStopIndex;
 import mets_r.communication.MessageClass.ChargerIDChargerTypeWeight;
@@ -1471,6 +1472,55 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 	}
 	
+	private static class PendingBusRequestRef {
+		Zone zone;
+		Request request;
+		// One of: "queue", "toAdd"
+		String source;
+	}
+
+	private PendingBusRequestRef findAndRemovePendingBusRequest(int reqID) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			Iterator<Request> it = z.getBusRequestQueue().iterator();
+			while (it.hasNext()) {
+				Request r = it.next();
+				if (r.getID() == reqID) {
+					it.remove();
+					z.setNRequestForBus(z.getBusRequestNum() - 1);
+					PendingBusRequestRef ref = new PendingBusRequestRef();
+					ref.zone = z;
+					ref.request = r;
+					ref.source = "queue";
+					return ref;
+				}
+			}
+			Iterator<Request> tit = z.getToAddBusRequestQueue().iterator();
+			while (tit.hasNext()) {
+				Request r = tit.next();
+				if (r.getID() == reqID) {
+					tit.remove();
+					PendingBusRequestRef ref = new PendingBusRequestRef();
+					ref.zone = z;
+					ref.request = r;
+					ref.source = "toAdd";
+					return ref;
+				}
+			}
+		}
+		return null;
+	}
+
+	private void reinsertPendingBusRequest(PendingBusRequestRef ref) {
+		Zone z = ref.zone;
+		Request r = ref.request;
+		if ("toAdd".equals(ref.source)) {
+			z.getToAddBusRequestQueue().add(r);
+		} else {
+			z.getBusRequestQueue().add(r);
+			z.setNRequestForBus(z.getBusRequestNum() + 1);
+		}
+	}
+
 	/**
 	 * Override {@link Request} maximum waiting tolerance when the caller
 	 * specifies a positive value ({@code max_waiting_time} in ticks). Same units
@@ -1650,19 +1700,14 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	/**
-	 * Match a bus request to a specific bus along its current route.
-	 * Searches the bus's remaining stops for one matching the requested
-	 * origin and a later one matching the destination; if found, a new
-	 * {@link Request} is created and added to the bus's to-board list.
+	 * Match an existing pending bus request to a specific bus along its
+	 * current route.
 	 *
-	 * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
-	 * {@code orig} and {@code dest} are zone IDs that must appear (in
-	 * order) on the bus's route after its current stop.
+	 * <p>Input DATA: list of {@code {busID, reqID}}. The request must have
+	 * already been created by {@link #addBusRequests}.
 	 *
-	 * <p>Output DATA: list of {@code {ID: vehID, STATUS}} entries.
-	 *
-	 * <p>TODO: extend to consider arbitrary bus routes rather than only
-	 * the bus's current assigned route.
+	 * <p>Output DATA: list of {@code {ID: busID, busID, reqID, STATUS}}
+	 * entries.
 	 */
 	private HashMap<String, Object> assignRequestToBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -1673,43 +1718,60 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
-				Collection<VehIDOrigDestNum> vehIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				TypeToken<Collection<BusIDReqID>> collectionType = new TypeToken<Collection<BusIDReqID>>() {};
+				Collection<BusIDReqID> busIDReqIDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				
-				for(VehIDOrigDestNum vehIDOrigDestNum: vehIDOrigDestNums) {
-					ElectricBus veh = (ElectricBus) ContextCreator.getVehicleContext().getPublicVehicle(vehIDOrigDestNum.vehID);
-					int rID = veh.getRouteID();
-					ArrayList<Integer> stops = ContextCreator.bus_schedule.getStopZones(rID);
-					int idx0 = -1;
-					int idx1 = -1;
-					for (int i = veh.getCurrentStop(); i < stops.size(); i++) {
-				        if (!stops.get(i).equals(vehIDOrigDestNum.orig)) continue;
-				        for (int j = i+1; j < stops.size(); j++) {
-				        	if(!stops.get(j).equals(vehIDOrigDestNum.dest)) continue;
-				        	idx0 = i;
-				        	idx1 = j;
-				        }
+				for(BusIDReqID busIDReqID: busIDReqIDs) {
+					int busID = busIDReqID.getBusID();
+					HashMap<String, Object> record2 = new HashMap<String, Object>();
+					record2.put("ID", busID);
+					record2.put("busID", busID);
+					record2.put("reqID", busIDReqID.reqID);
+
+					if (busIDReqID.reqID == null) {
+						record2.put("STATUS", "KO");
+						record2.put("WARN", "request ID missing");
+						jsonData.add(record2);
+						continue;
+					}
+
+					ElectricBus veh = ContextCreator.getVehicleContext().getBus(busID);
+					if (veh == null) {
+						record2.put("STATUS", "KO");
+						record2.put("WARN", "bus not found");
+						jsonData.add(record2);
+						continue;
 					}
 					
-					if(veh != null && idx0 >= 0 && idx1 > idx0 && rID != -1) {
-						// generate request
-						Zone z1 = ContextCreator.getZoneContext().get(vehIDOrigDestNum.orig);
-						Request p = new Request(vehIDOrigDestNum.orig, vehIDOrigDestNum.dest, ContextCreator.bus_schedule.getStopRoad(rID, idx0).getID(),  ContextCreator.bus_schedule.getStopRoad(rID, idx1).getID(), vehIDOrigDestNum.num);
-						p.matchedTime = ContextCreator.getCurrentTick();
-						
-						if(veh.addToBoardPass(p)) {
-							z1.busPickupRequest += 1;
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-				    		record2.put("ID", vehIDOrigDestNum.vehID);
-				    		record2.put("STATUS", "OK");
-							jsonData.add(record2);
-							continue;
-						}
+					PendingBusRequestRef ref = findAndRemovePendingBusRequest(busIDReqID.reqID);
+					if (ref == null) {
+						record2.put("STATUS", "KO");
+						record2.put("WARN", "pending bus request not found");
+						jsonData.add(record2);
+						continue;
 					}
-		    		HashMap<String, Object> record2 = new HashMap<String, Object>();
-		    		record2.put("ID", vehIDOrigDestNum.vehID);
-		    		record2.put("STATUS", "KO");
+
+					Request p = ref.request;
+					if (!veh.servable(p)) {
+						reinsertPendingBusRequest(ref);
+						record2.put("STATUS", "KO");
+						record2.put("WARN", "request not servable by bus route");
+						jsonData.add(record2);
+						continue;
+					}
+
+					p.setBusRoute(veh.getRouteID());
+					p.matchedTime = ContextCreator.getCurrentTick();
+					if(veh.addToBoardPass(p)) {
+						ref.zone.busPickupRequest += 1;
+						ref.zone.busServedPassWaitingTime += p.getCurrentWaitingTime();
+						record2.put("STATUS", "OK");
+					} else {
+						reinsertPendingBusRequest(ref);
+						record2.put("STATUS", "KO");
+						record2.put("WARN", "request not added to bus");
+					}
 					jsonData.add(record2);
 				}
 				
@@ -1735,7 +1797,7 @@ public class ControlMessageHandler extends MessageHandler {
 	 * maximum wait before the passenger abandons the queue (simulation ticks);
 	 * if omitted or non-positive, the default bus tolerance applies.
 	 *
-	 * <p>Output DATA: list of {@code {ID: zoneID, STATUS}} entries.
+	 * <p>Output DATA: list of {@code {ID: zoneID, reqID, STATUS}} entries.
 	 */
 	private HashMap<String, Object> addBusRequests(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -1762,6 +1824,7 @@ public class ControlMessageHandler extends MessageHandler {
 						z1.insertBusPass(p);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", zoneIDOrigDestRouteNameNum.zoneID);
+						record2.put("reqID", p.getID());
 			    		record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}

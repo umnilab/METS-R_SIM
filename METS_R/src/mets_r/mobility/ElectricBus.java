@@ -297,14 +297,31 @@ public class ElectricBus extends ElectricVehicle {
 		return 0;
 	}
 	
-	public boolean addToBoardPass(Request p) {
-		if(stopZones.contains(p.getDestZone()) &&  stopZones.contains(p.getOriginZone())) {
-			int stopIndex = stopZones.indexOf(p.getDestZone());
-			int stopIndex2 = stopZones.indexOf(p.getOriginZone());
-			if ((stopIndex >= this.getNextStopIndex() && stopIndex2 >= this.getNextStopIndex()-1) || stopIndex == 0) {
-				this.toBoardRequests.get(stopIndex2).add(p);
-				return true;
+	private int servableBoardStopIndex(Request p) {
+		if (p == null || this.routeID < 0 || this.stopZones == null || this.toBoardRequests == null) {
+			return -1;
+		}
+		int startIndex = Math.max(0, this.getNextStopIndex() - 1);
+		for (int originIndex = startIndex; originIndex < this.stopZones.size(); originIndex++) {
+			if (!this.stopZones.get(originIndex).equals(p.getOriginZone())) continue;
+			for (int destIndex = originIndex + 1; destIndex < this.stopZones.size(); destIndex++) {
+				if (this.stopZones.get(destIndex).equals(p.getDestZone())) {
+					return originIndex;
+				}
 			}
+		}
+		return -1;
+	}
+
+	public boolean servable(Request p) {
+		return servableBoardStopIndex(p) >= 0;
+	}
+
+	public boolean addToBoardPass(Request p) {
+		int originStopIndex = servableBoardStopIndex(p);
+		if (originStopIndex >= 0) {
+			this.toBoardRequests.get(originStopIndex).add(p);
+			return true;
 		}
 		return false;
 	}

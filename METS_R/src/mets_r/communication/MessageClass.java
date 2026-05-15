@@ -175,6 +175,24 @@ public class MessageClass{
     	}
     }
     
+    // For assignRequestToBus: pair a bus with an already-pending bus request.
+    class BusIDReqID{
+        Integer busID;
+        Integer vehID;
+        Integer reqID;
+
+        public BusIDReqID(Integer busID, Integer reqID) {
+            this.busID = busID;
+            this.reqID = reqID;
+        }
+
+        public int getBusID() {
+            if (this.busID != null) return this.busID;
+            if (this.vehID != null) return this.vehID;
+            return -1;
+        }
+    }
+
     // For repositionTaxi: send an idle/cruising taxi to a destination zone.
     class VehIDZoneID{
     	int vehID;

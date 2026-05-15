@@ -257,7 +257,9 @@ public class QueryMessageHandler extends MessageHandler {
 				if(bus != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", bus.getID());
-					record2.put("route", ContextCreator.bus_schedule.getRouteName(bus.getRouteID()));
+					int routeID = bus.getRouteID();
+					String routeName = ContextCreator.bus_schedule.getRouteName(routeID);
+					record2.put("route", routeName == null ? -1 : routeName);
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
 					record2.put("battery_state", bus.getBatteryLevel());
