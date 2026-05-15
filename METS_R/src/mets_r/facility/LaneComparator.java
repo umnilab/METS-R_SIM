@@ -2,7 +2,7 @@ package mets_r.facility;
 
 import java.util.Comparator;
 
-// Rightmost lane has largest ID
+// Matches SUMO: lane suffix 0 = right roadside; ascending |id| ⇒ index 0 = rightmost
 class LaneComparator implements Comparator<Lane> {
 	public int compare(Lane l1, Lane l2) {
 		int LaneID1, LaneID2;

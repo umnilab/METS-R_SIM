@@ -631,7 +631,10 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		ContextCreator.logger.info("Junction initialized!");
 		
-		// Assign the lanes to each road
+		// Assign the lanes to each road (SUMO parse already attached lanes on Road objects)
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			road.getLanes().clear();
+		}
 		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
 			Road road = lane.getRoad();
 			road.addLane(lane);

@@ -586,15 +586,20 @@ public class Road {
 		return this.lanes.size();
 	}
 
+	/**
+	 * Rightmost (SUMO lane index 0) lane under {@link #sortLanes()}: smallest lane
+	 * integer id sorts to index 0.
+	 */
 	public Lane firstLane() {
 		Lane firstLane = null;
-		int rightmost = this.getLanes().size() - 1;
-		firstLane = this.getLane(rightmost);
+		if (!this.getLanes().isEmpty()) {
+			firstLane = this.getLane(0);
+		}
 		return firstLane;
 	}
 
 	public void printRoadInfo() {
-		ContextCreator.logger.info("Road: " + this.getID() + " has lanes from left to right as follow: ");
+		ContextCreator.logger.info("Road: " + this.getID() + " has lanes from right (SUMO 0) to left as follow: ");
 		for (int i = 0; i < this.lanes.size(); i++) {
 			ContextCreator.logger.info(this.lanes.get(i).getID() + " with Repast ID: " + this.lanes.get(i).getID());
 		}
