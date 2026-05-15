@@ -9,6 +9,7 @@ import org.eclipse.jetty.websocket.api.annotations.*;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import mets_r.ContextCreator;
+import mets_r.GlobalVariables;
 
 /**
  * When a request from a remote program for a network connection is received,
@@ -101,6 +102,9 @@ public class Connection{
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
 				if (answer != null && session != null) {
 					this.answerSender.sendMessage(session, answer);
+					if (shouldSendReadyAfterControl(msgType[1], answer)) {
+						this.answerSender.sendReadyMessage(session);
+					}
 				} else if (session == null) {
 					ContextCreator.logger.warn("CTRL_" + msgType[1] + ": cannot send answer, session is null");
 				} else {
@@ -146,6 +150,20 @@ public class Connection{
 	        ContextCreator.logger.error("FATAL JVM ERROR: " + t.toString(), t);
 	        t.printStackTrace(); 
 	    }
+	}
+
+	private boolean shouldSendReadyAfterControl(String controlType, String answer) {
+		if (!GlobalVariables.SYNCHRONIZED || !"reset".equals(controlType)) {
+			return false;
+		}
+		try {
+			JSONObject jsonAns = (JSONObject) new JSONParser().parse(answer);
+			return "OK".equals(jsonAns.get("CODE"));
+		} catch (Exception e) {
+			ContextCreator.logger.warn("CTRL_" + controlType + ": could not parse answer before ready check: "
+					+ e.getMessage());
+			return false;
+		}
 	}
 	
 	public void sendStepMessage(int tick) {
