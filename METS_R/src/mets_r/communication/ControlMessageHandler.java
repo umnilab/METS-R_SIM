@@ -1471,6 +1471,17 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 	}
 	
+	/**
+	 * Override {@link Request} maximum waiting tolerance when the caller
+	 * specifies a positive value ({@code maxWaitingTime} in ticks). Same units
+	 * as {@link Request#getCurrentWaitingTime()} accumulation per zone refresh.
+	 */
+	private static void applyOptionalMaxWaitingTime(Request req, Integer maxWaitingTicks) {
+		if (maxWaitingTicks != null && maxWaitingTicks > 0) {
+			req.setMaxWaitingTime(maxWaitingTicks);
+		}
+	}
+	
 	// =============================================================
 	// RIDE-HAILING: ADD PENDING REQUESTS / BUS ASSIGNMENT
 	// (the only entry points that create Request objects)
@@ -1480,9 +1491,16 @@ public class ControlMessageHandler extends MessageHandler {
 	 * Add one or more pending taxi requests to a zone's pending queue
 	 * (specified by zone IDs).
 	 *
-	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num}} where
-	 * {@code zoneID} is the origin zone, {@code dest} is the destination
-	 * zone, and {@code num} is the party size.
+	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num,
+	 * maxWaitingTime?}} where {@code zoneID} is the origin zone,
+	 * {@code dest} is the destination zone, and {@code num} is the party
+	 * size. Optional {@code maxWaitingTime}: positive integer, maximum wait
+	 * before the passenger abandons the queue ({@link Request#setMaxWaitingTime(int)}
+	 * in simulation ticks); if omitted or non-positive, the default tolerance
+	 * applies (typically no abandonment before end of simulation).
+	 *
+	 * <p>The {@code routeName} field is kept for Gson compatibility but is unused
+	 * for taxi inserts.
 	 *
 	 * <p>Output DATA: list of {@code {ID: zoneID, reqID, STATUS}} entries.
 	 * The returned {@code reqID} is the canonical handle the caller should
@@ -1508,6 +1526,7 @@ public class ControlMessageHandler extends MessageHandler {
 					if(z1 != null && z2 != null) {
 						// generate request
 						Request p = new Request(z1.getID(), z2.getID(), z1.sampleRoad(false), z2.sampleRoad(true), zoneIDOrigDestNum.num);
+						applyOptionalMaxWaitingTime(p, zoneIDOrigDestNum.maxWaitingTime);
 						z1.insertTaxiPass(p);
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
@@ -1675,7 +1694,11 @@ public class ControlMessageHandler extends MessageHandler {
 	 * origin and destination zones must both appear (in order) on the
 	 * specified bus route.
 	 *
-	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num}}.
+	 * <p>Input DATA: list of {@code {zoneID, dest, routeName, num,
+	 * maxWaitingTime?}}. Optional {@code maxWaitingTime}: positive integer,
+	 * maximum wait before the passenger abandons the queue (simulation ticks);
+	 * if omitted or non-positive, the default tolerance applies (typically bus
+	 * passengers keep waiting until the end of simulation).
 	 *
 	 * <p>Output DATA: list of {@code {ID: zoneID, STATUS}} entries.
 	 */
@@ -1716,6 +1739,7 @@ public class ControlMessageHandler extends MessageHandler {
 					if(idx0 >= 0 && idx1 > idx0 && rID != -1) {
 						// generate request
 						Request p = new Request(z1.getID(), z2.getID(), ContextCreator.bus_schedule.getStopRoad(rID, idx0).getID(), ContextCreator.bus_schedule.getStopRoad(rID, idx1).getID(), zoneIDOrigDestRouteNameNum.num);
+						applyOptionalMaxWaitingTime(p, zoneIDOrigDestRouteNameNum.maxWaitingTime);
 						z1.insertBusPass(p);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", zoneIDOrigDestRouteNameNum.zoneID);

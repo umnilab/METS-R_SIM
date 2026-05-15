@@ -96,6 +96,10 @@ public class Zone {
 	public int busServedRequest;
 	public int numberOfLeavedTaxiRequest;
 	public int numberOfLeavedBusRequest;
+	/** Sum of {@link Request#getNumPeople()} for taxi requests that abandoned queues (shareable + main). */
+	public int numberOfLeavedTaxiPassengers;
+	/** Sum of {@link Request#getNumPeople()} for bus requests that abandoned queues. */
+	public int numberOfLeavedBusPassengers;
 	public int numberOfRelocatedVehicles;
 	public int taxiServedPassWaitingTime; // Waiting time of served Passengers
 	public int busServedPassWaitingTime;
@@ -138,6 +142,8 @@ public class Zone {
 		this.busServedRequest = 0; // Drop-off request number
 		this.numberOfLeavedTaxiRequest = 0;
 		this.numberOfLeavedBusRequest = 0;
+		this.numberOfLeavedTaxiPassengers = 0;
+		this.numberOfLeavedBusPassengers = 0;
 		this.numberOfRelocatedVehicles = 0;
 		this.taxiServedPassWaitingTime = 0;
 		this.busServedPassWaitingTime = 0;
@@ -678,9 +684,11 @@ public class Zone {
 			curr_size = passQueue.size();
 			for (int i = 0; i < curr_size; i++) {
 				if (passQueue.peek().check()) {
-					taxiLeavedPassWaitingTime += passQueue.poll().getCurrentWaitingTime();
+					Request gone = passQueue.poll();
+					taxiLeavedPassWaitingTime += gone.getCurrentWaitingTime();
 					numberOfLeavedTaxiRequest += 1;
 					nRequestForTaxi -= 1;
+					numberOfLeavedTaxiPassengers += gone.getNumPeople();
 				} else {
 					break;
 				}
@@ -694,9 +702,11 @@ public class Zone {
 		
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForTaxi.peek().check()) {
-				taxiLeavedPassWaitingTime += requestInQueueForTaxi.poll().getCurrentWaitingTime();
+				Request gone = requestInQueueForTaxi.poll();
+				taxiLeavedPassWaitingTime += gone.getCurrentWaitingTime();
 				numberOfLeavedTaxiRequest += 1;
 				nRequestForTaxi -= 1;
+				numberOfLeavedTaxiPassengers += gone.getNumPeople();
 			} else {
 				break;
 			}
@@ -711,9 +721,11 @@ public class Zone {
 		int curr_size = requestInQueueForBus.size();
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForBus.peek().check()) {
-				busLeavedPassWaitingTime += requestInQueueForBus.poll().getCurrentWaitingTime();
+				Request gone = requestInQueueForBus.poll();
+				busLeavedPassWaitingTime += gone.getCurrentWaitingTime();
 				this.numberOfLeavedBusRequest += 1;
 				nRequestForBus -= 1;
+				numberOfLeavedBusPassengers += gone.getNumPeople();
 			}
 		}
 	}

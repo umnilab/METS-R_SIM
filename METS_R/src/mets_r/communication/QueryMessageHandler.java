@@ -43,7 +43,6 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
         messageHandlers.put("bus", this::getBus);
-        messageHandlers.put("availableTaxis", this::getAvailableTaxis);
         
         // =============================================================
         // Roads & geometry
@@ -88,9 +87,11 @@ public class QueryMessageHandler extends MessageHandler {
         // =============================================================
         messageHandlers.put("pendingRequests", this::getPendingRequests);
         messageHandlers.put("request", this::getRequest);
+        messageHandlers.put("availableTaxis", this::getAvailableTaxis);
         // Backward-compat aliases for earlier names
         messageHandlers.put("queryPendingRequests", this::getPendingRequests);
         messageHandlers.put("queryRequest", this::getRequest);
+        messageHandlers.put("queryAvailableTaxis", this::getAvailableTaxis);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -502,7 +503,12 @@ public class QueryMessageHandler extends MessageHandler {
 	 * returns the {@code id_list} of all zones.
 	 *
 	 * <p>Output DATA: list of {@code {ID, z_type, taxi_demand, bus_demand,
-	 * veh_stock, x, y, z}} records.
+	 * veh_stock, x, y, z, leftTaxiRequests, leftTaxiPassengers,
+	 * leftBusRequests, leftBusPassengers}} records. The {@code left*} fields
+	 * are cumulative since simulation start at that zone: requests that
+	 * abandoned the taxi or bus queue after exceeding maximum wait time, and
+	 * passenger totals (sum of {@link Request#getNumPeople()} per abandoned
+	 * request).
 	 */
 	public HashMap<String, Object> getZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -529,6 +535,10 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
 					record2.put("z", coord.z);
+					record2.put("leftTaxiRequests", zone.numberOfLeavedTaxiRequest);
+					record2.put("leftTaxiPassengers", zone.numberOfLeavedTaxiPassengers);
+					record2.put("leftBusRequests", zone.numberOfLeavedBusRequest);
+					record2.put("leftBusPassengers", zone.numberOfLeavedBusPassengers);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");

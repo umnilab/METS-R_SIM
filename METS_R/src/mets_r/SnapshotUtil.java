@@ -245,6 +245,8 @@ public class SnapshotUtil {
 		m.put("busServedRequest", z.busServedRequest);
 		m.put("numberOfLeavedTaxiRequest", z.numberOfLeavedTaxiRequest);
 		m.put("numberOfLeavedBusRequest", z.numberOfLeavedBusRequest);
+		m.put("numberOfLeavedTaxiPassengers", z.numberOfLeavedTaxiPassengers);
+		m.put("numberOfLeavedBusPassengers", z.numberOfLeavedBusPassengers);
 		m.put("numberOfRelocatedVehicles", z.numberOfRelocatedVehicles);
 		m.put("taxiServedPassWaitingTime", z.taxiServedPassWaitingTime);
 		m.put("busServedPassWaitingTime", z.busServedPassWaitingTime);
@@ -600,6 +602,8 @@ public class SnapshotUtil {
 			z.busServedRequest = toInt(zs.get("busServedRequest"));
 			z.numberOfLeavedTaxiRequest = toInt(zs.get("numberOfLeavedTaxiRequest"));
 			z.numberOfLeavedBusRequest = toInt(zs.get("numberOfLeavedBusRequest"));
+			z.numberOfLeavedTaxiPassengers = toInt(zs.get("numberOfLeavedTaxiPassengers"));
+			z.numberOfLeavedBusPassengers = toInt(zs.get("numberOfLeavedBusPassengers"));
 			z.numberOfRelocatedVehicles = toInt(zs.get("numberOfRelocatedVehicles"));
 			z.taxiServedPassWaitingTime = toInt(zs.get("taxiServedPassWaitingTime"));
 			z.busServedPassWaitingTime = toInt(zs.get("busServedPassWaitingTime"));
