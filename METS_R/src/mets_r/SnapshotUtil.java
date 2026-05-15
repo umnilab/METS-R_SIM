@@ -7,7 +7,6 @@ import java.util.zip.*;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.google.gson.internal.LinkedTreeMap;
 import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -24,6 +23,16 @@ import mets_r.mobility.*;
 public class SnapshotUtil {
 
 	private static final Gson gson = new GsonBuilder().serializeSpecialFloatingPointValues().create();
+
+	public static class SimulationSnapshot {
+		HashMap<String, Object> globalState;
+		ArrayList<HashMap<String, Object>> vehicleSnapshots;
+		ArrayList<HashMap<String, Object>> zoneSnapshots;
+		ArrayList<HashMap<String, Object>> chargingStationSnapshots;
+		ArrayList<HashMap<String, Object>> signalSnapshots;
+		ArrayList<HashMap<String, Object>> roadSnapshots;
+		ArrayList<HashMap<String, Object>> laneSnapshots;
+	}
 
 	// ------------------------------------------------------------------ //
 	//                          SAVE helpers                               //
@@ -250,6 +259,10 @@ public class SnapshotUtil {
 		m.put("numberOfRelocatedVehicles", z.numberOfRelocatedVehicles);
 		m.put("taxiServedPassWaitingTime", z.taxiServedPassWaitingTime);
 		m.put("busServedPassWaitingTime", z.busServedPassWaitingTime);
+		m.put("taxiLeavedPassWaitingTime", z.taxiLeavedPassWaitingTime);
+		m.put("busLeavedPassWaitingTime", z.busLeavedPassWaitingTime);
+		m.put("taxiParkingTime", z.taxiParkingTime);
+		m.put("taxiCruisingTime", z.taxiCruisingTime);
 		m.put("nRequestForTaxi", z.getTaxiRequestNum());
 		m.put("nRequestForBus", z.getBusRequestNum());
 
@@ -324,12 +337,248 @@ public class SnapshotUtil {
 		m.put("id", r.getID());
 		m.put("travelTime", r.getTravelTime());
 		m.put("speedLimit", r.getSpeedLimit());
+		m.put("controlType", r.getControlType());
 		m.put("currentEnergy", r.currentEnergy);
 		m.put("totalEnergy", r.totalEnergy);
 		m.put("currentFlow", r.currentFlow);
 		m.put("totalFlow", r.totalFlow);
 		m.put("prevFlow", r.prevFlow);
 		return m;
+	}
+
+	public static HashMap<String, Object> snapshotLane(Lane l) {
+		HashMap<String, Object> m = new HashMap<>();
+		m.put("id", l.getID());
+		m.put("speed", l.getSpeed());
+		m.put("rand", serializeRandom(l.getRandom()));
+		return m;
+	}
+
+	public static SimulationSnapshot captureToMemory() {
+		SimulationSnapshot snapshot = new SimulationSnapshot();
+
+		HashMap<String, Object> globalState = new HashMap<>();
+		globalState.put("currentTick", ContextCreator.getCurrentTick());
+		globalState.put("agentID", getAgentIDCounter());
+		globalState.put("globalRandom", serializeRandom(GlobalVariables.RandomGenerator));
+		globalState.put("bsmRandom", serializeRandom(BSMDataStream.getRandom()));
+		globalState.put("initTick", ContextCreator.initTick);
+		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
+		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
+		snapshot.globalState = globalState;
+
+		snapshot.vehicleSnapshots = new ArrayList<>();
+		for (ElectricTaxi taxi : ContextCreator.getVehicleContext().getTaxis()) {
+			snapshot.vehicleSnapshots.add(snapshotVehicle(taxi));
+		}
+		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+			snapshot.vehicleSnapshots.add(snapshotVehicle(bus));
+		}
+		for (int vid : ContextCreator.getVehicleContext().getPrivateVehicleIDList()) {
+			Vehicle v = ContextCreator.getVehicleContext().getPrivateVehicle(vid);
+			if (v != null) {
+				HashMap<String, Object> snap = snapshotVehicle(v);
+				snap.put("privateVID", vid);
+				snapshot.vehicleSnapshots.add(snap);
+			}
+		}
+
+		snapshot.zoneSnapshots = new ArrayList<>();
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			snapshot.zoneSnapshots.add(snapshotZone(z));
+		}
+
+		snapshot.chargingStationSnapshots = new ArrayList<>();
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			snapshot.chargingStationSnapshots.add(snapshotChargingStation(cs));
+		}
+
+		snapshot.signalSnapshots = new ArrayList<>();
+		for (Signal s : ContextCreator.getSignalContext().getAll()) {
+			snapshot.signalSnapshots.add(snapshotSignal(s));
+		}
+
+		snapshot.roadSnapshots = new ArrayList<>();
+		for (Road r : ContextCreator.getRoadContext().getAll()) {
+			snapshot.roadSnapshots.add(snapshotRoad(r));
+		}
+
+		snapshot.laneSnapshots = new ArrayList<>();
+		for (Lane l : ContextCreator.getLaneContext().getAll()) {
+			snapshot.laneSnapshots.add(snapshotLane(l));
+		}
+
+		return snapshot;
+	}
+
+	public static boolean matchesCurrentFacilityMembership(SimulationSnapshot snapshot) {
+		return sameIDs(snapshot.roadSnapshots, ContextCreator.getRoadContext().getIDList())
+				&& sameIDs(snapshot.laneSnapshots, ContextCreator.getLaneContext().getIDList())
+				&& sameIDs(snapshot.zoneSnapshots, ContextCreator.getZoneContext().getIDList())
+				&& sameIDs(snapshot.chargingStationSnapshots, ContextCreator.getChargingStationContext().getIDList())
+				&& sameIDs(snapshot.signalSnapshots, ContextCreator.getSignalContext().getIDList());
+	}
+
+	private static boolean sameIDs(ArrayList<HashMap<String, Object>> snapshots, List<Integer> currentIDs) {
+		if (snapshots == null || currentIDs == null || snapshots.size() != currentIDs.size()) {
+			return false;
+		}
+		HashSet<Integer> expected = new HashSet<>();
+		for (HashMap<String, Object> snap : snapshots) {
+			expected.add(toInt(snap.get("id")));
+		}
+		return expected.equals(new HashSet<Integer>(currentIDs));
+	}
+
+	@SuppressWarnings("unchecked")
+	public static void restoreToCurrentContexts(SimulationSnapshot snapshot) {
+		if (snapshot == null) {
+			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
+		}
+
+		String globalRandomStr = (String) snapshot.globalState.get("globalRandom");
+		String bsmRandomStr = (String) snapshot.globalState.get("bsmRandom");
+		int savedAgentID = toInt(snapshot.globalState.get("agentID"));
+
+		HashMap<Integer, HashMap<String, Object>> laneStateMap = mapByID(snapshot.laneSnapshots);
+		for (Lane l : ContextCreator.getLaneContext().getAll()) {
+			HashMap<String, Object> ls = laneStateMap.get(l.getID());
+			if (ls != null) {
+				l.restoreRuntimeState(toDouble(ls.get("speed")), deserializeRandom((String) ls.get("rand")));
+			} else {
+				l.restoreRuntimeState(l.getSpeed(), null);
+			}
+		}
+
+		HashMap<Integer, HashMap<String, Object>> roadStateMap = mapByID(snapshot.roadSnapshots);
+		for (Road r : ContextCreator.getRoadContext().getAll()) {
+			HashMap<String, Object> rs = roadStateMap.get(r.getID());
+			if (rs != null) {
+				r.restoreRuntimeState(
+						toDouble(rs.get("travelTime")),
+						toDouble(rs.get("speedLimit")),
+						toDouble(rs.get("currentEnergy")),
+						toDouble(rs.get("totalEnergy")),
+						toInt(rs.get("currentFlow")),
+						toInt(rs.get("totalFlow")),
+						toInt(rs.get("prevFlow")),
+						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE);
+			}
+		}
+		ContextCreator.getCityContext().refreshRoadNetworkWeights();
+
+		HashMap<Integer, HashMap<String, Object>> signalStateMap = mapByID(snapshot.signalSnapshots);
+		for (Signal s : ContextCreator.getSignalContext().getAll()) {
+			HashMap<String, Object> ss = signalStateMap.get(s.getID());
+			if (ss != null) {
+				s.restoreState(toInt(ss.get("state")), toInt(ss.get("nextUpdateTick")),
+						toIntList((List<?>) ss.get("phaseTick")));
+			}
+		}
+
+		HashMap<Integer, HashMap<String, Object>> zoneStateMap = mapByID(snapshot.zoneSnapshots);
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			z.clearRuntimeState();
+			HashMap<String, Object> zs = zoneStateMap.get(z.getID());
+			if (zs == null) continue;
+
+			z.setParkingVehicleStock(toInt(zs.get("parkingVehicleStock")));
+			z.setFutureDemand(toDouble(zs.get("futureDemand")));
+			z.setFutureSupply(toInt(zs.get("futureSupply")));
+			z.setVehicleSurplus(toDouble(zs.get("vehicleSurplus")));
+			z.setVehicleDeficiency(toDouble(zs.get("vehicleDeficiency")));
+
+			z.numberOfGeneratedTaxiRequest = toInt(zs.get("numberOfGeneratedTaxiRequest"));
+			z.numberOfGeneratedBusRequest = toInt(zs.get("numberOfGeneratedBusRequest"));
+			z.numberOfGeneratedPrivateEVTrip = toInt(zs.get("numberOfGeneratedPrivateEVTrip"));
+			z.numberOfGeneratedPrivateGVTrip = toInt(zs.get("numberOfGeneratedPrivateGVTrip"));
+			z.arrivedPrivateEVTrip = toInt(zs.get("arrivedPrivateEVTrip"));
+			z.arrivedPrivateGVTrip = toInt(zs.get("arrivedPrivateGVTrip"));
+			z.taxiPickupRequest = toInt(zs.get("taxiPickupRequest"));
+			z.busPickupRequest = toInt(zs.get("busPickupRequest"));
+			z.taxiServedRequest = toInt(zs.get("taxiServedRequest"));
+			z.busServedRequest = toInt(zs.get("busServedRequest"));
+			z.numberOfLeavedTaxiRequest = toInt(zs.get("numberOfLeavedTaxiRequest"));
+			z.numberOfLeavedBusRequest = toInt(zs.get("numberOfLeavedBusRequest"));
+			z.numberOfLeavedTaxiPassengers = toInt(zs.get("numberOfLeavedTaxiPassengers"));
+			z.numberOfLeavedBusPassengers = toInt(zs.get("numberOfLeavedBusPassengers"));
+			z.numberOfRelocatedVehicles = toInt(zs.get("numberOfRelocatedVehicles"));
+			z.taxiServedPassWaitingTime = toInt(zs.get("taxiServedPassWaitingTime"));
+			z.busServedPassWaitingTime = toInt(zs.get("busServedPassWaitingTime"));
+			z.taxiLeavedPassWaitingTime = toInt(zs.get("taxiLeavedPassWaitingTime"));
+			z.busLeavedPassWaitingTime = toInt(zs.get("busLeavedPassWaitingTime"));
+			z.taxiParkingTime = toInt(zs.get("taxiParkingTime"));
+			z.taxiCruisingTime = toInt(zs.get("taxiCruisingTime"));
+			z.setNRequestForTaxi(toInt(zs.get("nRequestForTaxi")));
+			z.setNRequestForBus(toInt(zs.get("nRequestForBus")));
+
+			restoreRequestQueue(z.getTaxiRequestQueue(), (List<?>) zs.get("taxiRequests"));
+			restoreRequestQueue(z.getBusRequestQueue(), (List<?>) zs.get("busRequests"));
+
+			Map<?, ?> sharableMap = (Map<?, ?>) zs.get("sharableRequests");
+			if (sharableMap != null) {
+				for (Map.Entry<?, ?> entry : sharableMap.entrySet()) {
+					int destZone = toInt(entry.getKey());
+					Queue<Request> queue = z.getSharableRequestForTaxi().get(destZone);
+					if (queue == null) {
+						queue = new LinkedList<Request>();
+						z.getSharableRequestForTaxi().put(destZone, queue);
+					}
+					restoreRequestQueue(queue, (List<?>) entry.getValue());
+				}
+			}
+
+			z.setRandom(deserializeRandom((String) zs.get("rand")));
+			z.setRandomDemand(deserializeRandom((String) zs.get("randDemand")));
+			z.setRandomDiffusion(deserializeRandom((String) zs.get("randDiffusion")));
+			z.setRandomMode(deserializeRandom((String) zs.get("randMode")));
+			z.setRandomShare(deserializeRandom((String) zs.get("randShare")));
+			z.setRandomRelocate(deserializeRandom((String) zs.get("randRelocate")));
+		}
+
+		ContextCreator.getZoneContext().ZONE_NUM = toInt(snapshot.globalState.get("zoneNum"));
+		ContextCreator.getZoneContext().HUB_INDEXES.clear();
+		ContextCreator.getZoneContext().HUB_INDEXES.addAll(toIntList((List<?>) snapshot.globalState.get("hubIndexes")));
+
+		HashMap<Integer, HashMap<String, Object>> csStateMap = mapByID(snapshot.chargingStationSnapshots);
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			cs.clearRuntimeState();
+			HashMap<String, Object> css = csStateMap.get(cs.getID());
+			if (css == null) continue;
+			cs.setPrice(ChargingStation.L2, toDouble(css.get("priceL2")));
+			cs.setPrice(ChargingStation.L3, toDouble(css.get("priceL3")));
+			cs.numChargedCar.set(toInt(css.get("numChargedCar")));
+			cs.numChargedBus.set(toInt(css.get("numChargedBus")));
+			cs.setRandom(deserializeRandom((String) css.get("rand")));
+		}
+
+		HashMap<Integer, Vehicle> restoredVehicleMap = restoreVehicles(snapshot.vehicleSnapshots);
+
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			HashMap<String, Object> css = csStateMap.get(cs.getID());
+			if (css == null) continue;
+			restoreChargingQueue(cs.getQueueL2(), (List<?>) css.get("queueL2"), restoredVehicleMap, false);
+			restoreChargingQueue(cs.getQueueL3(), (List<?>) css.get("queueL3"), restoredVehicleMap, false);
+			restoreChargingBusQueue(cs.getQueueBus(), (List<?>) css.get("queueBus"), restoredVehicleMap);
+			restoreChargingList(cs.getChargingL2(), (List<?>) css.get("chargingL2"), restoredVehicleMap, false);
+			restoreChargingList(cs.getChargingL3(), (List<?>) css.get("chargingL3"), restoredVehicleMap, false);
+			restoreChargingBusList(cs.getChargingBus(), (List<?>) css.get("chargingBus"), restoredVehicleMap);
+			cs.updateCapacity();
+		}
+
+		GlobalVariables.RandomGenerator = deserializeRandom(globalRandomStr);
+		BSMDataStream.setRandom(deserializeRandom(bsmRandomStr));
+		setAgentIDCounter(savedAgentID);
+	}
+
+	private static HashMap<Integer, HashMap<String, Object>> mapByID(ArrayList<HashMap<String, Object>> snapshots) {
+		HashMap<Integer, HashMap<String, Object>> stateMap = new HashMap<>();
+		if (snapshots != null) {
+			for (HashMap<String, Object> snap : snapshots) {
+				stateMap.put(toInt(snap.get("id")), snap);
+			}
+		}
+		return stateMap;
 	}
 
 	// ------------------------------------------------------------------ //
@@ -615,10 +864,10 @@ public class SnapshotUtil {
 			restoreRequestQueue(z.getBusRequestQueue(), (List<?>) zs.get("busRequests"));
 
 			// Sharable requests
-			LinkedTreeMap<String, Object> sharableMap = (LinkedTreeMap<String, Object>) zs.get("sharableRequests");
+			Map<?, ?> sharableMap = (Map<?, ?>) zs.get("sharableRequests");
 			if (sharableMap != null) {
-				for (Map.Entry<String, Object> entry : sharableMap.entrySet()) {
-					int destZone = Integer.parseInt(entry.getKey());
+				for (Map.Entry<?, ?> entry : sharableMap.entrySet()) {
+					int destZone = toInt(entry.getKey());
 					Queue<Request> queue = z.getSharableRequestForTaxi().get(destZone);
 					if (queue != null) {
 						restoreRequestQueue(queue, (List<?>) entry.getValue());
@@ -722,7 +971,7 @@ public class SnapshotUtil {
 			List<?> planList = (List<?>) vs.get("plans");
 			if (planList != null) {
 				for (Object po : planList) {
-					LinkedTreeMap<String, Object> pm = (LinkedTreeMap<String, Object>) po;
+					Map<?, ?> pm = (Map<?, ?>) po;
 					plans.add(new Plan(toInt(pm.get("zoneID")), toInt(pm.get("roadID")),
 							toDouble(pm.get("departureTime"))));
 				}
@@ -842,6 +1091,161 @@ public class SnapshotUtil {
 	//                     Vehicle restore helpers                         //
 	// ------------------------------------------------------------------ //
 
+	@SuppressWarnings("unchecked")
+	private static HashMap<Integer, Vehicle> restoreVehicles(ArrayList<HashMap<String, Object>> vehicleSnapshots) {
+		HashMap<Integer, Vehicle> restoredVehicleMap = new HashMap<>();
+		VehicleContext vc = ContextCreator.getVehicleContext();
+		if (vehicleSnapshots == null) return restoredVehicleMap;
+
+		for (HashMap<String, Object> vs : vehicleSnapshots) {
+			int vClass = toInt(vs.get("vehicleClass"));
+			int vState = toInt(vs.get("vehicleState"));
+			int vSensor = toInt(vs.get("vehicleSensorType"));
+			int vID = toInt(vs.get("id"));
+
+			Vehicle v;
+			switch (vClass) {
+				case Vehicle.ETAXI:
+					v = restoreTaxi(vs);
+					break;
+				case Vehicle.EBUS:
+					v = restoreBus(vs);
+					break;
+				case Vehicle.EV:
+					v = restoreElectricVehicle(vs);
+					break;
+				default:
+					v = restoreBaseVehicle(vs);
+					break;
+			}
+
+			v.setID(vID);
+			v.setVehicleSensorType(vSensor);
+			v.setState(vState);
+			v.setCurrentCoord(new Coordinate(
+					toDouble(vs.get("coordX")), toDouble(vs.get("coordY")),
+					vs.containsKey("coordZ") ? toDouble(vs.get("coordZ")) : 0.0));
+			v.setSpeed(toDouble(vs.get("speed")));
+			v.setAccRate(toDouble(vs.get("accRate")));
+			v.setBearing(toDouble(vs.get("bearing")));
+			v.setOriginID(toInt(vs.get("originID")));
+			v.setDestID(toInt(vs.get("destID")));
+			v.setDepTime(toInt(vs.get("depTime")));
+			v.setAccumulatedDistance(toDouble(vs.get("accumulatedDistance")));
+			v.setNumTrips(toInt(vs.get("numTrips")));
+			v.setMovingFlag(toBool(vs.get("movingFlag")));
+
+			int originRoadID = toInt(vs.get("originRoadID"));
+			if (originRoadID >= 0) {
+				Road originRoad = ContextCreator.getRoadContext().get(originRoadID);
+				if (originRoad != null) v.setOriginRoad(originRoad);
+			}
+
+			int destRoadID = toInt(vs.get("destRoadID"));
+			Road destRoad = null;
+			if (destRoadID >= 0) {
+				destRoad = ContextCreator.getRoadContext().get(destRoadID);
+			}
+
+			ArrayList<Plan> plans = new ArrayList<>();
+			List<?> planList = (List<?>) vs.get("plans");
+			if (planList != null) {
+				for (Object po : planList) {
+					Map<?, ?> pm = (Map<?, ?>) po;
+					plans.add(new Plan(toInt(pm.get("zoneID")), toInt(pm.get("roadID")),
+							toDouble(pm.get("departureTime"))));
+				}
+			}
+			v.setActivityPlan(plans);
+
+			v.setRandom(deserializeRandom((String) vs.get("rand")));
+			v.setRandomRoute(deserializeRandom((String) vs.get("randRoute")));
+			v.setRandomRelocate(deserializeRandom((String) vs.get("randRelocate")));
+			v.setRandomCarFollow(deserializeRandom((String) vs.get("randCarFollow")));
+
+			vc.add(v);
+			restoredVehicleMap.put(vID, v);
+
+			if (v instanceof ElectricTaxi) {
+				vc.registerTaxi((ElectricTaxi) v);
+				ElectricTaxi taxi = (ElectricTaxi) v;
+				if (vState == Vehicle.PARKING || vState == Vehicle.CRUISING_TRIP) {
+					vc.addAvailableTaxi(taxi, taxi.getCurrentZone());
+				} else if (vState == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
+					vc.addRelocationTaxi(taxi, taxi.getCurrentZone());
+				}
+			} else if (v instanceof ElectricBus) {
+				vc.registerBus((ElectricBus) v);
+			} else if (vs.containsKey("privateVID")) {
+				int privateVID = toInt(vs.get("privateVID"));
+				if (v instanceof ElectricVehicle) {
+					vc.registerPrivateEV(privateVID, (ElectricVehicle) v);
+				} else {
+					vc.registerPrivateGV(privateVID, v);
+				}
+			}
+
+			boolean wasOnRoad = toBool(vs.get("onRoad"));
+			int roadID = toInt(vs.get("roadID"));
+			int laneIndex = toInt(vs.get("laneIndex"));
+			double distance = toDouble(vs.get("distance"));
+
+			if (wasOnRoad && roadID >= 0) {
+				Road road = ContextCreator.getRoadContext().get(roadID);
+				if (road != null) {
+					Lane lane = null;
+					if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
+						lane = road.getLane(laneIndex);
+					} else if (road.getNumberOfLanes() > 0) {
+						lane = road.getLane(0);
+					}
+					if (lane != null) {
+						road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
+					}
+				}
+			}
+
+			if (destRoad != null) {
+				v.setDestRoad(destRoad);
+			}
+
+			v.setAtOrigin(toBool(vs.get("atOrigin")));
+			v.setReachDest(toBool(vs.get("isReachDest")));
+			v.setLinkTravelTime(toDouble(vs.get("linkTravelTime")));
+			v.setDistToTravel(toDouble(vs.get("distToTravel")));
+
+			List<?> roadPathData = (List<?>) vs.get("roadPath");
+			if (roadPathData != null && !roadPathData.isEmpty()) {
+				ArrayList<Road> restoredPath = new ArrayList<>();
+				boolean pathValid = true;
+				for (Object idObj : roadPathData) {
+					int rpId = toInt(idObj);
+					Road rpRoad = ContextCreator.getRoadContext().get(rpId);
+					if (rpRoad != null) {
+						restoredPath.add(rpRoad);
+					} else {
+						pathValid = false;
+						break;
+					}
+				}
+				if (pathValid && !restoredPath.isEmpty()) {
+					v.setRoadPath(restoredPath);
+					if (restoredPath.size() >= 2) {
+						v.setNextRoadDirectly(restoredPath.get(1));
+						v.assignNextLane();
+					}
+					v.setShadowImpact();
+				} else if (v.isOnRoad() && destRoad != null) {
+					v.rerouteAndSetNextRoad();
+				}
+			} else if (v.isOnRoad() && destRoad != null) {
+				v.rerouteAndSetNextRoad();
+			}
+		}
+
+		return restoredVehicleMap;
+	}
+
 	private static ElectricTaxi restoreTaxi(HashMap<String, Object> vs) {
 		ElectricTaxi taxi = new ElectricTaxi();
 		restoreEVFields(taxi, vs);
@@ -926,14 +1330,16 @@ public class SnapshotUtil {
 	private static void restoreRequestQueue(Queue<Request> queue, List<?> data) {
 		if (data == null || queue == null) return;
 		for (Object obj : data) {
-			LinkedTreeMap<String, Object> rm = (LinkedTreeMap<String, Object>) obj;
+			Map<?, ?> rm = (Map<?, ?>) obj;
 			Request r = new Request(
 					toInt(rm.get("origin")),
 					toInt(rm.get("dest")),
 					toInt(rm.get("originRoad")),
 					toInt(rm.get("destRoad")),
 					toInt(rm.get("numPeople")));
+			r.setID(toInt(rm.get("id")));
 			r.setMaxWaitingTime(toInt(rm.get("maxWaitingTime")));
+			r.setCurrentWaitingTime(toInt(rm.get("currentWaitingTime")));
 			r.setWillingToShare(toBool(rm.get("willingToShare")));
 			r.setBusRoute(toInt(rm.get("busRouteID")));
 			r.generationTime = toInt(rm.get("generationTime"));
@@ -946,7 +1352,7 @@ public class SnapshotUtil {
 			if (planList != null && !planList.isEmpty()) {
 				LinkedList<Plan> plans = new LinkedList<>();
 				for (Object po : planList) {
-					HashMap<String, Object> pm = (HashMap<String, Object>) po;
+					Map<?, ?> pm = (Map<?, ?>) po;
 					plans.add(new Plan(toInt(pm.get("zoneID")), toInt(pm.get("roadID")),
 							toDouble(pm.get("departureTime"))));
 				}

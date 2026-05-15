@@ -469,6 +469,25 @@ public class ChargingStation {
 			  return false;
 		}
 	}
+
+	public void clearRuntimeState() {
+		this.queueChargingL2.clear();
+		this.queueChargingL3.clear();
+		this.queueChargingBus.clear();
+		this.chargingVehicleL2.clear();
+		this.chargingVehicleL3.clear();
+		this.chargingBus.clear();
+		this.toAddChargingEV.clear();
+		this.toAddChargingBus.clear();
+		this.finishedVehicleL2.clear();
+		this.finishedVehicleL3.clear();
+		this.finishedBus.clear();
+		this.cachedL2Capacity = this.numL2;
+		this.cachedL3Capacity = this.numL3;
+		this.cachedBusCapacity = this.numBusCharger;
+		this.numChargedCar.set(0);
+		this.numChargedBus.set(0);
+	}
 	
 	/* Getters and setters for save/load support */
 	public Random getRandom() { return this.rand; }

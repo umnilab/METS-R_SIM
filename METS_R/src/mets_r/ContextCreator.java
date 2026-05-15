@@ -101,6 +101,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* For enable the reset function*/
 	public static int initTick = 0;
 	private static List<ISchedulableAction> scheduledActions = new ArrayList<ISchedulableAction>();
+	private static SnapshotUtil.SimulationSnapshot initialSnapshot = null;
 	
 	/* Functions */
 	// Initializing simulation agents
@@ -394,6 +395,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduleEvents();
 
 		agentID = 0;
+		initialSnapshot = SnapshotUtil.captureToMemory();
 		
 		// Send a ready signal (tick 0) in the synchronized mode
 		if(GlobalVariables.SYNCHRONIZED) {
@@ -508,20 +510,96 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// The reset function
+	private static int clearScheduledActions(String logLabel) {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		int sizeBefore = scheduledActions.size();
+		int actuallyRemoved = 0;
+		for (ISchedulableAction scheduledAction : scheduledActions) {
+			if (schedule.removeAction(scheduledAction)) {
+				actuallyRemoved++;
+			}
+		}
+		logger.info(logLabel + ": tracked=" + sizeBefore + " removed=" + actuallyRemoved);
+		scheduledActions = new ArrayList<ISchedulableAction>();
+		return actuallyRemoved;
+	}
+
 	public static void reset() {
+		if (initialSnapshot == null) {
+			logger.warn("Fast reset baseline is unavailable; falling back to full rebuild reset.");
+			resetByRebuild();
+			return;
+		}
+		if (!SnapshotUtil.matchesCurrentFacilityMembership(initialSnapshot)) {
+			logger.warn("Facility membership changed since startup; falling back to full rebuild reset.");
+			resetByRebuild();
+			return;
+		}
+
+		logger.info("Restart the simulation from the in-memory tick-0 baseline!");
+		clearScheduledActions("RESET-SCHED");
+		if (dataContext != null) {
+			dataContext.stopCollecting();
+			mainContext.removeSubContext(dataContext);
+		}
+		if (vehicleContext != null) {
+			mainContext.removeSubContext(vehicleContext);
+		}
+		agg_logger.close();
+		travel_demand.close();
+
+		coSimRoads.clear();
+		eventHandler.reinitialize();
+		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
+
+		GlobalVariables.RandomGenerator = new java.util.Random(GlobalVariables.RANDOM_SEED);
+		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
+		BSMDataStream.setRandom(new Random(GlobalVariables.RandomGenerator.nextInt()));
+		BusSchedule.route_num = 0;
+
+		agg_logger = new AggregatedLogger();
+		background_traffic = new BackgroundTraffic();
+		travel_demand = new TravelDemand();
+		bus_schedule = new BusSchedule();
+		for (Zone z : getZoneContext().getAll()) {
+			z.traversingBusRoutes.clear();
+		}
+		bus_schedule.postProcessing();
+
+		partitioner = new MetisPartition(GlobalVariables.N_Partition);
+		waitNextStepCommand = GlobalVariables.SYNCHRONIZED ? 0 : -1;
+		if (tscheduler != null) {
+			tscheduler.resetTickGuards();
+		}
+
+		vehicleContext = new VehicleContext(true);
+		mainContext.addSubContext(vehicleContext);
+		dataContext = new DataCollectionContext();
+		mainContext.addSubContext(dataContext);
+
+		SnapshotUtil.restoreToCurrentContexts(initialSnapshot);
+
+		if (GlobalVariables.MULTI_THREADING) {
+			try {
+				partitioner.first_run();
+				ContextCreator.logger.info("Reset partitioner");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		dataContext.startCollecting();
+		scheduleEvents();
+
+		logger.info("FAST RESET OK: restored tick-0 state without rebuilding facilities"
+				+ " (initTick=" + initTick + ")");
+	}
+
+	private static void resetByRebuild() {
 		logger.info("Restart the simulation!");
 		
 		// 0. Clear scheduled actions and variables
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-	    int sizeBefore = scheduledActions.size();
-	    int actuallyRemoved = 0;
-	    for(ISchedulableAction scheduledAction : scheduledActions) {
-	        if (schedule.removeAction(scheduledAction)) {
-	            actuallyRemoved++;
-	        }
-	    }
-	    logger.info("RESET-SCHED: tracked=" + sizeBefore + " removed=" + actuallyRemoved);
-	    scheduledActions = new ArrayList<ISchedulableAction>();
+		clearScheduledActions("RESET-SCHED");
 		dataContext.stopCollecting();
 		agg_logger.close();
 		travel_demand.close();

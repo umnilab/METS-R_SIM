@@ -962,6 +962,19 @@ public class CityContext extends DefaultContext<Object> {
 		}
 	}
 
+	public void refreshRoadNetworkWeights() {
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			Node node1 = road.getUpStreamNode();
+			Node node2 = road.getDownStreamNode();
+			if (node1 == null || node2 == null) continue;
+			RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
+			if (edge != null) {
+				edge.setWeight(road.getTravelTime());
+			}
+			RouteContext.setEdgeWeight(node1, node2, road.getTravelTime());
+		}
+	}
+
 	public int getRoadIDFromEdge(RepastEdge<Node> edge) {
 		int id = this.edgeRoadID_KeyEdge.get(edge);
 		return id;

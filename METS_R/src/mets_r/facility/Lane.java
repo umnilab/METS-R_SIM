@@ -293,6 +293,20 @@ public class Lane {
 		return nVehicles_.get();
 	}
 
+	public void restoreRuntimeState(double speed, Random restoredRandom) {
+		this.nVehicles_.set(0);
+		this.firstVehicle_ = null;
+		this.lastVehicle_ = null;
+		this.freeSpeed_ = speed;
+		if (restoredRandom != null) {
+			this.rand = restoredRandom;
+		}
+	}
+
+	public Random getRandom() {
+		return this.rand;
+	}
+
 	// This add only the number of vehicle to lane, while addVehicle in road and a
 	// vehicle to arrayList.
 	public void addOneVehicle() {

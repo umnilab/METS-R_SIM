@@ -53,7 +53,7 @@ public class Request {
 	public Request(int origin, int originRoad, int numPeople, Queue<Plan> activityPlan){
 		this.ID = ContextCreator.generateAgentID();
 		this.activityPlan = activityPlan;
-		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;;
+		this.maxWaitingTime = GlobalVariables.SIMULATION_STOP_TIME;
 		this.maxWaitingTimeExplicit = false;
 		this.currentWaitingTime = 0;	
 		this.origin = origin;
@@ -80,6 +80,10 @@ public class Request {
 	
 	public int getCurrentWaitingTime(){
 		return this.currentWaitingTime;
+	}
+
+	public void setCurrentWaitingTime(int waiting_time) {
+		this.currentWaitingTime = waiting_time;
 	}
 	
 	public int getMaxWaitingTime() {
@@ -175,6 +179,10 @@ public class Request {
 
 	public int getID() {
 		return ID;
+	}
+
+	public void setID(int id) {
+		this.ID = id;
 	}
 	
 	public int getNumPeople() {

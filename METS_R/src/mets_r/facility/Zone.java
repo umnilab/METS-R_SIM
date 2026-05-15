@@ -887,6 +887,46 @@ public class Zone {
 		this.futureSupply.addAndGet(-1);
 	}
 
+	public void clearRuntimeState() {
+		this.nRequestForTaxi = 0;
+		this.nRequestForBus = 0;
+		this.parkingVehicleStock.set(0);
+		this.publicTripTimeIndex = -1;
+		this.privateTripTimeIndex = 0;
+		this.lastDemandUpdateHour = -1;
+		this.futureDemand = 0.0;
+		this.futureSupply.set(0);
+		this.vehicleSurplus = 0.0;
+		this.vehicleDeficiency = 0.0;
+		this.numberOfGeneratedTaxiRequest = 0;
+		this.numberOfGeneratedBusRequest = 0;
+		this.numberOfGeneratedPrivateEVTrip = 0;
+		this.numberOfGeneratedPrivateGVTrip = 0;
+		this.arrivedPrivateEVTrip = 0;
+		this.arrivedPrivateGVTrip = 0;
+		this.taxiPickupRequest = 0;
+		this.busPickupRequest = 0;
+		this.taxiServedRequest = 0;
+		this.busServedRequest = 0;
+		this.numberOfLeavedTaxiRequest = 0;
+		this.numberOfLeavedBusRequest = 0;
+		this.numberOfLeavedTaxiPassengers = 0;
+		this.numberOfLeavedBusPassengers = 0;
+		this.numberOfRelocatedVehicles = 0;
+		this.taxiServedPassWaitingTime = 0;
+		this.busServedPassWaitingTime = 0;
+		this.taxiLeavedPassWaitingTime = 0;
+		this.busLeavedPassWaitingTime = 0;
+		this.taxiParkingTime = 0;
+		this.taxiCruisingTime = 0;
+		this.requestInQueueForTaxi.clear();
+		this.requestInQueueForBus.clear();
+		this.sharableRequestForTaxi.clear();
+		this.toAddRequestForTaxi.clear();
+		this.toAddRequestForBus.clear();
+		this.parkingRequests.clear();
+	}
+
 	public double getFutureDemand() {
 		return this.futureDemand;
 	}

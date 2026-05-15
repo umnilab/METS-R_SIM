@@ -428,6 +428,31 @@ public class Road {
 		return this.nVehicles_.get();
 	}
 
+	public void restoreRuntimeState(double restoredTravelTime, double restoredSpeedLimit,
+			double restoredCurrentEnergy, double restoredTotalEnergy, int restoredCurrentFlow,
+			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType) {
+		this.lastUpdateHour = -1;
+		this.nVehicles_.set(0);
+		this.firstVehicle_ = null;
+		this.lastVehicle_ = null;
+		this.prevFirstVehicle = null;
+		this.departureVehMap.clear();
+		this.toAddDepartureVeh.clear();
+		this.eventFlag = false;
+		this.speedLimit_ = restoredSpeedLimit;
+		this.cachedSpeedLimit_ = restoredSpeedLimit;
+		this.travelTime = restoredTravelTime;
+		this.travelTimeHistory_.clear();
+		this.nShadowVehicles.set(0);
+		this.nFutureRoutingVehicles.set(0);
+		this.currentEnergy = restoredCurrentEnergy;
+		this.totalEnergy = restoredTotalEnergy;
+		this.currentFlow = restoredCurrentFlow;
+		this.totalFlow = restoredTotalFlow;
+		this.prevFlow = restoredPrevFlow;
+		this.controlType = restoredControlType;
+	}
+
 	/* For adaptive network partitioning */
 	public int getShadowVehicleNum() {
 		return this.nShadowVehicles.get();
