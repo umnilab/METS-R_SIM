@@ -975,6 +975,256 @@ public class CityContext extends DefaultContext<Object> {
 		}
 	}
 
+	public void registerAddedRoad(Road road, List<Road> upstreamRoads, List<Road> downstreamRoads,
+			Integer upstreamJunctionControlType, Integer downstreamJunctionControlType) {
+		if (road == null) return;
+
+		GeometryFactory geomFac = new GeometryFactory();
+		Junction upstreamJunction = resolveAddedRoadJunction(road, upstreamRoads, true,
+				upstreamJunctionControlType, geomFac);
+		Junction downstreamJunction = resolveAddedRoadJunction(road, downstreamRoads, false,
+				downstreamJunctionControlType, geomFac);
+
+		Node upstreamNode = new Node(nextAvailableNodeID());
+		ContextCreator.getNodeContext().put(upstreamNode.getID(), upstreamNode);
+		Node downstreamNode = new Node(nextAvailableNodeID());
+		ContextCreator.getNodeContext().put(downstreamNode.getID(), downstreamNode);
+
+		upstreamNode.setRoad(road);
+		upstreamNode.setJunction(upstreamJunction);
+		downstreamNode.setRoad(road);
+		downstreamNode.setJunction(downstreamJunction);
+		road.setUpStreamNode(upstreamNode);
+		road.setDownStreamNode(downstreamNode);
+		road.setUpStreamJunction(upstreamJunction.getID());
+		road.setDownStreamJunction(downstreamJunction.getID());
+
+		upstreamJunction.addDownStreamRoad(road.getID());
+		downstreamJunction.addUpStreamRoad(road.getID());
+		addMainRoadEdge(road);
+
+		if (upstreamRoads != null) {
+			for (Road upstreamRoad : upstreamRoads) {
+				connectRoads(upstreamRoad, road, upstreamJunction);
+			}
+		}
+		if (downstreamRoads != null) {
+			for (Road downstreamRoad : downstreamRoads) {
+				connectRoads(road, downstreamRoad, downstreamJunction);
+			}
+		}
+
+		markInvalidOrigins();
+		markInvalidDestinations();
+		clearRoadLookupCaches();
+	}
+
+	private Junction resolveAddedRoadJunction(Road road, List<Road> connectorRoads, boolean upstream,
+			Integer controlType, GeometryFactory geomFac) {
+		JunctionContext junctionContext = ContextCreator.getJunctionContext();
+		Junction junction = null;
+		if (connectorRoads != null && !connectorRoads.isEmpty()) {
+			Road connectorRoad = connectorRoads.get(0);
+			int junctionID = upstream ? connectorRoad.getDownStreamJunction() : connectorRoad.getUpStreamJunction();
+			junction = junctionContext.get(junctionID);
+			if (junction == null) {
+				junction = new Junction(junctionID);
+				junction.setCoord(upstream ? connectorRoad.getEndCoord() : connectorRoad.getStartCoord());
+				junctionContext.put(junctionID, junction);
+				ContextCreator.getJunctionGeography().move(junction, geomFac.createPoint(junction.getCoord()));
+			}
+		} else {
+			int junctionID = nextAvailableJunctionID();
+			junction = new Junction(junctionID);
+			junction.setCoord(upstream ? road.getStartCoord() : road.getEndCoord());
+			junctionContext.put(junctionID, junction);
+			ContextCreator.getJunctionGeography().move(junction, geomFac.createPoint(junction.getCoord()));
+		}
+		if (controlType != null) {
+			junction.setControlType(controlType);
+		}
+		return junction;
+	}
+
+	private int nextAvailableNodeID() {
+		int nextID = 1;
+		for (Integer ID : ContextCreator.getNodeContext().getIDList()) {
+			if (ID != null && ID >= nextID) nextID = ID + 1;
+		}
+		while (ContextCreator.getNodeContext().contains(nextID)) {
+			nextID++;
+		}
+		return nextID;
+	}
+
+	private int nextAvailableJunctionID() {
+		int nextID = 1;
+		for (Integer ID : ContextCreator.getJunctionContext().getIDList()) {
+			if (ID != null && ID >= nextID) nextID = ID + 1;
+		}
+		while (ContextCreator.getJunctionContext().contains(nextID)) {
+			nextID++;
+		}
+		return nextID;
+	}
+
+	private void addMainRoadEdge(Road road) {
+		Node node1 = road.getUpStreamNode();
+		Node node2 = road.getDownStreamNode();
+		if (node1 == null || node2 == null) return;
+
+		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
+		RepastEdge<Node> existingEdge = roadNetwork.getEdge(node1, node2);
+		if (existingEdge != null) {
+			existingEdge.setWeight(road.getTravelTime());
+			this.edgeRoadID_KeyEdge.put(existingEdge, road.getID());
+			this.edgeIDEdge_KeyID.put(road.getID(), existingEdge);
+			return;
+		}
+
+		RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, road.getTravelTime());
+		roadNetwork.addEdge(edge);
+		this.edgeRoadID_KeyEdge.put(edge, road.getID());
+		this.edgeIDEdge_KeyID.put(road.getID(), edge);
+		if (this.nodeIDRoad_KeyNodeID.containsKey(node1.getID())) {
+			this.nodeIDRoad_KeyNodeID.get(node1.getID()).put(node2.getID(), road);
+		} else {
+			HashMap<Integer, Road> downstreamMap = new HashMap<Integer, Road>();
+			downstreamMap.put(node2.getID(), road);
+			this.nodeIDRoad_KeyNodeID.put(node1.getID(), downstreamMap);
+		}
+		this.origRoadID_RoadID.put(road.getOrigID(), road.getID());
+	}
+
+	private void connectRoads(Road fromRoad, Road toRoad, Junction junction) {
+		if (fromRoad == null || toRoad == null || junction == null) return;
+
+		fromRoad.addDownStreamRoad(toRoad.getID());
+		toRoad.addUpStreamRoad(fromRoad, turningPriority(fromRoad, toRoad));
+		junction.addUpStreamRoad(fromRoad.getID());
+		junction.addDownStreamRoad(toRoad.getID());
+
+		int delay = delayForControl(junction, fromRoad);
+		Signal signal = junction.getSignal(fromRoad.getID(), toRoad.getID());
+		if (signal != null) {
+			delay = signal.getDelay();
+		}
+		junction.setDelay(fromRoad.getID(), toRoad.getID(), delay);
+		addTransitionEdge(fromRoad, toRoad, delay);
+		connectLanes(fromRoad, toRoad);
+	}
+
+	private int turningPriority(Road fromRoad, Road toRoad) {
+		double angle1 = CityContext.angle(fromRoad.getStartCoord(), fromRoad.getEndCoord());
+		double angle2 = CityContext.angle(toRoad.getStartCoord(), toRoad.getEndCoord());
+		double angleDiff = angle2 - angle1;
+		while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+		while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+		if (Math.abs(angleDiff) < Math.PI / 4) return 0;
+		return angleDiff > 0 ? 2 : 1;
+	}
+
+	private int delayForControl(Junction junction, Road fromRoad) {
+		if (junction.getControlType() == Junction.StopSign) {
+			return (int) Math.ceil(3 / GlobalVariables.SIMULATION_STEP_SIZE);
+		}
+		if (junction.getControlType() == Junction.Yield && fromRoad.getRoadType() != Road.Highway) {
+			return (int) Math.ceil(3 / GlobalVariables.SIMULATION_STEP_SIZE);
+		}
+		return 0;
+	}
+
+	private void addTransitionEdge(Road fromRoad, Road toRoad, int weight) {
+		Node node1 = fromRoad.getDownStreamNode();
+		Node node2 = toRoad.getUpStreamNode();
+		if (node1 == null || node2 == null) return;
+
+		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
+		RepastEdge<Node> existingEdge = roadNetwork.getEdge(node1, node2);
+		if (existingEdge != null) {
+			existingEdge.setWeight(weight);
+			this.edgeRoadID_KeyEdge.put(existingEdge, -1);
+			return;
+		}
+
+		RepastEdge<Node> edge = new RepastEdge<Node>(node1, node2, true, weight);
+		roadNetwork.addEdge(edge);
+		this.edgeRoadID_KeyEdge.put(edge, -1);
+	}
+
+	private void connectLanes(Road fromRoad, Road toRoad) {
+		int laneCount = Math.min(fromRoad.getLanes().size(), toRoad.getLanes().size());
+		for (int i = 0; i < laneCount; i++) {
+			Lane fromLane = fromRoad.getLane(i);
+			Lane toLane = toRoad.getLane(i);
+			if (!fromLane.getDownStreamLanes().contains(toLane.getID())) {
+				fromLane.addDownStreamLane(toLane.getID());
+			}
+			if (!toLane.getUpStreamLanes().contains(fromLane.getID())) {
+				toLane.addUpStreamLane(fromLane.getID());
+			}
+			if (fromLane.getCoords().size() >= 2 && toLane.getCoords().size() >= 2) {
+				this.initializeLaneTurningCurves(fromLane, toLane);
+			}
+		}
+	}
+
+	public void removeRoadReferences(Road road) {
+		if (road == null) return;
+
+		RepastEdge<?> edge = this.edgeIDEdge_KeyID.remove(road.getID());
+		if (edge != null) {
+			this.edgeRoadID_KeyEdge.remove(edge);
+			boolean removed = false;
+			try {
+				Object result = ContextCreator.getRoadNetwork().getClass()
+						.getMethod("removeEdge", RepastEdge.class)
+						.invoke(ContextCreator.getRoadNetwork(), edge);
+				removed = !(result instanceof Boolean) || ((Boolean) result).booleanValue();
+			} catch (Exception e) {
+				try {
+					Object graph = ContextCreator.getRoadNetwork().getClass()
+							.getMethod("getGraph")
+							.invoke(ContextCreator.getRoadNetwork());
+					Object result = graph.getClass()
+							.getMethod("removeEdge", Object.class)
+							.invoke(graph, edge);
+					removed = !(result instanceof Boolean) || ((Boolean) result).booleanValue();
+				} catch (Exception inner) {
+					ContextCreator.logger.warn("removeRoadReferences: failed to remove road-network edge for road "
+							+ road.getID() + ": " + inner.getMessage());
+				}
+			}
+			if (!removed) {
+				ContextCreator.logger.warn("removeRoadReferences: road-network edge was not removed for road " + road.getID());
+			}
+		}
+
+		if (road.getUpStreamNode() != null && road.getDownStreamNode() != null) {
+			HashMap<Integer, Road> downstreamMap = this.nodeIDRoad_KeyNodeID.get(road.getUpStreamNode().getID());
+			if (downstreamMap != null) {
+				downstreamMap.remove(road.getDownStreamNode().getID());
+				if (downstreamMap.isEmpty()) {
+					this.nodeIDRoad_KeyNodeID.remove(road.getUpStreamNode().getID());
+				}
+			}
+		}
+
+		this.origRoadID_RoadID.remove(road.getOrigID());
+		clearRoadLookupCaches();
+
+		for (Road other : ContextCreator.getRoadContext().getAll()) {
+			if (other == road) continue;
+			other.removeDownStreamRoad(road.getID());
+			other.removeUpStreamRoad(road);
+		}
+	}
+
+	public void clearRoadLookupCaches() {
+		this.coordOrigRoad_KeyCoord.clear();
+		this.coordDestRoad_KeyCoord.clear();
+	}
+
 	public int getRoadIDFromEdge(RepastEdge<Node> edge) {
 		int id = this.edgeRoadID_KeyEdge.get(edge);
 		return id;
@@ -1107,7 +1357,7 @@ public class CityContext extends DefaultContext<Object> {
 		}
 		
 		if(toDest) {
-			if(this.coordDestRoad_KeyCoord.containsKey(coord)) {
+			if(excludedRoad == null && this.coordDestRoad_KeyCoord.containsKey(coord)) {
 				return this.coordDestRoad_KeyCoord.get(coord);
 			}
 			else {
@@ -1143,13 +1393,13 @@ public class CityContext extends DefaultContext<Object> {
 									+ coord.toString());
 				}
 				else {
-					this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
+					if (excludedRoad == null) this.coordDestRoad_KeyCoord.put(coord, nearestRoad);
 				}
 				return nearestRoad;
 			}
 		}
 		else {
-			if(this.coordOrigRoad_KeyCoord.containsKey(coord)) {
+			if(excludedRoad == null && this.coordOrigRoad_KeyCoord.containsKey(coord)) {
 				return this.coordOrigRoad_KeyCoord.get(coord);
 			}
 			else {
@@ -1181,7 +1431,7 @@ public class CityContext extends DefaultContext<Object> {
 									+ coord.toString());
 				}
 				else {
-					this.coordOrigRoad_KeyCoord.put(coord, nearestRoad);
+					if (excludedRoad == null) this.coordOrigRoad_KeyCoord.put(coord, nearestRoad);
 				}
 				return nearestRoad;
 			}

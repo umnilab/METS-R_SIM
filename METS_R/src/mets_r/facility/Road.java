@@ -157,6 +157,8 @@ public class Road {
 	// @ScheduledMethod(start=1, priority=1, duration=1)
 	// Scheduling step
 	public void stepPart1() {
+		if (ContextCreator.getRoadContext().get(this.getID()) != this) return;
+
 		int tickcount = ContextCreator.getCurrentTick();
 		addVehicleToDepartureMap();
 		
@@ -164,10 +166,14 @@ public class Road {
 		Vehicle currentVehicle = this.firstVehicle();
 		this.prevFirstVehicle = currentVehicle;
 		if (this.prevFirstVehicle != null) this.prevFirstVehicle.recordPrevState();
+		boolean shouldReportStatus = GlobalVariables.V2X;
+		boolean shouldRecordSnapshot = tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0;
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			currentVehicle.reportStatus();
-			if (tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0) {
+			if (shouldReportStatus) {
+				currentVehicle.reportStatus();
+			}
+			if (shouldRecordSnapshot) {
 				currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
 															// so we record vehicle location here!
 			}
@@ -199,18 +205,28 @@ public class Road {
 		    }
 		}
 
-		/* Vehicle decision – three-phase approach to avoid stale acceleration after lane changes */
+		/* Vehicle decision uses three-phase approach to avoid stale acceleration after lane changes */
 		if(!(this.getControlType() == Road.COSIM)) {
+			boolean usesLaneChangeAdvice = "LC2013".equals(GlobalVariables.LANE_CHANGING_MODEL);
+			if (usesLaneChangeAdvice) {
+				currentVehicle = this.firstVehicle();
+				while (currentVehicle != null) {
+					Vehicle nextVehicle = currentVehicle.macroTrailing();
+					currentVehicle.resetLaneChangeRuntimeState();
+					currentVehicle = nextVehicle;
+				}
+			}
+
 			// Phase 1: lane-changing decisions for all vehicles
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				currentVehicle.calcLaneChangingState();
+				currentVehicle.calcLaneChangingState(tickcount);
 				currentVehicle = nextVehicle;
 			}
 
 			// Phase 2: repair macro list ordering after all lane changes
-			List<Vehicle> vehicleBuffer = new ArrayList<>();
+			List<Vehicle> vehicleBuffer = new ArrayList<>(Math.max(0, this.nVehicles_.get()));
 			currentVehicle = this.firstVehicle();
 
 			// 1. Create a static snapshot of the vehicles currently on the road
@@ -238,12 +254,13 @@ public class Road {
 	
 	// Realization step
 	public void stepPart2() {
+		if (ContextCreator.getRoadContext().get(this.getID()) != this) return;
+
 		/* Vehicle movement */
 		if(!(this.getControlType() == Road.COSIM)) {
 			Vehicle currentVehicle = this.firstVehicle();
 			
 			// happened during time t to t + 1, conducting vehicle movements
-			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
 				currentVehicle.move();
@@ -354,11 +371,19 @@ public class Road {
 		if (!this.downStreamRoads.contains(dsRoad))
 			this.downStreamRoads.add(dsRoad);
 	}
+
+	public void removeDownStreamRoad(int dsRoad) {
+		this.downStreamRoads.remove(Integer.valueOf(dsRoad));
+	}
 	
 	public void addUpStreamRoad(Road usRoad, int priority) { // priority: 0 - straight, 1 - right turn, 2 - left turn
 		if (!this.upStreamRoads.contains(usRoad)) {
 			this.upStreamRoads.add(Math.min(this.upStreamRoads.size(), priority), usRoad);
 		}
+	}
+
+	public void removeUpStreamRoad(Road usRoad) {
+		this.upStreamRoads.remove(usRoad);
 	}
 
 	public ArrayList<Integer> getDownStreamRoads() {
@@ -426,6 +451,17 @@ public class Road {
 	/* Number of vehicles on the road */
 	public int getVehicleNum() {
 		return this.nVehicles_.get();
+	}
+
+	public boolean hasActiveVehicles() {
+		if (this.nVehicles_.get() > 0 || this.firstVehicle_ != null || this.lastVehicle_ != null
+				|| !this.departureVehMap.isEmpty() || !this.toAddDepartureVeh.isEmpty()) {
+			return true;
+		}
+		for (Lane lane : this.lanes) {
+			if (lane.nVehicles() > 0) return true;
+		}
+		return false;
 	}
 
 	public void restoreRuntimeState(double restoredTravelTime, double restoredSpeedLimit,
@@ -642,11 +678,11 @@ public class Road {
 	 */
 	public void updateFreeFlowSpeed() {
 		// Get current tick
-		int hour = (int) Math.floor(ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
+		int hour = ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL;
 		// each hour set events
 		if (this.lastUpdateHour < hour) {
+			double new_speed = ContextCreator.background_traffic.getBackgroundTraffic(this.origID, hour);
 			for(Lane lane: this.getLanes()) {
-				double new_speed = ContextCreator.background_traffic.getBackgroundTraffic(this.origID, hour);
 				if(new_speed > 0) lane.setSpeed(new_speed * 0.44694);
 			}
 			

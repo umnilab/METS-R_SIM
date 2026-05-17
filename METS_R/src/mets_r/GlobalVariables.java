@@ -229,13 +229,52 @@ public class GlobalVariables {
 	public static int STATUS_REGIME_CARFOLLOWING = 0x00000080; // 128
 	public static int STATUS_REGIME_EMERGENCY = 0x00000100; // 256
 	
-	// For car following and lane changing
+	// For car following and lane changing model selection
+	public static String CAR_FOLLOWING_MODEL = loadConfig("CAR_FOLLOWING_MODEL").trim().toUpperCase();
+	public static String LANE_CHANGING_MODEL = loadConfig("LANE_CHANGING_MODEL").trim().toUpperCase();
+
+	// For the Herman car following model
 	public static float ALPHA_DEC = Float.valueOf(loadConfig("ALPHA_DEC"));
 	public static float BETA_DEC = Float.valueOf(loadConfig("BETA_DEC"));
 	public static float GAMMA_DEC = Float.valueOf(loadConfig("GAMMA_DEC"));
 	public static float ALPHA_ACC = Float.valueOf(loadConfig("ALPHA_ACC"));
 	public static float BETA_ACC = Float.valueOf(loadConfig("BETA_ACC"));
 	public static float GAMMA_ACC = Float.valueOf(loadConfig("GAMMA_ACC"));
+
+	// SUMO Krauss car following model parameters
+	public static double KRAUSS_TAU = Double.valueOf(loadConfig("KRAUSS_TAU"));
+	public static double KRAUSS_SIGMA = Double.valueOf(loadConfig("KRAUSS_SIGMA"));
+	public static double KRAUSS_MIN_GAP = Double.valueOf(loadConfig("KRAUSS_MIN_GAP"));
+	public static double KRAUSS_DECEL = Double.valueOf(loadConfig("KRAUSS_DECEL"));
+	public static double KRAUSS_APPARENT_DECEL = Double.valueOf(loadConfig("KRAUSS_APPARENT_DECEL"));
+	public static double KRAUSS_EMERGENCY_DECEL = Double.valueOf(loadConfig("KRAUSS_EMERGENCY_DECEL"));
+	public static double KRAUSS_ACTION_STEP_LENGTH = Double.valueOf(loadConfig("KRAUSS_ACTION_STEP_LENGTH"));
+
+	// VISSIM Wiedemann 74 car following parameters
+	public static double WIEDEMANN74_AX = Double.valueOf(loadConfig("WIEDEMANN74_AX"));
+	public static double WIEDEMANN74_BX_ADD = Double.valueOf(loadConfig("WIEDEMANN74_BX_ADD"));
+	public static double WIEDEMANN74_BX_MULT = Double.valueOf(loadConfig("WIEDEMANN74_BX_MULT"));
+	public static double WIEDEMANN74_TAU = Double.valueOf(loadConfig("WIEDEMANN74_TAU"));
+	public static double WIEDEMANN74_AX_STD = Double.valueOf(loadConfig("WIEDEMANN74_AX_STD"));
+	public static double WIEDEMANN74_AX_RANGE = Double.valueOf(loadConfig("WIEDEMANN74_AX_RANGE"));
+	public static double WIEDEMANN74_Z_MEAN = Double.valueOf(loadConfig("WIEDEMANN74_Z_MEAN"));
+	public static double WIEDEMANN74_Z_STD = Double.valueOf(loadConfig("WIEDEMANN74_Z_STD"));
+	public static double WIEDEMANN74_FOLLOWING_DISTANCE_FACTOR = Double.valueOf(loadConfig("WIEDEMANN74_FOLLOWING_DISTANCE_FACTOR"));
+	public static double WIEDEMANN_JERK_LIMIT = Double.valueOf(loadConfig("WIEDEMANN_JERK_LIMIT"));
+
+	// VISSIM Wiedemann 99 car following parameters
+	public static double WIEDEMANN99_CC0 = Double.valueOf(loadConfig("WIEDEMANN99_CC0"));
+	public static double WIEDEMANN99_CC1 = Double.valueOf(loadConfig("WIEDEMANN99_CC1"));
+	public static double WIEDEMANN99_CC2 = Double.valueOf(loadConfig("WIEDEMANN99_CC2"));
+	public static double WIEDEMANN99_CC3 = Double.valueOf(loadConfig("WIEDEMANN99_CC3"));
+	public static double WIEDEMANN99_CC4 = Double.valueOf(loadConfig("WIEDEMANN99_CC4"));
+	public static double WIEDEMANN99_CC5 = Double.valueOf(loadConfig("WIEDEMANN99_CC5"));
+	public static double WIEDEMANN99_CC6 = Double.valueOf(loadConfig("WIEDEMANN99_CC6"));
+	public static double WIEDEMANN99_CC7 = Double.valueOf(loadConfig("WIEDEMANN99_CC7"));
+	public static double WIEDEMANN99_CC8 = Double.valueOf(loadConfig("WIEDEMANN99_CC8"));
+	public static double WIEDEMANN99_CC9 = Double.valueOf(loadConfig("WIEDEMANN99_CC9"));
+	public static double WIEDEMANN99_Z_MEAN = Double.valueOf(loadConfig("WIEDEMANN99_Z_MEAN"));
+	public static double WIEDEMANN99_Z_STD = Double.valueOf(loadConfig("WIEDEMANN99_Z_STD"));
 	
 	// For K_SHORTEST_PATH
 	public static int K_VALUE = Integer.valueOf(loadConfig("K_VALUE"));
@@ -264,7 +303,7 @@ public class GlobalVariables {
 	public static float NO_LANECHANGING_LENGTH = Float.valueOf(loadConfig("NO_LANECHANGING_LENGTH")); // meters
 	public static float LANE_WIDTH = Float.valueOf(loadConfig("LANE_WIDTH"));
 	public static float LANE_CHANGING_PROB_PART1 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
-	public static float LANE_CHANGING_PROB_PART2 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
+	public static float LANE_CHANGING_PROB_PART2 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART2"));
 	public static float H_UPPER = Float.valueOf(loadConfig("H_UPPER"));
 	public static float H_LOWER = Float.valueOf(loadConfig("H_LOWER"));
 	public static double FLT_INF = Float.MAX_VALUE;
@@ -278,7 +317,7 @@ public class GlobalVariables {
 	public static double RAMP_SPEED = Float.valueOf(loadConfig("RAMP_SPEED")); // mph
 	public static double UTURN_SPEED = Float.valueOf(loadConfig("UTURN_SPEED")); // mph
 	
-	// Parameters for MLC
+	// Parameters for Ahmed (1999) mandatory lane changing
 	public static double betaLeadMLC01 = Float.valueOf(loadConfig("betaLeadMLC01"));
 	public static double betaLeadMLC02 = Float.valueOf(loadConfig("betaLeadMLC02"));
 	public static double betaLagMLC01 = Float.valueOf(loadConfig("betaLagMLC01"));
@@ -286,7 +325,7 @@ public class GlobalVariables {
 	public static double MLCgamma = Float.valueOf(loadConfig("MLCgamma"));;
 	public static double critDisFraction = Float.valueOf(loadConfig("critDisFraction"));
 	
-	// Parameters for DLC
+	// Parameters for Ahmed (1999) discretionary lane changing
 	public static double betaLeadDLC01 = Float.valueOf(loadConfig("betaLeadDLC01"));
 	public static double betaLeadDLC02 = Float.valueOf(loadConfig("betaLeadDLC02"));
 	public static double betaLagDLC01 = Float.valueOf(loadConfig("betaLagDLC01"));
@@ -294,6 +333,28 @@ public class GlobalVariables {
 	public static double minLeadDLC = Float.valueOf(loadConfig("minLeadDLC"));
 	public static double minLagDLC = Float.valueOf(loadConfig("minLagDLC"));
 	
+	// SUMO LC2013 lane changing parameters
+	public static double LC2013_STRATEGIC_PARAM = Double.valueOf(loadConfig("LC2013_STRATEGIC_PARAM"));
+	public static double LC2013_COOPERATIVE_PARAM = Double.valueOf(loadConfig("LC2013_COOPERATIVE_PARAM"));
+	public static double LC2013_SPEED_GAIN_PARAM = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_PARAM"));
+	public static double LC2013_KEEP_RIGHT_PARAM = Double.valueOf(loadConfig("LC2013_KEEP_RIGHT_PARAM"));
+	public static double LC2013_LOOKAHEAD_TIME = Double.valueOf(loadConfig("LC2013_LOOKAHEAD_TIME"));
+	public static double LC2013_STRATEGIC_LOOKAHEAD = Double.valueOf(loadConfig("LC2013_STRATEGIC_LOOKAHEAD"));
+	public static double LC2013_LOOKAHEAD_LEFT = Double.valueOf(loadConfig("LC2013_LOOKAHEAD_LEFT"));
+	public static double LC2013_HEADWAY_TIME = Double.valueOf(loadConfig("LC2013_HEADWAY_TIME"));
+	public static double LC2013_ASSERTIVE = Double.valueOf(loadConfig("LC2013_ASSERTIVE"));
+	public static double LC2013_IMPATIENCE = Double.valueOf(loadConfig("LC2013_IMPATIENCE"));
+	public static double LC2013_MIN_GAP_LAT = Double.valueOf(loadConfig("LC2013_MIN_GAP_LAT"));
+	public static double LC2013_SAFE_DECEL = Double.valueOf(loadConfig("LC2013_SAFE_DECEL"));
+	public static double LC2013_SPEED_GAIN_THRESHOLD = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_THRESHOLD"));
+	public static double LC2013_SPEED_GAIN_RIGHT = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_RIGHT"));
+	public static double LC2013_SPEED_GAIN_LOOKAHEAD = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_LOOKAHEAD"));
+	public static double LC2013_SPEED_GAIN_REMAIN_TIME = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_REMAIN_TIME"));
+	public static double LC2013_SPEED_GAIN_URGENCY = Double.valueOf(loadConfig("LC2013_SPEED_GAIN_URGENCY"));
+	public static double LC2013_KEEP_RIGHT_ACCEPTANCE_TIME = Double.valueOf(loadConfig("LC2013_KEEP_RIGHT_ACCEPTANCE_TIME"));
+	public static double LC2013_COOPERATIVE_SPEED = Double.valueOf(loadConfig("LC2013_COOPERATIVE_SPEED"));
+	public static double LC2013_REGULATORY_PARAM = Double.valueOf(loadConfig("LC2013_REGULATORY_PARAM"));
+
 	public static LinkedList<NetworkEventObject> newEventQueue = new LinkedList<NetworkEventObject>();
 	
 	// Parameters for mode split

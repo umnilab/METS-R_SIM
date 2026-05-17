@@ -237,8 +237,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * <p>Input DATA (optional): list of integer bus IDs. If omitted,
 	 * returns the {@code id_list} of all known buses.
 	 *
-	 * <p>Output DATA: list of {@code {ID, route, current_stop, pass_num,
-	 * battery_state}} records.
+	 * <p>Output DATA: list of {@code {ID, route, stopZones, current_stop,
+	 * pass_num, battery_state}} records.
 	 */
 	public  HashMap<String, Object> getBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -260,6 +260,7 @@ public class QueryMessageHandler extends MessageHandler {
 					int routeID = bus.getRouteID();
 					String routeName = ContextCreator.bus_schedule.getRouteName(routeID);
 					record2.put("route", routeName == null ? -1 : routeName);
+					record2.put("stopZones", bus.getBusStops());
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
 					record2.put("battery_state", bus.getBatteryLevel());

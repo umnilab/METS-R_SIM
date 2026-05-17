@@ -104,6 +104,8 @@ public class ChargingStation {
 
 	// Step function
 	public void stepPart1() {
+		if (ContextCreator.getChargingStationContext().get(this.getID()) != this) return;
+
 		processToAddEV();
 		processToAddBus();
 		updateCapacity();
@@ -113,6 +115,8 @@ public class ChargingStation {
 	}
 	
 	public void stepPart2() { //vehicle leaving the charging station
+		if (ContextCreator.getChargingStationContext().get(this.getID()) != this) return;
+
 		for(ElectricVehicle ev: finishedVehicleL2) {
 			ev.finishCharging(this.getID(), "L2");
 		}
@@ -142,6 +146,13 @@ public class ChargingStation {
 	
 	public int capacityBus() {
 		return this.cachedBusCapacity;
+	}
+
+	public boolean hasChargingVehicles() {
+		return !queueChargingL2.isEmpty() || !queueChargingL3.isEmpty() || !queueChargingBus.isEmpty()
+				|| !chargingVehicleL2.isEmpty() || !chargingVehicleL3.isEmpty() || !chargingBus.isEmpty()
+				|| !toAddChargingEV.isEmpty() || !toAddChargingBus.isEmpty()
+				|| !finishedVehicleL2.isEmpty() || !finishedVehicleL3.isEmpty() || !finishedBus.isEmpty();
 	}
 	
 	public void updateCapacity() {
@@ -398,21 +409,29 @@ public class ChargingStation {
         // Remaining capacity fraction to be charged.
         double y = 1.0 - Math.max(SOC_i, 0);
         double beta = P / C;
+        double y2 = y * y;
+        double y3 = y2 * y;
+        double y4 = y2 * y2;
+        double beta2 = beta * beta;
+        double beta3 = beta2 * beta;
+        double beta6 = beta3 * beta3;
         
         // Compute A and B using y.
-        double A = (64 * Math.pow(y, 3) / 27 - 5 * y / 2) / Math.pow(beta, 3);
-        double B = Math.sqrt((320 * Math.pow(y, 4) / 9 - 1525 * Math.pow(y, 2) / 12 + 125) / Math.pow(beta, 6));
+        double A = (64 * y3 / 27 - 5 * y / 2) / beta3;
+        double B = Math.sqrt((320 * y4 / 9 - 1525 * y2 / 12 + 125) / beta6);
         
         // Compute t_star (baseline offset time based on current remaining capacity y)
         double t_star = Math.cbrt(A + B) + Math.cbrt(A - B) + 4 * y / (3 * beta);
         double t_total = t_star + t; // effective time after adding the incremental period
+        double tTotal2 = t_total * t_total;
+        double tStar2 = t_star * t_star;
         
         // Define the cumulative charging function F(t)
         // F(t) = beta*t*(beta^2*t^2+15) / (2*beta^2*t^2+15)
-        double F_t_total = beta * t_total * (beta * beta * Math.pow(t_total, 2) + 15)
-                           / (2 * beta * beta * Math.pow(t_total, 2) + 15);
-        double F_t_star  = beta * t_star * (beta * beta * Math.pow(t_star, 2) + 15)
-                           / (2 * beta * beta * Math.pow(t_star, 2) + 15);
+        double F_t_total = beta * t_total * (beta2 * tTotal2 + 15)
+                           / (2 * beta2 * tTotal2 + 15);
+        double F_t_star  = beta * t_star * (beta2 * tStar2 + 15)
+                           / (2 * beta2 * tStar2 + 15);
         
         // Compute the incremental charged fraction during time t.
         double minDeltaSOC = 0.001 * beta; // Set the min deltaSoC to force the simulation to reach 100% in a finite and realistic time.

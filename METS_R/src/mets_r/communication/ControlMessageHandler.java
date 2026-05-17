@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 
@@ -48,6 +49,7 @@ import mets_r.communication.MessageClass.AddTaxiToZone;
 import mets_r.communication.MessageClass.ChargingStationParams;
 import mets_r.communication.MessageClass.RouteNameNum;
 import mets_r.communication.MessageClass.VehIDVehTypeChargerTypeCSID;
+import mets_r.communication.MessageClass.RoadParams;
 import mets_r.communication.MessageClass.ZoneParams;
 import mets_r.facility.ZoneContext;
 import mets_r.data.input.SumoXML;
@@ -60,8 +62,10 @@ import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
+import mets_r.mobility.Plan;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
+import mets_r.routing.RouteContext;
 
 public class ControlMessageHandler extends MessageHandler {
 	
@@ -143,10 +147,14 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("removeStopFromRoute", this::removeStopFromRoute);
 		
 		// =============================================================
-		// Dynamic infrastructure & fleet additions
+		// Dynamic infrastructure & fleet additions / removals
 		// =============================================================
 		messageHandlers.put("addZone", this::addZone);
+		messageHandlers.put("addRoads", this::addRoads);
+		messageHandlers.put("removeZone", this::removeZone);
+		messageHandlers.put("removeRoad", this::removeRoad);
 		messageHandlers.put("addChargingStation", this::addChargingStation);
+		messageHandlers.put("removeChargingStation", this::removeChargingStation);
 		messageHandlers.put("addTaxi", this::addTaxi);
 		messageHandlers.put("addBus", this::addBus);
 	}
@@ -2574,7 +2582,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	// =============================================================
-	// DYNAMIC INFRASTRUCTURE & FLEET ADDITIONS
+	// DYNAMIC INFRASTRUCTURE & FLEET ADDITIONS / REMOVALS
 	// =============================================================
 	
 	/**
@@ -2747,6 +2755,899 @@ public class ControlMessageHandler extends MessageHandler {
 			jsonAns.put("CODE", "KO");
 		}
 		return jsonAns;
+	}
+
+	/**
+	 * Dynamically adds one or more roads, including generated lanes offset from
+	 * the supplied centerline.
+	 * <p>Input DATA: list of {@code {origID/orig_id, centerline, upStreamRoad,
+	 * downStreamRoad, roadType, controlType, upStreamControlType,
+	 * downStreamControlType, numLanes, laneWidth, transformCoord}}.
+	 * Road references are original road IDs. Singular and plural upstream /
+	 * downstream fields are accepted.
+	 * <p>Output DATA: list of {@code {ID, internalID, laneIDs, STATUS}} records.
+	 */
+	private HashMap<String, Object> addRoads(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<RoadParams>> collectionType = new TypeToken<Collection<RoadParams>>() {};
+			Collection<RoadParams> params = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			GeometryFactory geomFac = new GeometryFactory();
+			int nextRoadID = nextAvailableID(ContextCreator.getRoadContext().getIDList(), 1);
+			int nextLaneID = nextAvailableID(ContextCreator.getLaneContext().getIDList(), 1);
+			boolean anyRoadAdded = false;
+
+			for (RoadParams p : params) {
+				String origID = firstNonBlank(p.origID, p.orig_id);
+				HashMap<String, Object> record = statusRecord(origID, "KO");
+
+				ArrayList<Coordinate> centerline = null;
+				try {
+					centerline = parseRoadCenterline(p);
+				} catch (TransformException e) {
+					record.put("WARN", "Coordinate transform failed: " + e.getMessage());
+					jsonData.add(record);
+					continue;
+				}
+				if (centerline == null || centerline.size() < 2) {
+					record.put("WARN", "Road centerline must contain at least two points");
+					jsonData.add(record);
+					continue;
+				}
+
+				int numLanes = firstInteger(1, p.numLanes, p.num_lanes, p.laneNum, p.lane_num, p.lanes);
+				if (numLanes <= 0) {
+					record.put("WARN", "numLanes must be positive");
+					jsonData.add(record);
+					continue;
+				}
+
+				nextRoadID = nextAvailableRoadID(nextRoadID);
+				if (origID == null) {
+					origID = "dynamic_road_" + nextRoadID;
+					record.put("ID", origID);
+				}
+				if (ContextCreator.getCityContext().findRoadWithOrigID(origID) != null) {
+					record.put("WARN", "Road orig_id already exists");
+					jsonData.add(record);
+					continue;
+				}
+
+				ArrayList<String> upstreamOrigIDs = normalizeUpstreamRoadOrigIDs(p);
+				ArrayList<String> downstreamOrigIDs = normalizeDownstreamRoadOrigIDs(p);
+				if (upstreamOrigIDs.isEmpty() || downstreamOrigIDs.isEmpty()) {
+					record.put("WARN", "At least one upstream and one downstream road orig_id are required");
+					jsonData.add(record);
+					continue;
+				}
+
+				ArrayList<Road> upstreamRoads = new ArrayList<Road>();
+				String missingRoad = resolveRoadOrigIDs(upstreamOrigIDs, upstreamRoads);
+				if (missingRoad != null) {
+					record.put("WARN", "Upstream road not found: " + missingRoad);
+					jsonData.add(record);
+					continue;
+				}
+
+				ArrayList<Road> downstreamRoads = new ArrayList<Road>();
+				missingRoad = resolveRoadOrigIDs(downstreamOrigIDs, downstreamRoads);
+				if (missingRoad != null) {
+					record.put("WARN", "Downstream road not found: " + missingRoad);
+					jsonData.add(record);
+					continue;
+				}
+
+				String junctionWarning = validateConnectorJunctions(upstreamRoads, true);
+				if (junctionWarning == null) {
+					junctionWarning = validateConnectorJunctions(downstreamRoads, false);
+				}
+				if (junctionWarning != null) {
+					record.put("WARN", junctionWarning);
+					jsonData.add(record);
+					continue;
+				}
+
+				double roadLength = polylineLength(centerline);
+				if (roadLength <= 0) {
+					record.put("WARN", "Road centerline length must be positive");
+					jsonData.add(record);
+					continue;
+				}
+
+				int roadID = nextRoadID;
+				nextRoadID++;
+				Road road = new Road(roadID);
+				road.setOrigID(origID);
+				road.setRoadType(firstInteger(Road.Street, p.roadType, p.road_type));
+				road.setControlType(firstInteger(Road.NONE_OF_THE_ABOVE, p.controlType, p.control_type,
+						p.roadControlType, p.road_control_type));
+				road.setCoords(centerline);
+				road.setLength(roadLength);
+				road.updateTravelTimeEstimation();
+				ContextCreator.getRoadContext().put(roadID, road);
+				ContextCreator.getRoadGeography().move(road,
+						geomFac.createLineString(centerline.toArray(new Coordinate[centerline.size()])));
+
+				double laneWidth = firstDouble(3.5, p.laneWidth, p.lane_width);
+				ArrayList<Integer> laneIDs = new ArrayList<Integer>();
+				for (int laneIndex = 0; laneIndex < numLanes; laneIndex++) {
+					nextLaneID = nextAvailableLaneID(nextLaneID);
+					int laneID = nextLaneID;
+					nextLaneID++;
+
+					ArrayList<Coordinate> laneCoords = offsetCenterline(centerline, laneIndex, numLanes, laneWidth);
+					Lane lane = new Lane(laneID);
+					lane.setOrigID(origID + "_" + laneIndex);
+					lane.setRoad(roadID);
+					lane.setCoords(laneCoords);
+					lane.setLength(polylineLength(laneCoords));
+					lane.setSpeed(road.getSpeedLimit());
+					ContextCreator.getLaneContext().put(laneID, lane);
+					ContextCreator.getLaneGeography().move(lane,
+							geomFac.createLineString(laneCoords.toArray(new Coordinate[laneCoords.size()])));
+					road.addLane(lane);
+					laneIDs.add(laneID);
+				}
+				road.sortLanes();
+				for (Lane lane : road.getLanes()) {
+					lane.setIndex();
+				}
+
+				ContextCreator.getCityContext().registerAddedRoad(road, upstreamRoads, downstreamRoads,
+						firstIntegerOrNull(p.upStreamControlType, p.upstreamControlType, p.upstream_control_type,
+								p.upControlType, p.up_control_type),
+						firstIntegerOrNull(p.downStreamControlType, p.downstreamControlType, p.downstream_control_type,
+								p.downControlType, p.down_control_type));
+				updateFacilitiesAfterRoadAddition(road);
+				ContextCreator.scheduleNewRoad(road);
+
+				record.put("internalID", road.getID());
+				record.put("laneIDs", laneIDs);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+				anyRoadAdded = true;
+			}
+
+			if (anyRoadAdded) {
+				RouteContext.createRoute();
+				ContextCreator.getCityContext().refreshRoadNetworkWeights();
+				if (GlobalVariables.MULTI_THREADING) {
+					try {
+						ContextCreator.partitioner.first_run();
+					} catch (Exception e) {
+						ContextCreator.logger.warn("addRoads: failed to refresh partitioner: " + e.getMessage());
+					}
+				}
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control addRoads: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically removes one or more zones.
+	 * <p>Input DATA: list of integer zone IDs.
+	 * <p>Output DATA: list of {@code {ID, STATUS}} records.
+	 *
+	 * <p>A zone is removed only when it is not the last remaining zone and no
+	 * active vehicles, pending requests, or bus routes still reference it.
+	 */
+	private HashMap<String, Object> removeZone(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+			Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (int zoneID : IDs) {
+				HashMap<String, Object> record = statusRecord(zoneID, "KO");
+				Zone zone = ContextCreator.getZoneContext().get(zoneID);
+				if (zone == null) {
+					record.put("WARN", "Zone not found");
+					jsonData.add(record);
+					continue;
+				}
+
+				String blocker = zoneRemovalBlocker(zone);
+				if (blocker != null) {
+					record.put("WARN", blocker);
+					jsonData.add(record);
+					continue;
+				}
+
+				for (Road road : ContextCreator.getRoadContext().getAll()) {
+					if (road.getNeighboringZone(false) == zoneID) {
+						road.setNeighboringZone(0, false);
+						road.setDistToZone(Double.MAX_VALUE, false);
+					}
+					if (road.getNeighboringZone(true) == zoneID) {
+						road.setNeighboringZone(0, true);
+						road.setDistToZone(Double.MAX_VALUE, true);
+					}
+				}
+
+				ContextCreator.getZoneContext().HUB_INDEXES.remove(Integer.valueOf(zoneID));
+				ContextCreator.getZoneContext().remove(zoneID);
+				ContextCreator.getVehicleContext().removeZoneMaps(zoneID);
+
+				for (Zone other : ContextCreator.getZoneContext().getAll()) {
+					other.getNeighboringZones().remove(Integer.valueOf(zoneID));
+					other.traversingBusRoutes.remove(zoneID);
+				}
+
+				ContextCreator.getCityContext().refreshRoadZoneAssignment();
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control removeZone: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically removes one or more roads.
+	 * <p>Input DATA: list of original road IDs.
+	 * <p>Output DATA: list of {@code {ID, STATUS}} records.
+	 *
+	 * <p>A road is removed only when no vehicles, requests, bus schedules, or
+	 * facility closest-road assignments would be stranded.
+	 */
+	private HashMap<String, Object> removeRoad(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<String>> collectionType = new TypeToken<Collection<String>>() {};
+			Collection<String> roadIDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (String roadID : roadIDs) {
+				HashMap<String, Object> record = statusRecord(roadID, "KO");
+				Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+				if (road == null) {
+					record.put("WARN", "Road not found");
+					jsonData.add(record);
+					continue;
+				}
+
+				String blocker = roadRemovalBlocker(road);
+				if (blocker != null) {
+					record.put("WARN", blocker);
+					jsonData.add(record);
+					continue;
+				}
+
+				ContextCreator.coSimRoads.remove(road.getOrigID());
+				ContextCreator.getCityContext().removeRoadReferences(road);
+				removeRoadLanes(road);
+				ContextCreator.getRoadContext().remove(road.getID());
+				updateFacilitiesAfterRoadRemoval(road);
+				RouteContext.createRoute();
+
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control removeRoad: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Dynamically removes one or more charging stations.
+	 * <p>Input DATA: list of integer charging-station IDs.
+	 * <p>Output DATA: list of {@code {ID, STATUS}} records.
+	 *
+	 * <p>A station is removed only when no vehicle is queued, charging, or
+	 * already en route to that station.
+	 */
+	private HashMap<String, Object> removeChargingStation(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
+			Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (int chargerID : IDs) {
+				HashMap<String, Object> record = statusRecord(chargerID, "KO");
+				ChargingStation cs = ContextCreator.getChargingStationContext().get(chargerID);
+				if (cs == null) {
+					record.put("WARN", "Charging station not found");
+					jsonData.add(record);
+					continue;
+				}
+				if (cs.hasChargingVehicles()) {
+					record.put("WARN", "Charging station has queued or charging vehicles");
+					jsonData.add(record);
+					continue;
+				}
+				if (vehiclesReferenceChargingStation(chargerID)) {
+					record.put("WARN", "A vehicle is en route to this charging station");
+					jsonData.add(record);
+					continue;
+				}
+
+				ContextCreator.getChargingStationContext().remove(chargerID);
+				record.put("STATUS", "OK");
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing control removeChargingStation: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	private HashMap<String, Object> statusRecord(Object id, String status) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", id);
+		record.put("STATUS", status);
+		return record;
+	}
+
+	private String zoneRemovalBlocker(Zone zone) {
+		int zoneID = zone.getID();
+		if (ContextCreator.getZoneContext().getIDList().size() <= 1) {
+			return "Cannot remove the last zone";
+		}
+		if (ContextCreator.bus_schedule.referencesZone(zoneID)) {
+			return "Zone is referenced by a bus route";
+		}
+		if (zone.getParkingVehicleStock() > 0
+				|| !ContextCreator.getVehicleContext().getAvailableTaxisSorted(zoneID).isEmpty()
+				|| ContextCreator.getVehicleContext().getNumOfRelocationTaxi(zoneID) > 0) {
+			return "Zone still has parked or relocating taxis";
+		}
+		if (zoneHasPendingRequests(zone) || requestsReferenceZone(zoneID)) {
+			return "Zone is referenced by pending or assigned requests";
+		}
+		if (vehiclesReferenceZone(zoneID)) {
+			return "Zone is referenced by active vehicle plans";
+		}
+		return null;
+	}
+
+	private String roadRemovalBlocker(Road road) {
+		if (road.hasActiveVehicles()) {
+			return "Road still has active or queued vehicles";
+		}
+		if (ContextCreator.bus_schedule.referencesRoad(road)) {
+			return "Road is referenced by a bus route";
+		}
+		if (requestsReferenceRoad(road.getID())) {
+			return "Road is referenced by pending or assigned requests";
+		}
+		if (vehiclesReferenceRoad(road.getID())) {
+			return "Road is referenced by active vehicle plans";
+		}
+		if (!hasAlternativeClosestRoads(road)) {
+			return "At least one zone or charging station has no alternative closest road";
+		}
+		return null;
+	}
+
+	private boolean zoneHasPendingRequests(Zone zone) {
+		if (!zone.getTaxiRequestQueue().isEmpty() || !zone.getBusRequestQueue().isEmpty()
+				|| !zone.getToAddTaxiRequestQueue().isEmpty() || !zone.getToAddBusRequestQueue().isEmpty()) {
+			return true;
+		}
+		for (Queue<Request> q : zone.getSharableRequestForTaxi().values()) {
+			if (!q.isEmpty()) return true;
+		}
+		return false;
+	}
+
+	private ArrayList<Vehicle> allVehicles() {
+		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+		vehicles.addAll(ContextCreator.getVehicleContext().getPrivateEVs());
+		vehicles.addAll(ContextCreator.getVehicleContext().getPrivateGVs());
+		vehicles.addAll(ContextCreator.getVehicleContext().getTaxis());
+		vehicles.addAll(ContextCreator.getVehicleContext().getBuses());
+		return vehicles;
+	}
+
+	private boolean vehiclesReferenceZone(int zoneID) {
+		for (Vehicle v : allVehicles()) {
+			if (v.getOriginID() == zoneID || v.getDestID() == zoneID) return true;
+			if (v instanceof ElectricTaxi && ((ElectricTaxi) v).getCurrentZone() == zoneID) return true;
+			if (v instanceof ElectricBus && ((ElectricBus) v).getBusStops().contains(zoneID)) return true;
+			for (Plan p : v.getPlan()) {
+				if (p.getDestZoneID() == zoneID) return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean vehiclesReferenceRoad(int roadID) {
+		for (Vehicle v : allVehicles()) {
+			Road currentRoad = v.getRoad();
+			if (currentRoad != null && currentRoad.getID() == roadID) return true;
+			Road nextRoad = v.getNextRoad();
+			if (nextRoad != null && nextRoad.getID() == roadID) return true;
+			List<Road> path = v.getRoadPath();
+			if (path != null) {
+				for (Road r : path) {
+					if (r != null && r.getID() == roadID) return true;
+				}
+			}
+			for (Plan p : v.getPlan()) {
+				if (p.getDestRoadID() == roadID) return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean vehiclesReferenceChargingStation(int chargerID) {
+		for (Vehicle v : allVehicles()) {
+			if (v instanceof ElectricVehicle) {
+				ElectricVehicle ev = (ElectricVehicle) v;
+				if (ev.isOnChargingRoute() && ev.getDestID() == chargerID) return true;
+			}
+			for (Plan p : v.getPlan()) {
+				if (p.getDestZoneID() == chargerID) return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean requestsReferenceZone(int zoneID) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			if (requestQueueReferencesZone(z.getTaxiRequestQueue(), zoneID)
+					|| requestQueueReferencesZone(z.getBusRequestQueue(), zoneID)
+					|| requestQueueReferencesZone(z.getToAddTaxiRequestQueue(), zoneID)
+					|| requestQueueReferencesZone(z.getToAddBusRequestQueue(), zoneID)) {
+				return true;
+			}
+			for (Queue<Request> q : z.getSharableRequestForTaxi().values()) {
+				if (requestQueueReferencesZone(q, zoneID)) return true;
+			}
+		}
+		for (ElectricTaxi t : ContextCreator.getVehicleContext().getTaxis()) {
+			if (requestQueueReferencesZone(t.getToBoardRequests(), zoneID)
+					|| requestQueueReferencesZone(t.getOnBoardRequests(), zoneID)) {
+				return true;
+			}
+		}
+		for (ElectricBus b : ContextCreator.getVehicleContext().getBuses()) {
+			for (Queue<Request> q : b.getToBoardRequests()) {
+				if (requestQueueReferencesZone(q, zoneID)) return true;
+			}
+			for (Queue<Request> q : b.getOnBoardRequests()) {
+				if (requestQueueReferencesZone(q, zoneID)) return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean requestsReferenceRoad(int roadID) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			if (requestQueueReferencesRoad(z.getTaxiRequestQueue(), roadID)
+					|| requestQueueReferencesRoad(z.getBusRequestQueue(), roadID)
+					|| requestQueueReferencesRoad(z.getToAddTaxiRequestQueue(), roadID)
+					|| requestQueueReferencesRoad(z.getToAddBusRequestQueue(), roadID)) {
+				return true;
+			}
+			for (Queue<Request> q : z.getSharableRequestForTaxi().values()) {
+				if (requestQueueReferencesRoad(q, roadID)) return true;
+			}
+		}
+		for (ElectricTaxi t : ContextCreator.getVehicleContext().getTaxis()) {
+			if (requestQueueReferencesRoad(t.getToBoardRequests(), roadID)
+					|| requestQueueReferencesRoad(t.getOnBoardRequests(), roadID)) {
+				return true;
+			}
+		}
+		for (ElectricBus b : ContextCreator.getVehicleContext().getBuses()) {
+			for (Queue<Request> q : b.getToBoardRequests()) {
+				if (requestQueueReferencesRoad(q, roadID)) return true;
+			}
+			for (Queue<Request> q : b.getOnBoardRequests()) {
+				if (requestQueueReferencesRoad(q, roadID)) return true;
+			}
+		}
+		return false;
+	}
+
+	private boolean requestQueueReferencesZone(Queue<Request> requests, int zoneID) {
+		for (Request r : requests) {
+			if (r.getOriginZone() == zoneID || r.getDestZone() == zoneID) return true;
+		}
+		return false;
+	}
+
+	private boolean requestQueueReferencesRoad(Queue<Request> requests, int roadID) {
+		for (Request r : requests) {
+			if (r.getOriginRoad() == roadID || r.getDestRoad() == roadID) return true;
+		}
+		return false;
+	}
+
+	private boolean hasAlternativeClosestRoads(Road removedRoad) {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			if (z.getClosestRoad(false) != null && z.getClosestRoad(false) == removedRoad.getID()
+					&& ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), false, removedRoad) == null) {
+				return false;
+			}
+			if (z.getClosestRoad(true) != null && z.getClosestRoad(true) == removedRoad.getID()
+					&& ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), true, removedRoad) == null) {
+				return false;
+			}
+		}
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			if (cs.getClosestRoad(false) != null && cs.getClosestRoad(false) == removedRoad.getID()
+					&& ContextCreator.getCityContext().findRoadAtCoordinates(cs.getCoord(), false, removedRoad) == null) {
+				return false;
+			}
+			if (cs.getClosestRoad(true) != null && cs.getClosestRoad(true) == removedRoad.getID()
+					&& ContextCreator.getCityContext().findRoadAtCoordinates(cs.getCoord(), true, removedRoad) == null) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private void removeRoadLanes(Road removedRoad) {
+		ArrayList<Lane> removedLanes = new ArrayList<Lane>(removedRoad.getLanes());
+		for (Lane removedLane : removedLanes) {
+			for (Lane lane : ContextCreator.getLaneContext().getAll()) {
+				if (lane == removedLane) continue;
+				lane.getDownStreamLanes().remove(Integer.valueOf(removedLane.getID()));
+				lane.getUpStreamLanes().remove(Integer.valueOf(removedLane.getID()));
+			}
+		}
+		for (Lane removedLane : removedLanes) {
+			ContextCreator.getLaneContext().remove(removedLane.getID());
+		}
+		removedRoad.getLanes().clear();
+	}
+
+	private void updateFacilitiesAfterRoadRemoval(Road removedRoad) {
+		int roadID = removedRoad.getID();
+		ContextCreator.getCityContext().clearRoadLookupCaches();
+
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			z.getNeighboringLinks(false).remove(Integer.valueOf(roadID));
+			z.getNeighboringLinks(true).remove(Integer.valueOf(roadID));
+			if (z.getClosestRoad(false) != null && z.getClosestRoad(false) == roadID) {
+				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), false);
+				if (alt != null) {
+					z.setClosestRoad(alt.getID(), false);
+					z.setDistToRoad(ContextCreator.getCityContext().getDistance(z.getCoord(), alt.getStartCoord()), false);
+					z.addNeighboringLink(alt.getID(), false);
+				}
+			}
+			if (z.getClosestRoad(true) != null && z.getClosestRoad(true) == roadID) {
+				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), true);
+				if (alt != null) {
+					z.setClosestRoad(alt.getID(), true);
+					z.setDistToRoad(ContextCreator.getCityContext().getDistance(z.getCoord(), alt.getEndCoord()), true);
+					z.addNeighboringLink(alt.getID(), true);
+				}
+			}
+		}
+
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			if (cs.getClosestRoad(false) != null && cs.getClosestRoad(false) == roadID) {
+				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(cs.getCoord(), false);
+				if (alt != null) {
+					cs.setClosestRoad(alt.getID(), false);
+					cs.setDistToRoad(ContextCreator.getCityContext().getDistance(cs.getCoord(), alt.getStartCoord()), false);
+				}
+			}
+			if (cs.getClosestRoad(true) != null && cs.getClosestRoad(true) == roadID) {
+				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(cs.getCoord(), true);
+				if (alt != null) {
+					cs.setClosestRoad(alt.getID(), true);
+					cs.setDistToRoad(ContextCreator.getCityContext().getDistance(cs.getCoord(), alt.getEndCoord()), true);
+				}
+			}
+		}
+	}
+
+	private int nextAvailableID(List<Integer> IDs, int minID) {
+		int nextID = minID;
+		for (Integer ID : IDs) {
+			if (ID != null && ID >= nextID) {
+				nextID = ID + 1;
+			}
+		}
+		return Math.max(minID, nextID);
+	}
+
+	private int nextAvailableRoadID(int startID) {
+		int nextID = Math.max(1, startID);
+		while (ContextCreator.getRoadContext().contains(nextID)) {
+			nextID++;
+		}
+		return nextID;
+	}
+
+	private int nextAvailableLaneID(int startID) {
+		int nextID = Math.max(1, startID);
+		while (ContextCreator.getLaneContext().contains(nextID)) {
+			nextID++;
+		}
+		return nextID;
+	}
+
+	private ArrayList<Coordinate> parseRoadCenterline(RoadParams p) throws TransformException {
+		ArrayList<ArrayList<Double>> rawCenterline = p.centerline;
+		if (rawCenterline == null) rawCenterline = p.centerLine;
+		if (rawCenterline == null) rawCenterline = p.coords;
+		if (rawCenterline == null) return null;
+
+		ArrayList<Coordinate> centerline = new ArrayList<Coordinate>();
+		for (ArrayList<Double> point : rawCenterline) {
+			if (point == null || point.size() < 2 || point.get(0) == null || point.get(1) == null) {
+				return null;
+			}
+			double z = (point.size() > 2 && point.get(2) != null) ? point.get(2) : 0.0;
+			Coordinate coord = new Coordinate(point.get(0), point.get(1), z);
+			if (p.transformCoord) {
+				JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+			}
+			centerline.add(coord);
+		}
+		return centerline;
+	}
+
+	private ArrayList<String> normalizeUpstreamRoadOrigIDs(RoadParams p) {
+		ArrayList<String> IDs = new ArrayList<String>();
+		appendRoadOrigID(IDs, p.upStreamRoadOrigID);
+		appendRoadOrigID(IDs, p.upstreamRoadOrigID);
+		appendRoadOrigID(IDs, p.upstream_orig_id);
+		appendRoadOrigID(IDs, p.upstream);
+		appendRoadOrigID(IDs, p.upStreamRoad);
+		appendRoadOrigID(IDs, p.upstreamRoad);
+		appendRoadOrigID(IDs, p.upStreamRoadID);
+		appendRoadOrigID(IDs, p.upstreamRoadID);
+		appendRoadOrigIDs(IDs, p.upStreamRoadOrigIDs);
+		appendRoadOrigIDs(IDs, p.upstreamRoadOrigIDs);
+		appendRoadOrigIDs(IDs, p.upstream_orig_ids);
+		appendRoadOrigIDs(IDs, p.upstream_roads);
+		appendRoadOrigIDs(IDs, p.upStreamRoads);
+		appendRoadOrigIDs(IDs, p.upstreamRoads);
+		return IDs;
+	}
+
+	private ArrayList<String> normalizeDownstreamRoadOrigIDs(RoadParams p) {
+		ArrayList<String> IDs = new ArrayList<String>();
+		appendRoadOrigID(IDs, p.downStreamRoadOrigID);
+		appendRoadOrigID(IDs, p.downstreamRoadOrigID);
+		appendRoadOrigID(IDs, p.downstream_orig_id);
+		appendRoadOrigID(IDs, p.downstream);
+		appendRoadOrigID(IDs, p.downStreamRoad);
+		appendRoadOrigID(IDs, p.downstreamRoad);
+		appendRoadOrigID(IDs, p.downStreamRoadID);
+		appendRoadOrigID(IDs, p.downstreamRoadID);
+		appendRoadOrigIDs(IDs, p.downStreamRoadOrigIDs);
+		appendRoadOrigIDs(IDs, p.downstreamRoadOrigIDs);
+		appendRoadOrigIDs(IDs, p.downstream_orig_ids);
+		appendRoadOrigIDs(IDs, p.downstream_roads);
+		appendRoadOrigIDs(IDs, p.downStreamRoads);
+		appendRoadOrigIDs(IDs, p.downstreamRoads);
+		return IDs;
+	}
+
+	private void appendRoadOrigIDs(ArrayList<String> IDs, ArrayList<String> values) {
+		if (values == null) return;
+		for (String value : values) {
+			appendRoadOrigID(IDs, value);
+		}
+	}
+
+	private void appendRoadOrigID(ArrayList<String> IDs, String value) {
+		String cleanValue = cleanString(value);
+		if (cleanValue != null && !IDs.contains(cleanValue)) {
+			IDs.add(cleanValue);
+		}
+	}
+
+	private String resolveRoadOrigIDs(ArrayList<String> origIDs, ArrayList<Road> roads) {
+		for (String origID : origIDs) {
+			Road road = ContextCreator.getCityContext().findRoadWithOrigID(origID);
+			if (road == null) {
+				return origID;
+			}
+			roads.add(road);
+		}
+		return null;
+	}
+
+	private String validateConnectorJunctions(ArrayList<Road> roads, boolean upstream) {
+		if (roads.isEmpty()) return null;
+		int junctionID = upstream ? roads.get(0).getDownStreamJunction() : roads.get(0).getUpStreamJunction();
+		for (Road road : roads) {
+			int roadJunctionID = upstream ? road.getDownStreamJunction() : road.getUpStreamJunction();
+			if (roadJunctionID != junctionID) {
+				return upstream ? "Upstream roads must share the same downstream junction"
+						: "Downstream roads must share the same upstream junction";
+			}
+		}
+		return null;
+	}
+
+	private ArrayList<Coordinate> offsetCenterline(ArrayList<Coordinate> centerline, int laneIndex, int laneCount,
+			double laneWidth) {
+		ArrayList<Coordinate> laneCoords = new ArrayList<Coordinate>();
+		double offset = (laneIndex - ((laneCount - 1) / 2.0)) * laneWidth;
+		for (int i = 0; i < centerline.size(); i++) {
+			Coordinate coord = centerline.get(i);
+			double[] tangent = centerlineTangent(centerline, i);
+			double normalX = -tangent[1];
+			double normalY = tangent[0];
+			laneCoords.add(new Coordinate(coord.x + normalX * offset, coord.y + normalY * offset, coord.z));
+		}
+		return laneCoords;
+	}
+
+	private double[] centerlineTangent(ArrayList<Coordinate> centerline, int index) {
+		int left = Math.max(0, index - 1);
+		int right = Math.min(centerline.size() - 1, index + 1);
+		double dx = centerline.get(right).x - centerline.get(left).x;
+		double dy = centerline.get(right).y - centerline.get(left).y;
+		double length = Math.sqrt(dx * dx + dy * dy);
+		if (length == 0) {
+			for (int i = 0; i < centerline.size() - 1; i++) {
+				dx = centerline.get(i + 1).x - centerline.get(i).x;
+				dy = centerline.get(i + 1).y - centerline.get(i).y;
+				length = Math.sqrt(dx * dx + dy * dy);
+				if (length > 0) break;
+			}
+		}
+		if (length == 0) {
+			return new double[] {1.0, 0.0};
+		}
+		return new double[] {dx / length, dy / length};
+	}
+
+	private double polylineLength(ArrayList<Coordinate> coords) {
+		if (coords == null || coords.size() < 2) return 0;
+		double length = 0;
+		for (int i = 0; i < coords.size() - 1; i++) {
+			length += ContextCreator.getCityContext().getDistance(coords.get(i), coords.get(i + 1));
+		}
+		return length;
+	}
+
+	private String firstNonBlank(String... values) {
+		for (String value : values) {
+			String cleanValue = cleanString(value);
+			if (cleanValue != null) return cleanValue;
+		}
+		return null;
+	}
+
+	private String cleanString(String value) {
+		if (value == null) return null;
+		String cleanValue = value.trim();
+		return cleanValue.length() == 0 ? null : cleanValue;
+	}
+
+	private int firstInteger(int defaultValue, Integer... values) {
+		Integer value = firstIntegerOrNull(values);
+		return value == null ? defaultValue : value;
+	}
+
+	private Integer firstIntegerOrNull(Integer... values) {
+		for (Integer value : values) {
+			if (value != null) return value;
+		}
+		return null;
+	}
+
+	private double firstDouble(double defaultValue, Double... values) {
+		for (Double value : values) {
+			if (value != null) return value;
+		}
+		return defaultValue;
+	}
+
+	private void updateFacilitiesAfterRoadAddition(Road road) {
+		ContextCreator.getCityContext().clearRoadLookupCaches();
+
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			if (road.canBeOrigin()) {
+				double dist = ContextCreator.getCityContext().getDistance(z.getCoord(), road.getStartCoord());
+				if (z.getClosestRoad(false) == null || dist < z.getDistToRoad(false)
+						|| (dist == z.getDistToRoad(false) && road.getID() < z.getClosestRoad(false))) {
+					z.setClosestRoad(road.getID(), false);
+					z.setDistToRoad(dist, false);
+					z.addNeighboringLink(road.getID(), false);
+				}
+			}
+			if (road.canBeDest()) {
+				double dist = ContextCreator.getCityContext().getDistance(z.getCoord(), road.getEndCoord());
+				if (z.getClosestRoad(true) == null || dist < z.getDistToRoad(true)
+						|| (dist == z.getDistToRoad(true) && road.getID() < z.getClosestRoad(true))) {
+					z.setClosestRoad(road.getID(), true);
+					z.setDistToRoad(dist, true);
+					z.addNeighboringLink(road.getID(), true);
+				}
+			}
+		}
+
+		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			if (road.canBeOrigin()) {
+				double dist = ContextCreator.getCityContext().getDistance(cs.getCoord(), road.getStartCoord());
+				if (cs.getClosestRoad(false) == null || dist < cs.getDistToRoad(false)
+						|| (dist == cs.getDistToRoad(false) && road.getID() < cs.getClosestRoad(false))) {
+					cs.setClosestRoad(road.getID(), false);
+					cs.setDistToRoad(dist, false);
+				}
+			}
+			if (road.canBeDest()) {
+				double dist = ContextCreator.getCityContext().getDistance(cs.getCoord(), road.getEndCoord());
+				if (cs.getClosestRoad(true) == null || dist < cs.getDistToRoad(true)
+						|| (dist == cs.getDistToRoad(true) && road.getID() < cs.getClosestRoad(true))) {
+					cs.setClosestRoad(road.getID(), true);
+					cs.setDistToRoad(dist, true);
+				}
+			}
+		}
+
+		updateRoadNeighboringZone(road, false);
+		updateRoadNeighboringZone(road, true);
+	}
+
+	private void updateRoadNeighboringZone(Road road, boolean goDest) {
+		if ((!goDest && !road.canBeOrigin()) || (goDest && !road.canBeDest())) return;
+
+		Coordinate coord = goDest ? road.getEndCoord() : road.getStartCoord();
+		Zone nearestZone = null;
+		double nearestDistance = Double.MAX_VALUE;
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			double dist = ContextCreator.getCityContext().getDistance(z.getCoord(), coord);
+			if (dist < nearestDistance || (dist == nearestDistance && nearestZone != null && z.getID() < nearestZone.getID())) {
+				nearestZone = z;
+				nearestDistance = dist;
+			}
+		}
+		if (nearestZone != null) {
+			road.setNeighboringZone(nearestZone.getID(), goDest);
+			road.setDistToZone(nearestDistance, goDest);
+			nearestZone.addNeighboringLink(road.getID(), goDest);
+		}
 	}
 
 	/**

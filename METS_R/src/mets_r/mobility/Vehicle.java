@@ -24,6 +24,41 @@ import org.opengis.referencing.operation.TransformException;
  * Inherit from A-RESCUE
  * 
  * General vehicle
+ *
+ * Driver behavior models are selected with {@code CAR_FOLLOWING_MODEL} and
+ * {@code LANE_CHANGING_MODEL} in Data.properties.
+ *
+ * Car-following models:
+ * - {@code HERMAN}: the original METS-R car-following formulation. It uses
+ *   power-law acceleration/deceleration terms based on speed difference,
+ *   spacing, and the locally calibrated alpha/beta/gamma parameters. This is
+ *   the most compact model and preserves historical METS-R behavior.
+ * - {@code KRAUSS}: a SUMO-style collision-avoidance model. It selects a
+ *   next-step speed from free-flow desire, acceleration limits, safe velocity,
+ *   tau, minGap, driver imperfection sigma, and normal/apparent/emergency
+ *   braking constraints. Compared with HERMAN, it is explicitly safety-speed
+ *   driven and more directly tied to leader braking assumptions.
+ * - {@code WIEDEMANN74}: a VISSIM-style psycho-physical model for urban
+ *   following. It uses driver-specific standstill distance, oscillation, and
+ *   threshold regimes such as free, approaching, following, braking, and
+ *   collision response. Compared with Krauss, it is regime/threshold based
+ *   rather than safe-speed-only.
+ * - {@code WIEDEMANN99}: a VISSIM-style psycho-physical model intended for
+ *   freeway and higher-speed operation. It extends Wiedemann74 with the CC0-CC9
+ *   parameter family, explicit speed-difference thresholds, oscillation inside
+ *   the following regime, and separate acceleration behavior above/below high
+ *   speed. It is more parameter-rich than Wiedemann74.
+ *
+ * Lane-changing models:
+ * - {@code AHMED}: the original METS-R lane-changing model, named after Ahmed
+ *   (1999). It separates mandatory lane changes for route/connectivity needs
+ *   from discretionary changes for speed advantage, then applies critical lead
+ *   and lag gap acceptance with nosing/yielding behavior.
+ * - {@code LC2013}: a SUMO-style lane-changing model. It combines strategic,
+ *   cooperative, speed-gain, keep-right, and regulatory motivations with
+ *   secure-gap checks and acceleration advice for the ego vehicle and blocking
+ *   followers. Compared with AHMED, it has richer motivation scoring and
+ *   explicit cooperative speed adjustment.
  * 
  * @author Xianyuan Zhan, Xinwu Qian, Hemant Gehlot, Zengxiang Lei
  **/
@@ -55,7 +90,11 @@ public class Vehicle {
 	public final static int CHARGING_RETURN_TRIP = 9;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
-	
+	private static final int LC_REASON_STRATEGIC = 1;
+	private static final int LC_REASON_COOPERATIVE = 2;
+	private static final int LC_REASON_SPEED_GAIN = 3;
+	private static final int LC_REASON_KEEP_RIGHT = 4;
+	private static final int LC_REASON_REGULATORY = 5;
 	/* Constants */
 	private static final double GRAVITY = 9.81; // m/s², used for grade resistance
 	
@@ -117,7 +156,15 @@ public class Vehicle {
 	// Variables for lane changing model
 	private boolean nosingFlag;// If a vehicle in MLC and it can't find gap acceptance then nosing is true.
 	private boolean yieldingFlag; // The vehicle need to yield if true
-	
+	private double lcAccelerationAdvice_;
+	private double lcSpeedGainProbabilityLeft_;
+	private double lcSpeedGainProbabilityRight_;
+	private double lcKeepRightProbability_;
+	private int lcBlockedTicks_;
+	private double wiedemann74Ax_;
+	private double wiedemann74Z_;
+	private double wiedemann99Z_;
+	private double wiedemannOscillationSign_;
 	// Cache for lane projection (valid within a single calcState call)
 	private Lane cachedProjectionLane_ = null;
 	private double cachedProjectionDistance_ = 0;
@@ -185,6 +232,12 @@ public class Vehicle {
 		this.nextLane_ = null;
 		this.nosingFlag = false;
 		this.yieldingFlag = false;
+		this.resetLaneChangeRuntimeState();
+		this.lcSpeedGainProbabilityLeft_ = 0;
+		this.lcSpeedGainProbabilityRight_ = 0;
+		this.lcKeepRightProbability_ = 0;
+		this.lcBlockedTicks_ = 0;
+		this.initializeWiedemannDriverState();
 		this.macroLeading_ = null;
 		this.macroTrailing_ = null;
 		this.leading_ = null;
@@ -732,6 +785,8 @@ public class Vehicle {
 	    ArrayList<Coordinate> coords = plane.getCoords();
 	    double newDistance = 0;
 	    int segIdx = -1;
+	    double projectedParam = 0.0;
+	    double projectedSegmentLen = 0.0;
 
 	    for (int i = coords.size() - 1; i > 0; i--) {
 	        Coordinate a = coords.get(i);
@@ -746,44 +801,50 @@ public class Vehicle {
 	            double apx = currCoord.x - b.x;
 	            double apy = currCoord.y - b.y;
 	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param >= 0.0 && param <= 1.0 && Math.abs(this.distance_ - newDistance) < 25.0) { 
-	            	segIdx = i;
-		            break;
-		        }
+	            if (param >= 0.0 && param <= 1.0) {
+	                double projectedDistance = newDistance + (1.0 - param) * segmentLen;
+	                if (Math.abs(this.distance_ - projectedDistance) < 25.0) {
+	                    segIdx = i;
+	                    newDistance = projectedDistance;
+	                    break;
+	                }
+	            }
 	        }
 	        newDistance += segmentLen;
 	    }
 	    
-	    if(segIdx >= 0) {
-	    	double transitionDistance = this.distance(currCoord, coords.get(segIdx));
-		    newDistance += transitionDistance;
-	    }
-	    else { // Fallback: Pick the segment whose clamped nearest point is closest to the vehicle.
+	    if(segIdx < 0) { // Fallback: Pick the segment whose clamped nearest point is closest to the vehicle.
 	    	double minDist = Double.MAX_VALUE;
 	        for (int i = coords.size() - 1; i > 0; i--) {
 	            Coordinate a = coords.get(i);
 	            Coordinate b = coords.get(i - 1);
-	            double dx = b.x - a.x;
-	            double dy = b.y - a.y;
+	            double dx = a.x - b.x;
+	            double dy = a.y - b.y;
 	            double lenSq = dx * dx + dy * dy;
 	            if (lenSq > 0) {
-	                double apx = currCoord.x - a.x;
-	                double apy = currCoord.y - a.y;
+	                double apx = currCoord.x - b.x;
+	                double apy = currCoord.y - b.y;
 	                double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
-	                double closestX = a.x + param * dx;
-	                double closestY = a.y + param * dy;
+	                double closestX = b.x + param * dx;
+	                double closestY = b.y + param * dy;
 	                double d = Math.hypot(currCoord.x - closestX, currCoord.y - closestY);
 	                if (d < minDist) {
 	                    minDist = d;
 	                    segIdx = i;
+	                    projectedParam = param;
+	                    projectedSegmentLen = this.distance(a, b);
 	                }
 	            }
 	        }
-	        newDistance = 0;
-	        for (int i = coords.size() - 1; i > segIdx; i--) {
-	            newDistance += this.distance(coords.get(i), coords.get(i - 1));
+	        if (segIdx >= 0) {
+		        newDistance = 0;
+		        for (int i = coords.size() - 1; i > segIdx; i--) {
+		            newDistance += this.distance(coords.get(i), coords.get(i - 1));
+		        }
+		        newDistance += (1.0 - projectedParam) * projectedSegmentLen;
+	        } else {
+	            newDistance = this.distance_;
 	        }
-	        newDistance += this.distance(currCoord, coords.get(segIdx));
 	    }
 	    
 	    
@@ -801,37 +862,47 @@ public class Vehicle {
 	 * function is as follow: remove the vehicle from old lane and add to new lane,
 	 * re-assign the leading and trailing sequence of the vehicle, update the to-visit
 	 * coordinate sequences.
+	 * @return true if the vehicle was moved to a different lane
 	 **/
-	public void changeLane(Lane plane) {
-	    double newDistance = this.distanceInNewLane(plane);
-	    int segIdx = (plane == cachedProjectionLane_) ? cachedProjectionSegmentIdx_ : -1;
-	    
-	    ArrayList<Coordinate> coords = plane.getCoords();
-	    ArrayList<Coordinate> newCoordMap = new ArrayList<>();
-	    if (segIdx > 0) {
-	        for (int j = segIdx; j < coords.size(); j++) {
-	            newCoordMap.add(coords.get(j));
-	        }
-	    }
-	    
-	    if(newCoordMap.size() == 0) {
-	    	return;
-	    }
-	    
-	    double transitionDistance = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
-	    
-	    if(this.distance_ > GlobalVariables.NO_LANECHANGING_LENGTH) {
-	    	this.nextDistance_ = transitionDistance;
-		    this.distance_ = newDistance;
-		    this.coordMap.clear();
-		    this.coordMap.addAll(newCoordMap);
-		    
-		this.removeFromCurrentLane();
-		this.insertToLane(plane);
-		currentSegmentIdx_ = segIdx - 1;
-		currentLaneSlope_ = plane.getSegmentSlope(currentSegmentIdx_);
-    }
-}
+	public boolean changeLane(Lane plane) {
+		if (plane == null) {
+			return false;
+		}
+		Lane oldLane = this.lane;
+		if (plane == oldLane) {
+			return false;
+		}
+		double newDistance = this.distanceInNewLane(plane);
+		int segIdx = (plane == cachedProjectionLane_) ? cachedProjectionSegmentIdx_ : -1;
+
+		ArrayList<Coordinate> coords = plane.getCoords();
+		ArrayList<Coordinate> newCoordMap = new ArrayList<>();
+		if (segIdx > 0) {
+			for (int j = segIdx; j < coords.size(); j++) {
+				newCoordMap.add(coords.get(j));
+			}
+		}
+
+		if(newCoordMap.size() == 0) {
+			return false;
+		}
+
+		double transitionDistance = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
+
+		if(this.distance_ > GlobalVariables.NO_LANECHANGING_LENGTH) {
+			this.nextDistance_ = transitionDistance;
+			this.distance_ = newDistance;
+			this.coordMap.clear();
+			this.coordMap.addAll(newCoordMap);
+
+			this.removeFromCurrentLane();
+			this.insertToLane(plane);
+			currentSegmentIdx_ = segIdx - 1;
+			currentLaneSlope_ = plane.getSegmentSlope(currentSegmentIdx_);
+			return this.lane != oldLane && this.lane == plane;
+		}
+		return false;
+	}
 
 	/**
 	 * Append a vehicle to vehicle list in a specific lane
@@ -1010,17 +1081,30 @@ public class Vehicle {
 	else {
 		ContextCreator.logger.error("Teleport to lane error, the specified distance" + distance + "is greater than the length of lane " + lane.getID());
 	}
-}
+	}
 	
+	public void resetLaneChangeRuntimeState() {
+		this.lcAccelerationAdvice_ = Double.POSITIVE_INFINITY;
+	}
+
+	private void addLaneChangeAccelerationAdvice(double acc, int reason, boolean ownAdvice) {
+		if (Double.isNaN(acc)) {
+			return;
+		}
+		if (acc < this.lcAccelerationAdvice_) {
+			this.lcAccelerationAdvice_ = acc;
+		}
+	}
+
 	/**
 	 * Phase 1: evaluate and execute lane-changing decisions.
 	 * Must run for ALL vehicles on the road before acceleration decisions,
 	 * so that the acceleration is computed against the correct (post-lane-change) leading vehicle.
 	 */
-	public void calcLaneChangingState() {
+	public void calcLaneChangingState(int tickcount) {
 		if (this.lane == null) return;
 		this.cachedProjectionLane_ = null;
-		if (ContextCreator.getCurrentTick() % 10 == 0) {
+		if (tickcount % 10 == 0) {
 			this.desiredSpeed_ = this.lane.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
 		}
 		if (this.road.getNumberOfLanes() > 1 && this.isOnLane() && (this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH)) {
@@ -1062,10 +1146,14 @@ public class Vehicle {
 				aZ = this.yielding();
 			}
 
+		if ("LC2013".equals(GlobalVariables.LANE_CHANGING_MODEL) && this.lcAccelerationAdvice_ < aZ) {
+			aZ = this.lcAccelerationAdvice_;
+		}
+
 		if (aZ < acc)
 			acc = aZ; // car-following rate
 
-		double effMaxDec = effectiveMaxDeceleration();
+		double effMaxDec = effectiveModelMaxDeceleration();
 		if (acc < effMaxDec) {
 			acc = effMaxDec;
 		}
@@ -1090,21 +1178,21 @@ public class Vehicle {
 	public double calcFreeFlowRate() {
 		double effNormalDec = effectiveNormalDeceleration();
 		double effMaxDec    = effectiveMaxDeceleration();
+		double comfortableDec = Math.max(0.1, -effNormalDec);
 		
-		// car following and road ends
+		// road ends
 		if (this.nextRoad_ != null && this.road.getID() != this.nextRoad_.getID()) {
 			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 			
 			if (nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID())>0) { // edge case 1: brake for the red light
-				double decTime = this.currentSpeed_ / effNormalDec;
+				double decTime = this.currentSpeed_ / comfortableDec;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
-					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
-							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
+					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_ / this.distance_)));
 				}
 			}
 			
 			if (this.nextRoad_.getSpeedLimit() < this.currentSpeed_) { // edge case 2: brake to prepare for entering the next road
-				double decTime = (this.currentSpeed_ - this.nextRoad_.getSpeedLimit()) / effNormalDec;
+				double decTime = (this.currentSpeed_ - this.nextRoad_.getSpeedLimit()) / comfortableDec;
 				if (this.distance_ <= 0.5 * (this.currentSpeed_ + this.nextRoad_.getSpeedLimit()) * decTime) {
 					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_
 							- this.nextRoad_.getSpeedLimit() * this.nextRoad_.getSpeedLimit()) / this.distance_));
@@ -1127,6 +1215,20 @@ public class Vehicle {
 	 * @return acc Vehicle acceleration
 	 */
 	public double calcCarFollowingRate(Vehicle front) {
+		String model = GlobalVariables.CAR_FOLLOWING_MODEL;
+		if ("KRAUSS".equals(model)) {
+			return calcKraussCarFollowingRate(front);
+		}
+		if ("WIEDEMANN74".equals(model) || "WIEDEMANN_74".equals(model) || "W74".equals(model)) {
+			return calcWiedemann74CarFollowingRate(front);
+		}
+		if ("WIEDEMANN99".equals(model) || "WIEDEMANN_99".equals(model) || "W99".equals(model)) {
+			return calcWiedemann99CarFollowingRate(front);
+		}
+		return calcHermanCarFollowingRate(front);
+	}
+
+	private double calcHermanCarFollowingRate(Vehicle front) {
 		// If there is no front vehicle the car will be in free flow regime and have max
 		// acceleration if not reaching the
 		// desired speed
@@ -1184,6 +1286,315 @@ public class Vehicle {
 		}
 		return acc;
 	}
+
+	private double calcKraussCarFollowingRate(Vehicle front) {
+		if (front == null) {
+			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+			return calcFreeFlowRate();
+		}
+
+		double step = GlobalVariables.SIMULATION_STEP_SIZE;
+		double tau = kraussHeadwayTime();
+		double decel = kraussDecelMagnitude();
+		double emergencyDecel = kraussEmergencyDecelMagnitude();
+		double rawGap = gapDistance(front);
+		double leaderSpeed = Math.max(0.0, front.currentSpeed_);
+		double leaderApparentDecel = apparentDecelMagnitude(front);
+		double safeSpeed = safeFollowSpeed(rawGap, leaderSpeed, leaderApparentDecel,
+				decel, tau, GlobalVariables.KRAUSS_MIN_GAP);
+
+		double freeFlowSpeed = Math.max(0.0, currentSpeed_ + calcFreeFlowRate() * step);
+		double maxNextSpeed = Math.max(0.0, currentSpeed_ + this.maxAcceleration() * step);
+		double minNextSpeed = Math.max(0.0, currentSpeed_ - emergencyDecel * step);
+		double targetSpeed = Math.min(Math.min(Math.min(freeFlowSpeed, maxNextSpeed), safeSpeed),
+				Math.max(0.0, desiredSpeed_));
+		if (GlobalVariables.KRAUSS_SIGMA > 0) {
+			double imperfection = GlobalVariables.KRAUSS_SIGMA * maxAcceleration_ * rand_car_follow_only.nextDouble() * step;
+			targetSpeed = Math.max(0.0, targetSpeed - imperfection);
+		}
+		targetSpeed = Math.max(minNextSpeed, targetSpeed);
+
+		double acc = (targetSpeed - currentSpeed_) / step;
+		regime_ = (rawGap <= secureGap(currentSpeed_, leaderSpeed, decel, leaderApparentDecel,
+				tau, GlobalVariables.KRAUSS_MIN_GAP))
+				? GlobalVariables.STATUS_REGIME_EMERGENCY
+				: GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+		if (acc < -decel) {
+			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
+		}
+		return clampAcceleration(acc);
+	}
+
+	private double calcWiedemann74CarFollowingRate(Vehicle front) {
+		if (front == null) {
+			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+			return applyWiedemannJerkLimit(calcFreeFlowRate());
+		}
+
+		double gap = gapDistance(front);
+		double closingSpeed = currentSpeed_ - front.currentSpeed_;
+		double tau = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, GlobalVariables.WIEDEMANN74_TAU);
+		double desiredGap = wiedemann74DesiredDistance();
+		double upperFollowingGap = desiredGap * Math.max(1.0,
+				GlobalVariables.WIEDEMANN74_FOLLOWING_DISTANCE_FACTOR);
+		double leaderSpeed = Math.max(0.0, front.currentSpeed_);
+		double leaderApparentDecel = wiedemannApparentDecelMagnitude(front);
+		double normalDecel = Math.max(0.1, -effectiveNormalDeceleration());
+		double emergencyDecel = wiedemannEmergencyDecelMagnitude();
+		double safeSpeed = safeFollowSpeed(gap, leaderSpeed, leaderApparentDecel,
+				normalDecel, tau, wiedemann74Ax_);
+		double requiredDecel = requiredFollowerDecel(gap, currentSpeed_, leaderSpeed,
+				leaderApparentDecel, tau, wiedemann74Ax_);
+
+		if (gap <= Math.max(0.1, wiedemann74Ax_) || requiredDecel > emergencyDecel) {
+			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
+			return clampAcceleration(-Math.min(requiredDecel, emergencyDecel));
+		}
+
+		if (closingSpeed > 0.0) {
+			double timeToDesiredGap = (gap - desiredGap) / Math.max(0.1, closingSpeed);
+			if (gap <= desiredGap || timeToDesiredGap <= tau) {
+				regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+				double targetSpeed = Math.min(leaderSpeed, safeSpeed);
+				return applyWiedemannJerkLimit(accelerationToSpeed(targetSpeed, tau));
+			}
+		}
+
+		if (gap <= upperFollowingGap) {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			double ratio = (gap - desiredGap) / Math.max(0.1, upperFollowingGap - desiredGap);
+			ratio = Math.max(0.0, Math.min(1.0, ratio));
+			double targetSpeed = leaderSpeed + ratio * (Math.min(desiredSpeed_, this.road.getSpeedLimit()) - leaderSpeed);
+			targetSpeed = Math.min(targetSpeed, safeSpeed);
+			return applyWiedemannJerkLimit(accelerationToSpeed(targetSpeed, tau));
+		}
+
+		if (closingSpeed > 0.0 && gap <= upperFollowingGap + closingSpeed * tau) {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			double targetSpeed = Math.min(safeSpeed, leaderSpeed + (gap - upperFollowingGap) / tau);
+			return applyWiedemannJerkLimit(accelerationToSpeed(targetSpeed, tau));
+		}
+
+		if (currentSpeed_ < desiredSpeed_) {
+			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+			return applyWiedemannJerkLimit(calcFreeFlowRate());
+		}
+		regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+		return applyWiedemannJerkLimit(accelerationToSpeed(Math.min(desiredSpeed_, safeSpeed), tau));
+	}
+
+	private double calcWiedemann99CarFollowingRate(Vehicle front) {
+		if (front == null) {
+			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+			return applyWiedemannJerkLimit(wiedemann99FreeAcceleration());
+		}
+
+		double gap = gapDistance(front);
+		double leaderSpeed = Math.max(0.0, front.currentSpeed_);
+		double relativeSpeed = leaderSpeed - currentSpeed_;
+		double closingSpeed = Math.max(0.0, -relativeSpeed);
+		double tau = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, GlobalVariables.WIEDEMANN99_CC1);
+		double desiredGap = wiedemann99DesiredSafetyDistance();
+		double upperFollowingGap = desiredGap + GlobalVariables.WIEDEMANN99_CC2;
+		double leaderApparentDecel = wiedemannApparentDecelMagnitude(front);
+		double normalDecel = Math.max(0.1, -effectiveNormalDeceleration());
+		double emergencyDecel = wiedemannEmergencyDecelMagnitude();
+		double safeSpeed = safeFollowSpeed(gap, leaderSpeed, leaderApparentDecel,
+				normalDecel, tau, GlobalVariables.WIEDEMANN99_CC0);
+		double requiredDecel = requiredFollowerDecel(gap, currentSpeed_, leaderSpeed,
+				leaderApparentDecel, tau, GlobalVariables.WIEDEMANN99_CC0);
+
+		if (gap <= Math.max(0.1, GlobalVariables.WIEDEMANN99_CC0) || requiredDecel > emergencyDecel) {
+			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
+			return clampAcceleration(-Math.min(requiredDecel, emergencyDecel));
+		}
+
+		double brakeEntryTime = Math.max(0.0, -GlobalVariables.WIEDEMANN99_CC3);
+		if (closingSpeed > 0.0 && gap > upperFollowingGap
+				&& (gap - upperFollowingGap) / Math.max(0.1, closingSpeed) <= brakeEntryTime) {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			return applyWiedemannJerkLimit(accelerationToSpeed(
+					Math.min(safeSpeed, leaderSpeed + Math.max(0.0, gap - upperFollowingGap) / Math.max(tau, 0.1)),
+					tau));
+		}
+
+		if (gap <= desiredGap || requiredDecel > normalDecel) {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			return applyWiedemannJerkLimit(accelerationToSpeed(Math.min(leaderSpeed, safeSpeed), tau));
+		}
+
+		if (gap <= upperFollowingGap) {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			double gapOffset = Math.max(0.0, gap - desiredGap);
+			double distanceImpact = GlobalVariables.WIEDEMANN99_CC6 * gapOffset * gapOffset;
+			double lowerSpeedThreshold = GlobalVariables.WIEDEMANN99_CC4 - distanceImpact;
+			double upperSpeedThreshold = GlobalVariables.WIEDEMANN99_CC5 + distanceImpact;
+			double acc;
+			if (relativeSpeed < lowerSpeedThreshold) {
+				acc = accelerationToSpeed(Math.min(leaderSpeed, safeSpeed), tau);
+				wiedemannOscillationSign_ = 1.0;
+			} else if (relativeSpeed > upperSpeedThreshold) {
+				acc = Math.min(wiedemann99FreeAcceleration(), Math.max(0.0, GlobalVariables.WIEDEMANN99_CC7));
+				wiedemannOscillationSign_ = -1.0;
+			} else {
+				if (gap <= desiredGap + 0.1 * Math.max(0.1, GlobalVariables.WIEDEMANN99_CC2)) {
+					wiedemannOscillationSign_ = 1.0;
+				} else if (gap >= desiredGap + 0.9 * Math.max(0.1, GlobalVariables.WIEDEMANN99_CC2)) {
+					wiedemannOscillationSign_ = -1.0;
+				}
+				acc = wiedemannOscillationSign_ * Math.max(0.0, GlobalVariables.WIEDEMANN99_CC7);
+				acc -= (currentSpeed_ - leaderSpeed) / Math.max(1.0, 1.0 / Math.max(0.01, GlobalVariables.WIEDEMANN99_CC6));
+			}
+			return applyWiedemannJerkLimit(Math.min(acc, accelerationToSpeed(safeSpeed, tau)));
+		}
+
+		regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+		return applyWiedemannJerkLimit(Math.min(wiedemann99FreeAcceleration(),
+				accelerationToSpeed(safeSpeed, tau)));
+	}
+
+	private void initializeWiedemannDriverState() {
+		double axOffset = clippedGaussian(0.0, GlobalVariables.WIEDEMANN74_AX_STD,
+				-GlobalVariables.WIEDEMANN74_AX_RANGE, GlobalVariables.WIEDEMANN74_AX_RANGE);
+		this.wiedemann74Ax_ = Math.max(0.1, GlobalVariables.WIEDEMANN74_AX + axOffset);
+		this.wiedemann74Z_ = clippedGaussian(GlobalVariables.WIEDEMANN74_Z_MEAN,
+				GlobalVariables.WIEDEMANN74_Z_STD, 0.0, 1.0);
+		this.wiedemann99Z_ = clippedGaussian(GlobalVariables.WIEDEMANN99_Z_MEAN,
+				GlobalVariables.WIEDEMANN99_Z_STD, 0.0, 1.0);
+		this.wiedemannOscillationSign_ = rand_car_follow_only.nextBoolean() ? 1.0 : -1.0;
+	}
+
+	private double wiedemann74DesiredDistance() {
+		double speed = Math.sqrt(Math.max(0.1, currentSpeed_));
+		double bx = GlobalVariables.WIEDEMANN74_BX_ADD
+				+ GlobalVariables.WIEDEMANN74_BX_MULT * this.wiedemann74Z_;
+		return Math.max(0.1, this.wiedemann74Ax_ + bx * speed);
+	}
+
+	private double wiedemann99DesiredSafetyDistance() {
+		return Math.max(0.1, GlobalVariables.WIEDEMANN99_CC0
+				+ GlobalVariables.WIEDEMANN99_CC1 * Math.max(0.0, currentSpeed_));
+	}
+
+	private double wiedemann99FreeAcceleration() {
+		double step = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.1);
+		if (currentSpeed_ >= desiredSpeed_) {
+			return calcFreeFlowRate();
+		}
+		double v80 = 80.0 / 3.6;
+		double ratio = Math.min(1.0, Math.max(0.0, currentSpeed_) / v80);
+		double acc = GlobalVariables.WIEDEMANN99_CC8
+				+ (GlobalVariables.WIEDEMANN99_CC9 - GlobalVariables.WIEDEMANN99_CC8) * ratio
+				+ this.wiedemann99Z_;
+		double desiredBound = (desiredSpeed_ - currentSpeed_) / step;
+		return clampAcceleration(Math.min(Math.min(acc, maxAcceleration()), desiredBound));
+	}
+
+	private double wiedemannApparentDecelMagnitude(Vehicle veh) {
+		if (veh == null) {
+			return Math.max(0.1, -effectiveNormalDeceleration());
+		}
+		return Math.max(0.1, -veh.effectiveNormalDeceleration());
+	}
+
+	private double wiedemannEmergencyDecelMagnitude() {
+		return Math.max(0.1, -effectiveMaxDeceleration());
+	}
+
+	private double accelerationToSpeed(double targetSpeed, double horizon) {
+		double dt = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, horizon);
+		return clampAcceleration((Math.max(0.0, targetSpeed) - currentSpeed_) / dt);
+	}
+
+	private double applyWiedemannJerkLimit(double acc) {
+		if (GlobalVariables.WIEDEMANN_JERK_LIMIT <= 0.0 || Double.isNaN(acc)) {
+			return clampAcceleration(acc);
+		}
+		double maxDelta = GlobalVariables.WIEDEMANN_JERK_LIMIT
+				* Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.1);
+		double limited = Math.max(accRate_ - maxDelta, Math.min(accRate_ + maxDelta, acc));
+		return clampAcceleration(limited);
+	}
+
+	private double clippedGaussian(double mean, double std, double min, double max) {
+		if (std <= 0.0) {
+			return Math.max(min, Math.min(max, mean));
+		}
+		double value = mean + std * rand_car_follow_only.nextGaussian();
+		return Math.max(min, Math.min(max, value));
+	}
+
+	private double kraussHeadwayTime() {
+		double actionStep = Math.max(GlobalVariables.SIMULATION_STEP_SIZE,
+				positiveOr(GlobalVariables.KRAUSS_ACTION_STEP_LENGTH, GlobalVariables.SIMULATION_STEP_SIZE));
+		return Math.max(actionStep, positiveOr(GlobalVariables.KRAUSS_TAU, actionStep));
+	}
+
+	private double kraussDecelMagnitude() {
+		return positiveOr(GlobalVariables.KRAUSS_DECEL, Math.max(0.1, -effectiveNormalDeceleration()));
+	}
+
+	private double kraussEmergencyDecelMagnitude() {
+		return positiveOr(GlobalVariables.KRAUSS_EMERGENCY_DECEL,
+				Math.max(kraussDecelMagnitude(), Math.max(0.1, -effectiveMaxDeceleration())));
+	}
+
+	private double apparentDecelMagnitude(Vehicle veh) {
+		if (veh == null) {
+			return positiveOr(GlobalVariables.KRAUSS_APPARENT_DECEL, kraussDecelMagnitude());
+		}
+		return positiveOr(GlobalVariables.KRAUSS_APPARENT_DECEL,
+				Math.max(0.1, -veh.effectiveNormalDeceleration()));
+	}
+
+	private double safeFollowSpeed(double gap, double leaderSpeed, double leaderApparentDecel,
+			double followerDecel, double tau, double minGap) {
+		if (Double.isInfinite(gap) || gap == Double.MAX_VALUE) {
+			return Math.max(0.0, desiredSpeed_);
+		}
+		double availableGap = Math.max(0.0, gap - Math.max(0.0, minGap));
+		double leaderStoppingDistance = leaderSpeed * leaderSpeed
+				/ (2.0 * Math.max(0.1, leaderApparentDecel));
+		double brakeTerm = Math.max(0.1, followerDecel) * tau;
+		double radicand = brakeTerm * brakeTerm
+				+ 2.0 * Math.max(0.1, followerDecel) * (availableGap + leaderStoppingDistance);
+		return Math.max(0.0, -brakeTerm + Math.sqrt(Math.max(0.0, radicand)));
+	}
+
+	private double secureGap(double followerSpeed, double leaderSpeed, double followerDecel,
+			double leaderApparentDecel, double tau, double minGap) {
+		double followerStoppingDistance = followerSpeed * tau
+				+ followerSpeed * followerSpeed / (2.0 * Math.max(0.1, followerDecel));
+		double leaderStoppingDistance = leaderSpeed * leaderSpeed
+				/ (2.0 * Math.max(0.1, leaderApparentDecel));
+		return Math.max(minGap, minGap + followerStoppingDistance - leaderStoppingDistance);
+	}
+
+	private double requiredFollowerDecel(double gap, double followerSpeed, double leaderSpeed,
+			double leaderApparentDecel, double tau, double minGap) {
+		double usable = gap - Math.max(0.0, minGap) - followerSpeed * tau
+				+ leaderSpeed * leaderSpeed / (2.0 * Math.max(0.1, leaderApparentDecel));
+		if (usable <= 0.0) {
+			return Double.POSITIVE_INFINITY;
+		}
+		return followerSpeed * followerSpeed / (2.0 * usable);
+	}
+
+	private double clampAcceleration(double acc) {
+		if (Double.isNaN(acc)) return 0.0;
+		return Math.max(effectiveModelMaxDeceleration(), Math.min(maxAcceleration_, acc));
+	}
+
+	private double effectiveModelMaxDeceleration() {
+		if ("KRAUSS".equals(GlobalVariables.CAR_FOLLOWING_MODEL)) {
+			return -kraussEmergencyDecelMagnitude();
+		}
+		return effectiveMaxDeceleration();
+	}
+
+	private double positiveOr(double value, double fallback) {
+		return value > 0.0 ? value : fallback;
+	}
 	
 	/**
 	 * Get the front vehicle
@@ -1212,38 +1623,44 @@ public class Vehicle {
 	 */
 	public double gapDistance(Vehicle front) {
 		double headwayDistance;
-		if (front != null && front.getLane() != null) { /* vehicle ahead */
+		if (front != null && front.getLane() != null && this.lane != null) { /* vehicle ahead */
 			if (this.lane.getID() == front.getLane().getID()) { /* same lane */
 				headwayDistance = this.distance_ - front.getDistanceToNextJunction() - front.length();
 				
-			} else { /* different lane */
-				headwayDistance = this.distance_ +  front.getLane().getLength() - front.getDistanceToNextJunction(); // front
-																												// vehicle
-																												// is in
-																												// the
-																												// next
-																												// road
+			} else if (this.lane.getRoad() == front.getLane().getRoad()) { /* adjacent lane on same road */
+				headwayDistance = this.distance_ - front.getDistanceToNextJunction() - front.length();
+			} else { /* front vehicle is in a downstream road */
+				headwayDistance = this.distance_ + front.getLane().getLength()
+						- front.getDistanceToNextJunction() - front.length();
 			}
 		} else { /* no vehicle ahead. */
 			headwayDistance = Double.MAX_VALUE;
 		}
 
-		return (headwayDistance);
+		return Math.max(0.0, headwayDistance);
 	}
 	
 	/**
 	 * The Lane-Changing model for calculating the lane changing decisions
 	 */
 	public boolean makeLaneChangingDecision() {
+		if ("LC2013".equals(GlobalVariables.LANE_CHANGING_MODEL)) {
+			return makeLC2013LaneChangingDecision();
+		}
+		return makeAhmedLaneChangingDecision();
+	}
+
+	// Ahmed (1999) lane changing model.
+	private boolean makeAhmedLaneChangingDecision() {
 		if (this.distFraction() < 0.5) {
 			// Halfway to the downstream intersection, only mantatory LC allowed, check the
 			// correct lane
 			if (!this.isInCorrectLane()) { // change lane if not in correct
 				// lane
 				Lane tarLane = this.tempLane();
-				if (tarLane != null)
-					this.mandatoryLC(tarLane);
-				    return true;
+				if (tarLane != null) {
+					return this.mandatoryLC(tarLane);
+				}
 			}
 		} else if(this.distFraction() < 1.0){
 			if (this.distFraction() > 0.75) {
@@ -1252,9 +1669,9 @@ public class Vehicle {
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterLane();
 				if (tarLane != null) {
-					if (laneChangeProb1 < GlobalVariables.LANE_CHANGING_PROB_PART1)
-						this.discretionaryLC(tarLane);
-					    return true;
+					if (laneChangeProb1 < GlobalVariables.LANE_CHANGING_PROB_PART1) {
+						return this.discretionaryLC(tarLane);
+					}
 				}
 			} else {
 				// First 25%-50% in the road, we do discretionary LC but only to correct lanes
@@ -1262,14 +1679,316 @@ public class Vehicle {
 				// The vehicle is at beginning of the lane, it is free to change lane
 				Lane tarLane = this.findBetterCorrectLane();
 				if (tarLane != null) {
-					if (laneChangeProb2 < GlobalVariables.LANE_CHANGING_PROB_PART2)
-						this.discretionaryLC(tarLane);
-					    return true;
+					if (laneChangeProb2 < GlobalVariables.LANE_CHANGING_PROB_PART2) {
+						return this.discretionaryLC(tarLane);
+					}
 				}
 
 			}
 		}
 		return false;
+	}
+
+	private boolean makeLC2013LaneChangingDecision() {
+		LaneChangeIntent intent = lc2013ChooseIntent();
+		if (intent == null || intent.targetLane == null) {
+			lc2013DecayPersistentMotivation();
+			return false;
+		}
+
+		LaneChangeSafety safety = lc2013EvaluateSafety(intent);
+		if (safety.accepted) {
+			lc2013ApplySafetyAdvice(safety, intent.reason);
+			boolean changedLane = this.changeLane(intent.targetLane);
+			if (changedLane) {
+				this.nosingFlag = false;
+				this.lcBlockedTicks_ = 0;
+				return true;
+			}
+		}
+
+		this.lcBlockedTicks_++;
+		if (safety.egoAdvice < Double.POSITIVE_INFINITY) {
+			addLaneChangeAccelerationAdvice(safety.egoAdvice, intent.reason, true);
+		}
+		return false;
+	}
+
+	private LaneChangeIntent lc2013ChooseIntent() {
+		LaneChangeIntent best = null;
+
+		LaneChangeIntent regulatory = lc2013RegulatoryIntent();
+		best = lc2013BetterIntent(best, regulatory);
+
+		LaneChangeIntent strategic = lc2013StrategicIntent();
+		best = lc2013BetterIntent(best, strategic);
+
+		Lane leftLane = this.leftLane();
+		Lane rightLane = this.rightLane();
+		best = lc2013BetterIntent(best, lc2013SpeedGainIntent(leftLane, false));
+		best = lc2013BetterIntent(best, lc2013SpeedGainIntent(rightLane, true));
+		best = lc2013BetterIntent(best, lc2013KeepRightIntent(rightLane));
+
+		return best;
+	}
+
+	private LaneChangeIntent lc2013BetterIntent(LaneChangeIntent current, LaneChangeIntent candidate) {
+		if (candidate == null || candidate.targetLane == null) {
+			return current;
+		}
+		if (current == null || candidate.urgent && !current.urgent || candidate.score > current.score) {
+			return candidate;
+		}
+		return current;
+	}
+
+	private LaneChangeIntent lc2013RegulatoryIntent() {
+		if (GlobalVariables.LC2013_REGULATORY_PARAM <= 0 || this.nextLane_ == null
+				|| this.lane == null || this.lane.isConnectToLane(this.nextLane_)) {
+			return null;
+		}
+		Lane targetLane = lc2013RouteLaneTowardTarget();
+		if (targetLane == null) {
+			return null;
+		}
+		double lookahead = lc2013StrategicLookaheadDistance(targetLane);
+		if (this.distance_ > lookahead) {
+			return null;
+		}
+		double urgency = lc2013Urgency(lookahead);
+		return new LaneChangeIntent(targetLane, LC_REASON_REGULATORY,
+				GlobalVariables.LC2013_REGULATORY_PARAM * (1.0 + urgency), urgency >= 1.0);
+	}
+
+	private LaneChangeIntent lc2013StrategicIntent() {
+		if (GlobalVariables.LC2013_STRATEGIC_PARAM < 0 || this.nextLane_ == null || this.isInCorrectLane()) {
+			return null;
+		}
+		Lane targetLane = lc2013RouteLaneTowardTarget();
+		if (targetLane == null) {
+			return null;
+		}
+		double lookahead = lc2013StrategicLookaheadDistance(targetLane);
+		if (this.distance_ > lookahead) {
+			return null;
+		}
+		double urgency = lc2013Urgency(lookahead);
+		return new LaneChangeIntent(targetLane, LC_REASON_STRATEGIC,
+				GlobalVariables.LC2013_STRATEGIC_PARAM * (1.0 + urgency), urgency >= 1.0);
+	}
+
+	private Lane lc2013RouteLaneTowardTarget() {
+		Lane targetLane = this.targetLane();
+		if (targetLane == null || targetLane == this.lane) {
+			return null;
+		}
+		int targetIndex = this.road.getLaneIndex(targetLane);
+		int currentIndex = this.road.getLaneIndex(this.lane);
+		if (targetIndex < 0 || currentIndex < 0) {
+			return null;
+		}
+		if (targetIndex < currentIndex) {
+			return this.leftLane();
+		}
+		if (targetIndex > currentIndex) {
+			return this.rightLane();
+		}
+		return null;
+	}
+
+	private LaneChangeIntent lc2013SpeedGainIntent(Lane candidateLane, boolean right) {
+		if (candidateLane == null || GlobalVariables.LC2013_SPEED_GAIN_PARAM <= 0) {
+			return null;
+		}
+		double newDistance = this.distanceInNewLane(candidateLane);
+		Vehicle leadVehicle = this.leadVehicle(candidateLane, newDistance);
+		double candidateLaneSpeed = lc2013ExpectedLaneSpeed(candidateLane, newDistance, leadVehicle);
+		if (lc2013RemainingTime(newDistance, candidateLaneSpeed) < GlobalVariables.LC2013_SPEED_GAIN_REMAIN_TIME) {
+			return null;
+		}
+		double currentLaneSpeed = lc2013ExpectedLaneSpeed(this.lane, this.distance_, this.leading_);
+		double relativeGain = (candidateLaneSpeed - currentLaneSpeed) / Math.max(1.0, desiredSpeed_);
+		double asymmetry = right ? Math.max(0.01, GlobalVariables.LC2013_SPEED_GAIN_RIGHT) : 1.0;
+		double score = GlobalVariables.LC2013_SPEED_GAIN_PARAM * relativeGain * asymmetry;
+		double threshold = GlobalVariables.LC2013_SPEED_GAIN_THRESHOLD;
+
+		if (right) {
+			this.lcSpeedGainProbabilityRight_ = lc2013UpdatedProbability(this.lcSpeedGainProbabilityRight_, score);
+			score += this.lcSpeedGainProbabilityRight_;
+		} else {
+			this.lcSpeedGainProbabilityLeft_ = lc2013UpdatedProbability(this.lcSpeedGainProbabilityLeft_, score);
+			score += this.lcSpeedGainProbabilityLeft_;
+		}
+
+		if (score <= threshold) {
+			return null;
+		}
+		boolean urgent = score >= GlobalVariables.LC2013_SPEED_GAIN_URGENCY;
+		return new LaneChangeIntent(candidateLane, LC_REASON_SPEED_GAIN, score, urgent);
+	}
+
+	private LaneChangeIntent lc2013KeepRightIntent(Lane rightLane) {
+		if (rightLane == null || GlobalVariables.LC2013_KEEP_RIGHT_PARAM <= 0) {
+			return null;
+		}
+		double newDistance = this.distanceInNewLane(rightLane);
+		double currentLaneSpeed = lc2013ExpectedLaneSpeed(this.lane, this.distance_, this.leading_);
+		Vehicle leadVehicle = this.leadVehicle(rightLane, newDistance);
+		double rightLaneSpeed = lc2013ExpectedLaneSpeed(rightLane, newDistance, leadVehicle);
+		double unobstructedTime = rightLaneSpeed <= 0.1 ? 0.0
+				: Math.max(0.0, this.distance_) / rightLaneSpeed;
+		double acceptanceTime = Math.max(0.0, GlobalVariables.LC2013_KEEP_RIGHT_ACCEPTANCE_TIME);
+		if (rightLaneSpeed + 0.1 < currentLaneSpeed || unobstructedTime < acceptanceTime) {
+			this.lcKeepRightProbability_ = lc2013UpdatedProbability(this.lcKeepRightProbability_, -1.0);
+			return null;
+		}
+		double score = GlobalVariables.LC2013_KEEP_RIGHT_PARAM
+				* (1.0 + Math.min(1.0, unobstructedTime / Math.max(1.0, acceptanceTime + 1.0)));
+		this.lcKeepRightProbability_ = lc2013UpdatedProbability(this.lcKeepRightProbability_, score);
+		return new LaneChangeIntent(rightLane, LC_REASON_KEEP_RIGHT, score + this.lcKeepRightProbability_, false);
+	}
+
+	private double lc2013UpdatedProbability(double previous, double score) {
+		double step = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.1);
+		if (score > 0.0) {
+			return Math.min(1.0, previous + score * step);
+		}
+		return Math.max(0.0, previous - 0.5 * step);
+	}
+
+	private void lc2013DecayPersistentMotivation() {
+		this.lcSpeedGainProbabilityLeft_ = lc2013UpdatedProbability(this.lcSpeedGainProbabilityLeft_, -1.0);
+		this.lcSpeedGainProbabilityRight_ = lc2013UpdatedProbability(this.lcSpeedGainProbabilityRight_, -1.0);
+		this.lcKeepRightProbability_ = lc2013UpdatedProbability(this.lcKeepRightProbability_, -1.0);
+	}
+
+	private LaneChangeSafety lc2013EvaluateSafety(LaneChangeIntent intent) {
+		LaneChangeSafety safety = new LaneChangeSafety();
+		double newDistance = this.distanceInNewLane(intent.targetLane);
+		Vehicle leadVehicle = this.leadVehicle(intent.targetLane, newDistance);
+		Vehicle lagVehicle = this.lagVehicle(intent.targetLane, newDistance);
+		double leadGap = this.leadGap(leadVehicle, newDistance);
+		double lagGap = this.lagGap(lagVehicle, newDistance);
+		double assertive = Math.max(0.1, GlobalVariables.LC2013_ASSERTIVE
+				* (1.0 + Math.max(-0.5, Math.min(0.5, GlobalVariables.LC2013_IMPATIENCE))));
+		if (this.lcBlockedTicks_ > 0) {
+			assertive *= 1.0 + Math.min(0.5, 0.05 * this.lcBlockedTicks_);
+		}
+		double tau = Math.max(kraussHeadwayTime(), GlobalVariables.LC2013_HEADWAY_TIME);
+		double minGap = Math.max(GlobalVariables.KRAUSS_MIN_GAP, GlobalVariables.LC2013_MIN_GAP_LAT);
+		double egoDecel = kraussDecelMagnitude();
+
+		if (leadVehicle != null) {
+			double leaderApparentDecel = apparentDecelMagnitude(leadVehicle);
+			double requiredLeadGap = secureGap(currentSpeed_, leadVehicle.currentSpeed_, egoDecel,
+					leaderApparentDecel, tau, minGap) / assertive;
+			if (leadGap < requiredLeadGap) {
+				double safeSpeed = safeFollowSpeed(leadGap, leadVehicle.currentSpeed_,
+						leaderApparentDecel, egoDecel, tau, minGap);
+				safety.egoAdvice = (safeSpeed - currentSpeed_) / Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.1);
+				safety.accepted = false;
+				return safety;
+			}
+		}
+
+		if (lagVehicle != null) {
+			double lagDecel = lagVehicle.kraussDecelMagnitude();
+			double egoApparentDecel = apparentDecelMagnitude(this);
+			double requiredLagGap = secureGap(lagVehicle.currentSpeed_, currentSpeed_, lagDecel,
+					egoApparentDecel, tau, minGap) / assertive;
+			if (lagGap < requiredLagGap) {
+				double requiredLagDecel = requiredFollowerDecel(lagGap, lagVehicle.currentSpeed_,
+						currentSpeed_, egoApparentDecel, tau, minGap);
+				double cooperativeDecel = Math.max(0.0, GlobalVariables.LC2013_COOPERATIVE_PARAM)
+						* Math.max(GlobalVariables.LC2013_SAFE_DECEL, lagDecel);
+				boolean cooperative = requiredLagDecel <= cooperativeDecel
+						&& (intent.urgent || intent.reason == LC_REASON_STRATEGIC
+								|| intent.reason == LC_REASON_REGULATORY
+								|| rand_car_follow_only.nextDouble() < Math.min(1.0,
+										GlobalVariables.LC2013_COOPERATIVE_PARAM));
+				if (!cooperative) {
+					safety.accepted = false;
+					return safety;
+				}
+				safety.blockingFollower = lagVehicle;
+				safety.followerAdvice = -requiredLagDecel * Math.max(0.0,
+						Math.min(1.0, GlobalVariables.LC2013_COOPERATIVE_SPEED));
+			}
+		}
+
+		safety.accepted = true;
+		return safety;
+	}
+
+	private void lc2013ApplySafetyAdvice(LaneChangeSafety safety, int reason) {
+		if (safety.egoAdvice < Double.POSITIVE_INFINITY) {
+			addLaneChangeAccelerationAdvice(safety.egoAdvice, reason, true);
+		}
+		if (safety.blockingFollower != null && safety.followerAdvice < Double.POSITIVE_INFINITY) {
+			safety.blockingFollower.addLaneChangeAccelerationAdvice(safety.followerAdvice,
+					LC_REASON_COOPERATIVE, false);
+		}
+	}
+
+	private double lc2013ExpectedLaneSpeed(Lane laneToCheck, double projectedDistance, Vehicle leadVehicle) {
+		if (laneToCheck == null) return 0.0;
+		double laneDesiredSpeed = Math.min(desiredSpeed_, laneToCheck.getRoad().getSpeedLimit());
+		if (leadVehicle == null) {
+			return laneDesiredSpeed;
+		}
+		double gap = Math.max(0.0, projectedDistance - leadVehicle.distance_ - leadVehicle.length());
+		double lookaheadTime = Math.max(GlobalVariables.SIMULATION_STEP_SIZE,
+				GlobalVariables.LC2013_SPEED_GAIN_LOOKAHEAD);
+		double safeSpeed = safeFollowSpeed(gap, leadVehicle.currentSpeed_, apparentDecelMagnitude(leadVehicle),
+				kraussDecelMagnitude(), Math.max(kraussHeadwayTime(), lookaheadTime),
+				GlobalVariables.KRAUSS_MIN_GAP);
+		return Math.min(laneDesiredSpeed, safeSpeed);
+	}
+
+	private double lc2013RemainingTime(double projectedDistance, double expectedSpeed) {
+		double speed = Math.max(0.1, expectedSpeed);
+		return Math.max(0.0, projectedDistance) / speed;
+	}
+
+	private double lc2013LookaheadDistance() {
+		return Math.max(GlobalVariables.NO_LANECHANGING_LENGTH,
+				currentSpeed_ * Math.max(GlobalVariables.SIMULATION_STEP_SIZE, GlobalVariables.LC2013_LOOKAHEAD_TIME));
+	}
+
+	private double lc2013StrategicLookaheadDistance(Lane targetLane) {
+		double configured = Math.max(GlobalVariables.NO_LANECHANGING_LENGTH,
+				GlobalVariables.LC2013_STRATEGIC_LOOKAHEAD);
+		double dynamic = lc2013LookaheadDistance() * Math.max(0.0, GlobalVariables.LC2013_STRATEGIC_PARAM);
+		double leftFactor = targetLane == this.leftLane() ? Math.max(0.0, GlobalVariables.LC2013_LOOKAHEAD_LEFT) : 1.0;
+		return Math.max(dynamic, configured) * leftFactor;
+	}
+
+	private double lc2013Urgency(double lookaheadDistance) {
+		if (lookaheadDistance <= 0.0) {
+			return 1.0;
+		}
+		return Math.max(0.0, Math.min(1.0, 1.0 - this.distance_ / lookaheadDistance));
+	}
+
+	private static class LaneChangeIntent {
+		final Lane targetLane;
+		final int reason;
+		final double score;
+		final boolean urgent;
+
+		LaneChangeIntent(Lane targetLane, int reason, double score, boolean urgent) {
+			this.targetLane = targetLane;
+			this.reason = reason;
+			this.score = score;
+			this.urgent = urgent;
+		}
+	}
+
+	private static class LaneChangeSafety {
+		boolean accepted = false;
+		double egoAdvice = Double.POSITIVE_INFINITY;
+		Vehicle blockingFollower = null;
+		double followerAdvice = Double.POSITIVE_INFINITY;
 	}
 
 	/**
@@ -1600,7 +2319,9 @@ public class Vehicle {
 	 */
 	public double maxAcceleration() {
 		double gradeComponent = GRAVITY * currentLaneSlope_;
-		return maxAcceleration_ * (1 - Math.pow(this.currentSpeed_/this.desiredSpeed_, 4)) - gradeComponent;
+		double speedRatio = this.currentSpeed_ / this.desiredSpeed_;
+		double speedRatioSquared = speedRatio * speedRatio;
+		return maxAcceleration_ * (1 - speedRatioSquared * speedRatioSquared) - gradeComponent;
 	}
 	
 	/**
@@ -1999,6 +2720,7 @@ public class Vehicle {
 		this.nextLane_ = null;
 		this.nosingFlag = false;
 		this.yieldingFlag = false;
+		this.resetLaneChangeRuntimeState();
 		this.macroLeading_ = null;
 		this.macroTrailing_ = null;
 		this.leading_ = null;
@@ -2341,7 +3063,10 @@ public class Vehicle {
 	 * Mandatory lane changing. The input parameter is the
 	 * temporary lane.
 	 */
-	public void mandatoryLC(Lane plane) {
+	public boolean mandatoryLC(Lane plane) {
+		if (plane == null) {
+			return false;
+		}
 		double newDistance = this.distanceInNewLane(plane);
 		Vehicle leadVehicle = this.leadVehicle(plane, newDistance);
 		Vehicle lagVehicle = this.lagVehicle(plane, newDistance);
@@ -2357,14 +3082,21 @@ public class Vehicle {
 			if (lagVehicle != null) {
 				if (this.leadGap(leadVehicle, newDistance) >= this.critLeadGapMLC(leadVehicle, plane)
 						&& this.lagGap(lagVehicle, newDistance) >= this.critLagGapMLC(lagVehicle, plane)) {
-					this.changeLane(plane);
-					this.nosingFlag = false;
+					boolean changedLane = this.changeLane(plane);
+					if (changedLane) {
+						this.nosingFlag = false;
+					}
+					return changedLane;
 				} else if (this.distFraction() < GlobalVariables.critDisFraction) {
 					this.nosingFlag = true;
 				}
 			} else {
 				if (this.leadGap(leadVehicle, newDistance) >= this.critLeadGapMLC(leadVehicle, plane)) {
-					this.changeLane(plane);
+					boolean changedLane = this.changeLane(plane);
+					if (changedLane) {
+						this.nosingFlag = false;
+					}
+					return changedLane;
 				} else if (this.distFraction() < GlobalVariables.critDisFraction) {
 					this.nosingFlag = true;
 				}
@@ -2373,13 +3105,23 @@ public class Vehicle {
 		} else {
 			if (lagVehicle != null) {
 				if (this.lagGap(lagVehicle, newDistance) >= this.critLagGapMLC(lagVehicle, plane)) {
-					this.changeLane(plane);
+					boolean changedLane = this.changeLane(plane);
+					if (changedLane) {
+						this.nosingFlag = false;
+					}
+					return changedLane;
 				} else if (this.distFraction() < GlobalVariables.critDisFraction) {
 					this.nosingFlag = true;
 				}
-			} else
-				this.changeLane(plane);
+			} else {
+				boolean changedLane = this.changeLane(plane);
+				if (changedLane) {
+					this.nosingFlag = false;
+				}
+				return changedLane;
+			}
 		}
+		return false;
 	}
 
 	/**
@@ -2404,10 +3146,8 @@ public class Vehicle {
 			 * some threshold
 			 */
 			lagGap = this.lagGap(lagVehicle, newDistance);
-			if (lagVehicle != null) {
-				if (lagGap < GlobalVariables.MIN_LAG) {
-					this.yieldingFlag = true;
-				}
+			if (lagVehicle != null  && lagGap < GlobalVariables.MIN_LAG) {
+				lagVehicle.yieldingFlag = true;
 			}
 			Vehicle front = this.leading();
 			/*
@@ -2710,7 +3450,10 @@ public class Vehicle {
 	 * Given a target lane, ask vehicle to change to that lane discretionarily.
 	 * @param plane Target lane
 	 */
-	public void discretionaryLC(Lane plane) {
+	public boolean discretionaryLC(Lane plane) {
+		if (plane == null) {
+			return false;
+		}
 		double newDistance = this.distanceInNewLane(plane);
 		Vehicle leadVehicle = this.leadVehicle(plane, newDistance);
 		Vehicle lagVehicle = this.lagVehicle(plane, newDistance);
@@ -2719,8 +3462,9 @@ public class Vehicle {
 		double critLead = this.criticalLeadDLC(leadVehicle);
 		double critLag = this.criticalLagDLC(lagVehicle);
 		if (leadGap > critLead && lagGap > critLag) { // there exists enough space for lane changing
-			this.changeLane(plane);
+			return this.changeLane(plane);
 		}
+		return false;
 	}
 	
 	/**

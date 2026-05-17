@@ -333,7 +333,7 @@ public class Zone {
 	
 	// Generate passenger
 	protected void generatePassenger() {
-		this.publicTripTimeIndex = (int) Math.floor(ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
+		this.publicTripTimeIndex = (ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
 		if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
 			this.futureDemand = 0.0;
 		}
@@ -345,8 +345,9 @@ public class Zone {
 		    
 			if (passRate > 0) {
 				passRate *= GlobalVariables.RH_DEMAND_FACTOR;
-				double numToGenerate = Math.floor(passRate)
-						+ (rand_demand_only.nextDouble() < (passRate - Math.floor(passRate)) ? 1 : 0);
+				int basePassengers = (int) passRate;
+				int numToGenerate = basePassengers
+						+ (rand_demand_only.nextDouble() < (passRate - basePassengers) ? 1 : 0);
 				double sharableRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex);
 				
 				// Commented by default given its high computational costs, uncomment if you would like use the mode choice model
@@ -624,7 +625,7 @@ public class Zone {
 	            }
 
 	            // Probabilistic rounding
-	            int numToRelocate = (int) Math.floor(relocateRate);
+	            int numToRelocate = (int) relocateRate;
 	            if (this.rand_relocate_only.nextDouble() < (relocateRate - numToRelocate)) {
 	                numToRelocate++;
 	            }
@@ -650,7 +651,7 @@ public class Zone {
 	        double relocateRate = this.getVehicleDeficiency(); 
 	        
 	        // Probabilistic rounding
-	        int numToRelocate = (int) Math.floor(relocateRate);
+	        int numToRelocate = (int) relocateRate;
 	        if (this.rand_relocate_only.nextDouble() < (relocateRate - numToRelocate)) {
 	            numToRelocate++;
 	        }

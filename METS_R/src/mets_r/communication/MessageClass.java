@@ -561,6 +561,82 @@ public class MessageClass{
     	}
     }
 
+    class RoadParams {
+        String origID;
+        String orig_id;
+        ArrayList<ArrayList<Double>> centerline;
+        ArrayList<ArrayList<Double>> centerLine;
+        ArrayList<ArrayList<Double>> coords;
+        boolean transformCoord;
+        String upStreamRoadOrigID;
+        String upstreamRoadOrigID;
+        String upstream_orig_id;
+        String upstream;
+        String upStreamRoad;
+        String upstreamRoad;
+        String upStreamRoadID;
+        String upstreamRoadID;
+        ArrayList<String> upStreamRoadOrigIDs;
+        ArrayList<String> upstreamRoadOrigIDs;
+        ArrayList<String> upstream_orig_ids;
+        ArrayList<String> upstream_roads;
+        ArrayList<String> upStreamRoads;
+        ArrayList<String> upstreamRoads;
+        String downStreamRoadOrigID;
+        String downstreamRoadOrigID;
+        String downstream_orig_id;
+        String downstream;
+        String downStreamRoad;
+        String downstreamRoad;
+        String downStreamRoadID;
+        String downstreamRoadID;
+        ArrayList<String> downStreamRoadOrigIDs;
+        ArrayList<String> downstreamRoadOrigIDs;
+        ArrayList<String> downstream_orig_ids;
+        ArrayList<String> downstream_roads;
+        ArrayList<String> downStreamRoads;
+        ArrayList<String> downstreamRoads;
+        Integer roadType;
+        Integer road_type;
+        Integer controlType;
+        Integer control_type;
+        Integer roadControlType;
+        Integer road_control_type;
+        Integer upStreamControlType;
+        Integer upstreamControlType;
+        Integer upstream_control_type;
+        Integer upControlType;
+        Integer up_control_type;
+        Integer downStreamControlType;
+        Integer downstreamControlType;
+        Integer downstream_control_type;
+        Integer downControlType;
+        Integer down_control_type;
+        Integer numLanes;
+        Integer num_lanes;
+        Integer laneNum;
+        Integer lane_num;
+        Integer lanes;
+        Double laneWidth;
+        Double lane_width;
+
+        public RoadParams(String origID, ArrayList<ArrayList<Double>> centerline, boolean transformCoord,
+                String upStreamRoadOrigID, String downStreamRoadOrigID, Integer roadType, Integer controlType,
+                Integer upStreamControlType, Integer downStreamControlType, Integer numLanes, Double laneWidth) {
+            this.origID = origID;
+            this.centerline = centerline;
+            this.transformCoord = transformCoord;
+            this.upStreamRoadOrigID = upStreamRoadOrigID;
+            this.downStreamRoadOrigID = downStreamRoadOrigID;
+            this.roadType = roadType;
+            this.controlType = controlType;
+            this.upStreamControlType = upStreamControlType;
+            this.downStreamControlType = downStreamControlType;
+            this.numLanes = numLanes;
+            this.laneWidth = laneWidth;
+        }
+    }
+
     class AddTaxiToZone {
     	int zoneID;
     	int num;

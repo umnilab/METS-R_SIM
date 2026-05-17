@@ -413,6 +413,34 @@ public class BusSchedule {
 		if(getNextDepartTime(rID) >= 0 || isOngoing(rID)) return true;
 		else return false;
 	}
+
+	public boolean referencesZone(int zoneID) {
+		for (ArrayList<Integer> stopZones : this.toVisitZones.values()) {
+			if (stopZones.contains(zoneID)) return true;
+		}
+		return false;
+	}
+
+	public boolean referencesRoad(Road road) {
+		if (road == null) return false;
+		int roadID = road.getID();
+		for (ArrayList<Road> stopRoads : this.toVisitRoads.values()) {
+			if (stopRoads == null) continue;
+			for (Road stopRoad : stopRoads) {
+				if (stopRoad != null && stopRoad.getID() == roadID) return true;
+			}
+		}
+		for (ArrayList<List<Road>> paths : this.scheduledPaths.values()) {
+			if (paths == null) continue;
+			for (List<Road> path : paths) {
+				if (path == null) continue;
+				for (Road pathRoad : path) {
+					if (pathRoad != null && pathRoad.getID() == roadID) return true;
+				}
+			}
+		}
+		return false;
+	}
 	
 	public void finishSchedule(int rID) {
 		ongoingSchedules.put(rID, ongoingSchedules.get(rID) - 1);

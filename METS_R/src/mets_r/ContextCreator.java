@@ -253,6 +253,30 @@ public class ContextCreator implements ContextBuilder<Object> {
 		scheduledActions.add(schedule.schedule(agentParams, ContextCreator.getVehicleContext(), "executeGlobalTransfers"));
 	}
 
+	/**
+	 * Schedule recurring road actions for a road created at runtime.
+	 *
+	 * In single-threaded mode road movement is scheduled per road, so the new road
+	 * needs stepPart1 and stepPart2 actions. In multi-threaded mode movement is
+	 * driven by ThreadedScheduler partitions, but the free-flow speed refresh is
+	 * still scheduled per road in both modes.
+	 */
+	public static void scheduleNewRoad(Road r) {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		if (!GlobalVariables.MULTI_THREADING) {
+			ScheduleParameters agentParams = ScheduleParameters.createRepeating(getCurrentTick() + 1, 1, 0);
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
+			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
+		}
+
+		double speedStartTick = Math.ceil((getCurrentTick() + 1.0)
+				/ GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL)
+				* GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL;
+		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(speedStartTick,
+				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
+		scheduledActions.add(schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed"));
+	}
+
 	// Schedule the event for zone updates (multi-thread)
 	public static void scheduleMultiThreadedZoneStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
