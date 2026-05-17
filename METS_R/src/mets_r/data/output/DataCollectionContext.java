@@ -107,6 +107,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		int numLeavedBusPass = 0;
 		int numRelocatedTaxi = 0;
 		int numChargedVehicle = 0;
+		double privateEVEnergy = 0;
+		double eTaxiEnergy = 0;
+		double eBusEnergy = 0;
 		double battery_mean = 0;
 		double battery_std = 0;
 
@@ -212,6 +215,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		int busesOnRoad = 0;
 		for (ElectricBus b : ContextCreator.getVehicleContext().getBuses()) {
 			if (b.getRoad() != null) busesOnRoad++;
+			eBusEnergy += b.getTotalConsume();
 		}
 		int privateEVOnRoad = 0;
 		int privateEVTotal = 0;
@@ -222,6 +226,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
 			privateEVTotal++;
 			if (ev.getRoad() != null) privateEVOnRoad++;
+			privateEVEnergy += ev.getTotalConsume();
 			int st = ev.getState();
 			if (st == Vehicle.NONE_OF_THE_ABOVE) privateEVStateNone++;
 			else if (st == Vehicle.PRIVATE_TRIP) privateEVStatePrivate++;
@@ -252,6 +257,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		for (ElectricTaxi v : ContextCreator.getVehicleContext().getTaxis()) {
 			battery_mean += v.getBatteryLevel();
 			battery_std += v.getBatteryLevel() * v.getBatteryLevel();
+			eTaxiEnergy += v.getTotalConsume();
 		}
 
 		battery_mean /= GlobalVariables.NUM_OF_EV;
@@ -263,6 +269,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 				+ taxiServedPass + "," + busServedPass + "," + numLeavedTaxiPass + "," + numLeavedBusPass + ","
 				+ numWaitingTaxiPass + "," + numWaitingBusPass + "," + battery_mean + "," + battery_std + ","
 				+ numGeneratedPrivateEVTrip + "," + numGeneratedPrivateGVTrip + "," + numArrivedPrivateEVTrip + "," + numArrivedPrivateGVTrip + ","
+				+ privateEVEnergy + "," + eTaxiEnergy + "," + eBusEnergy + "," + (privateEVEnergy + eTaxiEnergy + eBusEnergy) + ","
 				+ System.currentTimeMillis();
 		try {
 			ContextCreator.agg_logger.network_logger.write(formated_msg);

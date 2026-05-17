@@ -21,6 +21,9 @@ import mets_r.GlobalVariables;
 import mets_r.communication.DataConsumer;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -590,6 +593,9 @@ public class JsonOutputWriter implements DataConsumer {
 		int leftPass = 0;
 		int vehNum = 0;
 		float energyConsumption = 0;
+		float privateEVEnergy = 0;
+		float eTaxiEnergy = 0;
+		float eBusEnergy = 0;
 		float meanSpeed = 0;
 		
 		// check the tick snapshot exists
@@ -601,6 +607,10 @@ public class JsonOutputWriter implements DataConsumer {
 			tickArray.put("ev_charging", new ArrayList<ArrayList<Float>>());
 			tickArray.put("bus", new ArrayList<ArrayList<Float>>());
 			tickArray.put("link", new ArrayList<ArrayList<Float>>());
+			tickArray.put("energy", 0);
+			tickArray.put("energy_private_ev", 0);
+			tickArray.put("energy_etaxi", 0);
+			tickArray.put("energy_ebus", 0);
 			return tickArray; // empty array
 		}
 
@@ -624,6 +634,17 @@ public class JsonOutputWriter implements DataConsumer {
 				privateArrayArray.add(evArray);
 			}
 		}
+
+		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
+			privateEVEnergy += (float) ev.getTotalConsume();
+		}
+		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
+			eTaxiEnergy += (float) ev.getTotalConsume();
+		}
+		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+			eBusEnergy += (float) bus.getTotalConsume();
+		}
+		energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
 		
 		
 		evIDs = tick.getETaxiList(Vehicle.OCCUPIED_TRIP);
@@ -713,13 +734,13 @@ public class JsonOutputWriter implements DataConsumer {
 		
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
         
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			servedPass += (z.taxiPickupRequest + z.busPickupRequest);
+			leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
+		}
+
 		if(currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
-			for (Zone z : ContextCreator.getZoneContext().getAll()) {
-				servedPass += (z.taxiPickupRequest + z.busPickupRequest);
-				leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
-			}
 			for (Road r: ContextCreator.getRoadContext().getAll()) {
-				energyConsumption += r.getTotalEnergy();
 				if(r.stateHasChanged()) {
 					// Store the link state
 					String id = r.getOrigID();
@@ -749,6 +770,9 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("served", servedPass);
 		tickArray.put("left", leftPass);
 		tickArray.put("energy", energyConsumption);
+		tickArray.put("energy_private_ev", privateEVEnergy);
+		tickArray.put("energy_etaxi", eTaxiEnergy);
+		tickArray.put("energy_ebus", eBusEnergy);
 		tickArray.put("num_veh", vehNum);
 		tickArray.put("mean_speed", meanSpeed/Math.max(vehNum,1));
 		

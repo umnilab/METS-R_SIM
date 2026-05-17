@@ -18,11 +18,17 @@ import java.util.HashMap;
 
 import org.json.simple.JSONObject;
 
+import com.vividsolutions.jts.geom.Coordinate;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.DataConsumer;
+import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.mobility.ElectricBus;
+import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -36,7 +42,7 @@ import mets_r.mobility.Vehicle;
  */
 public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private static final String FORMAT_NAME = "metsr-trajectory-binary";
-	private static final int FORMAT_VERSION = 1;
+	private static final int FORMAT_VERSION = 3;
 	private static final String CHUNK_MAGIC = "MRTB";
 
 	private boolean append;
@@ -58,6 +64,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private ArrayList<HashMap<String, Object>> chunks;
 	private ArrayList<String> roadIdDictionary;
 	private HashMap<String, Integer> roadIndexByOrigID;
+	private ArrayList<HashMap<String, Object>> zoneDictionary;
+	private ArrayList<HashMap<String, Object>> chargingStationDictionary;
 
 	public BinaryTrajectoryOutputWriter() {
 		this(null, false);
@@ -83,6 +91,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.chunks = new ArrayList<HashMap<String, Object>>();
 		this.roadIdDictionary = new ArrayList<String>();
 		this.roadIndexByOrigID = new HashMap<String, Integer>();
+		this.zoneDictionary = new ArrayList<HashMap<String, Object>>();
+		this.chargingStationDictionary = new ArrayList<HashMap<String, Object>>();
 	}
 
 	@Override
@@ -105,6 +115,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.currentChunkLinkCount = 0;
 		this.chunks = new ArrayList<HashMap<String, Object>>();
 		this.initializeRoadDictionary();
+		this.initializeZoneDictionary();
+		this.initializeChargingStationDictionary();
 
 		if (this.defaultDirectory || this.outputDirectory == null) {
 			this.outputDirectory = BinaryTrajectoryOutputWriter.createDefaultOutputDirectory();
@@ -346,7 +358,11 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		manifest.put("chunks", this.chunks);
 		manifest.put("activeChunk", this.createActiveChunkManifest());
 		manifest.put("roadIdDictionary", this.roadIdDictionary);
+		manifest.put("zoneDictionary", this.zoneDictionary);
+		manifest.put("chargingStationDictionary", this.chargingStationDictionary);
 		manifest.put("vehicleTypes", BinaryTrajectoryOutputWriter.createVehicleTypes());
+		manifest.put("frameGroups", schema("ev_private", "ev_occupied", "ev_relocation",
+				"ev_charging", "bus", "link", "zone", "chargingStation"));
 		manifest.put("schemas", BinaryTrajectoryOutputWriter.createSchemas());
 
 		File manifestFile = new File(this.outputDirectory, "manifest.json");
@@ -390,6 +406,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ETaxiSnapshot> chargingTaxis = this.getETaxiRecords(tick, Vehicle.CHARGING_TRIP);
 		ArrayList<BusSnapshot> buses = this.getBusRecords(tick);
+		ArrayList<Zone> zones = this.getZoneRecords();
+		ArrayList<ChargingStation> chargingStations = this.getChargingStationRecords();
 
 		this.writer.writeInt(tick.getTickNumber());
 		this.writer.writeInt(summary.servedPass);
@@ -397,6 +415,9 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.writeFloat(summary.energyConsumption);
 		this.writer.writeInt(summary.vehicleCount);
 		this.writer.writeFloat(summary.meanSpeed);
+		this.writer.writeFloat(summary.privateEVEnergy);
+		this.writer.writeFloat(summary.eTaxiEnergy);
+		this.writer.writeFloat(summary.eBusEnergy);
 
 		this.writePrivateEVGroup(privateEvs);
 		this.writeETaxiGroup(occupiedTaxis);
@@ -404,6 +425,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writeETaxiGroup(chargingTaxis);
 		this.writeBusGroup(buses);
 		this.writeLinkGroup(summary.links);
+		this.writeZoneGroup(zones);
+		this.writeChargingStationGroup(chargingStations);
 		this.writer.flush();
 
 		int vehicleRecords = privateEvs.size() + occupiedTaxis.size() + relocationTaxis.size()
@@ -417,18 +440,28 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private FrameSummary createFrameSummary(int currentTick) {
 		FrameSummary summary = new FrameSummary();
-		if (currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT != 0) {
-			return summary;
+		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
+			summary.privateEVEnergy += (float) ev.getTotalConsume();
 		}
+		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
+			summary.eTaxiEnergy += (float) ev.getTotalConsume();
+		}
+		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+			summary.eBusEnergy += (float) bus.getTotalConsume();
+		}
+		summary.energyConsumption = summary.privateEVEnergy + summary.eTaxiEnergy + summary.eBusEnergy;
 
 		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
 			summary.servedPass += zone.taxiPickupRequest + zone.busPickupRequest;
 			summary.leftPass += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
 		}
 
+		if (currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT != 0) {
+			return summary;
+		}
+
 		float weightedSpeed = 0;
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			summary.energyConsumption += (float) road.getTotalEnergy();
 			if (!road.stateHasChanged()) {
 				continue;
 			}
@@ -448,6 +481,39 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private int getRoadDictionaryIndex(String origID) {
 		Integer index = this.roadIndexByOrigID.get(origID);
 		return index == null ? -1 : index.intValue();
+	}
+
+	private void initializeZoneDictionary() {
+		this.zoneDictionary = new ArrayList<HashMap<String, Object>>();
+		for (Zone zone : this.getZoneRecords()) {
+			HashMap<String, Object> record = new HashMap<String, Object>();
+			record.put("id", zone.getID());
+			record.put("type", zone.getZoneType());
+			record.put("capacity", zone.getCapacity());
+			if (zone.getCoord() != null) {
+				record.put("x", scaledX(zone.getCoord().x));
+				record.put("y", scaledY(zone.getCoord().y));
+			}
+			this.zoneDictionary.add(record);
+		}
+	}
+
+	private void initializeChargingStationDictionary() {
+		this.chargingStationDictionary = new ArrayList<HashMap<String, Object>>();
+		for (ChargingStation station : this.getChargingStationRecords()) {
+			HashMap<String, Object> record = new HashMap<String, Object>();
+			record.put("id", station.getID());
+			record.put("numL2", station.numCharger(ChargingStation.L2));
+			record.put("numL3", station.numCharger(ChargingStation.L3));
+			record.put("numBus", station.numBusCharger());
+			record.put("priceL2", station.getPriceL2());
+			record.put("priceL3", station.getPriceL3());
+			if (station.getCoord() != null) {
+				record.put("x", scaledX(station.getCoord().x));
+				record.put("y", scaledY(station.getCoord().y));
+			}
+			this.chargingStationDictionary.add(record);
+		}
 	}
 
 	private ArrayList<EVSnapshot> getPrivateEVRecords(TickSnapshot tick) {
@@ -480,6 +546,20 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				records.add(snapshot);
 			}
 		}
+		return records;
+	}
+
+	private ArrayList<Zone> getZoneRecords() {
+		ArrayList<Zone> records = new ArrayList<Zone>();
+		records.addAll(ContextCreator.getZoneContext().getAll());
+		records.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+		return records;
+	}
+
+	private ArrayList<ChargingStation> getChargingStationRecords() {
+		ArrayList<ChargingStation> records = new ArrayList<ChargingStation>();
+		records.addAll(ContextCreator.getChargingStationContext().getAll());
+		records.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
 		return records;
 	}
 
@@ -529,6 +609,75 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.writer.writeFloat(link.speed);
 			this.writer.writeInt(link.flow);
 			this.writer.writeFloat(link.energy);
+		}
+	}
+
+	private void writeZoneGroup(ArrayList<Zone> records) throws IOException {
+		this.writer.writeInt(records.size());
+		for (Zone zone : records) {
+			Coordinate coord = zone.getCoord();
+			this.writer.writeInt(zone.getID());
+			this.writer.writeInt(coord == null ? 0 : scaledX(coord.x));
+			this.writer.writeInt(coord == null ? 0 : scaledY(coord.y));
+			this.writer.writeInt(zone.getZoneType());
+			this.writer.writeInt(zone.getCapacity());
+			this.writer.writeInt(zone.getVehicleStock());
+			this.writer.writeInt(zone.getTaxiRequestNum());
+			this.writer.writeInt(zone.getBusRequestNum());
+			this.writer.writeInt(zone.numberOfGeneratedTaxiRequest);
+			this.writer.writeInt(zone.numberOfGeneratedBusRequest);
+			this.writer.writeInt(zone.numberOfGeneratedPrivateEVTrip);
+			this.writer.writeInt(zone.numberOfGeneratedPrivateGVTrip);
+			this.writer.writeInt(zone.arrivedPrivateEVTrip);
+			this.writer.writeInt(zone.arrivedPrivateGVTrip);
+			this.writer.writeInt(zone.taxiPickupRequest);
+			this.writer.writeInt(zone.busPickupRequest);
+			this.writer.writeInt(zone.taxiServedRequest);
+			this.writer.writeInt(zone.busServedRequest);
+			this.writer.writeInt(zone.numberOfLeavedTaxiRequest);
+			this.writer.writeInt(zone.numberOfLeavedBusRequest);
+			this.writer.writeInt(zone.numberOfLeavedTaxiPassengers);
+			this.writer.writeInt(zone.numberOfLeavedBusPassengers);
+			this.writer.writeInt(zone.numberOfRelocatedVehicles);
+			this.writer.writeInt(zone.getFutureSupply());
+			this.writer.writeFloat((float) zone.getFutureDemand());
+			this.writer.writeFloat((float) zone.getVehicleSurplus());
+			this.writer.writeFloat((float) zone.getVehicleDeficiency());
+			this.writer.writeInt(zone.taxiServedPassWaitingTime);
+			this.writer.writeInt(zone.busServedPassWaitingTime);
+			this.writer.writeInt(zone.taxiLeavedPassWaitingTime);
+			this.writer.writeInt(zone.busLeavedPassWaitingTime);
+			this.writer.writeInt(zone.taxiParkingTime);
+			this.writer.writeInt(zone.taxiCruisingTime);
+		}
+	}
+
+	private void writeChargingStationGroup(ArrayList<ChargingStation> records) throws IOException {
+		this.writer.writeInt(records.size());
+		for (ChargingStation station : records) {
+			Coordinate coord = station.getCoord();
+			this.writer.writeInt(station.getID());
+			this.writer.writeInt(coord == null ? 0 : scaledX(coord.x));
+			this.writer.writeInt(coord == null ? 0 : scaledY(coord.y));
+			this.writer.writeInt(station.getQueueL2().size());
+			this.writer.writeInt(station.getQueueL3().size());
+			this.writer.writeInt(station.getQueueBus().size());
+			this.writer.writeInt(station.getChargingL2().size());
+			this.writer.writeInt(station.getChargingL3().size());
+			this.writer.writeInt(station.getChargingBus().size());
+			this.writer.writeInt(station.capacity(ChargingStation.L2));
+			this.writer.writeInt(station.capacity(ChargingStation.L3));
+			this.writer.writeInt(station.capacityBus());
+			this.writer.writeInt(station.numCharger(ChargingStation.L2));
+			this.writer.writeInt(station.numCharger(ChargingStation.L3));
+			this.writer.writeInt(station.numBusCharger());
+			this.writer.writeInt(station.numChargedCar.get());
+			this.writer.writeInt(station.numChargedBus.get());
+			this.writer.writeFloat((float) station.getPriceL2());
+			this.writer.writeFloat((float) station.getPriceL3());
+			this.writer.writeFloat((float) station.waitingTimeL2());
+			this.writer.writeFloat((float) station.waitingTimeL3());
+			this.writer.writeInt(station.hasChargingVehicles() ? 1 : 0);
 		}
 	}
 
@@ -618,7 +767,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"initialX:float64", "initialY:float64", "tickInterval:int32",
 				"linkSnapshotInterval:int32"));
 		schemas.put("frameHeader", schema("tick:int32", "served:int32", "left:int32",
-				"energy:float32", "numVeh:int32", "meanSpeed:float32"));
+				"energy:float32", "numVeh:int32", "meanSpeed:float32",
+				"energyPrivateEV:float32", "energyETaxi:float32", "energyEBus:float32"));
 		schemas.put("ev_private", schema("id:int32", "x0:int32", "y0:int32", "x1:int32",
 				"y1:int32", "bearing:float32", "speed:float32", "originId:int32",
 				"destId:int32", "battery:float32", "energy:float32", "roadId:int32",
@@ -632,6 +782,22 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"battery:float32", "energy:float32", "roadId:int32", "servedPass:int32"));
 		schemas.put("link", schema("roadIndex:int32", "nVehicles:int32", "speed:float32",
 				"flow:int32", "energy:float32"));
+		schemas.put("zone", schema("id:int32", "x:int32", "y:int32", "zoneType:int32",
+				"capacity:int32", "vehicleStock:int32", "taxiRequest:int32", "busRequest:int32",
+				"generatedTaxi:int32", "generatedBus:int32", "generatedPrivateEV:int32",
+				"generatedPrivateGV:int32", "arrivedPrivateEV:int32", "arrivedPrivateGV:int32",
+				"taxiPickup:int32", "busPickup:int32", "taxiServed:int32", "busServed:int32",
+				"leftTaxiRequests:int32", "leftBusRequests:int32", "leftTaxiPassengers:int32",
+				"leftBusPassengers:int32", "relocatedVehicles:int32", "futureSupply:int32",
+				"futureDemand:float32", "vehicleSurplus:float32", "vehicleDeficiency:float32",
+				"taxiServedWait:int32", "busServedWait:int32", "taxiLeftWait:int32",
+				"busLeftWait:int32", "taxiParkingTime:int32", "taxiCruisingTime:int32"));
+		schemas.put("chargingStation", schema("id:int32", "x:int32", "y:int32",
+				"queueL2:int32", "queueL3:int32", "queueBus:int32", "chargingL2:int32",
+				"chargingL3:int32", "chargingBus:int32", "freeL2:int32", "freeL3:int32",
+				"freeBus:int32", "numL2:int32", "numL3:int32", "numBus:int32",
+				"chargedCar:int32", "chargedBus:int32", "priceL2:float32", "priceL3:float32",
+				"waitingTimeL2:float32", "waitingTimeL3:float32", "active:int32"));
 		return schemas;
 	}
 
@@ -647,6 +813,9 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		int servedPass = 0;
 		int leftPass = 0;
 		float energyConsumption = 0;
+		float privateEVEnergy = 0;
+		float eTaxiEnergy = 0;
+		float eBusEnergy = 0;
 		int vehicleCount = 0;
 		float meanSpeed = 0;
 		ArrayList<BinaryLinkRecord> links = new ArrayList<BinaryLinkRecord>();

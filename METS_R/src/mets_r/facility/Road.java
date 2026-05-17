@@ -712,7 +712,7 @@ public class Road {
 		else if(v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
 			ElectricTaxi ev = (ElectricTaxi) v;
 			this.totalEnergy += ev.getLinkConsume();
-			this.currentEnergy = ev.getLinkConsume();
+			this.currentEnergy += ev.getLinkConsume();
 			if(ev.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 				ContextCreator.kafkaManager.produceLinkEnergy(ev.getID(), ev.getVehicleClass(), this.getID(),
 						ev.getLinkConsume());

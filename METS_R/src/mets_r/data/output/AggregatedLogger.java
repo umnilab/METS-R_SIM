@@ -81,6 +81,7 @@ public class AggregatedLogger {
 							+ "batteryMean,batteryStd,"
 							+ "generatedPrivateEVTrip, generatedPrivateGVTrip,"
 							+ "arrivedPrivateEVTrip, arrivedPrivateGVTrip,"
+							+ "totalEnergyPrivateEV,totalEnergyETaxi,totalEnergyEBus,totalEnergy,"
 							+ "timeStamp");
 			network_logger.newLine();
 			network_logger.flush();
