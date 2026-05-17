@@ -28,6 +28,7 @@ public class DataCollectionContext extends DefaultContext<Object> {
 
 	/** A consumer of output data from the buffer which saves it to disk. */
 	private JsonOutputWriter jsonOutputWriter;
+	private BinaryTrajectoryOutputWriter binaryTrajectoryOutputWriter;
 
 	/**
 	 * Creates the data collection framework for the program and ensures it is ready
@@ -37,12 +38,15 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		// Needed for the repast contexts framework to give it a name
 		super("DataCollectionContext");
 
-		// Create the JSON output file writer. without specifying a filename,
-		// this will generate a unique value including a current timestamp
-		// and placing it in the current jre working directory.
+		// Create enabled trajectory output writers. Default paths create a unique
+		// timestamped directory for each run.
 		if (GlobalVariables.ENABLE_JSON_WRITE) {
 			this.jsonOutputWriter = new JsonOutputWriter();
 			ContextCreator.dataCollector.registerDataConsumer(this.jsonOutputWriter);
+		}
+		if (GlobalVariables.ENABLE_TRAJECTORY_BINARY_WRITE) {
+			this.binaryTrajectoryOutputWriter = new BinaryTrajectoryOutputWriter();
+			ContextCreator.dataCollector.registerDataConsumer(this.binaryTrajectoryOutputWriter);
 		}
 	}
 
@@ -51,11 +55,27 @@ public class DataCollectionContext extends DefaultContext<Object> {
 	}
 
 	public void stopCollecting() {
+		JsonOutputWriter jsonWriter = this.jsonOutputWriter;
+		BinaryTrajectoryOutputWriter binaryWriter = this.binaryTrajectoryOutputWriter;
 		if (this.jsonOutputWriter != null) {
-	        ContextCreator.dataCollector.deregisterDataConsumer(this.jsonOutputWriter);
-	        this.jsonOutputWriter = null;
-	    }
+			ContextCreator.dataCollector.deregisterDataConsumer(this.jsonOutputWriter);
+			this.jsonOutputWriter = null;
+		}
+		if (this.binaryTrajectoryOutputWriter != null) {
+			ContextCreator.dataCollector.deregisterDataConsumer(this.binaryTrajectoryOutputWriter);
+			this.binaryTrajectoryOutputWriter = null;
+		}
 		ContextCreator.dataCollector.stopDataCollection();
+		try {
+			if (jsonWriter != null) {
+				jsonWriter.awaitCompletion();
+			}
+			if (binaryWriter != null) {
+				binaryWriter.awaitCompletion();
+			}
+		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	public void startTick() {

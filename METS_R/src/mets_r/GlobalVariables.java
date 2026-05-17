@@ -187,9 +187,7 @@ public class GlobalVariables {
 	public static boolean DEBUG_DATA_BUFFER = Boolean.valueOf(loadConfig("DEBUG_DATA_BUFFER"));
 	public static int DATA_CLEANUP_REFRESH = Integer.valueOf(loadConfig("DATA_CLEANUP_REFRESH"));
 
-	// Parameters for the JSON output file writer (similar to as the csv parameters
-	// except JSON_TICK_LIMIT_PER_FILE which represents the number of ticks are
-	// written in a json file)
+	// Parameters for trajectory output cadence and the legacy JSON writer.
 	public static boolean ENABLE_JSON_WRITE = Boolean.valueOf(loadConfig("ENABLE_JSON_WRITE"));
 	public static String JSON_DEFAULT_FILENAME = loadConfig("JSON_DEFAULT_FILENAME");
 	public static String JSON_DEFAULT_EXTENSION = loadConfig("JSON_DEFAULT_EXTENSION");
@@ -200,6 +198,15 @@ public class GlobalVariables {
 			.valueOf(loadConfig("JSON_FREQ_RECORD_LINK_SNAPSHOT"));
 	public static int JSON_BUFFER_REFRESH = Integer.valueOf(loadConfig("JSON_BUFFER_REFRESH"));
 	public static int JSON_TICK_LIMIT_PER_FILE = Integer.valueOf(loadConfig("JSON_TICK_LIMIT_PER_FILE"));
+	public static boolean ENABLE_TRAJECTORY_BINARY_WRITE = Boolean
+			.valueOf(loadConfig("ENABLE_TRAJECTORY_BINARY_WRITE"));
+	public static String TRAJECTORY_BINARY_DEFAULT_FILENAME = loadConfig("TRAJECTORY_BINARY_DEFAULT_FILENAME");
+	public static String TRAJECTORY_BINARY_DEFAULT_EXTENSION = loadConfig("TRAJECTORY_BINARY_DEFAULT_EXTENSION");
+	public static String TRAJECTORY_BINARY_DEFAULT_PATH = loadConfig("TRAJECTORY_BINARY_DEFAULT_PATH");
+	public static int TRAJECTORY_BINARY_TICK_LIMIT_PER_FILE = Integer
+			.valueOf(loadConfig("TRAJECTORY_BINARY_TICK_LIMIT_PER_FILE"));
+	public static int TRAJECTORY_BINARY_COORD_SCALE = Integer
+			.valueOf(loadConfig("TRAJECTORY_BINARY_COORD_SCALE"));
 	
 	// Parameters for aggregated report writer
 	public static String AGG_DEFAULT_PATH = loadConfig("AGG_DEFAULT_PATH");

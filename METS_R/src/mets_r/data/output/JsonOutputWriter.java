@@ -340,6 +340,13 @@ public class JsonOutputWriter implements DataConsumer {
 		this.writer = null;
 	}
 
+	public void awaitCompletion() throws InterruptedException {
+		Thread thread = this.writingThread;
+		if (thread != null) {
+			thread.join();
+		}
+	}
+
 	/**
 	 * Signals the pausing of consumption of new items from the buffer. Any item
 	 * currently being written will finish, and the thread which performs the actual

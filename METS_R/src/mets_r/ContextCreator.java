@@ -836,6 +836,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
 		tscheduler.shutdownScheduler();
+		agg_logger.recordUnfinishedTrips();
 		dataContext.stopCollecting();
 		agg_logger.close();
 		travel_demand.close();
