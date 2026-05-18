@@ -267,23 +267,49 @@ public class SumoXML {
 			return (relX * dirX + relY * dirY) < -1e-12 * Math.sqrt(dirLengthSq);
 		}
 
-		private Coordinate adjustedDownstreamStart(Coordinate upstreamEnd, Coordinate downstreamStart,
-				Coordinate downstreamNext) {
-			double segX = downstreamNext.x - downstreamStart.x;
-			double segY = downstreamNext.y - downstreamStart.y;
+		private double turnAngleDegrees(Coordinate previous, Coordinate current, Coordinate next) {
+			double inX = current.x - previous.x;
+			double inY = current.y - previous.y;
+			double outX = next.x - current.x;
+			double outY = next.y - current.y;
+			double inLength = Math.sqrt(inX * inX + inY * inY);
+			double outLength = Math.sqrt(outX * outX + outY * outY);
+			if (inLength <= 1e-12 || outLength <= 1e-12) return 0.0;
+
+			double cosTheta = (inX * outX + inY * outY) / (inLength * outLength);
+			cosTheta = Math.max(-1.0, Math.min(1.0, cosTheta));
+			return Math.toDegrees(Math.acos(cosTheta));
+		}
+
+		private boolean hasSharpTransitionAngle(Coordinate previous, Coordinate current, Coordinate next) {
+			return turnAngleDegrees(previous, current, next) > 150.0;
+		}
+
+		private Coordinate adjustedControlPoint(Coordinate incomingCoord, Coordinate controlPoint,
+				Coordinate followingPoint) {
+			double segX = followingPoint.x - controlPoint.x;
+			double segY = followingPoint.y - controlPoint.y;
 			double segLengthSq = segX * segX + segY * segY;
 			if (segLengthSq <= 1e-24) {
-				return copyCoordinate(upstreamEnd);
+				return copyCoordinate(incomingCoord);
 			}
 
-			double projection = ((upstreamEnd.x - downstreamStart.x) * segX
-					+ (upstreamEnd.y - downstreamStart.y) * segY) / segLengthSq;
+			double projection = ((incomingCoord.x - controlPoint.x) * segX
+					+ (incomingCoord.y - controlPoint.y) * segY) / segLengthSq;
 			if (Double.isNaN(projection) || Double.isInfinite(projection)) {
 				projection = 0.0;
 			}
-			// Move just past the closest point on the downstream segment so the
-			// generated turning curve does not collapse into a zero-length loop.
-			return interpolateCoordinate(downstreamStart, downstreamNext, projection + 0.001);
+			// Move just past the closest point on the next segment so the
+			// generated transition curve does not collapse into a zero-length loop.
+			double targetProjection = Math.max(0.001, Math.min(0.999, projection + 0.001));
+			return interpolateCoordinate(controlPoint, followingPoint, targetProjection);
+		}
+
+		private boolean setAdjustedControlPoint(ArrayList<Coordinate> coords, int index, Coordinate adjustedCoord) {
+			if (index < 0 || index >= coords.size()) return false;
+			if (squaredDistance2D(coords.get(index), adjustedCoord) <= 1e-24) return false;
+			coords.set(index, copyCoordinate(adjustedCoord));
+			return true;
 		}
 
 		private void refreshRoadCenterlinesFromLanes() {
@@ -325,8 +351,8 @@ public class SumoXML {
 		}
 
 		private void prescanTransitionControlPoints() {
-			LinkedHashMap<Integer, Coordinate> adjustedStarts = new LinkedHashMap<Integer, Coordinate>();
-			LinkedHashMap<Integer, Double> adjustedStartDistances = new LinkedHashMap<Integer, Double>();
+			int adjustedCount = 0;
+			int maxControlPointsToScan = 4;
 
 			for (Lane fromLane : lanes.values()) {
 				ArrayList<Coordinate> fromCoords = fromLane.getCoords();
@@ -341,41 +367,50 @@ public class SumoXML {
 					ArrayList<Coordinate> toCoords = toLane.getCoords();
 					if (toCoords.size() < 2) continue;
 
-					Coordinate downstreamStart = toCoords.get(0);
-					Coordinate downstreamNext = toCoords.get(1);
-					if (!transitionStartIsBehindUpstreamLane(upstreamPrev, upstreamEnd, downstreamStart)) continue;
-					// If the next downstream point is also behind, this is a real
-					// backtracking/U-turn geometry rather than a bad first point.
-					if (transitionStartIsBehindUpstreamLane(upstreamPrev, upstreamEnd, downstreamNext)) continue;
+					boolean adjustedLane = false;
+					int scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
+					int guard = Math.max(1, toCoords.size() * 2);
+					for (int attempts = 0; attempts < guard; attempts++) {
+						boolean adjustedThisPass = false;
+						for (int i = 0; i < scanLimit && i + 1 < toCoords.size(); i++) {
+							Coordinate previous = (i == 0) ? upstreamEnd : toCoords.get(i - 1);
+							Coordinate current = toCoords.get(i);
+							Coordinate next = toCoords.get(i + 1);
+							if (!hasSharpTransitionAngle(previous, current, next)) continue;
 
-					Coordinate adjustedStart = adjustedDownstreamStart(upstreamEnd, downstreamStart, downstreamNext);
-					double distanceSq = squaredDistance2D(downstreamStart, upstreamEnd);
-					Double bestDistanceSq = adjustedStartDistances.get(toLaneID);
-					if (bestDistanceSq == null || distanceSq < bestDistanceSq) {
-						adjustedStartDistances.put(toLaneID, distanceSq);
-						adjustedStarts.put(toLaneID, adjustedStart);
+							if (i == 0 && transitionStartIsBehindUpstreamLane(upstreamPrev, upstreamEnd, current)) {
+								Coordinate adjustedCurrent = adjustedControlPoint(upstreamEnd, current, next);
+								if (setAdjustedControlPoint(toCoords, i, adjustedCurrent)) {
+									adjustedCount++;
+									adjustedLane = true;
+									adjustedThisPass = true;
+									break;
+								}
+							} else if (i + 2 < toCoords.size()) {
+								Coordinate following = toCoords.get(i + 2);
+								Coordinate adjustedNext = adjustedControlPoint(current, next, following);
+								if (setAdjustedControlPoint(toCoords, i + 1, adjustedNext)) {
+									adjustedCount++;
+									adjustedLane = true;
+									adjustedThisPass = true;
+									break;
+								}
+							}
+						}
+
+						if (!adjustedThisPass) break;
+						scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
+					}
+					if (adjustedLane) {
+						toLane.setCoords(toCoords);
 					}
 				}
-			}
-
-			int adjustedCount = 0;
-			for (Map.Entry<Integer, Coordinate> entry : adjustedStarts.entrySet()) {
-				Lane lane = lanes.get(entry.getKey());
-				if (lane == null) continue;
-				ArrayList<Coordinate> coords = lane.getCoords();
-				if (coords.isEmpty()) continue;
-
-				Coordinate adjustedStart = entry.getValue();
-				if (squaredDistance2D(coords.get(0), adjustedStart) <= 1e-24) continue;
-				coords.set(0, copyCoordinate(adjustedStart));
-				lane.setCoords(coords);
-				adjustedCount++;
 			}
 
 			if (adjustedCount > 0) {
 				refreshRoadCenterlinesFromLanes();
 				ContextCreator.logger.info("SUMO transition prescan adjusted " + adjustedCount
-						+ " downstream lane start control points that were behind connected upstream lane ends.");
+						+ " downstream lane control points with transition angles sharper than 150 degrees.");
 			}
 		}
 		
