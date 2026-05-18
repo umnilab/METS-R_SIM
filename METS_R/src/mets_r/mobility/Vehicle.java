@@ -95,6 +95,8 @@ public class Vehicle {
 	private static final int LC_REASON_SPEED_GAIN = 3;
 	private static final int LC_REASON_KEEP_RIGHT = 4;
 	private static final int LC_REASON_REGULATORY = 5;
+	private static final double LANE_CHANGE_REVERSE_ANGLE_DEGREES = 150.0;
+	private static final double LANE_CHANGE_BEARING_EPSILON_SQ = 1e-24;
 	/* Constants */
 	private static final double GRAVITY = 9.81; // m/s², used for grade resistance
 	
@@ -891,6 +893,36 @@ public class Vehicle {
 				upstreamZ + clampedParam * (downstreamZ - upstreamZ));
 	}
 
+	private double planarBearingDegrees(Coordinate from, Coordinate to) {
+		double dx = to.x - from.x;
+		double dy = to.y - from.y;
+		return Math.toDegrees(Math.atan2(dx, dy));
+	}
+
+	private double bearingDifferenceDegrees(double bearing1, double bearing2) {
+		if (Double.isNaN(bearing1) || Double.isInfinite(bearing1)
+				|| Double.isNaN(bearing2) || Double.isInfinite(bearing2)) {
+			return 0.0;
+		}
+		double diff = Math.abs(bearing1 - bearing2) % 360.0;
+		return diff > 180.0 ? 360.0 - diff : diff;
+	}
+
+	private boolean laneChangeWouldReverseBearing(Coordinate projectedCoord, ArrayList<Coordinate> newCoordMap) {
+		int scanLimit = Math.min(3, newCoordMap.size());
+		for (int i = 0; i < scanLimit; i++) {
+			Coordinate target = newCoordMap.get(i);
+			double dx = target.x - projectedCoord.x;
+			double dy = target.y - projectedCoord.y;
+			if (dx * dx + dy * dy <= LANE_CHANGE_BEARING_EPSILON_SQ) {
+				continue;
+			}
+			double targetBearing = planarBearingDegrees(projectedCoord, target);
+			return bearingDifferenceDegrees(this.bearing_, targetBearing) >= LANE_CHANGE_REVERSE_ANGLE_DEGREES;
+		}
+		return false;
+	}
+
 	/**
 	 * This function change the lane of a vehicle regardless it is MLC or DLC state.
 	 * The vehicle change lane when its lead and lag gaps are acceptable. This will
@@ -924,6 +956,9 @@ public class Vehicle {
 			return false;
 		}
 		if (projectedCoord == null) {
+			return false;
+		}
+		if (this.laneChangeWouldReverseBearing(projectedCoord, newCoordMap)) {
 			return false;
 		}
 

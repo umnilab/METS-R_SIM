@@ -36,6 +36,10 @@ import repast.simphony.space.graph.RepastEdge;
  * Initialize and maintain facility agents
  **/
 public class CityContext extends DefaultContext<Object> {
+	private static final double GEOMETRY_EPSILON_SQ = 1e-24;
+	private static final double REVERSE_TURN_ANGLE_DEGREES = 150.0;
+	private static final double REVERSE_TURN_COSINE = Math.cos(Math.toRadians(REVERSE_TURN_ANGLE_DEGREES));
+
 	private HashMap<RepastEdge<?>, Integer> edgeRoadID_KeyEdge; // Store the TOIDs of edges (Edge as key)
 	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
 	private HashMap<Coordinate, Road> coordOrigRoad_KeyCoord; // Cache the closest road
@@ -122,22 +126,69 @@ public class CityContext extends DefaultContext<Object> {
 		double segX = segmentEnd.x - segmentStart.x;
 		double segY = segmentEnd.y - segmentStart.y;
 		double segLengthSq = segX * segX + segY * segY;
-		if (segLengthSq <= 1e-24) return Double.NaN;
+		if (segLengthSq <= GEOMETRY_EPSILON_SQ) return Double.NaN;
 
 		return ((point.x - segmentStart.x) * segX
 				+ (point.y - segmentStart.y) * segY) / segLengthSq;
 	}
 
-	private boolean firstTurnControlPointIsBehind(ArrayList<Coordinate> coords) {
-		if (coords.size() <= 2) return false;
-		double projection = projectionAlongSegment(coords.get(0), coords.get(1), coords.get(2));
+	private boolean projectsInsideSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
+		double projection = projectionAlongSegment(point, segmentStart, segmentEnd);
 		if (Double.isNaN(projection) || Double.isInfinite(projection)) return false;
 		return projection > 1e-9 && projection <= 1.0 + 1e-9;
 	}
 
-	private void skipBehindFirstTurnControlPoints(ArrayList<Coordinate> coords) {
-		while (firstTurnControlPointIsBehind(coords)) {
-			coords.remove(1);
+	private boolean isReverseThenBackControlPoint(ArrayList<Coordinate> coords, int index) {
+		if (index <= 0 || index >= coords.size() - 1) return false;
+		Coordinate previous = coords.get(index - 1);
+		Coordinate current = coords.get(index);
+		Coordinate next = coords.get(index + 1);
+
+		double inX = current.x - previous.x;
+		double inY = current.y - previous.y;
+		double outX = next.x - current.x;
+		double outY = next.y - current.y;
+		double inLengthSq = inX * inX + inY * inY;
+		double outLengthSq = outX * outX + outY * outY;
+		if (inLengthSq <= GEOMETRY_EPSILON_SQ || outLengthSq <= GEOMETRY_EPSILON_SQ) {
+			return true;
+		}
+
+		double cosTheta = (inX * outX + inY * outY) / Math.sqrt(inLengthSq * outLengthSq);
+		if (cosTheta > REVERSE_TURN_COSINE) return false;
+
+		return projectsInsideSegment(previous, current, next);
+	}
+
+	private int removeReverseThenBackControlPoints(ArrayList<Coordinate> coords) {
+		int removed = 0;
+		for (int i = 1; i < coords.size() - 1;) {
+			if (isReverseThenBackControlPoint(coords, i)) {
+				coords.remove(i);
+				removed++;
+				if (i > 1) i--;
+			} else {
+				i++;
+			}
+		}
+		return removed;
+	}
+
+	private void preprocessLaneControlPoints() {
+		int removed = 0;
+		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
+			Road road = lane.getRoad();
+			if (road != null && road.getRoadType() == Road.U_Turn) continue;
+			ArrayList<Coordinate> coords = lane.getCoords();
+			int removedFromLane = removeReverseThenBackControlPoints(coords);
+			if (removedFromLane > 0) {
+				lane.setCoords(coords);
+				removed += removedFromLane;
+			}
+		}
+		if (removed > 0) {
+			ContextCreator.logger.info("Map preprocessing removed " + removed
+					+ " reverse-then-back lane control points.");
 		}
 	}
 	
@@ -148,7 +199,12 @@ public class CityContext extends DefaultContext<Object> {
 		Coordinate p2 = lane2.getCoords().get(0);
 		Coordinate p3 = lane2.getCoords().get(1);
 		ArrayList<Coordinate> coords = catmullRomInterpolate(p0, p1, p2, p3);
-		skipBehindFirstTurnControlPoints(coords);
+		Road road1 = lane1.getRoad();
+		Road road2 = lane2.getRoad();
+		if ((road1 == null || road1.getRoadType() != Road.U_Turn)
+				&& (road2 == null || road2.getRoadType() != Road.U_Turn)) {
+			removeReverseThenBackControlPoints(coords);
+		}
 		double distance = 0;
 		for (int i = 0; i < coords.size() - 1; i++) {
 			distance += getDistance(coords.get(i), coords.get(i+1));
@@ -629,6 +685,7 @@ public class CityContext extends DefaultContext<Object> {
 			
 		}
 		
+		this.preprocessLaneControlPoints();
 		this.initializeLaneDistance();
 			
 		for(Road road: ContextCreator.getRoadContext().getAll()) {
