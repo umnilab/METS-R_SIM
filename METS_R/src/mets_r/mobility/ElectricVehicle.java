@@ -83,8 +83,9 @@ public class ElectricVehicle extends Vehicle {
 	public void reachDest() {
 		if (this.onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ",4,"
-					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + ",0\r\n";
+					+ this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + ","
+					+ this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,0,0,0,0,0,0,0\r\n";
 			try {
 				ContextCreator.agg_logger.ev_logger.write(formated_msg);
 			} catch (IOException e) {
@@ -103,7 +104,7 @@ public class ElectricVehicle extends Vehicle {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 			        + "," + this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + "," + this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,"
-					+ "0\r\n";
+					+ "0,0,0,0,0,0,0\r\n";
 			try {
 				ContextCreator.agg_logger.ev_logger.write(formated_msg);
 			} catch (IOException e) {

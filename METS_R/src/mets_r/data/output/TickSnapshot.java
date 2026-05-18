@@ -205,7 +205,12 @@ public class TickSnapshot {
 		int roadID = vehicle.getRoad().getID();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
-		int servedPass = vehicle.servedPass;
+		int matchedRequests = vehicle.getMatchedRequests();
+		int matchedPassengers = vehicle.getMatchedPassengers();
+		int pickupRequests = vehicle.getPickupRequests();
+		int pickupPassengers = vehicle.getPickupPassengers();
+		int dropoffRequests = vehicle.getDropoffRequests();
+		int dropoffPassengers = vehicle.getDropoffPassengers();
 
 		if (this.getETaxiSnapshot(id, vehicle.getState()) != null) {
 			prev_x = this.getETaxiSnapshot(id, vehicle.getState()).prev_x;
@@ -214,7 +219,8 @@ public class TickSnapshot {
 
 		// Create a snapshot for the vehicle and store it in the map
 		ETaxiSnapshot snapshot = new ETaxiSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
-				vehicleClass, batteryLevel, energyConsumption, roadID, servedPass
+				vehicleClass, batteryLevel, energyConsumption, roadID, matchedRequests, matchedPassengers,
+				pickupRequests, pickupPassengers, dropoffRequests, dropoffPassengers
 		);
 
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
@@ -257,7 +263,12 @@ public class TickSnapshot {
 		double acc = vehicle.currentAcc();
 		double batteryLevel = vehicle.getBatteryLevel();
 		double energyConsumption = vehicle.getTotalConsume();
-		int servedPass = vehicle.served_pass;
+		int matchedRequests = vehicle.getMatchedRequests();
+		int matchedPassengers = vehicle.getMatchedPassengers();
+		int pickupRequests = vehicle.getPickupRequests();
+		int pickupPassengers = vehicle.getPickupPassengers();
+		int dropoffRequests = vehicle.getDropoffRequests();
+		int dropoffPassengers = vehicle.getDropoffPassengers();
 		int roadID = vehicle.getRoad().getID();
 
 		if (this.getBusSnapshot(id) != null) {
@@ -266,7 +277,9 @@ public class TickSnapshot {
 		}
 
 		BusSnapshot snapshot = new BusSnapshot(id, routeID, prev_x, prev_y, x, y, bearing, speed, acc, batteryLevel,
-				energyConsumption, roadID, servedPass);
+				energyConsumption, roadID, matchedRequests, matchedPassengers,
+				pickupRequests, pickupPassengers, dropoffRequests, dropoffPassengers,
+				vehicle.getRouteName(), vehicle.getBusStops());
 		synchronized(this.buses) {
 			this.buses.put(id, snapshot);
 		}

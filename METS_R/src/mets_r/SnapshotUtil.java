@@ -201,7 +201,12 @@ public class SnapshotUtil {
 			m.put("passNum", taxi.getPassNum());
 			m.put("currentZone", taxi.getCurrentZone());
 			m.put("cruisingTime", taxi.getCruisingTime());
-			m.put("servedPass", taxi.getServedPass());
+			m.put("matchedRequests", taxi.getMatchedRequests());
+			m.put("matchedPassengers", taxi.getMatchedPassengers());
+			m.put("pickupRequests", taxi.getPickupRequests());
+			m.put("pickupPassengers", taxi.getPickupPassengers());
+			m.put("dropoffRequests", taxi.getDropoffRequests());
+			m.put("dropoffPassengers", taxi.getDropoffPassengers());
 			m.put("toBoardRequests", snapshotRequestQueue(taxi.getToBoardRequests()));
 			m.put("onBoardRequests", snapshotRequestQueue(taxi.getOnBoardRequests()));
 		}
@@ -212,7 +217,12 @@ public class SnapshotUtil {
 			m.put("routeID", bus.getRouteID());
 			m.put("passNum", bus.getPassNum());
 			m.put("nextStop", bus.getNextStop());
-			m.put("servedPass", bus.getServedPass());
+			m.put("matchedRequests", bus.getMatchedRequests());
+			m.put("matchedPassengers", bus.getMatchedPassengers());
+			m.put("pickupRequests", bus.getPickupRequests());
+			m.put("pickupPassengers", bus.getPickupPassengers());
+			m.put("dropoffRequests", bus.getDropoffRequests());
+			m.put("dropoffPassengers", bus.getDropoffPassengers());
 			m.put("stopZones", bus.getStopZones());
 			m.put("departureTimes", bus.getDepartureTimes());
 			// Bus request queues (per-stop)
@@ -1252,7 +1262,13 @@ public class SnapshotUtil {
 		taxi.setPassNum(toInt(vs.get("passNum")));
 		taxi.setCurrentZone(toInt(vs.get("currentZone")));
 		taxi.setCruisingTime(toInt(vs.get("cruisingTime")));
-		taxi.setServedPass(toInt(vs.get("servedPass")));
+		taxi.setMatchedRequests(toInt(vs.get("matchedRequests")));
+		taxi.setMatchedPassengers(vs.containsKey("matchedPassengers")
+				? toInt(vs.get("matchedPassengers")) : toInt(vs.get("servedPass")));
+		taxi.setPickupRequests(toInt(vs.get("pickupRequests")));
+		taxi.setPickupPassengers(toInt(vs.get("pickupPassengers")));
+		taxi.setDropoffRequests(toInt(vs.get("dropoffRequests")));
+		taxi.setDropoffPassengers(toInt(vs.get("dropoffPassengers")));
 
 		// Restore request queues
 		LinkedList<Request> toBoard = new LinkedList<>();
@@ -1275,7 +1291,13 @@ public class SnapshotUtil {
 		restoreEVFields(bus, vs);
 		bus.setPassNum(toInt(vs.get("passNum")));
 		bus.setNextStop(toInt(vs.get("nextStop")));
-		bus.setServedPass(toInt(vs.get("servedPass")));
+		bus.setMatchedRequests(toInt(vs.get("matchedRequests")));
+		bus.setMatchedPassengers(vs.containsKey("matchedPassengers")
+				? toInt(vs.get("matchedPassengers")) : toInt(vs.get("servedPass")));
+		bus.setPickupRequests(toInt(vs.get("pickupRequests")));
+		bus.setPickupPassengers(toInt(vs.get("pickupPassengers")));
+		bus.setDropoffRequests(toInt(vs.get("dropoffRequests")));
+		bus.setDropoffPassengers(toInt(vs.get("dropoffPassengers")));
 
 		// Restore per-stop request queues
 		List<?> busTBR = (List<?>) vs.get("busToBoardRequests");

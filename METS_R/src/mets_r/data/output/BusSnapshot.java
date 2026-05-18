@@ -1,5 +1,8 @@
 package mets_r.data.output;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.mobility.ElectricBus;
@@ -21,6 +24,12 @@ public class BusSnapshot {
 
 	/** The number identifying this vehicle within the simulation. */
 	final public int routeID;
+
+	/** The display name for the currently assigned route. */
+	final public String routeName;
+
+	/** Stop zones for this specific bus route state at the snapshot tick. */
+	final public ArrayList<Integer> stopZones;
 
 	/**
 	 * The X-axis (longitude) position of the vehicle in the previous epoch when
@@ -58,7 +67,12 @@ public class BusSnapshot {
 	/** The road ID of the vehicle within the simulation. */
 	final public int roadID;
 
-	final public int served_pass;
+	final public int matchedRequests;
+	final public int matchedPassengers;
+	final public int pickupRequests;
+	final public int pickupPassengers;
+	final public int dropoffRequests;
+	final public int dropoffPassengers;
 
 	/** The origin X-axis (longitude) position within the simulation. */ /** @author Jiawei Xue */
 //    final public double originX;
@@ -104,7 +118,9 @@ public class BusSnapshot {
 		this(vehicle.getID(), vehicle.getRouteID(), vehicle.getpreviousEpochCoord().x,
 				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(),
 				vehicle.currentAcc(), vehicle.getBatteryLevel(), vehicle.getTotalConsume(),
-				vehicle.getRoad().getID(), vehicle.served_pass);
+				vehicle.getRoad().getID(), vehicle.getMatchedRequests(), vehicle.getMatchedPassengers(),
+				vehicle.getPickupRequests(), vehicle.getPickupPassengers(), vehicle.getDropoffRequests(),
+				vehicle.getDropoffPassengers(), vehicle.getRouteName(), vehicle.getBusStops());
 	}
 
 	/**
@@ -121,7 +137,15 @@ public class BusSnapshot {
 	 * @throws Throwable if one of the supplied values is invalid.
 	 */
 	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, double bearing, double speed, double acc,
-			double batteryLevel, double energyConsumption, int roadID, int served_pass) throws Throwable {
+			double batteryLevel, double energyConsumption, int roadID, int matchedPassengers) throws Throwable {
+		this(id, route_id, prev_x, prev_y, x, y, bearing, speed, acc, batteryLevel,
+				energyConsumption, roadID, 0, matchedPassengers, 0, 0, 0, 0, null, null);
+	}
+
+	public BusSnapshot(int id, int route_id, double prev_x, double prev_y, double x, double y, double bearing, double speed, double acc,
+			double batteryLevel, double energyConsumption, int roadID, int matchedRequests, int matchedPassengers,
+			int pickupRequests, int pickupPassengers, int dropoffRequests, int dropoffPassengers,
+			String routeName, List<Integer> stopZones) throws Throwable {
 		// all values are passed in as primitaves instead of objects,
 		// so the compiler won't allow any to be null, no need to check
 		if (id < 0) {
@@ -144,6 +168,8 @@ public class BusSnapshot {
 		// store the values in the object
 		this.id = id;
 		this.routeID = route_id;
+		this.routeName = routeName;
+		this.stopZones = stopZones == null ? new ArrayList<Integer>() : new ArrayList<Integer>(stopZones);
 		this.prev_x = prev_x;
 		this.prev_y = prev_y;
 		this.x = x;
@@ -153,8 +179,13 @@ public class BusSnapshot {
 		this.speed = speed;
 		this.batteryLevel = batteryLevel;
 		this.totalConsumption = energyConsumption;
-		this.served_pass = served_pass;
+		this.matchedRequests = matchedRequests;
+		this.matchedPassengers = matchedPassengers;
 		this.roadID = roadID;
+		this.pickupRequests = pickupRequests;
+		this.pickupPassengers = pickupPassengers;
+		this.dropoffRequests = dropoffRequests;
+		this.dropoffPassengers = dropoffPassengers;
 	}
 
 	/**
@@ -225,6 +256,14 @@ public class BusSnapshot {
 		return Integer.toString(this.routeID);
 	}
 
+	public String getRouteName() {
+		return this.routeName;
+	}
+
+	public ArrayList<Integer> getStopZones() {
+		return new ArrayList<Integer>(this.stopZones);
+	}
+
 	public double getTotalEnergyConsumption() {
 		return this.totalConsumption;
 	}
@@ -233,8 +272,28 @@ public class BusSnapshot {
 		return this.batteryLevel;
 	}
 
-	public int getServedPass() {
-		return this.served_pass;
+	public int getMatchedRequests() {
+		return this.matchedRequests;
+	}
+
+	public int getMatchedPassengers() {
+		return this.matchedPassengers;
+	}
+
+	public int getPickupRequests() {
+		return this.pickupRequests;
+	}
+
+	public int getPickupPassengers() {
+		return this.pickupPassengers;
+	}
+
+	public int getDropoffRequests() {
+		return this.dropoffRequests;
+	}
+
+	public int getDropoffPassengers() {
+		return this.dropoffPassengers;
 	}
 
 	/**

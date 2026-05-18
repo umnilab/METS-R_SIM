@@ -28,18 +28,34 @@ public class ETaxiSnapshot {
 	final public double batteryLevel;
 	final public double totalConsumption;
 	final public int roadID;
-	final public int served_pass;
+	final public int matchedRequests;
+	final public int matchedPassengers;
+	final public int pickupRequests;
+	final public int pickupPassengers;
+	final public int dropoffRequests;
+	final public int dropoffPassengers;
 
 	public ETaxiSnapshot(ElectricTaxi vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
-				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.servedPass);
+				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.getMatchedRequests(),
+				vehicle.getMatchedPassengers(), vehicle.getPickupRequests(), vehicle.getPickupPassengers(),
+				vehicle.getDropoffRequests(), vehicle.getDropoffPassengers());
 	}
 
 	public ETaxiSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
 			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID,
-			int served_pass) throws Throwable {
+			int matchedPassengers) throws Throwable {
+		this(id, prev_x, prev_y, x, y, bearing, speed, origin_id, dest_id,
+				nearlyArrived, vehicleClass, batteryLevel, energyConsumption, roadID,
+				0, matchedPassengers, 0, 0, 0, 0);
+	}
+
+	public ETaxiSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, int origin_id, int dest_id,
+			int nearlyArrived, int vehicleClass, double batteryLevel, double energyConsumption, int roadID,
+			int matchedRequests, int matchedPassengers, int pickupRequests, int pickupPassengers,
+			int dropoffRequests, int dropoffPassengers) throws Throwable {
 		if (id < 0) {
 			throw new Exception("Vehicle ID cannot be negative.");
 		}
@@ -66,7 +82,12 @@ public class ETaxiSnapshot {
 		this.batteryLevel =  batteryLevel;
 		this.totalConsumption =  energyConsumption;
 		this.roadID = roadID;
-		this.served_pass = served_pass;
+		this.matchedRequests = matchedRequests;
+		this.matchedPassengers = matchedPassengers;
+		this.pickupRequests = pickupRequests;
+		this.pickupPassengers = pickupPassengers;
+		this.dropoffRequests = dropoffRequests;
+		this.dropoffPassengers = dropoffPassengers;
 	}
 
 	public int getId() {
@@ -117,7 +138,27 @@ public class ETaxiSnapshot {
 		return this.roadID;
 	}
 
-	public int getServedPass() {
-		return this.served_pass;
+	public int getMatchedRequests() {
+		return this.matchedRequests;
+	}
+
+	public int getMatchedPassengers() {
+		return this.matchedPassengers;
+	}
+
+	public int getPickupRequests() {
+		return this.pickupRequests;
+	}
+
+	public int getPickupPassengers() {
+		return this.pickupPassengers;
+	}
+
+	public int getDropoffRequests() {
+		return this.dropoffRequests;
+	}
+
+	public int getDropoffPassengers() {
+		return this.dropoffPassengers;
 	}
 }

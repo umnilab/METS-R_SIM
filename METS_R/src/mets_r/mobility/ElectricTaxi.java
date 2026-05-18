@@ -30,8 +30,13 @@ public class ElectricTaxi extends ElectricVehicle {
 	private int currentZone;
 	
 	/* Public variables */
-	// Service metrics
-	public int servedPass = 0;
+	// Service metrics are cumulative for the vehicle.
+	private int matchedRequests = 0;
+	private int matchedPassengers = 0;
+	private int pickupRequests = 0;
+	private int pickupPassengers = 0;
+	private int dropoffRequests = 0;
+	private int dropoffPassengers = 0;
 	// Parameter to show which route has been chosen in eco-routing.
 	public int routeChoice = -1;
 
@@ -62,7 +67,9 @@ public class ElectricTaxi extends ElectricVehicle {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 		+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + "," + this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 		+ this.getDepTime() + "," + this.getTripConsume() + "," + this.routeChoice + ","
-		+ this.getPassNum()+ "\r\n";
+		+ this.getPassNum() + "," + this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
+		+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
+		+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
 		try {
 			ContextCreator.agg_logger.ev_logger.write(formated_msg);
 		} catch (IOException e) {
@@ -142,7 +149,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.addPlan(this.getOriginID(),
 						p.getOriginRoad(),
 						ContextCreator.getNextTick());
-				this.servedPass += p.getNumPeople();
+				this.recordPassengerMatch(p);
 				this.passNum = this.getPassNum() + p.getNumPeople();
 			}
 			
@@ -158,8 +165,12 @@ public class ElectricTaxi extends ElectricVehicle {
 		// Check if the vehicle was on a charging route
 		if (this.onChargingRoute_ || this.getDestID() < 0) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ",4,"
-					+ this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
+					+ this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + ","
+					+ this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + ","
+					+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
+					+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
+					+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
 			try {
 				ContextCreator.agg_logger.ev_logger.write(formated_msg);
 			} catch (IOException e) {
@@ -177,7 +188,9 @@ public class ElectricTaxi extends ElectricVehicle {
 				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
 				+ "," + this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + "," + this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 				+ this.getDepTime() + "," + this.getTripConsume() + "," + this.routeChoice + ","
-				+ this.getPassNum()+ "\r\n";
+				+ this.getPassNum() + "," + this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
+				+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
+				+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
 				try {
 					ContextCreator.agg_logger.ev_logger.write(formated_msg);
 				} catch (IOException e) {
@@ -195,6 +208,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
 				Request arrived_request = this.onBoardRequests.poll();
 				this.passNum = this.passNum - arrived_request.getNumPeople(); // passenger arrived
+				this.recordPassengerDropoff(arrived_request);
 				z.taxiServedRequest += 1;
 				// if pass need to take the bus to complete his or her trip
 				if(arrived_request.lenOfActivity() >= 2){
@@ -263,6 +277,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				// Assume no waiting time for picking up, modify this line if you want to count the waiting time
 				Request pickedup_request = this.toBoardRequests.poll();
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
+				this.recordPassengerPickup(pickedup_request);
 				this.onBoardRequests.add(pickedup_request);
 
 				if(this.toBoardRequests.size() == 0) {
@@ -384,6 +399,30 @@ public class ElectricTaxi extends ElectricVehicle {
 	public void setCurrentZone(int currentZone) {
 		this.currentZone = currentZone;
 	}
+
+	private void recordPassengerPickup(Request request) {
+		if (request == null) {
+			return;
+		}
+		this.pickupRequests += 1;
+		this.pickupPassengers += request.getNumPeople();
+	}
+
+	private void recordPassengerMatch(Request request) {
+		if (request == null) {
+			return;
+		}
+		this.matchedRequests += 1;
+		this.matchedPassengers += request.getNumPeople();
+	}
+
+	private void recordPassengerDropoff(Request request) {
+		if (request == null) {
+			return;
+		}
+		this.dropoffRequests += 1;
+		this.dropoffPassengers += request.getNumPeople();
+	}
 	
 	/* Getters and setters for save/load support */
 	public int getCruisingTime() { return this.cruisingTime_; }
@@ -393,6 +432,16 @@ public class ElectricTaxi extends ElectricVehicle {
 	public Queue<Request> getOnBoardRequests() { return this.onBoardRequests; }
 	public void setToBoardRequests(Queue<Request> q) { this.toBoardRequests = q; }
 	public void setOnBoardRequests(Queue<Request> q) { this.onBoardRequests = q; }
-	public int getServedPass() { return this.servedPass; }
-	public void setServedPass(int v) { this.servedPass = v; }
+	public int getMatchedRequests() { return this.matchedRequests; }
+	public void setMatchedRequests(int v) { this.matchedRequests = v; }
+	public int getMatchedPassengers() { return this.matchedPassengers; }
+	public void setMatchedPassengers(int v) { this.matchedPassengers = v; }
+	public int getPickupRequests() { return this.pickupRequests; }
+	public void setPickupRequests(int v) { this.pickupRequests = v; }
+	public int getPickupPassengers() { return this.pickupPassengers; }
+	public void setPickupPassengers(int v) { this.pickupPassengers = v; }
+	public int getDropoffRequests() { return this.dropoffRequests; }
+	public void setDropoffRequests(int v) { this.dropoffRequests = v; }
+	public int getDropoffPassengers() { return this.dropoffPassengers; }
+	public void setDropoffPassengers(int v) { this.dropoffPassengers = v; }
 }

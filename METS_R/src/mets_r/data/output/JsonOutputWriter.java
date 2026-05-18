@@ -589,8 +589,14 @@ public class JsonOutputWriter implements DataConsumer {
 	 * @return the array of array for the given tick snapshot.
 	 */
 	public static HashMap<String, Object> createTickLines(TickSnapshot tick, int currentTick) {
-		int servedPass = 0;
-		int leftPass = 0;
+		int matchedRequests = 0;
+		int matchedPassengers = 0;
+		int pickupRequests = 0;
+		int pickupPassengers = 0;
+		int dropoffRequests = 0;
+		int dropoffPassengers = 0;
+		int leftRequests = 0;
+		int leftPassengers = 0;
 		int vehNum = 0;
 		float energyConsumption = 0;
 		float privateEVEnergy = 0;
@@ -611,6 +617,14 @@ public class JsonOutputWriter implements DataConsumer {
 			tickArray.put("energy_private_ev", 0);
 			tickArray.put("energy_etaxi", 0);
 			tickArray.put("energy_ebus", 0);
+			tickArray.put("matched_requests", 0);
+			tickArray.put("matched_passengers", 0);
+			tickArray.put("pickup_requests", 0);
+			tickArray.put("pickup_passengers", 0);
+			tickArray.put("dropoff_requests", 0);
+			tickArray.put("dropoff_passengers", 0);
+			tickArray.put("left_requests", 0);
+			tickArray.put("left_passengers", 0);
 			return tickArray; // empty array
 		}
 
@@ -640,9 +654,21 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
 			eTaxiEnergy += (float) ev.getTotalConsume();
+			matchedRequests += ev.getMatchedRequests();
+			matchedPassengers += ev.getMatchedPassengers();
+			pickupRequests += ev.getPickupRequests();
+			pickupPassengers += ev.getPickupPassengers();
+			dropoffRequests += ev.getDropoffRequests();
+			dropoffPassengers += ev.getDropoffPassengers();
 		}
 		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
 			eBusEnergy += (float) bus.getTotalConsume();
+			matchedRequests += bus.getMatchedRequests();
+			matchedPassengers += bus.getMatchedPassengers();
+			pickupRequests += bus.getPickupRequests();
+			pickupPassengers += bus.getPickupPassengers();
+			dropoffRequests += bus.getDropoffRequests();
+			dropoffPassengers += bus.getDropoffPassengers();
 		}
 		energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
 		
@@ -735,8 +761,8 @@ public class JsonOutputWriter implements DataConsumer {
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
         
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			servedPass += (z.taxiPickupRequest + z.busPickupRequest);
-			leftPass += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
+			leftRequests += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
+			leftPassengers += z.numberOfLeavedTaxiPassengers + z.numberOfLeavedBusPassengers;
 		}
 
 		if(currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
@@ -767,8 +793,16 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("ev_private", privateArrayArray);
 		tickArray.put("bus", busArrayArray);
 		tickArray.put("link", linkArrayArray);
-		tickArray.put("served", servedPass);
-		tickArray.put("left", leftPass);
+		tickArray.put("served", matchedRequests);
+		tickArray.put("left", leftRequests);
+		tickArray.put("matched_requests", matchedRequests);
+		tickArray.put("matched_passengers", matchedPassengers);
+		tickArray.put("pickup_requests", pickupRequests);
+		tickArray.put("pickup_passengers", pickupPassengers);
+		tickArray.put("dropoff_requests", dropoffRequests);
+		tickArray.put("dropoff_passengers", dropoffPassengers);
+		tickArray.put("left_requests", leftRequests);
+		tickArray.put("left_passengers", leftPassengers);
 		tickArray.put("energy", energyConsumption);
 		tickArray.put("energy_private_ev", privateEVEnergy);
 		tickArray.put("energy_etaxi", eTaxiEnergy);
@@ -804,7 +838,12 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(Math.round(ev.getBatteryLevel()*10)/10.0);
 		vehicleArray.add(Math.round(ev.getTotalEnergyConsumption()*10)/10.0);
 //		vehicleArray.add(ev.getRoadID());
-		vehicleArray.add(ev.getServedPass());
+		vehicleArray.add(ev.getMatchedRequests());
+		vehicleArray.add(ev.getMatchedPassengers());
+		vehicleArray.add(ev.getPickupRequests());
+		vehicleArray.add(ev.getPickupPassengers());
+		vehicleArray.add(ev.getDropoffRequests());
+		vehicleArray.add(ev.getDropoffPassengers());
 
 		return vehicleArray;
 	}
@@ -861,7 +900,15 @@ public class JsonOutputWriter implements DataConsumer {
 		vehicleArray.add(Math.round(bus.getBearing()*10)/10.0);
 		vehicleArray.add(Math.round(bus.getSpeed()*10)/10.0);
 		vehicleArray.add(Math.round(bus.getBatteryLevel()*10)/10.0);
-		vehicleArray.add(bus.getServedPass());
+		vehicleArray.add(bus.getMatchedRequests());
+		vehicleArray.add(bus.getMatchedPassengers());
+		vehicleArray.add(Math.round(bus.getTotalEnergyConsumption()*10)/10.0);
+		vehicleArray.add(bus.getRouteName());
+		vehicleArray.add(bus.getStopZones());
+		vehicleArray.add(bus.getPickupRequests());
+		vehicleArray.add(bus.getPickupPassengers());
+		vehicleArray.add(bus.getDropoffRequests());
+		vehicleArray.add(bus.getDropoffPassengers());
 		return vehicleArray;
 	}
 

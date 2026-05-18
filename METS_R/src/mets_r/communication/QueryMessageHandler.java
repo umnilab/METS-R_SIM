@@ -238,7 +238,9 @@ public class QueryMessageHandler extends MessageHandler {
 	 * returns the {@code id_list} of all known buses.
 	 *
 	 * <p>Output DATA: list of {@code {ID, route, stopZones, current_stop,
-	 * pass_num, battery_state}} records.
+	 * pass_num, matchedRequests, matchedPassengers, pickupRequests,
+	 * pickupPassengers, dropoffRequests, dropoffPassengers, battery_state}}
+	 * records.
 	 */
 	public  HashMap<String, Object> getBus(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -263,6 +265,12 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("stopZones", bus.getBusStops());
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
+					record2.put("matchedRequests", bus.getMatchedRequests());
+					record2.put("matchedPassengers", bus.getMatchedPassengers());
+					record2.put("pickupRequests", bus.getPickupRequests());
+					record2.put("pickupPassengers", bus.getPickupPassengers());
+					record2.put("dropoffRequests", bus.getDropoffRequests());
+					record2.put("dropoffPassengers", bus.getDropoffPassengers());
 					record2.put("battery_state", bus.getBatteryLevel());
 					jsonData.add(record2);
 				}
@@ -289,7 +297,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * returns the {@code id_list} of all known taxis.
 	 *
 	 * <p>Output DATA: list of {@code {ID, state, x, y, z, origin, dest,
-	 * pass_num}} records.
+	 * pass_num, matchedRequests, matchedPassengers, pickupRequests,
+	 * pickupPassengers, dropoffRequests, dropoffPassengers}} records.
 	 */
 	public HashMap<String, Object> getTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -316,6 +325,12 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("origin", taxi.getOriginID());
 					record2.put("dest", taxi.getDestID());
 					record2.put("pass_num", taxi.getPassNum());
+					record2.put("matchedRequests", taxi.getMatchedRequests());
+					record2.put("matchedPassengers", taxi.getMatchedPassengers());
+					record2.put("pickupRequests", taxi.getPickupRequests());
+					record2.put("pickupPassengers", taxi.getPickupPassengers());
+					record2.put("dropoffRequests", taxi.getDropoffRequests());
+					record2.put("dropoffPassengers", taxi.getDropoffPassengers());
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");

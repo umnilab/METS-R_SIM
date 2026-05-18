@@ -44,7 +44,7 @@ public class AggregatedLogger {
 		try {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "EVLog-" + timestamp + ".csv", false);
 			ev_logger = new BufferedWriter(fw);
-			ev_logger.write("tick,vehicleID,tripType,originID,destID,originRoad,destRoad,distance,departureTime,cost,choice,passNum");
+			ev_logger.write("tick,vehicleID,tripType,originID,destID,originRoad,destRoad,distance,departureTime,tripEnergy,choice,passOnBoard,matchedRequests,matchedPassengers,pickupRequests,pickupPassengers,dropoffRequests,dropoffPassengers");
 			ev_logger.newLine();
 			ev_logger.flush();
 		} catch (IOException e) {
@@ -54,7 +54,7 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "BusLog-" + timestamp + ".csv", false);
 			bus_logger = new BufferedWriter(fw);
 			bus_logger.write(
-					"tick,vehicleID,routeID,tripType,originID,destID,distance,departureTime,cost,choice,passOnBoard");
+					"tick,vehicleID,routeID,tripType,originID,destID,distance,departureTime,tripEnergy,choice,passOnBoard,matchedRequests,matchedPassengers,pickupRequests,pickupPassengers,dropoffRequests,dropoffPassengers");
 			bus_logger.newLine();
 			bus_logger.flush();
 		} catch (IOException e) {
@@ -73,11 +73,11 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "NetworkLog-" + timestamp + ".csv", false);
 			network_logger = new BufferedWriter(fw);
 			network_logger.write(
-					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiPass,generatedBusPass,"
-							+ "taxiPickupPass,busPickupPass,"
-							+ "taxiServedPass,busServedPass," 
-							+ "taxiLeavedPass,busLeavedPass,"
-							+ "numWaitingTaxiPass,numWaitingBusPass," 
+					"tick,vehOnRoad,emptyTrip,chargingTrip,generatedTaxiRequests,generatedBusRequests,"
+							+ "taxiMatchedRequests,busMatchedRequests,"
+							+ "taxiDropoffRequests,busDropoffRequests,"
+							+ "taxiLeftRequests,busLeftRequests,"
+							+ "numWaitingTaxiRequests,numWaitingBusRequests,"
 							+ "batteryMean,batteryStd,"
 							+ "generatedPrivateEVTrip, generatedPrivateGVTrip,"
 							+ "arrivedPrivateEVTrip, arrivedPrivateGVTrip,"
@@ -92,10 +92,10 @@ public class AggregatedLogger {
 			FileWriter fw = new FileWriter(outpath + File.separatorChar + "ZoneLog-" + timestamp + ".csv", false);
 			zone_logger = new BufferedWriter(fw);
 			zone_logger.write(
-					"tick,zoneID,numTaxiPass,numBusPass,vehStock,taxiGeneratedPass,busGeneratedPass,"
-							+ "taxiPickupPass,busPickupPass,"
-							+ "taxiServedPass,busServedPass,taxiServedPassWaitingTime,busServedPassWaitingTime,"
-							+ "taxiLeavedPass,busLeavedPass,taxiLeavedPassWaitingTime,busLeavedPassWaitingTime,"
+					"tick,zoneID,numTaxiRequests,numBusRequests,vehStock,taxiGeneratedRequests,busGeneratedRequests,"
+							+ "taxiMatchedRequests,busMatchedRequests,"
+							+ "taxiDropoffRequests,busDropoffRequests,taxiDropoffWaitTicks,busDropoffWaitTicks,"
+							+ "taxiLeftRequests,busLeftRequests,taxiLeftWaitTicks,busLeftWaitTicks,"
 							+ "taxiParkingTime,taxiCruisingTime,futureDemand,futureSupply,"
 							+ "generatedPrivateEVTrip,generatedPrivateGVTrip,arrivedPrivateEVTrip,arrivedPrivateGVTrip");
 			zone_logger.newLine();
@@ -129,7 +129,8 @@ public class AggregatedLogger {
 			unfinished_trip_logger.write("tick,vehicleID,vehicleClass,privateVID,routeID,tripType,status,"
 					+ "originID,destID,originRoad,destRoad,currentRoad,currentLane,distanceToNextJunction,"
 					+ "accumulatedDistance,distToTravel,departureTime,elapsedTime,currentSpeed,"
-					+ "batteryLevel,tripEnergy,routeChoice,passNum");
+					+ "batteryLevel,tripEnergy,routeChoice,passOnBoard,matchedRequests,matchedPassengers,"
+					+ "pickupRequests,pickupPassengers,dropoffRequests,dropoffPassengers");
 			unfinished_trip_logger.newLine();
 			unfinished_trip_logger.flush();
 		} catch (IOException e) {
@@ -212,6 +213,12 @@ public class AggregatedLogger {
 		int routeID = v instanceof ElectricBus ? ((ElectricBus) v).getRouteID() : -1;
 		int routeChoice = v instanceof ElectricTaxi ? ((ElectricTaxi) v).routeChoice : -1;
 		int passNum = passengerCount(v);
+		int matchedRequests = matchedRequests(v);
+		int matchedPassengers = matchedPassengers(v);
+		int pickupRequests = pickupRequests(v);
+		int pickupPassengers = pickupPassengers(v);
+		int dropoffRequests = dropoffRequests(v);
+		int dropoffPassengers = dropoffPassengers(v);
 		double batteryLevel = v instanceof ElectricVehicle ? ((ElectricVehicle) v).getBatteryLevel() : -1.0;
 		double tripEnergy = v instanceof ElectricVehicle ? ((ElectricVehicle) v).getTripConsume() : -1.0;
 		int depTime = v.getDepTime();
@@ -226,7 +233,9 @@ public class AggregatedLogger {
 				+ (currentLane == null ? -1 : currentLane.getID()) + ","
 				+ v.getDistanceToNextJunction() + "," + v.getAccummulatedDistance() + ","
 				+ v.getDistToTravel() + "," + depTime + "," + elapsedTime + "," + v.currentSpeed() + ","
-				+ batteryLevel + "," + tripEnergy + "," + routeChoice + "," + passNum;
+				+ batteryLevel + "," + tripEnergy + "," + routeChoice + "," + passNum + ","
+				+ matchedRequests + "," + matchedPassengers + "," + pickupRequests + "," + pickupPassengers + ","
+				+ dropoffRequests + "," + dropoffPassengers;
 	}
 
 	private String unfinishedStatus(Vehicle v, int tick) {
@@ -248,6 +257,66 @@ public class AggregatedLogger {
 		}
 		if (v instanceof ElectricBus) {
 			return ((ElectricBus) v).getPassNum();
+		}
+		return 0;
+	}
+
+	private int matchedRequests(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getMatchedRequests();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getMatchedRequests();
+		}
+		return 0;
+	}
+
+	private int matchedPassengers(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getMatchedPassengers();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getMatchedPassengers();
+		}
+		return 0;
+	}
+
+	private int pickupRequests(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getPickupRequests();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getPickupRequests();
+		}
+		return 0;
+	}
+
+	private int pickupPassengers(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getPickupPassengers();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getPickupPassengers();
+		}
+		return 0;
+	}
+
+	private int dropoffRequests(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getDropoffRequests();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getDropoffRequests();
+		}
+		return 0;
+	}
+
+	private int dropoffPassengers(Vehicle v) {
+		if (v instanceof ElectricTaxi) {
+			return ((ElectricTaxi) v).getDropoffPassengers();
+		}
+		if (v instanceof ElectricBus) {
+			return ((ElectricBus) v).getDropoffPassengers();
 		}
 		return 0;
 	}

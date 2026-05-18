@@ -95,16 +95,16 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		int numArrivedPrivateEVTrip = 0;
 		int numGeneratedPrivateGVTrip = 0;
 		int numArrivedPrivateGVTrip = 0;
-		int numGeneratedTaxiPass = 0;
-		int numGeneratedBusPass = 0;
-		int numWaitingTaxiPass = 0;
-		int numWaitingBusPass = 0;
-		int taxiPickupPass = 0;
-		int busPickupPass = 0;
-		int taxiServedPass = 0;
-		int busServedPass = 0;
-		int numLeavedTaxiPass = 0;
-		int numLeavedBusPass = 0;
+		int numGeneratedTaxiRequests = 0;
+		int numGeneratedBusRequests = 0;
+		int numWaitingTaxiRequests = 0;
+		int numWaitingBusRequests = 0;
+		int taxiMatchedRequests = 0;
+		int busMatchedRequests = 0;
+		int taxiDropoffRequests = 0;
+		int busDropoffRequests = 0;
+		int numLeftTaxiRequests = 0;
+		int numLeftBusRequests = 0;
 		int numRelocatedTaxi = 0;
 		int numChargedVehicle = 0;
 		double privateEVEnergy = 0;
@@ -116,17 +116,17 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		int currentTick = (int) ContextCreator.getCurrentTick();
 
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			numGeneratedTaxiPass += z.numberOfGeneratedTaxiRequest;
-			numGeneratedBusPass += z.numberOfGeneratedBusRequest;
-			taxiPickupPass += z.taxiPickupRequest;
-			busPickupPass += z.busPickupRequest;
-			taxiServedPass += z.taxiServedRequest;
-			busServedPass += z.busServedRequest;
-			numLeavedTaxiPass += z.numberOfLeavedTaxiRequest;
-			numLeavedBusPass += z.numberOfLeavedBusRequest;
+			numGeneratedTaxiRequests += z.numberOfGeneratedTaxiRequest;
+			numGeneratedBusRequests += z.numberOfGeneratedBusRequest;
+			taxiMatchedRequests += z.taxiPickupRequest;
+			busMatchedRequests += z.busPickupRequest;
+			taxiDropoffRequests += z.taxiServedRequest;
+			busDropoffRequests += z.busServedRequest;
+			numLeftTaxiRequests += z.numberOfLeavedTaxiRequest;
+			numLeftBusRequests += z.numberOfLeavedBusRequest;
 			numRelocatedTaxi += z.numberOfRelocatedVehicles;
-			numWaitingTaxiPass += z.getTaxiRequestNum();
-			numWaitingBusPass += z.getBusRequestNum();
+			numWaitingTaxiRequests += z.getTaxiRequestNum();
+			numWaitingBusRequests += z.getBusRequestNum();
 			numGeneratedPrivateEVTrip += z.numberOfGeneratedPrivateEVTrip;
 			numGeneratedPrivateGVTrip += z.numberOfGeneratedPrivateGVTrip;
 			numArrivedPrivateEVTrip += z.arrivedPrivateEVTrip;
@@ -264,10 +264,10 @@ public class DataCollectionContext extends DefaultContext<Object> {
 		battery_std = Math.sqrt(battery_std / GlobalVariables.NUM_OF_EV - battery_mean * battery_mean);
 
 		String formated_msg = currentTick + "," + vehicleOnRoad + "," + numRelocatedTaxi + "," + numChargedVehicle + ","
-				+ numGeneratedTaxiPass + "," + numGeneratedBusPass + ","
-				+ taxiPickupPass + "," + busPickupPass + "," 
-				+ taxiServedPass + "," + busServedPass + "," + numLeavedTaxiPass + "," + numLeavedBusPass + ","
-				+ numWaitingTaxiPass + "," + numWaitingBusPass + "," + battery_mean + "," + battery_std + ","
+				+ numGeneratedTaxiRequests + "," + numGeneratedBusRequests + ","
+				+ taxiMatchedRequests + "," + busMatchedRequests + ","
+				+ taxiDropoffRequests + "," + busDropoffRequests + "," + numLeftTaxiRequests + "," + numLeftBusRequests + ","
+				+ numWaitingTaxiRequests + "," + numWaitingBusRequests + "," + battery_mean + "," + battery_std + ","
 				+ numGeneratedPrivateEVTrip + "," + numGeneratedPrivateGVTrip + "," + numArrivedPrivateEVTrip + "," + numArrivedPrivateGVTrip + ","
 				+ privateEVEnergy + "," + eTaxiEnergy + "," + eBusEnergy + "," + (privateEVEnergy + eTaxiEnergy + eBusEnergy) + ","
 				+ System.currentTimeMillis();
@@ -282,9 +282,9 @@ public class DataCollectionContext extends DefaultContext<Object> {
 			ContextCreator.logger.info("tick=" + currentTick 
 					+ ", nGeneratedPrivateTrip=" + (numGeneratedPrivateEVTrip + numGeneratedPrivateGVTrip)
 					+ ", nArrivedPrivateTrip=" + (numArrivedPrivateEVTrip + numArrivedPrivateGVTrip)
-					+ ", nGeneratedPass=" + (numGeneratedTaxiPass + numGeneratedBusPass) 
-					+ ", taxiPickupPass=" + taxiPickupPass + ", busPickupPass=" + busPickupPass
-					+ ", nLeavedPass=" + (numLeavedTaxiPass + numLeavedBusPass) + ", nRelocatedVeh=" + numRelocatedTaxi
+					+ ", nGeneratedRequests=" + (numGeneratedTaxiRequests + numGeneratedBusRequests)
+					+ ", taxiMatchedRequests=" + taxiMatchedRequests + ", busMatchedRequests=" + busMatchedRequests
+					+ ", nLeftRequests=" + (numLeftTaxiRequests + numLeftBusRequests) + ", nRelocatedVeh=" + numRelocatedTaxi
 					+ ", nChargedVeh=" + numChargedVehicle);
 		}
 	}

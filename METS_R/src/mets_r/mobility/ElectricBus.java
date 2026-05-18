@@ -56,8 +56,13 @@ public class ElectricBus extends ElectricVehicle {
 	private double mass; // mass of the vehicle in kg
 	
 	/* Public variables */
-	// Service metrics
-	public int served_pass = 0;
+	// Service metrics are cumulative for the vehicle.
+	private int matchedRequests = 0;
+	private int matchedPassengers = 0;
+	private int pickupRequests = 0;
+	private int pickupPassengers = 0;
+	private int dropoffRequests = 0;
+	private int dropoffPassengers = 0;
 	
 	// Parameter to show which route has been chosen in eco-routing.
 	private int routeChoice = -1;
@@ -162,7 +167,10 @@ public class ElectricBus extends ElectricVehicle {
 		if (onChargingRoute_) {
 			String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getRouteID()
 					+ ",4," + this.getOriginID() + "," + this.getDestID() + "," + this.getAccummulatedDistance() + ","
-					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + "\r\n";
+					+ this.getDepTime() + "," + this.getTripConsume() + ",-1" + "," + this.getPassNum() + ","
+					+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
+					+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
+					+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
 			try {
 				ContextCreator.agg_logger.bus_logger.write(formated_msg);
 			} catch (IOException e) {
@@ -180,7 +188,10 @@ public class ElectricBus extends ElectricVehicle {
 				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ","
 						+ this.getRouteID() + ",3," + this.getOriginID() + "," + this.getDestID() + ","
 						+ this.getAccummulatedDistance() + "," + this.getDepTime() + "," + this.getTripConsume() + ","
-						+ this.routeChoice + "," + this.getPassNum() + "\r\n";
+						+ this.routeChoice + "," + this.getPassNum() + ","
+						+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
+						+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
+						+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
 				try {
 					ContextCreator.agg_logger.bus_logger.write(formated_msg);
 				} catch (IOException e) {
@@ -234,9 +245,11 @@ public class ElectricBus extends ElectricVehicle {
 				// Passengers get on board
 				Zone arrivedZone = ContextCreator.getZoneContext().get(this.stopZones.get(this.nextStop));
 				delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
-				for(Request p: this.toBoardRequests.get(this.nextStop)) {
-					this.pickUpPassenger(p);
+				Queue<Request> boardingRequests = this.toBoardRequests.get(this.nextStop);
+				for(Request p: boardingRequests) {
+					this.pickUpMatchedPassenger(p);
 				}
+				boardingRequests.clear();
 				
 				this.nextStop ++;
 				
@@ -261,9 +274,24 @@ public class ElectricBus extends ElectricVehicle {
 	
 	// To add delay in boarding or taking off the bus, modify the following functions
 	public int pickUpPassenger(Request p) {
+		return this.pickUpPassenger(p, false);
+	}
+
+	public int pickUpMatchedPassenger(Request p) {
+		return this.pickUpPassenger(p, true);
+	}
+
+	private int pickUpPassenger(Request p, boolean alreadyMatched) {
+		if (p == null) {
+			return 0;
+		}
 		this.onBoardRequests.get(this.zoneStops.get(p.getDestZone())).add(p);
 		p.pickupTime = ContextCreator.getCurrentTick();
-		this.served_pass += p.getNumPeople();
+		if (!alreadyMatched) {
+			this.recordPassengerMatch(p);
+		}
+		this.pickupRequests += 1;
+		this.pickupPassengers += p.getNumPeople();
 		this.passNum = this.getPassNum() + p.getNumPeople();
 		if(this.passNum > this.numSeat) {
 			ContextCreator.logger.error("Bus " + this.getID() + " has " + this.passNum + " passengers which exceed its capacity " + this.numSeat);
@@ -272,8 +300,10 @@ public class ElectricBus extends ElectricVehicle {
 	}
 	
 	public int dropOffPassenger(int stopIndex) {
-		for(Request arrived_request: this.onBoardRequests.get(stopIndex)) {
+		Queue<Request> arrivingRequests = this.onBoardRequests.get(stopIndex);
+		for(Request arrived_request: arrivingRequests) {
 			this.passNum = this.passNum - arrived_request.getNumPeople();
+			this.recordPassengerDropoff(arrived_request);
 			if(arrived_request.lenOfActivity() >= 2){
 				// generate a pass and add it to the corresponding zone
 				arrived_request.moveToNextActivity();
@@ -294,6 +324,7 @@ public class ElectricBus extends ElectricVehicle {
 				}
 			}
 		}
+		arrivingRequests.clear();
 		return 0;
 	}
 	
@@ -321,9 +352,26 @@ public class ElectricBus extends ElectricVehicle {
 		int originStopIndex = servableBoardStopIndex(p);
 		if (originStopIndex >= 0) {
 			this.toBoardRequests.get(originStopIndex).add(p);
+			this.recordPassengerMatch(p);
 			return true;
 		}
 		return false;
+	}
+
+	private void recordPassengerMatch(Request request) {
+		if (request == null) {
+			return;
+		}
+		this.matchedRequests += 1;
+		this.matchedPassengers += request.getNumPeople();
+	}
+
+	private void recordPassengerDropoff(Request request) {
+		if (request == null) {
+			return;
+		}
+		this.dropoffRequests += 1;
+		this.dropoffPassengers += request.getNumPeople();
 	}
 
 	public int getPassNum() {
@@ -340,6 +388,13 @@ public class ElectricBus extends ElectricVehicle {
 
 	public int getRouteID() {
 		return this.routeID;
+	}
+
+	public String getRouteName() {
+		if (ContextCreator.bus_schedule == null) {
+			return null;
+		}
+		return ContextCreator.bus_schedule.getRouteName(this.routeID);
 	}
 
 	@Override
@@ -429,8 +484,18 @@ public class ElectricBus extends ElectricVehicle {
 	public int getNextStop() { return this.nextStop; }
 	public void setNextStop(int v) { this.nextStop = v; }
 	public void setPassNum(int v) { this.passNum = v; }
-	public int getServedPass() { return this.served_pass; }
-	public void setServedPass(int v) { this.served_pass = v; }
+	public int getMatchedRequests() { return this.matchedRequests; }
+	public void setMatchedRequests(int v) { this.matchedRequests = v; }
+	public int getMatchedPassengers() { return this.matchedPassengers; }
+	public void setMatchedPassengers(int v) { this.matchedPassengers = v; }
+	public int getPickupRequests() { return this.pickupRequests; }
+	public void setPickupRequests(int v) { this.pickupRequests = v; }
+	public int getPickupPassengers() { return this.pickupPassengers; }
+	public void setPickupPassengers(int v) { this.pickupPassengers = v; }
+	public int getDropoffRequests() { return this.dropoffRequests; }
+	public void setDropoffRequests(int v) { this.dropoffRequests = v; }
+	public int getDropoffPassengers() { return this.dropoffPassengers; }
+	public void setDropoffPassengers(int v) { this.dropoffPassengers = v; }
 	public ArrayList<Queue<Request>> getToBoardRequests() { return this.toBoardRequests; }
 	public ArrayList<Queue<Request>> getOnBoardRequests() { return this.onBoardRequests; }
 }
