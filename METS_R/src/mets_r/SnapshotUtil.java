@@ -353,6 +353,11 @@ public class SnapshotUtil {
 		m.put("currentFlow", r.currentFlow);
 		m.put("totalFlow", r.totalFlow);
 		m.put("prevFlow", r.prevFlow);
+		ArrayList<Integer> enteringVehicleIDs = new ArrayList<>();
+		for (Vehicle v : r.getEnteringVehicleQueueSnapshot()) {
+			enteringVehicleIDs.add(v.getID());
+		}
+		m.put("enteringVehicleQueue", enteringVehicleIDs);
 		return m;
 	}
 
@@ -440,7 +445,6 @@ public class SnapshotUtil {
 		return expected.equals(new HashSet<Integer>(currentIDs));
 	}
 
-	@SuppressWarnings("unchecked")
 	public static void restoreToCurrentContexts(SimulationSnapshot snapshot) {
 		if (snapshot == null) {
 			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
@@ -461,6 +465,7 @@ public class SnapshotUtil {
 		}
 
 		HashMap<Integer, HashMap<String, Object>> roadStateMap = mapByID(snapshot.roadSnapshots);
+		ContextCreator.coSimRoads.clear();
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
 			HashMap<String, Object> rs = roadStateMap.get(r.getID());
 			if (rs != null) {
@@ -473,6 +478,9 @@ public class SnapshotUtil {
 						toInt(rs.get("totalFlow")),
 						toInt(rs.get("prevFlow")),
 						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE);
+				if (r.getControlType() == Road.COSIM) {
+					ContextCreator.coSimRoads.put(r.getOrigID(), r);
+				}
 			}
 		}
 		ContextCreator.getCityContext().refreshRoadNetworkWeights();
@@ -563,6 +571,7 @@ public class SnapshotUtil {
 		}
 
 		HashMap<Integer, Vehicle> restoredVehicleMap = restoreVehicles(snapshot.vehicleSnapshots);
+		restoreRoadEnteringQueues(snapshot.roadSnapshots, restoredVehicleMap);
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			HashMap<String, Object> css = csStateMap.get(cs.getID());
@@ -604,6 +613,8 @@ public class SnapshotUtil {
 		globalState.put("globalRandom", serializeRandom(GlobalVariables.RandomGenerator));
 		globalState.put("bsmRandom", serializeRandom(BSMDataStream.getRandom()));
 		globalState.put("initTick", ContextCreator.initTick);
+		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
+		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
 
 		// 2. Collect all vehicle snapshots
 		ArrayList<HashMap<String, Object>> vehicleSnapshots = new ArrayList<>();
@@ -649,7 +660,13 @@ public class SnapshotUtil {
 			roadSnapshots.add(snapshotRoad(r));
 		}
 
-		// 7. Write everything to a zip
+		// 7. Lane snapshots (dynamic state only)
+		ArrayList<HashMap<String, Object>> laneSnapshots = new ArrayList<>();
+		for (Lane l : ContextCreator.getLaneContext().getAll()) {
+			laneSnapshots.add(snapshotLane(l));
+		}
+
+		// 8. Write everything to a zip
 		File zipFile = new File(zipPath);
 		if (zipFile.getParentFile() != null) {
 			zipFile.getParentFile().mkdirs();
@@ -677,6 +694,9 @@ public class SnapshotUtil {
 
 			// roads.json
 			writeZipEntry(zos, "roads.json", gson.toJson(roadSnapshots).getBytes("UTF-8"));
+
+			// lanes.json
+			writeZipEntry(zos, "lanes.json", gson.toJson(laneSnapshots).getBytes("UTF-8"));
 		}
 
 		ContextCreator.logger.info("Simulation state saved successfully to: " + zipPath);
@@ -713,7 +733,6 @@ public class SnapshotUtil {
 	// ------------------------------------------------------------------ //
 	//                     Top-level LOAD                                  //
 	// ------------------------------------------------------------------ //
-	@SuppressWarnings("unchecked")
 	public static void loadFromZip(String zipPath) throws IOException {
 		ContextCreator.logger.info("Loading simulation state from: " + zipPath);
 
@@ -776,6 +795,11 @@ public class SnapshotUtil {
 				new String(entries.get("roads.json"), "UTF-8"),
 				new TypeToken<ArrayList<HashMap<String, Object>>>() {}.getType());
 
+		ArrayList<HashMap<String, Object>> laneSnapshots = entries.containsKey("lanes.json")
+				? gson.fromJson(new String(entries.get("lanes.json"), "UTF-8"),
+						new TypeToken<ArrayList<HashMap<String, Object>>>() {}.getType())
+				: new ArrayList<HashMap<String, Object>>();
+
 		// 3. Restore global state
 		int savedTick = toInt(globalState.get("currentTick"));
 		int savedAgentID = toInt(globalState.get("agentID"));
@@ -794,28 +818,55 @@ public class SnapshotUtil {
 
 		// 5. Restore agent ID counter
 		setAgentIDCounter(savedAgentID);
+		if (globalState.containsKey("zoneNum")) {
+			ContextCreator.getZoneContext().ZONE_NUM = toInt(globalState.get("zoneNum"));
+		}
+		if (globalState.containsKey("hubIndexes")) {
+			ContextCreator.getZoneContext().HUB_INDEXES.clear();
+			ContextCreator.getZoneContext().HUB_INDEXES.addAll(toIntList((List<?>) globalState.get("hubIndexes")));
+		}
 
-		// 6. Restore road dynamic state
+		// 6. Restore lane dynamic state
+		HashMap<Integer, HashMap<String, Object>> laneStateMap = new HashMap<>();
+		for (HashMap<String, Object> ls : laneSnapshots) {
+			laneStateMap.put(toInt(ls.get("id")), ls);
+		}
+		for (Lane l : ContextCreator.getLaneContext().getAll()) {
+			HashMap<String, Object> ls = laneStateMap.get(l.getID());
+			if (ls != null) {
+				l.restoreRuntimeState(toDouble(ls.get("speed")), deserializeRandom((String) ls.get("rand")));
+			}
+		}
+
+		// 7. Restore road dynamic state
 		HashMap<Integer, HashMap<String, Object>> roadStateMap = new HashMap<>();
 		for (HashMap<String, Object> rs : roadSnapshots) {
 			roadStateMap.put(toInt(rs.get("id")), rs);
 		}
+		ContextCreator.coSimRoads.clear();
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
 			HashMap<String, Object> rs = roadStateMap.get(r.getID());
 			if (rs != null) {
-				r.setSpeedLimit(toDouble(rs.get("speedLimit")));
-				r.currentEnergy = toDouble(rs.get("currentEnergy"));
-				r.totalEnergy = toDouble(rs.get("totalEnergy"));
-				r.currentFlow = toInt(rs.get("currentFlow"));
-				r.totalFlow = toInt(rs.get("totalFlow"));
-				r.prevFlow = toInt(rs.get("prevFlow"));
+				r.restoreRuntimeState(
+						toDouble(rs.get("travelTime")),
+						toDouble(rs.get("speedLimit")),
+						toDouble(rs.get("currentEnergy")),
+						toDouble(rs.get("totalEnergy")),
+						toInt(rs.get("currentFlow")),
+						toInt(rs.get("totalFlow")),
+						toInt(rs.get("prevFlow")),
+						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE);
+				if (r.getControlType() == Road.COSIM) {
+					ContextCreator.coSimRoads.put(r.getOrigID(), r);
+				}
 			}
 		}
+		ContextCreator.getCityContext().refreshRoadNetworkWeights();
 		
 //		ContextCreator.logger.info("Loaded road snapshots");
 
 
-		// 7. Restore signal state
+		// 8. Restore signal state
 		HashMap<Integer, HashMap<String, Object>> signalStateMap = new HashMap<>();
 		for (HashMap<String, Object> ss : signalSnapshots) {
 			signalStateMap.put(toInt(ss.get("id")), ss);
@@ -833,7 +884,7 @@ public class SnapshotUtil {
 //		ContextCreator.logger.info("Loaded signal snapshots");
 
 
-		// 8. Restore zone dynamic state
+		// 9. Restore zone dynamic state
 		HashMap<Integer, HashMap<String, Object>> zoneStateMap = new HashMap<>();
 		for (HashMap<String, Object> zs : zoneSnapshots) {
 			zoneStateMap.put(toInt(zs.get("id")), zs);
@@ -896,7 +947,7 @@ public class SnapshotUtil {
 
 //		ContextCreator.logger.info("Loaded zone snapshots");
 		
-		// 9. Restore charging station state (after vehicles are created)
+		// 10. Restore charging station state (after vehicles are created)
 		// We'll do this in two phases: first restore pricing/metrics/random, then queues
 
 		HashMap<Integer, HashMap<String, Object>> csStateMap = new HashMap<>();
@@ -915,7 +966,7 @@ public class SnapshotUtil {
 		
 //		ContextCreator.logger.info("Loaded cs snapshots");
 
-		// 10. Restore vehicles
+		// 11. Restore vehicles
 		// rebuildForLoad already created an empty VehicleContext, so no cleanup needed
 		HashMap<Integer, Vehicle> restoredVehicleMap = new HashMap<>();
 		VehicleContext vc = ContextCreator.getVehicleContext();
@@ -1081,7 +1132,9 @@ public class SnapshotUtil {
 		}
 //		ContextCreator.logger.info("Loaded vehicle snapshots");
 
-		// 11. Restore charging station queues (now that vehicles are created)
+		restoreRoadEnteringQueues(roadSnapshots, restoredVehicleMap);
+
+		// 12. Restore charging station queues (now that vehicles are created)
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			HashMap<String, Object> css = csStateMap.get(cs.getID());
 			if (css == null) continue;
@@ -1101,7 +1154,6 @@ public class SnapshotUtil {
 	//                     Vehicle restore helpers                         //
 	// ------------------------------------------------------------------ //
 
-	@SuppressWarnings("unchecked")
 	private static HashMap<Integer, Vehicle> restoreVehicles(ArrayList<HashMap<String, Object>> vehicleSnapshots) {
 		HashMap<Integer, Vehicle> restoredVehicleMap = new HashMap<>();
 		VehicleContext vc = ContextCreator.getVehicleContext();
@@ -1344,11 +1396,28 @@ public class SnapshotUtil {
 		if (vs.containsKey("initialChargingState")) ev.setInitialChargingState(toDouble(vs.get("initialChargingState")));
 	}
 
+	private static void restoreRoadEnteringQueues(ArrayList<HashMap<String, Object>> roadSnapshots,
+			HashMap<Integer, Vehicle> restoredVehicleMap) {
+		if (roadSnapshots == null || restoredVehicleMap == null) return;
+		for (HashMap<String, Object> rs : roadSnapshots) {
+			if (rs == null) continue;
+			Road road = ContextCreator.getRoadContext().get(toInt(rs.get("id")));
+			if (road == null) continue;
+			ArrayList<Vehicle> queue = new ArrayList<Vehicle>();
+			for (int vehicleID : toIntList((List<?>) rs.get("enteringVehicleQueue"))) {
+				Vehicle vehicle = restoredVehicleMap.get(vehicleID);
+				if (vehicle != null) {
+					queue.add(vehicle);
+				}
+			}
+			road.restoreEnteringVehicleQueue(queue);
+		}
+	}
+
 	// ------------------------------------------------------------------ //
 	//               Request and queue restore helpers                     //
 	// ------------------------------------------------------------------ //
 
-	@SuppressWarnings("unchecked")
 	private static void restoreRequestQueue(Queue<Request> queue, List<?> data) {
 		if (data == null || queue == null) return;
 		for (Object obj : data) {

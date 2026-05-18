@@ -5,6 +5,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Random;
 
@@ -48,6 +49,9 @@ public class QueryMessageHandler extends MessageHandler {
         // Roads & geometry
         // =============================================================
         messageHandlers.put("road", this::getRoad);
+        messageHandlers.put("enteringVehicleQueue", this::getEnteringVehicleQueue);
+        messageHandlers.put("coSimEnteringVehicleQueue", this::getCoSimEnteringVehicleQueue);
+        messageHandlers.put("cosimEnteringVehicleQueue", this::getCoSimEnteringVehicleQueue);
         messageHandlers.put("centerLine", this::getCenterLine);
         
         // =============================================================
@@ -399,6 +403,152 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	/**
+	 * Query vehicles waiting to enter one or more roads from the road departure
+	 * queue. For co-simulation roads, this is the queue that is intentionally
+	 * held until the external simulator releases the head vehicle.
+	 *
+	 * <p>Input DATA: list of original road IDs, or records carrying
+	 * {@code roadID}/{@code ID}/{@code origID}. If omitted, all road IDs are
+	 * returned.
+	 */
+	public HashMap<String, Object> getEnteringVehicleQueue(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			return jsonObj;
+		}
+		try {
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (String roadID : parseRoadIDs(jsonMsg.get("DATA"))) {
+				Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+				if (road != null) {
+					jsonData.add(roadEnteringQueueRecord(road));
+				} else {
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					record.put("ID", roadID);
+					record.put("STATUS", "KO");
+					jsonData.add(record);
+				}
+			}
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing query: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	/**
+	 * Convenience query for every co-simulation road's entering queue.
+	 */
+	public HashMap<String, Object> getCoSimEnteringVehicleQueue(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (Road road : ContextCreator.coSimRoads.values()) {
+				jsonData.add(roadEnteringQueueRecord(road));
+			}
+			jsonObj.put("DATA", jsonData);
+			return jsonObj;
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing query: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	private HashMap<String, Object> roadEnteringQueueRecord(Road road) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		ArrayList<Integer> ids = new ArrayList<Integer>();
+		ArrayList<Object> queue = new ArrayList<Object>();
+		int tick = ContextCreator.getCurrentTick();
+		for (Vehicle vehicle : road.getEnteringVehicleQueueSnapshot()) {
+			int visibleID = bridgeVehicleID(vehicle);
+			ids.add(visibleID);
+			HashMap<String, Object> vehicleRecord = new HashMap<String, Object>();
+			vehicleRecord.put("ID", visibleID);
+			vehicleRecord.put("internalID", vehicle.getID());
+			vehicleRecord.put("v_type", bridgeVehicleType(vehicle));
+			vehicleRecord.put("vehicleClass", vehicle.getVehicleClass());
+			vehicleRecord.put("departureTick", vehicle.getDepTime());
+			vehicleRecord.put("ready", tick >= vehicle.getDepTime());
+			queue.add(vehicleRecord);
+		}
+		record.put("ID", road.getOrigID());
+		record.put("internalID", road.getID());
+		record.put("controlType", road.getControlType());
+		record.put("enteringVehicleIDs", ids);
+		record.put("queue", queue);
+		record.put("STATUS", "OK");
+		return record;
+	}
+
+	private int bridgeVehicleID(Vehicle vehicle) {
+		if (bridgeVehicleType(vehicle)) {
+			int privateID = ContextCreator.getVehicleContext().getPrivateVID(vehicle.getID());
+			return privateID >= 0 ? privateID : vehicle.getID();
+		}
+		return vehicle.getID();
+	}
+
+	private boolean bridgeVehicleType(Vehicle vehicle) {
+		return vehicle.getVehicleClass() == Vehicle.EV || vehicle.getVehicleClass() == Vehicle.GV;
+	}
+
+	private ArrayList<String> parseRoadIDs(Object data) {
+		ArrayList<String> roadIDs = new ArrayList<String>();
+		if (data instanceof Map<?, ?>) {
+			String roadID = roadIDFromEntry(data);
+			if (roadID != null && !roadID.isEmpty()) roadIDs.add(roadID);
+		} else if (data instanceof Collection<?>) {
+			for (Object entry : (Collection<?>) data) {
+				String roadID = roadIDFromEntry(entry);
+				if (roadID != null && !roadID.isEmpty()) roadIDs.add(roadID);
+			}
+		} else if (data != null) {
+			String value = data.toString();
+			if (value.startsWith("[")) {
+				Gson gson = new Gson();
+				TypeToken<Collection<Object>> collectionType = new TypeToken<Collection<Object>>() {};
+				Collection<Object> parsed = gson.fromJson(value, collectionType.getType());
+				if (parsed != null) {
+					for (Object entry : parsed) {
+						String roadID = roadIDFromEntry(entry);
+						if (roadID != null && !roadID.isEmpty()) roadIDs.add(roadID);
+					}
+				}
+			} else if (value.startsWith("{")) {
+				Gson gson = new Gson();
+				Map<?, ?> parsed = gson.fromJson(value, Map.class);
+				String roadID = roadIDFromEntry(parsed);
+				if (roadID != null && !roadID.isEmpty()) roadIDs.add(roadID);
+			} else if (!value.isEmpty()) {
+				roadIDs.add(value);
+			}
+		}
+		return roadIDs;
+	}
+
+	private String roadIDFromEntry(Object entry) {
+		if (entry == null) return null;
+		if (entry instanceof Map<?, ?>) {
+			Map<?, ?> record = (Map<?, ?>) entry;
+			Object value = firstPresent(record, "roadID", "ID", "origID", "orig_id");
+			return value == null ? null : String.valueOf(value);
+		}
+		return String.valueOf(entry);
+	}
+
+	private Object firstPresent(Map<?, ?> record, String... keys) {
+		for (String key : keys) {
+			if (record.containsKey(key)) return record.get(key);
+		}
+		return null;
 	}
 	
 	/**

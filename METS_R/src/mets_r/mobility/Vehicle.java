@@ -342,7 +342,7 @@ public class Vehicle {
 	 */
 	public boolean enterNetwork(Road road) {
 		Lane firstlane = road.firstLane(); // First lane is the right lane, which is closest to the outside street
-		return enterNetwork(road, firstlane);
+		return enterNetwork(road, firstlane, false);
 	}
 	
 	/**
@@ -351,8 +351,27 @@ public class Vehicle {
 	 * @return Whether the road successfully enter the road 
 	 */
 	public boolean enterNetwork(Road road, Lane lane) {
+		return enterNetwork(road, lane, false);
+	}
+
+	/**
+	 * Vehicle enters a co-simulation road after the external simulator has
+	 * explicitly released it from the road's entering queue.
+	 */
+	public boolean enterNetworkByControl(Road road) {
+		Lane firstlane = road.firstLane();
+		return enterNetwork(road, firstlane, true);
+	}
+
+	public boolean enterNetworkByControl(Road road, Lane lane) {
+		return enterNetwork(road, lane, true);
+	}
+
+	private boolean enterNetwork(Road road, Lane lane, boolean allowCoSimEntry) {
 		// Sanity check
+		if (road == null || lane == null) return false;
 		if(lane.getRoad() != road) return false;
+		if (road.getControlType() == Road.COSIM && !allowCoSimEntry) return false;
 		
 		// Guard: if vehicle is already counted on a road, remove it first to
 		// prevent double-incrementing nVehicles_ (e.g. when a vehicle ended up

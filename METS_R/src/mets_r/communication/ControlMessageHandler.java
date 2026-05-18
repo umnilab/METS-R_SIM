@@ -85,6 +85,9 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
 		messageHandlers.put("teleportCoSimVeh", this::teleportCoSimVeh);
 		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
+		messageHandlers.put("enterRoadFromQueue", this::enterRoadFromQueue);
+		messageHandlers.put("allowRoadVehicleEnter", this::enterRoadFromQueue);
+		messageHandlers.put("releaseEnteringVehicle", this::enterRoadFromQueue);
 		
 		// =============================================================
 		// Vehicle runtime control
@@ -2758,6 +2761,101 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	/**
+	 * Release a vehicle from a road's entering-network queue.
+	 * Co-simulation roads do not process this queue automatically; the
+	 * external simulator should call this API once it is ready to spawn a
+	 * queued vehicle for the road. The preferred selector is vehicle ID so
+	 * the external simulator can choose an order that differs from METS-R's
+	 * departure queue order.
+	 *
+	 * <p>Input DATA: list of vehicle IDs, or records carrying
+	 * {@code vehID}/{@code vehicleID}/{@code ID}, optional
+	 * {@code vehType}/{@code v_type}, and optional {@code roadID}. If
+	 * {@code roadID} is omitted the co-simulation road queues are searched.
+	 * For backward compatibility, a road-only record releases that road's
+	 * queue head.
+	 */
+	private HashMap<String, Object> enterRoadFromQueue(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				for (EnterRoadQueueRequest request : parseEnterRoadQueueRequests(jsonMsg.get("DATA"))) {
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					if (request.vehID != null) record.put("vehicleID", request.vehID);
+					if (request.internalVehicleID != null) record.put("internalVehicleID", request.internalVehicleID);
+					if (request.vehType != null) record.put("v_type", request.vehType);
+					if (request.roadID != null) record.put("roadID", request.roadID);
+
+					QueuedVehicleMatch match = findQueuedEnteringVehicle(request);
+					Road road = match == null ? null : match.road;
+					Vehicle vehicle = match == null ? null : match.vehicle;
+					if (road == null) {
+						record.put("STATUS", "KO");
+						record.put("WARN", request.vehID != null || request.internalVehicleID != null
+								? "vehicle not found in entering queues" : "road not found");
+						jsonData.add(record);
+						continue;
+					}
+
+					record.put("roadID", road.getOrigID());
+					record.put("controlType", road.getControlType());
+
+					if (vehicle == null) {
+						record.put("STATUS", "EMPTY");
+						record.put("queueSize", 0);
+						jsonData.add(record);
+						continue;
+					}
+
+					int visibleVehicleID = bridgeVehicleID(vehicle);
+					record.put("vehicleID", visibleVehicleID);
+					record.put("internalVehicleID", vehicle.getID());
+					record.put("v_type", bridgeVehicleType(vehicle));
+					record.put("departureTick", vehicle.getDepTime());
+
+					int tick = ContextCreator.getCurrentTick();
+					if (tick < vehicle.getDepTime()) {
+						record.put("STATUS", "WAITING_DEPARTURE_TIME");
+						record.put("queueSize", road.getEnteringVehicleQueueSnapshot().size());
+						jsonData.add(record);
+						continue;
+					}
+
+					Coordinate cur = vehicle.getCurrentCoord();
+					Coordinate dst = vehicle.getDestCoord();
+					boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
+					if (originEqualsDest || ((vehicle.getState() == Vehicle.BUS_TRIP)
+							&& (vehicle.getOriginID() == vehicle.getDestID()))) {
+						road.removeVehicleFromNewQueue(vehicle.getDepTime(), vehicle);
+						ContextCreator.getVehicleContext().addArrivalVehicles(vehicle);
+						record.put("STATUS", "ARRIVED");
+					} else if (vehicle.enterNetworkByControl(road)) {
+						road.removeVehicleFromNewQueue(vehicle.getDepTime(), vehicle);
+						record.put("STATUS", "OK");
+					} else {
+						record.put("STATUS", "BLOCKED");
+						record.put("WARN", "vehicle could not enter road");
+					}
+					record.put("queueSize", road.getEnteringVehicleQueueSnapshot().size());
+					jsonData.add(record);
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+			    ContextCreator.logger.error("Error processing control enterRoadFromQueue: " + e.getMessage(), e);
+			    jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+
+	/**
 	 * Dynamically adds one or more roads, including generated lanes offset from
 	 * the supplied centerline.
 	 * <p>Input DATA: list of {@code {origID/orig_id, centerline, upStreamRoad,
@@ -3408,6 +3506,169 @@ public class ControlMessageHandler extends MessageHandler {
 			nextID++;
 		}
 		return nextID;
+	}
+
+	private static class EnterRoadQueueRequest {
+		Integer vehID;
+		Integer internalVehicleID;
+		Boolean vehType;
+		String roadID;
+	}
+
+	private static class QueuedVehicleMatch {
+		Road road;
+		Vehicle vehicle;
+
+		QueuedVehicleMatch(Road road, Vehicle vehicle) {
+			this.road = road;
+			this.vehicle = vehicle;
+		}
+	}
+
+	private ArrayList<EnterRoadQueueRequest> parseEnterRoadQueueRequests(Object data) {
+		ArrayList<EnterRoadQueueRequest> requests = new ArrayList<EnterRoadQueueRequest>();
+		if (data instanceof Map<?, ?>) {
+			requests.add(enterRoadQueueRequestFromEntry(data));
+		} else if (data instanceof Collection<?>) {
+			for (Object entry : (Collection<?>) data) {
+				requests.add(enterRoadQueueRequestFromEntry(entry));
+			}
+		} else if (data != null) {
+			String value = data.toString().trim();
+			if (value.startsWith("[")) {
+				Gson gson = new Gson();
+				TypeToken<Collection<Object>> collectionType = new TypeToken<Collection<Object>>() {};
+				Collection<Object> parsed = gson.fromJson(value, collectionType.getType());
+				if (parsed != null) {
+					for (Object entry : parsed) {
+						requests.add(enterRoadQueueRequestFromEntry(entry));
+					}
+				}
+			} else if (value.startsWith("{")) {
+				Gson gson = new Gson();
+				Map<?, ?> parsed = gson.fromJson(value, Map.class);
+				requests.add(enterRoadQueueRequestFromEntry(parsed));
+			} else if (!value.isEmpty()) {
+				requests.add(enterRoadQueueRequestFromEntry(value));
+			}
+		}
+		return requests;
+	}
+
+	private EnterRoadQueueRequest enterRoadQueueRequestFromEntry(Object entry) {
+		EnterRoadQueueRequest request = new EnterRoadQueueRequest();
+		if (entry == null) return request;
+		if (entry instanceof Map<?, ?>) {
+			Map<?, ?> record = (Map<?, ?>) entry;
+			request.vehID = integerValue(firstPresent(record, "vehID", "vehicleID"));
+			request.internalVehicleID = integerValue(firstPresent(record, "internalVehicleID", "internalID"));
+			request.vehType = booleanValue(firstPresent(record, "vehType", "v_type"));
+			request.roadID = stringValue(firstPresent(record, "roadID", "road", "origID", "orig_id"));
+			Object idValue = firstPresent(record, "ID");
+			if (request.vehID == null && request.internalVehicleID == null) {
+				Integer idAsVehicle = integerValue(idValue);
+				if (idAsVehicle != null) {
+					request.vehID = idAsVehicle;
+				} else if (request.roadID == null) {
+					request.roadID = stringValue(idValue);
+				}
+			} else if (request.roadID == null && idValue != null && integerValue(idValue) == null) {
+				request.roadID = stringValue(idValue);
+			}
+		} else {
+			Integer idAsVehicle = integerValue(entry);
+			if (idAsVehicle != null) {
+				request.vehID = idAsVehicle;
+			} else {
+				request.roadID = stringValue(entry);
+			}
+		}
+		return request;
+	}
+
+	private QueuedVehicleMatch findQueuedEnteringVehicle(EnterRoadQueueRequest request) {
+		if (request.roadID != null && !request.roadID.isEmpty()) {
+			Road road = ContextCreator.getCityContext().findRoadWithOrigID(request.roadID);
+			if (road == null) return null;
+			road.addVehicleToDepartureMap();
+			if (request.vehID == null && request.internalVehicleID == null) {
+				return new QueuedVehicleMatch(road, road.departureVehicleQueueHead());
+			}
+			Vehicle vehicle = findVehicleInRoadQueue(road, request);
+			return vehicle == null ? null : new QueuedVehicleMatch(road, vehicle);
+		}
+
+		if (request.vehID == null && request.internalVehicleID == null) return null;
+		for (Road road : ContextCreator.coSimRoads.values()) {
+			road.addVehicleToDepartureMap();
+			Vehicle vehicle = findVehicleInRoadQueue(road, request);
+			if (vehicle != null) return new QueuedVehicleMatch(road, vehicle);
+		}
+		return null;
+	}
+
+	private Vehicle findVehicleInRoadQueue(Road road, EnterRoadQueueRequest request) {
+		for (Vehicle vehicle : road.getEnteringVehicleQueueSnapshot()) {
+			if (matchesEnteringVehicle(vehicle, request)) return vehicle;
+		}
+		return null;
+	}
+
+	private boolean matchesEnteringVehicle(Vehicle vehicle, EnterRoadQueueRequest request) {
+		if (request.internalVehicleID != null && request.internalVehicleID.intValue() != vehicle.getID()) {
+			return false;
+		}
+		if (request.vehType != null && request.vehType.booleanValue() != bridgeVehicleType(vehicle)) {
+			return false;
+		}
+		if (request.vehID != null && request.vehID.intValue() != bridgeVehicleID(vehicle)) {
+			return false;
+		}
+		return request.vehID != null || request.internalVehicleID != null;
+	}
+
+	private int bridgeVehicleID(Vehicle vehicle) {
+		if (bridgeVehicleType(vehicle)) {
+			int privateID = ContextCreator.getVehicleContext().getPrivateVID(vehicle.getID());
+			return privateID >= 0 ? privateID : vehicle.getID();
+		}
+		return vehicle.getID();
+	}
+
+	private boolean bridgeVehicleType(Vehicle vehicle) {
+		return vehicle.getVehicleClass() == Vehicle.EV || vehicle.getVehicleClass() == Vehicle.GV;
+	}
+
+	private Object firstPresent(Map<?, ?> record, String... keys) {
+		for (String key : keys) {
+			if (record.containsKey(key)) return record.get(key);
+		}
+		return null;
+	}
+
+	private Integer integerValue(Object value) {
+		if (value == null) return null;
+		if (value instanceof Number) return Integer.valueOf(((Number) value).intValue());
+		try {
+			return Integer.valueOf(String.valueOf(value));
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	private Boolean booleanValue(Object value) {
+		if (value == null) return null;
+		if (value instanceof Boolean) return (Boolean) value;
+		String text = String.valueOf(value);
+		if ("true".equalsIgnoreCase(text)) return Boolean.TRUE;
+		if ("false".equalsIgnoreCase(text)) return Boolean.FALSE;
+		if ("1".equals(text)) return Boolean.TRUE;
+		if ("0".equals(text)) return Boolean.FALSE;
+		return null;
+	}
+
+	private String stringValue(Object value) {
+		return value == null ? null : String.valueOf(value);
 	}
 
 	private ArrayList<Coordinate> parseRoadCenterline(RoadParams p) throws TransformException {

@@ -181,28 +181,30 @@ public class Road {
 		}
 
 		/* Vehicle departure */
-		while (!this.departureVehMap.isEmpty()) {
-		    Vehicle v = this.departureVehicleQueueHead();
-		    int departTime = v.getDepTime();
-		    if (tickcount >= departTime) {
-		        // Use value-based equality for Coordinates: getCurrentCoord()/getDestCoord() return
-		        // freshly allocated Coordinate copies, so '==' would always be false and the
-		        // origin-equals-destination shortcut would never trigger, leaving such trips
-		        // stranded in the network and inflating nVehicles_.
-		        Coordinate cur = v.getCurrentCoord();
-		        Coordinate dst = v.getDestCoord();
-		        boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
-		        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) { 
-		            this.removeVehicleFromNewQueue(departTime, v);
-		            ContextCreator.getVehicleContext().addArrivalVehicles(v);
-		        } else if (v.enterNetwork(this)) {
-		            this.removeVehicleFromNewQueue(departTime, v);
-		        } else {
-		            break; // Network is full, stop processing departures
-		        }
-		    } else {
-		        break; // Reached vehicles scheduled for future ticks
-		    }
+		if (this.getControlType() != Road.COSIM) {
+			while (!this.departureVehMap.isEmpty()) {
+			    Vehicle v = this.departureVehicleQueueHead();
+			    int departTime = v.getDepTime();
+			    if (tickcount >= departTime) {
+			        // Use value-based equality for Coordinates: getCurrentCoord()/getDestCoord() return
+			        // freshly allocated Coordinate copies, so '==' would always be false and the
+			        // origin-equals-destination shortcut would never trigger, leaving such trips
+			        // stranded in the network and inflating nVehicles_.
+			        Coordinate cur = v.getCurrentCoord();
+			        Coordinate dst = v.getDestCoord();
+			        boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
+			        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) {
+			            this.removeVehicleFromNewQueue(departTime, v);
+			            ContextCreator.getVehicleContext().addArrivalVehicles(v);
+			        } else if (v.enterNetwork(this)) {
+			            this.removeVehicleFromNewQueue(departTime, v);
+			        } else {
+			            break; // Network is full, stop processing departures
+			        }
+			    } else {
+			        break; // Reached vehicles scheduled for future ticks
+			    }
+			}
 		}
 
 		/* Vehicle decision uses three-phase approach to avoid stale acceleration after lane changes */
@@ -527,7 +529,7 @@ public class Road {
 	}
 
 	// This add queue using TreeMap structure
-	public void addVehicleToDepartureMap() {
+	public synchronized void addVehicleToDepartureMap() {
 		ArrayList<Vehicle> pending = new ArrayList<Vehicle>();
 		for (Vehicle v = this.toAddDepartureVeh.poll(); v != null; v = this.toAddDepartureVeh.poll()) {
 			pending.add(v);
@@ -547,7 +549,7 @@ public class Road {
 
 	// This add vehicle to the thread-safe pending list
 	public void addVehicleToPendingQueue(Vehicle v) {
-		this.toAddDepartureVeh.add(v);
+		if (v != null) this.toAddDepartureVeh.add(v);
 	}
 
 	/*
@@ -555,8 +557,9 @@ public class Road {
 	 * at the departuretime_ of the vehicle if there are more than one vehicle with
 	 * the same departuretime_, it will remove the vehicle match with id of v.
 	 */
-	public void removeVehicleFromNewQueue(int departureTime, Vehicle v) {
+	public synchronized void removeVehicleFromNewQueue(int departureTime, Vehicle v) {
 		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departureTime);
+		if (temporalList == null) return;
 		if (temporalList.size() > 1) {
 			this.departureVehMap.get(departureTime).remove(v);
 		} else {
@@ -564,9 +567,40 @@ public class Road {
 		}
 	}
 
-	public Vehicle departureVehicleQueueHead() {
+	public synchronized Vehicle departureVehicleQueueHead() {
+		if (this.departureVehMap.isEmpty()) return null;
 		int firstDeparture_ = this.departureVehMap.firstKey();
 		return this.departureVehMap.get(firstDeparture_).get(0);
+	}
+
+	public synchronized List<Vehicle> getEnteringVehicleQueueSnapshot() {
+		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
+			vehicles.addAll(queue);
+		}
+		ArrayList<Vehicle> pending = new ArrayList<Vehicle>(this.toAddDepartureVeh);
+		pending.sort((a, b) -> {
+			int departCompare = Integer.compare(a.getDepTime(), b.getDepTime());
+			return departCompare != 0 ? departCompare : Integer.compare(a.getID(), b.getID());
+		});
+		vehicles.addAll(pending);
+		return vehicles;
+	}
+
+	public synchronized void restoreEnteringVehicleQueue(List<Vehicle> vehicles) {
+		this.departureVehMap.clear();
+		this.toAddDepartureVeh.clear();
+		if (vehicles == null) return;
+		for (Vehicle v : vehicles) {
+			if (v == null || v.isOnRoad()) continue;
+			int departureTime = v.getDepTime();
+			ArrayList<Vehicle> queue = this.departureVehMap.get(departureTime);
+			if (queue == null) {
+				queue = new ArrayList<Vehicle>();
+				this.departureVehMap.put(departureTime, queue);
+			}
+			queue.add(v);
+		}
 	}
 
 	public double calcSpeed() {
