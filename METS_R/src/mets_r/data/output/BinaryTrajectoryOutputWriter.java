@@ -38,11 +38,13 @@ import mets_r.mobility.Vehicle;
  * road-id dictionary. Each .bin chunk contains a small header followed by
  * variable-length tick frames. Numeric fields are fixed width, so the frontend
  * can decode chunks into typed arrays without first materializing large JSON
- * object graphs.
+ * object graphs. Zone and charging-station frames are sparse deltas: the first
+ * frame in each chunk writes the full state, then later frames write changed
+ * records plus removed IDs only.
  */
 public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private static final String FORMAT_NAME = "metsr-trajectory-binary";
-	private static final int FORMAT_VERSION = 5;
+	private static final int FORMAT_VERSION = 6;
 	private static final String CHUNK_MAGIC = "MRTB";
 
 	private boolean append;
@@ -67,6 +69,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private ArrayList<HashMap<String, Object>> zoneDictionary;
 	private ArrayList<HashMap<String, Object>> chargingStationDictionary;
 	private ArrayList<HashMap<String, Object>> busRouteDictionary;
+	private HashMap<Integer, BinaryZoneRecord> previousZoneRecords;
+	private HashMap<Integer, BinaryChargingStationRecord> previousChargingStationRecords;
 
 	public BinaryTrajectoryOutputWriter() {
 		this(null, false);
@@ -95,6 +99,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.zoneDictionary = new ArrayList<HashMap<String, Object>>();
 		this.chargingStationDictionary = new ArrayList<HashMap<String, Object>>();
 		this.busRouteDictionary = new ArrayList<HashMap<String, Object>>();
+		this.previousZoneRecords = new HashMap<Integer, BinaryZoneRecord>();
+		this.previousChargingStationRecords = new HashMap<Integer, BinaryChargingStationRecord>();
 	}
 
 	@Override
@@ -276,6 +282,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				+ this.fileSeriesNumber + "." + GlobalVariables.TRAJECTORY_BINARY_DEFAULT_EXTENSION;
 		File file = new File(this.outputDirectory, this.currentChunkFilename);
 		this.writer = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(file, this.append)));
+		this.previousZoneRecords.clear();
+		this.previousChargingStationRecords.clear();
 		this.writeChunkHeader();
 	}
 
@@ -368,6 +376,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		manifest.put("vehicleTypes", BinaryTrajectoryOutputWriter.createVehicleTypes());
 		manifest.put("frameGroups", schema("ev_private", "ev_occupied", "ev_relocation",
 				"ev_charging", "bus", "link", "zone", "chargingStation"));
+		manifest.put("sparseFrameGroups", schema("zone", "chargingStation"));
+		manifest.put("sparseFrameGroupMode", "initialFullFrameThenChangedRecordsAndRemovedIds");
 		manifest.put("schemas", BinaryTrajectoryOutputWriter.createSchemas());
 
 		File manifestFile = new File(this.outputDirectory, "manifest.json");
@@ -411,8 +421,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ETaxiSnapshot> chargingTaxis = this.getETaxiRecords(tick, Vehicle.CHARGING_TRIP);
 		ArrayList<BusSnapshot> buses = this.getBusRecords(tick);
-		ArrayList<Zone> zones = this.getZoneRecords();
-		ArrayList<ChargingStation> chargingStations = this.getChargingStationRecords();
+		BinaryZoneGroup zones = this.getChangedZoneRecords();
+		BinaryChargingStationGroup chargingStations = this.getChangedChargingStationRecords();
 
 		this.writer.writeInt(tick.getTickNumber());
 		this.writer.writeInt(summary.matchedRequests);
@@ -602,6 +612,47 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		return records;
 	}
 
+	private BinaryZoneGroup getChangedZoneRecords() {
+		BinaryZoneGroup changedGroup = new BinaryZoneGroup();
+		HashMap<Integer, BinaryZoneRecord> currentRecords = new HashMap<Integer, BinaryZoneRecord>();
+		for (Zone zone : this.getZoneRecords()) {
+			BinaryZoneRecord record = new BinaryZoneRecord(zone);
+			currentRecords.put(record.id, record);
+			BinaryZoneRecord previousRecord = this.previousZoneRecords.get(record.id);
+			if (previousRecord == null || !record.hasSameValues(previousRecord)) {
+				changedGroup.records.add(record);
+			}
+		}
+		for (Integer previousID : sortedIds(this.previousZoneRecords.keySet())) {
+			if (!currentRecords.containsKey(previousID)) {
+				changedGroup.removedIds.add(previousID);
+			}
+		}
+		this.previousZoneRecords = currentRecords;
+		return changedGroup;
+	}
+
+	private BinaryChargingStationGroup getChangedChargingStationRecords() {
+		BinaryChargingStationGroup changedGroup = new BinaryChargingStationGroup();
+		HashMap<Integer, BinaryChargingStationRecord> currentRecords =
+				new HashMap<Integer, BinaryChargingStationRecord>();
+		for (ChargingStation station : this.getChargingStationRecords()) {
+			BinaryChargingStationRecord record = new BinaryChargingStationRecord(station);
+			currentRecords.put(record.id, record);
+			BinaryChargingStationRecord previousRecord = this.previousChargingStationRecords.get(record.id);
+			if (previousRecord == null || !record.hasSameValues(previousRecord)) {
+				changedGroup.records.add(record);
+			}
+		}
+		for (Integer previousID : sortedIds(this.previousChargingStationRecords.keySet())) {
+			if (!currentRecords.containsKey(previousID)) {
+				changedGroup.removedIds.add(previousID);
+			}
+		}
+		this.previousChargingStationRecords = currentRecords;
+		return changedGroup;
+	}
+
 	private void writePrivateEVGroup(ArrayList<EVSnapshot> records) throws IOException {
 		this.writer.writeInt(records.size());
 		for (EVSnapshot ev : records) {
@@ -666,72 +717,78 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		}
 	}
 
-	private void writeZoneGroup(ArrayList<Zone> records) throws IOException {
-		this.writer.writeInt(records.size());
-		for (Zone zone : records) {
-			Coordinate coord = zone.getCoord();
-			this.writer.writeInt(zone.getID());
-			this.writer.writeInt(coord == null ? 0 : scaledX(coord.x));
-			this.writer.writeInt(coord == null ? 0 : scaledY(coord.y));
-			this.writer.writeInt(zone.getZoneType());
-			this.writer.writeInt(zone.getCapacity());
-			this.writer.writeInt(zone.getVehicleStock());
-			this.writer.writeInt(zone.getTaxiRequestNum());
-			this.writer.writeInt(zone.getBusRequestNum());
-			this.writer.writeInt(zone.numberOfGeneratedTaxiRequest);
-			this.writer.writeInt(zone.numberOfGeneratedBusRequest);
-			this.writer.writeInt(zone.numberOfGeneratedPrivateEVTrip);
-			this.writer.writeInt(zone.numberOfGeneratedPrivateGVTrip);
-			this.writer.writeInt(zone.arrivedPrivateEVTrip);
-			this.writer.writeInt(zone.arrivedPrivateGVTrip);
-			this.writer.writeInt(zone.taxiPickupRequest);
-			this.writer.writeInt(zone.busPickupRequest);
-			this.writer.writeInt(zone.taxiServedRequest);
-			this.writer.writeInt(zone.busServedRequest);
-			this.writer.writeInt(zone.numberOfLeavedTaxiRequest);
-			this.writer.writeInt(zone.numberOfLeavedBusRequest);
-			this.writer.writeInt(zone.numberOfLeavedTaxiPassengers);
-			this.writer.writeInt(zone.numberOfLeavedBusPassengers);
-			this.writer.writeInt(zone.numberOfRelocatedVehicles);
-			this.writer.writeInt(zone.getFutureSupply());
-			this.writer.writeFloat((float) zone.getFutureDemand());
-			this.writer.writeFloat((float) zone.getVehicleSurplus());
-			this.writer.writeFloat((float) zone.getVehicleDeficiency());
-			this.writer.writeInt(zone.taxiServedPassWaitingTime);
-			this.writer.writeInt(zone.busServedPassWaitingTime);
-			this.writer.writeInt(zone.taxiLeavedPassWaitingTime);
-			this.writer.writeInt(zone.busLeavedPassWaitingTime);
+	private void writeZoneGroup(BinaryZoneGroup group) throws IOException {
+		this.writer.writeInt(group.records.size());
+		for (BinaryZoneRecord zone : group.records) {
+			this.writer.writeInt(zone.id);
+			this.writer.writeInt(zone.x);
+			this.writer.writeInt(zone.y);
+			this.writer.writeInt(zone.zoneType);
+			this.writer.writeInt(zone.capacity);
+			this.writer.writeInt(zone.vehicleStock);
+			this.writer.writeInt(zone.taxiRequest);
+			this.writer.writeInt(zone.busRequest);
+			this.writer.writeInt(zone.generatedTaxi);
+			this.writer.writeInt(zone.generatedBus);
+			this.writer.writeInt(zone.generatedPrivateEV);
+			this.writer.writeInt(zone.generatedPrivateGV);
+			this.writer.writeInt(zone.arrivedPrivateEV);
+			this.writer.writeInt(zone.arrivedPrivateGV);
+			this.writer.writeInt(zone.taxiMatchedRequests);
+			this.writer.writeInt(zone.busMatchedRequests);
+			this.writer.writeInt(zone.taxiDropoffRequests);
+			this.writer.writeInt(zone.busDropoffRequests);
+			this.writer.writeInt(zone.leftTaxiRequests);
+			this.writer.writeInt(zone.leftBusRequests);
+			this.writer.writeInt(zone.leftTaxiPassengers);
+			this.writer.writeInt(zone.leftBusPassengers);
+			this.writer.writeInt(zone.relocatedVehicles);
+			this.writer.writeInt(zone.futureSupply);
+			this.writer.writeFloat(zone.futureDemand);
+			this.writer.writeFloat(zone.vehicleSurplus);
+			this.writer.writeFloat(zone.vehicleDeficiency);
+			this.writer.writeInt(zone.taxiDropoffWait);
+			this.writer.writeInt(zone.busDropoffWait);
+			this.writer.writeInt(zone.taxiLeftWait);
+			this.writer.writeInt(zone.busLeftWait);
 			this.writer.writeInt(zone.taxiParkingTime);
 			this.writer.writeInt(zone.taxiCruisingTime);
 		}
+		this.writer.writeInt(group.removedIds.size());
+		for (Integer id : group.removedIds) {
+			this.writer.writeInt(id == null ? -1 : id.intValue());
+		}
 	}
 
-	private void writeChargingStationGroup(ArrayList<ChargingStation> records) throws IOException {
-		this.writer.writeInt(records.size());
-		for (ChargingStation station : records) {
-			Coordinate coord = station.getCoord();
-			this.writer.writeInt(station.getID());
-			this.writer.writeInt(coord == null ? 0 : scaledX(coord.x));
-			this.writer.writeInt(coord == null ? 0 : scaledY(coord.y));
-			this.writer.writeInt(station.getQueueL2().size());
-			this.writer.writeInt(station.getQueueL3().size());
-			this.writer.writeInt(station.getQueueBus().size());
-			this.writer.writeInt(station.getChargingL2().size());
-			this.writer.writeInt(station.getChargingL3().size());
-			this.writer.writeInt(station.getChargingBus().size());
-			this.writer.writeInt(station.capacity(ChargingStation.L2));
-			this.writer.writeInt(station.capacity(ChargingStation.L3));
-			this.writer.writeInt(station.capacityBus());
-			this.writer.writeInt(station.numCharger(ChargingStation.L2));
-			this.writer.writeInt(station.numCharger(ChargingStation.L3));
-			this.writer.writeInt(station.numBusCharger());
-			this.writer.writeInt(station.numChargedCar.get());
-			this.writer.writeInt(station.numChargedBus.get());
-			this.writer.writeFloat((float) station.getPriceL2());
-			this.writer.writeFloat((float) station.getPriceL3());
-			this.writer.writeFloat((float) station.waitingTimeL2());
-			this.writer.writeFloat((float) station.waitingTimeL3());
-			this.writer.writeInt(station.hasChargingVehicles() ? 1 : 0);
+	private void writeChargingStationGroup(BinaryChargingStationGroup group) throws IOException {
+		this.writer.writeInt(group.records.size());
+		for (BinaryChargingStationRecord station : group.records) {
+			this.writer.writeInt(station.id);
+			this.writer.writeInt(station.x);
+			this.writer.writeInt(station.y);
+			this.writer.writeInt(station.queueL2);
+			this.writer.writeInt(station.queueL3);
+			this.writer.writeInt(station.queueBus);
+			this.writer.writeInt(station.chargingL2);
+			this.writer.writeInt(station.chargingL3);
+			this.writer.writeInt(station.chargingBus);
+			this.writer.writeInt(station.freeL2);
+			this.writer.writeInt(station.freeL3);
+			this.writer.writeInt(station.freeBus);
+			this.writer.writeInt(station.numL2);
+			this.writer.writeInt(station.numL3);
+			this.writer.writeInt(station.numBus);
+			this.writer.writeInt(station.chargedCar);
+			this.writer.writeInt(station.chargedBus);
+			this.writer.writeFloat(station.priceL2);
+			this.writer.writeFloat(station.priceL3);
+			this.writer.writeFloat(station.waitingTimeL2);
+			this.writer.writeFloat(station.waitingTimeL3);
+			this.writer.writeInt(station.active);
+		}
+		this.writer.writeInt(group.removedIds.size());
+		for (Integer id : group.removedIds) {
+			this.writer.writeInt(id == null ? -1 : id.intValue());
 		}
 	}
 
@@ -842,7 +899,9 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"stopZones:int32[stopZoneCount]"));
 		schemas.put("link", schema("roadIndex:int32", "nVehicles:int32", "speed:float32",
 				"flow:int32", "energy:float32"));
-		schemas.put("zone", schema("id:int32", "x:int32", "y:int32", "zoneType:int32",
+		schemas.put("zone", schema("updateCount:int32", "updates:zoneRecord[updateCount]",
+				"removedCount:int32", "removedIds:int32[removedCount]"));
+		schemas.put("zoneRecord", schema("id:int32", "x:int32", "y:int32", "zoneType:int32",
 				"capacity:int32", "vehicleStock:int32", "taxiRequest:int32", "busRequest:int32",
 				"generatedTaxi:int32", "generatedBus:int32", "generatedPrivateEV:int32",
 				"generatedPrivateGV:int32", "arrivedPrivateEV:int32", "arrivedPrivateGV:int32",
@@ -853,7 +912,10 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"futureDemand:float32", "vehicleSurplus:float32", "vehicleDeficiency:float32",
 				"taxiDropoffWait:int32", "busDropoffWait:int32", "taxiLeftWait:int32",
 				"busLeftWait:int32", "taxiParkingTime:int32", "taxiCruisingTime:int32"));
-		schemas.put("chargingStation", schema("id:int32", "x:int32", "y:int32",
+		schemas.put("chargingStation", schema("updateCount:int32",
+				"updates:chargingStationRecord[updateCount]", "removedCount:int32",
+				"removedIds:int32[removedCount]"));
+		schemas.put("chargingStationRecord", schema("id:int32", "x:int32", "y:int32",
 				"queueL2:int32", "queueL3:int32", "queueBus:int32", "chargingL2:int32",
 				"chargingL3:int32", "chargingBus:int32", "freeL2:int32", "freeL3:int32",
 				"freeBus:int32", "numL2:int32", "numL3:int32", "numBus:int32",
@@ -904,5 +966,207 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.flow = flow;
 			this.energy = energy;
 		}
+	}
+
+	private static class BinaryZoneGroup {
+		final ArrayList<BinaryZoneRecord> records = new ArrayList<BinaryZoneRecord>();
+		final ArrayList<Integer> removedIds = new ArrayList<Integer>();
+	}
+
+	private static class BinaryChargingStationGroup {
+		final ArrayList<BinaryChargingStationRecord> records =
+				new ArrayList<BinaryChargingStationRecord>();
+		final ArrayList<Integer> removedIds = new ArrayList<Integer>();
+	}
+
+	private static class BinaryZoneRecord {
+		final int id;
+		final int x;
+		final int y;
+		final int zoneType;
+		final int capacity;
+		final int vehicleStock;
+		final int taxiRequest;
+		final int busRequest;
+		final int generatedTaxi;
+		final int generatedBus;
+		final int generatedPrivateEV;
+		final int generatedPrivateGV;
+		final int arrivedPrivateEV;
+		final int arrivedPrivateGV;
+		final int taxiMatchedRequests;
+		final int busMatchedRequests;
+		final int taxiDropoffRequests;
+		final int busDropoffRequests;
+		final int leftTaxiRequests;
+		final int leftBusRequests;
+		final int leftTaxiPassengers;
+		final int leftBusPassengers;
+		final int relocatedVehicles;
+		final int futureSupply;
+		final float futureDemand;
+		final float vehicleSurplus;
+		final float vehicleDeficiency;
+		final int taxiDropoffWait;
+		final int busDropoffWait;
+		final int taxiLeftWait;
+		final int busLeftWait;
+		final int taxiParkingTime;
+		final int taxiCruisingTime;
+
+		BinaryZoneRecord(Zone zone) {
+			Coordinate coord = zone.getCoord();
+			this.id = zone.getID();
+			this.x = coord == null ? 0 : scaledX(coord.x);
+			this.y = coord == null ? 0 : scaledY(coord.y);
+			this.zoneType = zone.getZoneType();
+			this.capacity = zone.getCapacity();
+			this.vehicleStock = zone.getVehicleStock();
+			this.taxiRequest = zone.getTaxiRequestNum();
+			this.busRequest = zone.getBusRequestNum();
+			this.generatedTaxi = zone.numberOfGeneratedTaxiRequest;
+			this.generatedBus = zone.numberOfGeneratedBusRequest;
+			this.generatedPrivateEV = zone.numberOfGeneratedPrivateEVTrip;
+			this.generatedPrivateGV = zone.numberOfGeneratedPrivateGVTrip;
+			this.arrivedPrivateEV = zone.arrivedPrivateEVTrip;
+			this.arrivedPrivateGV = zone.arrivedPrivateGVTrip;
+			this.taxiMatchedRequests = zone.taxiPickupRequest;
+			this.busMatchedRequests = zone.busPickupRequest;
+			this.taxiDropoffRequests = zone.taxiServedRequest;
+			this.busDropoffRequests = zone.busServedRequest;
+			this.leftTaxiRequests = zone.numberOfLeavedTaxiRequest;
+			this.leftBusRequests = zone.numberOfLeavedBusRequest;
+			this.leftTaxiPassengers = zone.numberOfLeavedTaxiPassengers;
+			this.leftBusPassengers = zone.numberOfLeavedBusPassengers;
+			this.relocatedVehicles = zone.numberOfRelocatedVehicles;
+			this.futureSupply = zone.getFutureSupply();
+			this.futureDemand = (float) zone.getFutureDemand();
+			this.vehicleSurplus = (float) zone.getVehicleSurplus();
+			this.vehicleDeficiency = (float) zone.getVehicleDeficiency();
+			this.taxiDropoffWait = zone.taxiServedPassWaitingTime;
+			this.busDropoffWait = zone.busServedPassWaitingTime;
+			this.taxiLeftWait = zone.taxiLeavedPassWaitingTime;
+			this.busLeftWait = zone.busLeavedPassWaitingTime;
+			this.taxiParkingTime = zone.taxiParkingTime;
+			this.taxiCruisingTime = zone.taxiCruisingTime;
+		}
+
+		boolean hasSameValues(BinaryZoneRecord other) {
+			return other != null
+					&& this.id == other.id
+					&& this.x == other.x
+					&& this.y == other.y
+					&& this.zoneType == other.zoneType
+					&& this.capacity == other.capacity
+					&& this.vehicleStock == other.vehicleStock
+					&& this.taxiRequest == other.taxiRequest
+					&& this.busRequest == other.busRequest
+					&& this.generatedTaxi == other.generatedTaxi
+					&& this.generatedBus == other.generatedBus
+					&& this.generatedPrivateEV == other.generatedPrivateEV
+					&& this.generatedPrivateGV == other.generatedPrivateGV
+					&& this.arrivedPrivateEV == other.arrivedPrivateEV
+					&& this.arrivedPrivateGV == other.arrivedPrivateGV
+					&& this.taxiMatchedRequests == other.taxiMatchedRequests
+					&& this.busMatchedRequests == other.busMatchedRequests
+					&& this.taxiDropoffRequests == other.taxiDropoffRequests
+					&& this.busDropoffRequests == other.busDropoffRequests
+					&& this.leftTaxiRequests == other.leftTaxiRequests
+					&& this.leftBusRequests == other.leftBusRequests
+					&& this.leftTaxiPassengers == other.leftTaxiPassengers
+					&& this.leftBusPassengers == other.leftBusPassengers
+					&& this.relocatedVehicles == other.relocatedVehicles
+					&& this.futureSupply == other.futureSupply
+					&& sameFloat(this.futureDemand, other.futureDemand)
+					&& sameFloat(this.vehicleSurplus, other.vehicleSurplus)
+					&& sameFloat(this.vehicleDeficiency, other.vehicleDeficiency)
+					&& this.taxiDropoffWait == other.taxiDropoffWait
+					&& this.busDropoffWait == other.busDropoffWait
+					&& this.taxiLeftWait == other.taxiLeftWait
+					&& this.busLeftWait == other.busLeftWait
+					&& this.taxiParkingTime == other.taxiParkingTime
+					&& this.taxiCruisingTime == other.taxiCruisingTime;
+		}
+	}
+
+	private static class BinaryChargingStationRecord {
+		final int id;
+		final int x;
+		final int y;
+		final int queueL2;
+		final int queueL3;
+		final int queueBus;
+		final int chargingL2;
+		final int chargingL3;
+		final int chargingBus;
+		final int freeL2;
+		final int freeL3;
+		final int freeBus;
+		final int numL2;
+		final int numL3;
+		final int numBus;
+		final int chargedCar;
+		final int chargedBus;
+		final float priceL2;
+		final float priceL3;
+		final float waitingTimeL2;
+		final float waitingTimeL3;
+		final int active;
+
+		BinaryChargingStationRecord(ChargingStation station) {
+			Coordinate coord = station.getCoord();
+			this.id = station.getID();
+			this.x = coord == null ? 0 : scaledX(coord.x);
+			this.y = coord == null ? 0 : scaledY(coord.y);
+			this.queueL2 = station.getQueueL2().size();
+			this.queueL3 = station.getQueueL3().size();
+			this.queueBus = station.getQueueBus().size();
+			this.chargingL2 = station.getChargingL2().size();
+			this.chargingL3 = station.getChargingL3().size();
+			this.chargingBus = station.getChargingBus().size();
+			this.freeL2 = station.capacity(ChargingStation.L2);
+			this.freeL3 = station.capacity(ChargingStation.L3);
+			this.freeBus = station.capacityBus();
+			this.numL2 = station.numCharger(ChargingStation.L2);
+			this.numL3 = station.numCharger(ChargingStation.L3);
+			this.numBus = station.numBusCharger();
+			this.chargedCar = station.numChargedCar.get();
+			this.chargedBus = station.numChargedBus.get();
+			this.priceL2 = (float) station.getPriceL2();
+			this.priceL3 = (float) station.getPriceL3();
+			this.waitingTimeL2 = (float) station.waitingTimeL2();
+			this.waitingTimeL3 = (float) station.waitingTimeL3();
+			this.active = station.hasChargingVehicles() ? 1 : 0;
+		}
+
+		boolean hasSameValues(BinaryChargingStationRecord other) {
+			return other != null
+					&& this.id == other.id
+					&& this.x == other.x
+					&& this.y == other.y
+					&& this.queueL2 == other.queueL2
+					&& this.queueL3 == other.queueL3
+					&& this.queueBus == other.queueBus
+					&& this.chargingL2 == other.chargingL2
+					&& this.chargingL3 == other.chargingL3
+					&& this.chargingBus == other.chargingBus
+					&& this.freeL2 == other.freeL2
+					&& this.freeL3 == other.freeL3
+					&& this.freeBus == other.freeBus
+					&& this.numL2 == other.numL2
+					&& this.numL3 == other.numL3
+					&& this.numBus == other.numBus
+					&& this.chargedCar == other.chargedCar
+					&& this.chargedBus == other.chargedBus
+					&& sameFloat(this.priceL2, other.priceL2)
+					&& sameFloat(this.priceL3, other.priceL3)
+					&& sameFloat(this.waitingTimeL2, other.waitingTimeL2)
+					&& sameFloat(this.waitingTimeL3, other.waitingTimeL3)
+					&& this.active == other.active;
+		}
+	}
+
+	private static boolean sameFloat(float left, float right) {
+		return Float.floatToIntBits(left) == Float.floatToIntBits(right);
 	}
 }

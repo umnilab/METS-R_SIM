@@ -245,6 +245,9 @@ public class SnapshotUtil {
 	public static HashMap<String, Object> snapshotZone(Zone z) {
 		HashMap<String, Object> m = new HashMap<>();
 		m.put("id", z.getID());
+		m.put("publicTripTimeIndex", z.getPublicTripTimeIndex());
+		m.put("privateTripTimeIndex", z.getPrivateTripTimeIndex());
+		m.put("lastDemandUpdateHour", z.getLastDemandUpdateHour());
 		m.put("parkingVehicleStock", z.getParkingVehicleStock());
 		m.put("futureDemand", z.getFutureDemand());
 		m.put("futureSupply", z.getFutureSupply());
@@ -279,6 +282,8 @@ public class SnapshotUtil {
 		// Passenger queues
 		m.put("taxiRequests", snapshotRequestQueue(z.getTaxiRequestQueue()));
 		m.put("busRequests", snapshotRequestQueue(z.getBusRequestQueue()));
+		m.put("pendingTaxiRequests", snapshotRequestQueue(z.getToAddTaxiRequestQueue()));
+		m.put("pendingBusRequests", snapshotRequestQueue(z.getToAddBusRequestQueue()));
 
 		// Sharable requests
 		HashMap<String, Object> sharableMap = new HashMap<>();
@@ -445,6 +450,68 @@ public class SnapshotUtil {
 		return expected.equals(new HashSet<Integer>(currentIDs));
 	}
 
+	private static void restoreZoneSnapshot(Zone z, HashMap<String, Object> zs) {
+		z.setPublicTripTimeIndex(zs.containsKey("publicTripTimeIndex") ? toInt(zs.get("publicTripTimeIndex")) : -1);
+		z.setPrivateTripTimeIndex(zs.containsKey("privateTripTimeIndex") ? toInt(zs.get("privateTripTimeIndex")) : 0);
+		z.setLastDemandUpdateHour(zs.containsKey("lastDemandUpdateHour") ? toInt(zs.get("lastDemandUpdateHour")) : -1);
+		z.invalidateModeSplitCache();
+
+		z.setParkingVehicleStock(toInt(zs.get("parkingVehicleStock")));
+		z.setFutureDemand(toDouble(zs.get("futureDemand")));
+		z.setFutureSupply(toInt(zs.get("futureSupply")));
+		z.setVehicleSurplus(toDouble(zs.get("vehicleSurplus")));
+		z.setVehicleDeficiency(toDouble(zs.get("vehicleDeficiency")));
+
+		z.numberOfGeneratedTaxiRequest = toInt(zs.get("numberOfGeneratedTaxiRequest"));
+		z.numberOfGeneratedBusRequest = toInt(zs.get("numberOfGeneratedBusRequest"));
+		z.numberOfGeneratedPrivateEVTrip = toInt(zs.get("numberOfGeneratedPrivateEVTrip"));
+		z.numberOfGeneratedPrivateGVTrip = toInt(zs.get("numberOfGeneratedPrivateGVTrip"));
+		z.arrivedPrivateEVTrip = toInt(zs.get("arrivedPrivateEVTrip"));
+		z.arrivedPrivateGVTrip = toInt(zs.get("arrivedPrivateGVTrip"));
+		z.taxiPickupRequest = toInt(zs.get("taxiPickupRequest"));
+		z.busPickupRequest = toInt(zs.get("busPickupRequest"));
+		z.taxiServedRequest = toInt(zs.get("taxiServedRequest"));
+		z.busServedRequest = toInt(zs.get("busServedRequest"));
+		z.numberOfLeavedTaxiRequest = toInt(zs.get("numberOfLeavedTaxiRequest"));
+		z.numberOfLeavedBusRequest = toInt(zs.get("numberOfLeavedBusRequest"));
+		z.numberOfLeavedTaxiPassengers = toInt(zs.get("numberOfLeavedTaxiPassengers"));
+		z.numberOfLeavedBusPassengers = toInt(zs.get("numberOfLeavedBusPassengers"));
+		z.numberOfRelocatedVehicles = toInt(zs.get("numberOfRelocatedVehicles"));
+		z.taxiServedPassWaitingTime = toInt(zs.get("taxiServedPassWaitingTime"));
+		z.busServedPassWaitingTime = toInt(zs.get("busServedPassWaitingTime"));
+		z.taxiLeavedPassWaitingTime = toInt(zs.get("taxiLeavedPassWaitingTime"));
+		z.busLeavedPassWaitingTime = toInt(zs.get("busLeavedPassWaitingTime"));
+		z.taxiParkingTime = toInt(zs.get("taxiParkingTime"));
+		z.taxiCruisingTime = toInt(zs.get("taxiCruisingTime"));
+		z.setNRequestForTaxi(toInt(zs.get("nRequestForTaxi")));
+		z.setNRequestForBus(toInt(zs.get("nRequestForBus")));
+
+		restoreRequestQueue(z.getTaxiRequestQueue(), (List<?>) zs.get("taxiRequests"));
+		restoreRequestQueue(z.getBusRequestQueue(), (List<?>) zs.get("busRequests"));
+		restoreRequestQueue(z.getToAddTaxiRequestQueue(), (List<?>) zs.get("pendingTaxiRequests"));
+		restoreRequestQueue(z.getToAddBusRequestQueue(), (List<?>) zs.get("pendingBusRequests"));
+
+		Map<?, ?> sharableMap = (Map<?, ?>) zs.get("sharableRequests");
+		if (sharableMap != null) {
+			for (Map.Entry<?, ?> entry : sharableMap.entrySet()) {
+				int destZone = toInt(entry.getKey());
+				Queue<Request> queue = z.getSharableRequestForTaxi().get(destZone);
+				if (queue == null) {
+					queue = new LinkedList<Request>();
+					z.getSharableRequestForTaxi().put(destZone, queue);
+				}
+				restoreRequestQueue(queue, (List<?>) entry.getValue());
+			}
+		}
+
+		z.setRandom(deserializeRandom((String) zs.get("rand")));
+		z.setRandomDemand(deserializeRandom((String) zs.get("randDemand")));
+		z.setRandomDiffusion(deserializeRandom((String) zs.get("randDiffusion")));
+		z.setRandomMode(deserializeRandom((String) zs.get("randMode")));
+		z.setRandomShare(deserializeRandom((String) zs.get("randShare")));
+		z.setRandomRelocate(deserializeRandom((String) zs.get("randRelocate")));
+	}
+
 	public static void restoreToCurrentContexts(SimulationSnapshot snapshot) {
 		if (snapshot == null) {
 			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
@@ -499,59 +566,7 @@ public class SnapshotUtil {
 			z.clearRuntimeState();
 			HashMap<String, Object> zs = zoneStateMap.get(z.getID());
 			if (zs == null) continue;
-
-			z.setParkingVehicleStock(toInt(zs.get("parkingVehicleStock")));
-			z.setFutureDemand(toDouble(zs.get("futureDemand")));
-			z.setFutureSupply(toInt(zs.get("futureSupply")));
-			z.setVehicleSurplus(toDouble(zs.get("vehicleSurplus")));
-			z.setVehicleDeficiency(toDouble(zs.get("vehicleDeficiency")));
-
-			z.numberOfGeneratedTaxiRequest = toInt(zs.get("numberOfGeneratedTaxiRequest"));
-			z.numberOfGeneratedBusRequest = toInt(zs.get("numberOfGeneratedBusRequest"));
-			z.numberOfGeneratedPrivateEVTrip = toInt(zs.get("numberOfGeneratedPrivateEVTrip"));
-			z.numberOfGeneratedPrivateGVTrip = toInt(zs.get("numberOfGeneratedPrivateGVTrip"));
-			z.arrivedPrivateEVTrip = toInt(zs.get("arrivedPrivateEVTrip"));
-			z.arrivedPrivateGVTrip = toInt(zs.get("arrivedPrivateGVTrip"));
-			z.taxiPickupRequest = toInt(zs.get("taxiPickupRequest"));
-			z.busPickupRequest = toInt(zs.get("busPickupRequest"));
-			z.taxiServedRequest = toInt(zs.get("taxiServedRequest"));
-			z.busServedRequest = toInt(zs.get("busServedRequest"));
-			z.numberOfLeavedTaxiRequest = toInt(zs.get("numberOfLeavedTaxiRequest"));
-			z.numberOfLeavedBusRequest = toInt(zs.get("numberOfLeavedBusRequest"));
-			z.numberOfLeavedTaxiPassengers = toInt(zs.get("numberOfLeavedTaxiPassengers"));
-			z.numberOfLeavedBusPassengers = toInt(zs.get("numberOfLeavedBusPassengers"));
-			z.numberOfRelocatedVehicles = toInt(zs.get("numberOfRelocatedVehicles"));
-			z.taxiServedPassWaitingTime = toInt(zs.get("taxiServedPassWaitingTime"));
-			z.busServedPassWaitingTime = toInt(zs.get("busServedPassWaitingTime"));
-			z.taxiLeavedPassWaitingTime = toInt(zs.get("taxiLeavedPassWaitingTime"));
-			z.busLeavedPassWaitingTime = toInt(zs.get("busLeavedPassWaitingTime"));
-			z.taxiParkingTime = toInt(zs.get("taxiParkingTime"));
-			z.taxiCruisingTime = toInt(zs.get("taxiCruisingTime"));
-			z.setNRequestForTaxi(toInt(zs.get("nRequestForTaxi")));
-			z.setNRequestForBus(toInt(zs.get("nRequestForBus")));
-
-			restoreRequestQueue(z.getTaxiRequestQueue(), (List<?>) zs.get("taxiRequests"));
-			restoreRequestQueue(z.getBusRequestQueue(), (List<?>) zs.get("busRequests"));
-
-			Map<?, ?> sharableMap = (Map<?, ?>) zs.get("sharableRequests");
-			if (sharableMap != null) {
-				for (Map.Entry<?, ?> entry : sharableMap.entrySet()) {
-					int destZone = toInt(entry.getKey());
-					Queue<Request> queue = z.getSharableRequestForTaxi().get(destZone);
-					if (queue == null) {
-						queue = new LinkedList<Request>();
-						z.getSharableRequestForTaxi().put(destZone, queue);
-					}
-					restoreRequestQueue(queue, (List<?>) entry.getValue());
-				}
-			}
-
-			z.setRandom(deserializeRandom((String) zs.get("rand")));
-			z.setRandomDemand(deserializeRandom((String) zs.get("randDemand")));
-			z.setRandomDiffusion(deserializeRandom((String) zs.get("randDiffusion")));
-			z.setRandomMode(deserializeRandom((String) zs.get("randMode")));
-			z.setRandomShare(deserializeRandom((String) zs.get("randShare")));
-			z.setRandomRelocate(deserializeRandom((String) zs.get("randRelocate")));
+			restoreZoneSnapshot(z, zs);
 		}
 
 		ContextCreator.getZoneContext().ZONE_NUM = toInt(snapshot.globalState.get("zoneNum"));
@@ -890,59 +905,10 @@ public class SnapshotUtil {
 			zoneStateMap.put(toInt(zs.get("id")), zs);
 		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			z.clearRuntimeState();
 			HashMap<String, Object> zs = zoneStateMap.get(z.getID());
 			if (zs == null) continue;
-
-			z.setParkingVehicleStock(toInt(zs.get("parkingVehicleStock")));
-			z.setFutureDemand(toDouble(zs.get("futureDemand")));
-			z.setFutureSupply(toInt(zs.get("futureSupply")));
-			z.setVehicleSurplus(toDouble(zs.get("vehicleSurplus")));
-			z.setVehicleDeficiency(toDouble(zs.get("vehicleDeficiency")));
-
-			// Metrics
-			z.numberOfGeneratedTaxiRequest = toInt(zs.get("numberOfGeneratedTaxiRequest"));
-			z.numberOfGeneratedBusRequest = toInt(zs.get("numberOfGeneratedBusRequest"));
-			z.numberOfGeneratedPrivateEVTrip = toInt(zs.get("numberOfGeneratedPrivateEVTrip"));
-			z.numberOfGeneratedPrivateGVTrip = toInt(zs.get("numberOfGeneratedPrivateGVTrip"));
-			z.arrivedPrivateEVTrip = toInt(zs.get("arrivedPrivateEVTrip"));
-			z.arrivedPrivateGVTrip = toInt(zs.get("arrivedPrivateGVTrip"));
-			z.taxiPickupRequest = toInt(zs.get("taxiPickupRequest"));
-			z.busPickupRequest = toInt(zs.get("busPickupRequest"));
-			z.taxiServedRequest = toInt(zs.get("taxiServedRequest"));
-			z.busServedRequest = toInt(zs.get("busServedRequest"));
-			z.numberOfLeavedTaxiRequest = toInt(zs.get("numberOfLeavedTaxiRequest"));
-			z.numberOfLeavedBusRequest = toInt(zs.get("numberOfLeavedBusRequest"));
-			z.numberOfLeavedTaxiPassengers = toInt(zs.get("numberOfLeavedTaxiPassengers"));
-			z.numberOfLeavedBusPassengers = toInt(zs.get("numberOfLeavedBusPassengers"));
-			z.numberOfRelocatedVehicles = toInt(zs.get("numberOfRelocatedVehicles"));
-			z.taxiServedPassWaitingTime = toInt(zs.get("taxiServedPassWaitingTime"));
-			z.busServedPassWaitingTime = toInt(zs.get("busServedPassWaitingTime"));
-			z.setNRequestForTaxi(toInt(zs.get("nRequestForTaxi")));
-			z.setNRequestForBus(toInt(zs.get("nRequestForBus")));
-
-			// Restore request queues
-			restoreRequestQueue(z.getTaxiRequestQueue(), (List<?>) zs.get("taxiRequests"));
-			restoreRequestQueue(z.getBusRequestQueue(), (List<?>) zs.get("busRequests"));
-
-			// Sharable requests
-			Map<?, ?> sharableMap = (Map<?, ?>) zs.get("sharableRequests");
-			if (sharableMap != null) {
-				for (Map.Entry<?, ?> entry : sharableMap.entrySet()) {
-					int destZone = toInt(entry.getKey());
-					Queue<Request> queue = z.getSharableRequestForTaxi().get(destZone);
-					if (queue != null) {
-						restoreRequestQueue(queue, (List<?>) entry.getValue());
-					}
-				}
-			}
-
-			// Random seeds
-			z.setRandom(deserializeRandom((String) zs.get("rand")));
-			z.setRandomDemand(deserializeRandom((String) zs.get("randDemand")));
-			z.setRandomDiffusion(deserializeRandom((String) zs.get("randDiffusion")));
-			z.setRandomMode(deserializeRandom((String) zs.get("randMode")));
-			z.setRandomShare(deserializeRandom((String) zs.get("randShare")));
-			z.setRandomRelocate(deserializeRandom((String) zs.get("randRelocate")));
+			restoreZoneSnapshot(z, zs);
 		}
 
 //		ContextCreator.logger.info("Loaded zone snapshots");
@@ -1147,6 +1113,7 @@ public class SnapshotUtil {
 			restoreChargingBusList(cs.getChargingBus(), (List<?>) css.get("chargingBus"), restoredVehicleMap);
 		}
 
+		setAgentIDCounter(savedAgentID);
 		ContextCreator.logger.info("Simulation state loaded successfully from: " + zipPath);
 	}
 

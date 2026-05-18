@@ -10,6 +10,7 @@ package mets_r.facility;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +31,7 @@ import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
+import mets_r.routing.RouteContext;
 
 public class Zone {
 	/* Constants */
@@ -45,6 +47,8 @@ public class Zone {
 	private AtomicInteger parkingVehicleStock; // number of parking vehicles at this zone
 	private int publicTripTimeIndex = -1;
 	private int privateTripTimeIndex = 0;
+	private int modeSplitCacheHour = -1;
+	private Map<Integer, ModeSplitChoice> modeSplitCache;
 	
 	// For vehicle repositioning
 	private int lastDemandUpdateHour = -1; // the last time for updating the demand generation rate
@@ -128,6 +132,7 @@ public class Zone {
 		this.requestInQueueForTaxi = new LinkedList<Request>();
 		this.nRequestForBus = 0;
 		this.nRequestForTaxi = 0;
+		this.modeSplitCache = new HashMap<Integer, ModeSplitChoice>();
 		this.zoneType = type;
 		// Initialize metrices
 		this.numberOfGeneratedTaxiRequest = 0;
@@ -337,6 +342,7 @@ public class Zone {
 		if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
 			this.futureDemand = 0.0;
 		}
+		this.refreshModeSplitCacheIfNeeded();
 		for (Zone destZone : ContextCreator.getZoneContext().getAll()) {
 			int destination = destZone.getID();
 			double passRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex)
@@ -349,104 +355,233 @@ public class Zone {
 				int numToGenerate = basePassengers
 						+ (rand_demand_only.nextDouble() < (passRate - basePassengers) ? 1 : 0);
 				double sharableRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex);
-				
-				// Commented by default given its high computational costs, uncomment if you would like use the mode choice model
-				// For all candidate transit routes, find the best one
-//				if (traversingBusRoutes.containsKey(destination)) {
-//					// Find the most proper transit line
-//					double bestBusTime = Double.MAX_VALUE;
-//					double bestBusDist = Double.MAX_VALUE;
-//					int bestBusRoute = -1;
-//					for(int routeID : traversingBusRoutes.get(destination)) {
-//					    List<Integer> stops = ContextCreator.bus_schedule.getStopZones(routeID);
-//					    double bestTimeThisRoute = Double.POSITIVE_INFINITY;
-//					    double bestDistThisRoute = Double.POSITIVE_INFINITY;
-//
-//					    // scan for every origin index
-//					    for (int i = 0; i < stops.size(); i++) {
-//					        if (!stops.get(i).equals(this.ID)) continue;
-//					        // for each origin position, scan forward for every matching destination
-//					        for (int j = i+1; j < stops.size(); j++) {
-//					            if (!stops.get(j).equals(destination)) continue;
-//
-//					            // compute time+dist between stops[i] and stops[j]
-//					            double busTime = 0, busDist = 0;
-//					            for (int k = i; k < j; k++) {
-//					                List<Road> seg = RouteContext.shortestPathRoute(ContextCreator.bus_schedule.getStopRoad(routeID, k), ContextCreator.bus_schedule.getStopRoad(routeID, k+1), rand);
-//					                busTime += seg.stream().mapToDouble(Road::getTravelTime).sum();
-//					                busDist += seg.stream().mapToDouble(Road::getLength).sum();
-//					            }
-//
-//					            // keep best for *this* route
-//					            if (busTime < bestTimeThisRoute) {
-//					                bestTimeThisRoute = busTime;
-//					                bestDistThisRoute = busDist;
-//					            }
-//					        }
-//					    }
-//
-//					    // compare to global best
-//					    if (bestTimeThisRoute < bestBusTime) {
-//					        bestBusTime = bestTimeThisRoute;
-//					        bestBusDist = bestDistThisRoute;
-//					        bestBusRoute = routeID;
-//					    }
-//					}
-//					
-//					// Calculate the travel time and travel distance for taxis
-//					Coordinate oCoord = this.getCoord();
-//					Coordinate dCoord = destZone.getCoord();
-//					List<Road> taxiPath = RouteContext.shortestPathRoute(oCoord, dCoord, rand);
-//					double taxiTime = taxiPath.stream().mapToDouble(Road::getTravelTime).sum();
-//					double taxiDist = taxiPath.stream().mapToDouble(Road::getLength).sum();
-//					
-//					float threshold = getSplitRatio(taxiTime, taxiDist, bestBusTime, bestBusDist);
-//					for (int i = 0; i < numToGenerate; i++) {
-//						if (rand_mode_only.nextDouble() > threshold) {
-//							if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
-//								Request new_pass = new Request(this.ID, destination, this.getClosestRoad(false), 
-//										destZone.sampleRoad(true), 1
-//										); 
-//								new_pass.setWillingToShare(true);
-//								this.addSharableTaxiPass(new_pass, destination);
-//							} else {
-//								Request new_pass = new Request(this.ID, destination, this.sampleRoad(false), 
-//										destZone.sampleRoad(true), 1
-//										); 
-//								this.addTaxiPass(new_pass);
-//							}
-//							this.numberOfGeneratedTaxiRequest += 1;
-//						} else { // Bus always start and end at the centroid
-//							Request new_pass = new Request(this.ID, destination, this.getClosestRoad(false), 
-//									ContextCreator.getZoneContext().get(destination).getClosestRoad(true), 
-//									1);
-//							new_pass.setBusRoute(bestBusRoute);
-//							this.addBusPass(new_pass);
-//							this.numberOfGeneratedBusRequest += 1;
-//						}
-//					}
-//					if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
-//						this.futureDemand += (passRate * threshold);
-//					}
-//				} 
-//				else {
-					// Taxi only
+
+				ModeSplitChoice modeSplit = this.getModeSplitChoice(destZone, destination);
+				if (modeSplit.hasBusChoice()) {
 					for (int i = 0; i < numToGenerate; i++) {
-						if (rand_share_only.nextDouble()<sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) { // Sharable requests start from the same loc
-							Request new_pass = new Request(this.ID, destination, this.getClosestRoad(false), destZone.sampleRoad(true), 1); 
-							new_pass.setWillingToShare(true);
-							this.addSharableTaxiPass(new_pass, destination);
-						} else {
-							Request new_pass = new Request(this.ID, destination, this.sampleRoad(false), destZone.sampleRoad(true), 1); 
-							this.addTaxiPass(new_pass);
+						if (rand_mode_only.nextDouble() >= modeSplit.busShare
+								|| !this.generateBusRequest(destZone, destination, modeSplit.busRouteID)) {
+							this.generateTaxiRequest(destZone, destination, sharableRate);
 						}
-						this.numberOfGeneratedTaxiRequest += 1;
 					}
 					if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
-						this.futureDemand+=(passRate);
+						this.futureDemand += passRate * modeSplit.taxiShare;
 					}
-//				}
+				} else {
+					for (int i = 0; i < numToGenerate; i++) {
+						this.generateTaxiRequest(destZone, destination, sharableRate);
+					}
+					if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
+						this.futureDemand += passRate;
+					}
+				}
 			}
+		}
+	}
+
+	private void refreshModeSplitCacheIfNeeded() {
+		if (this.modeSplitCacheHour == this.publicTripTimeIndex) return;
+		this.modeSplitCache.clear();
+		this.modeSplitCacheHour = this.publicTripTimeIndex;
+	}
+
+	private ModeSplitChoice getModeSplitChoice(Zone destZone, int destination) {
+		ModeSplitChoice cachedChoice = this.modeSplitCache.get(destination);
+		if (cachedChoice != null) {
+			return cachedChoice;
+		}
+
+		ModeSplitChoice choice = this.computeModeSplitChoice(destZone, destination);
+		this.modeSplitCache.put(destination, choice);
+		return choice;
+	}
+
+	private ModeSplitChoice computeModeSplitChoice(Zone destZone, int destination) {
+		BusModeChoice busChoice = this.findBestBusModeChoice(destination);
+		if (busChoice == null) {
+			return ModeSplitChoice.taxiOnly();
+		}
+
+		TravelCost taxiCost = this.getTaxiTravelCost(destZone);
+		if (taxiCost == null) {
+			return ModeSplitChoice.taxiOnly();
+		}
+
+		double busShare = this.getBusSplitRatio(taxiCost.time, taxiCost.distance,
+				busChoice.time, busChoice.distance);
+		return new ModeSplitChoice(busChoice.routeID, busShare);
+	}
+
+	private void generateTaxiRequest(Zone destZone, int destination, double sharableRate) {
+		if (rand_share_only.nextDouble() < sharableRate && GlobalVariables.RH_DEMAND_SHARABLE) {
+			Request newPass = new Request(this.ID, destination, this.getClosestRoad(false),
+					destZone.sampleRoad(true), 1);
+			newPass.setWillingToShare(true);
+			this.addSharableTaxiPass(newPass, destination);
+		} else {
+			Request newPass = new Request(this.ID, destination, this.sampleRoad(false),
+					destZone.sampleRoad(true), 1);
+			this.addTaxiPass(newPass);
+		}
+		this.numberOfGeneratedTaxiRequest += 1;
+	}
+
+	private boolean generateBusRequest(Zone destZone, int destination, int routeID) {
+		Integer originRoadID = this.getClosestRoad(false);
+		Integer destRoadID = destZone.getClosestRoad(true);
+		if (originRoadID == null || destRoadID == null) return false;
+
+		Request newPass = new Request(this.ID, destination, originRoadID, destRoadID, 1);
+		newPass.setBusRoute(routeID);
+		this.addBusPass(newPass);
+		this.numberOfGeneratedBusRequest += 1;
+		return true;
+	}
+
+	private BusModeChoice findBestBusModeChoice(int destination) {
+		if (ContextCreator.bus_schedule == null) return null;
+		List<Integer> routeIDs = this.traversingBusRoutes.get(destination);
+		if (routeIDs == null || routeIDs.isEmpty()) return null;
+
+		BusModeChoice bestChoice = null;
+		for (int routeID : routeIDs) {
+			List<Integer> stops = ContextCreator.bus_schedule.getStopZones(routeID);
+			if (stops == null || stops.size() < 2) continue;
+
+			for (int originIndex = 0; originIndex < stops.size(); originIndex++) {
+				if (!stops.get(originIndex).equals(this.ID)) continue;
+				for (int destIndex = originIndex + 1; destIndex < stops.size(); destIndex++) {
+					if (!stops.get(destIndex).equals(destination)) continue;
+
+					TravelCost busCost = this.getBusTravelCost(routeID, originIndex, destIndex);
+					if (busCost == null) continue;
+					if (bestChoice == null || busCost.time < bestChoice.time) {
+						bestChoice = new BusModeChoice(routeID, busCost.time, busCost.distance);
+					}
+				}
+			}
+		}
+		return bestChoice;
+	}
+
+	private TravelCost getBusTravelCost(int routeID, int originStopIndex, int destStopIndex) {
+		double busTime = 0;
+		double busDistance = 0;
+		for (int stopIndex = originStopIndex; stopIndex < destStopIndex; stopIndex++) {
+			Road fromRoad = ContextCreator.bus_schedule.getStopRoad(routeID, stopIndex);
+			Road toRoad = ContextCreator.bus_schedule.getStopRoad(routeID, stopIndex + 1);
+			TravelCost segmentCost = this.getRouteTravelCost(fromRoad, toRoad);
+			if (segmentCost == null) return null;
+			busTime += segmentCost.time;
+			busDistance += segmentCost.distance;
+		}
+		return new TravelCost(busTime, busDistance);
+	}
+
+	private TravelCost getTaxiTravelCost(Zone destZone) {
+		Integer originRoadID = this.getClosestRoad(false);
+		Integer destRoadID = destZone.getClosestRoad(true);
+		if (originRoadID == null || destRoadID == null) return null;
+
+		Road originRoad = ContextCreator.getRoadContext().get(originRoadID);
+		Road destRoad = ContextCreator.getRoadContext().get(destRoadID);
+		return this.getRouteTravelCost(originRoad, destRoad);
+	}
+
+	private TravelCost getRouteTravelCost(Road originRoad, Road destRoad) {
+		if (originRoad == null || destRoad == null) return null;
+
+		List<Road> path;
+		try {
+			path = RouteContext.shortestPathRoute(originRoad, destRoad, rand);
+		} catch (RuntimeException ex) {
+			return null;
+		}
+		if (path == null) return null;
+
+		double time = 0;
+		double distance = 0;
+		for (Road road : path) {
+			if (road == null) continue;
+			time += road.getTravelTime();
+			distance += road.getLength();
+		}
+		if (Double.isNaN(time) || Double.isInfinite(time)
+				|| Double.isNaN(distance) || Double.isInfinite(distance)) {
+			return null;
+		}
+		return new TravelCost(time, distance);
+	}
+
+	private double getBusSplitRatio(double taxiTime, double taxiDist, double bestBusTime, double bestBusDist) {
+		if (!isFinitePositive(taxiTime) || !isFinitePositive(bestBusTime)
+				|| !isFinitePositive(taxiDist) || !isFinitePositive(bestBusDist)) {
+			return 0.0;
+		}
+
+		double taxiUtil = GlobalVariables.MS_ALPHA
+				* (GlobalVariables.INITIAL_PRICE_TAXI
+						+ GlobalVariables.BASE_PRICE_TAXI * taxiDist / 1609)
+				+ GlobalVariables.MS_BETA * (taxiTime / 60) + GlobalVariables.TAXI_BASE;
+		double busUtil = GlobalVariables.MS_ALPHA * GlobalVariables.BUS_TICKET_PRICE
+				+ GlobalVariables.MS_BETA * (bestBusTime / 60)
+				+ GlobalVariables.BUS_BASE;
+
+		return clamp01(logistic((busUtil + 1.0) - taxiUtil));
+	}
+
+	private static boolean isFinitePositive(double value) {
+		return !Double.isNaN(value) && !Double.isInfinite(value) && value > 0;
+	}
+
+	private static double logistic(double value) {
+		if (value >= 0) {
+			return 1.0 / (1.0 + Math.exp(-value));
+		}
+		double expValue = Math.exp(value);
+		return expValue / (1.0 + expValue);
+	}
+
+	private static double clamp01(double value) {
+		return Math.max(0.0, Math.min(1.0, value));
+	}
+
+	private static class TravelCost {
+		final double time;
+		final double distance;
+
+		TravelCost(double time, double distance) {
+			this.time = time;
+			this.distance = distance;
+		}
+	}
+
+	private static class BusModeChoice extends TravelCost {
+		final int routeID;
+
+		BusModeChoice(int routeID, double time, double distance) {
+			super(time, distance);
+			this.routeID = routeID;
+		}
+	}
+
+	private static class ModeSplitChoice {
+		final int busRouteID;
+		final double busShare;
+		final double taxiShare;
+
+		ModeSplitChoice(int busRouteID, double busShare) {
+			this.busRouteID = busRouteID;
+			this.busShare = clamp01(busShare);
+			this.taxiShare = 1.0 - this.busShare;
+		}
+
+		static ModeSplitChoice taxiOnly() {
+			return new ModeSplitChoice(-1, 0.0);
+		}
+
+		boolean hasBusChoice() {
+			return this.busRouteID >= 0 && this.busShare > 0.0;
 		}
 	}
 	
@@ -553,27 +688,25 @@ public class Zone {
 	// Serve passenger using Bus
 	public int servePassengerByBus(ElectricBus b) {
 		int maxPassNum = b.remainingCapacity();
-		List<Integer> busStop = b.getBusStops();
 		ArrayList<Request> passToServe = new ArrayList<Request>();
 		int numPeople = 0;
 		
 		for (Request p : this.requestInQueueForBus) { // If there are passengers
-			if (busStop.contains(p.getDestZone())) {
-				int stopIndex = busStop.indexOf(p.getDestZone());
-				if (stopIndex >= b.getNextStopIndex() || stopIndex == 0) {
-					if (numPeople + p.getNumPeople() > maxPassNum) {
-						break;
-					} else { 
-						// passenger get on board
-						passToServe.add(p);
-						numPeople = numPeople + p.getNumPeople();
-						p.matchedTime = ContextCreator.getCurrentTick();
-						b.pickUpPassenger(p);
-						this.busServedPassWaitingTime += p.getCurrentWaitingTime();
-						this.busPickupRequest += 1;
-					}
-				}
+			if (p.getBusRoute() >= 0 && p.getBusRoute() != b.getRouteID()) {
+				continue;
 			}
+			if (!b.servable(p)) {
+				continue;
+			}
+			if (numPeople + p.getNumPeople() > maxPassNum) {
+				break;
+			}
+			passToServe.add(p);
+			numPeople = numPeople + p.getNumPeople();
+			p.matchedTime = ContextCreator.getCurrentTick();
+			b.pickUpPassenger(p);
+			this.busServedPassWaitingTime += p.getCurrentWaitingTime();
+			this.busPickupRequest += 1;
 		}
 		this.nRequestForBus -= passToServe.size();
 		this.requestInQueueForBus.removeAll(passToServe);
@@ -736,22 +869,6 @@ public class Zone {
 		this.taxiParkingTime += this.parkingVehicleStock.get() * GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL;
 	}
 
-	// Split taxi and bus passengers via a discrete choice model
-	// Distance unit in mile
-	// Time unit in minute
-	// Uncomment if you want to use mode choice model between taxis and buses
-//	private float getSplitRatio(double taxiTime, double taxiDist, double bestBusTime, double bestBusDist) {
-//		double taxiUtil = GlobalVariables.MS_ALPHA
-//				* (GlobalVariables.INITIAL_PRICE_TAXI
-//						+ GlobalVariables.BASE_PRICE_TAXI * taxiDist / 1609)
-//				+ GlobalVariables.MS_BETA * (taxiTime / 60) + GlobalVariables.TAXI_BASE;
-//		double busUtil = (float) (GlobalVariables.MS_ALPHA * GlobalVariables.BUS_TICKET_PRICE
-//				+ GlobalVariables.MS_BETA * (bestBusTime / 60)
-//				+ GlobalVariables.BUS_BASE);
-//		
-//		return (float) (Math.exp(1) / (Math.exp(taxiUtil - busUtil) + Math.exp(1)));
-//	}
-	
 	// Generate passenger waiting time for taxi
 	// this is in Zone class since the observations
 	// are usually associate with Zones
@@ -894,6 +1011,7 @@ public class Zone {
 		this.parkingVehicleStock.set(0);
 		this.publicTripTimeIndex = -1;
 		this.privateTripTimeIndex = 0;
+		this.invalidateModeSplitCache();
 		this.lastDemandUpdateHour = -1;
 		this.futureDemand = 0.0;
 		this.futureSupply.set(0);
@@ -1052,7 +1170,23 @@ public class Zone {
 	public void setRandomMode(Random r) { this.rand_mode_only = r; }
 	public void setRandomShare(Random r) { this.rand_share_only = r; }
 	public void setRandomRelocate(Random r) { this.rand_relocate_only = r; }
-	
+
+	public int getPublicTripTimeIndex() { return this.publicTripTimeIndex; }
+	public int getPrivateTripTimeIndex() { return this.privateTripTimeIndex; }
+	public int getLastDemandUpdateHour() { return this.lastDemandUpdateHour; }
+	public void setPublicTripTimeIndex(int v) {
+		this.publicTripTimeIndex = v;
+		this.invalidateModeSplitCache();
+	}
+	public void setPrivateTripTimeIndex(int v) { this.privateTripTimeIndex = v; }
+	public void setLastDemandUpdateHour(int v) { this.lastDemandUpdateHour = v; }
+	public void invalidateModeSplitCache() {
+		this.modeSplitCacheHour = -1;
+		if (this.modeSplitCache != null) {
+			this.modeSplitCache.clear();
+		}
+	}
+
 	public int getParkingVehicleStock() { return this.parkingVehicleStock.get(); }
 	public void setParkingVehicleStock(int v) { this.parkingVehicleStock.set(v); }
 	public Queue<Request> getTaxiRequestQueue() { return this.requestInQueueForTaxi; }
