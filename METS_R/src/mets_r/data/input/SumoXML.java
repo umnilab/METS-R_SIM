@@ -267,6 +267,27 @@ public class SumoXML {
 			return (relX * dirX + relY * dirY) < -1e-12 * Math.sqrt(dirLengthSq);
 		}
 
+		private double projectionAlongSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
+			double segX = segmentEnd.x - segmentStart.x;
+			double segY = segmentEnd.y - segmentStart.y;
+			double segLengthSq = segX * segX + segY * segY;
+			if (segLengthSq <= 1e-24) return Double.NaN;
+
+			return ((point.x - segmentStart.x) * segX
+					+ (point.y - segmentStart.y) * segY) / segLengthSq;
+		}
+
+		private boolean projectsInsideSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
+			double projection = projectionAlongSegment(point, segmentStart, segmentEnd);
+			if (Double.isNaN(projection) || Double.isInfinite(projection)) return false;
+			return projection > 1e-9 && projection <= 1.0 + 1e-9;
+		}
+
+		private boolean firstControlPointIsBehindCurrent(Coordinate currentCoord, ArrayList<Coordinate> coords) {
+			if (coords.size() < 2) return false;
+			return projectsInsideSegment(currentCoord, coords.get(0), coords.get(1));
+		}
+
 		private double turnAngleDegrees(Coordinate previous, Coordinate current, Coordinate next) {
 			double inX = current.x - previous.x;
 			double inY = current.y - previous.y;
@@ -287,15 +308,11 @@ public class SumoXML {
 
 		private Coordinate adjustedControlPoint(Coordinate incomingCoord, Coordinate controlPoint,
 				Coordinate followingPoint) {
-			double segX = followingPoint.x - controlPoint.x;
-			double segY = followingPoint.y - controlPoint.y;
-			double segLengthSq = segX * segX + segY * segY;
-			if (segLengthSq <= 1e-24) {
+			if (squaredDistance2D(controlPoint, followingPoint) <= 1e-24) {
 				return copyCoordinate(incomingCoord);
 			}
 
-			double projection = ((incomingCoord.x - controlPoint.x) * segX
-					+ (incomingCoord.y - controlPoint.y) * segY) / segLengthSq;
+			double projection = projectionAlongSegment(incomingCoord, controlPoint, followingPoint);
 			if (Double.isNaN(projection) || Double.isInfinite(projection)) {
 				projection = 0.0;
 			}
@@ -352,6 +369,7 @@ public class SumoXML {
 
 		private void prescanTransitionControlPoints() {
 			int adjustedCount = 0;
+			int skippedCount = 0;
 			int maxControlPointsToScan = 4;
 
 			for (Lane fromLane : lanes.values()) {
@@ -368,6 +386,12 @@ public class SumoXML {
 					if (toCoords.size() < 2) continue;
 
 					boolean adjustedLane = false;
+					while (toCoords.size() > 2 && firstControlPointIsBehindCurrent(upstreamEnd, toCoords)) {
+						toCoords.remove(0);
+						skippedCount++;
+						adjustedLane = true;
+					}
+
 					int scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
 					int guard = Math.max(1, toCoords.size() * 2);
 					for (int attempts = 0; attempts < guard; attempts++) {
@@ -407,9 +431,10 @@ public class SumoXML {
 				}
 			}
 
-			if (adjustedCount > 0) {
+			if (adjustedCount > 0 || skippedCount > 0) {
 				refreshRoadCenterlinesFromLanes();
-				ContextCreator.logger.info("SUMO transition prescan adjusted " + adjustedCount
+				ContextCreator.logger.info("SUMO transition prescan skipped " + skippedCount
+						+ " downstream lane control points behind upstream endpoints and adjusted " + adjustedCount
 						+ " downstream lane control points with transition angles sharper than 150 degrees.");
 			}
 		}

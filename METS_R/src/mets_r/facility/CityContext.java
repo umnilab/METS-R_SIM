@@ -117,6 +117,29 @@ public class CityContext extends DefaultContext<Object> {
     	}
         return coords;
     }
+
+	private double projectionAlongSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
+		double segX = segmentEnd.x - segmentStart.x;
+		double segY = segmentEnd.y - segmentStart.y;
+		double segLengthSq = segX * segX + segY * segY;
+		if (segLengthSq <= 1e-24) return Double.NaN;
+
+		return ((point.x - segmentStart.x) * segX
+				+ (point.y - segmentStart.y) * segY) / segLengthSq;
+	}
+
+	private boolean firstTurnControlPointIsBehind(ArrayList<Coordinate> coords) {
+		if (coords.size() <= 2) return false;
+		double projection = projectionAlongSegment(coords.get(0), coords.get(1), coords.get(2));
+		if (Double.isNaN(projection) || Double.isInfinite(projection)) return false;
+		return projection > 1e-9 && projection <= 1.0 + 1e-9;
+	}
+
+	private void skipBehindFirstTurnControlPoints(ArrayList<Coordinate> coords) {
+		while (firstTurnControlPointIsBehind(coords)) {
+			coords.remove(1);
+		}
+	}
 	
 	// Calculate the turning coords and length based on two connected lanes
 	private void initializeLaneTurningCurves(Lane lane1, Lane lane2) {
@@ -125,6 +148,7 @@ public class CityContext extends DefaultContext<Object> {
 		Coordinate p2 = lane2.getCoords().get(0);
 		Coordinate p3 = lane2.getCoords().get(1);
 		ArrayList<Coordinate> coords = catmullRomInterpolate(p0, p1, p2, p3);
+		skipBehindFirstTurnControlPoints(coords);
 		double distance = 0;
 		for (int i = 0; i < coords.size() - 1; i++) {
 			distance += getDistance(coords.get(i), coords.get(i+1));
