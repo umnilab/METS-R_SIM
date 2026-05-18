@@ -33,7 +33,8 @@ public class VehicleSnapshot {
 
 	public VehicleSnapshot(Vehicle vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
-				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginCoord().x, vehicle.getOriginCoord().y,
+				coordinate.y, vehicle.getSnapshotBearing(vehicle.getpreviousEpochCoord().x,
+				vehicle.getpreviousEpochCoord().y, coordinate), vehicle.currentSpeed(), vehicle.getOriginCoord().x, vehicle.getOriginCoord().y,
 				vehicle.getDestCoord().x, vehicle.getDestCoord().y, vehicle.getVehicleClass(),
 				vehicle.getRoad().getID());
 	}

@@ -169,6 +169,7 @@ public class Vehicle {
 	private Lane cachedProjectionLane_ = null;
 	private double cachedProjectionDistance_ = 0;
 	private int cachedProjectionSegmentIdx_ = -1;
+	private Coordinate cachedProjectionCoord_ = null;
 	
 	// For adaptive network partitioning
 	private int Nshadow; // Number of current shadow roads in the path
@@ -806,6 +807,7 @@ public class Vehicle {
 	    int segIdx = -1;
 	    double projectedParam = 0.0;
 	    double projectedSegmentLen = 0.0;
+	    Coordinate projectedCoord = null;
 
 	    for (int i = coords.size() - 1; i > 0; i--) {
 	        Coordinate a = coords.get(i);
@@ -825,6 +827,9 @@ public class Vehicle {
 	                if (Math.abs(this.distance_ - projectedDistance) < 25.0) {
 	                    segIdx = i;
 	                    newDistance = projectedDistance;
+	                    projectedParam = param;
+	                    projectedSegmentLen = segmentLen;
+	                    projectedCoord = this.projectCoordinateOnSegment(b, a, param);
 	                    break;
 	                }
 	            }
@@ -852,6 +857,7 @@ public class Vehicle {
 	                    segIdx = i;
 	                    projectedParam = param;
 	                    projectedSegmentLen = this.distance(a, b);
+	                    projectedCoord = this.projectCoordinateOnSegment(b, a, param);
 	                }
 	            }
 	        }
@@ -870,8 +876,19 @@ public class Vehicle {
 	    cachedProjectionLane_ = plane;
 	    cachedProjectionDistance_ = newDistance;
 	    cachedProjectionSegmentIdx_ = segIdx;
+	    cachedProjectionCoord_ = projectedCoord;
 	    
 	    return newDistance;
+	}
+
+	private Coordinate projectCoordinateOnSegment(Coordinate upstream, Coordinate downstream, double param) {
+		double clampedParam = Math.max(0.0, Math.min(1.0, param));
+		double upstreamZ = Double.isNaN(upstream.z) ? 0.0 : upstream.z;
+		double downstreamZ = Double.isNaN(downstream.z) ? upstreamZ : downstream.z;
+		return new Coordinate(
+				upstream.x + clampedParam * (downstream.x - upstream.x),
+				upstream.y + clampedParam * (downstream.y - upstream.y),
+				upstreamZ + clampedParam * (downstreamZ - upstreamZ));
 	}
 
 	/**
@@ -893,6 +910,7 @@ public class Vehicle {
 		}
 		double newDistance = this.distanceInNewLane(plane);
 		int segIdx = (plane == cachedProjectionLane_) ? cachedProjectionSegmentIdx_ : -1;
+		Coordinate projectedCoord = (plane == cachedProjectionLane_) ? cachedProjectionCoord_ : null;
 
 		ArrayList<Coordinate> coords = plane.getCoords();
 		ArrayList<Coordinate> newCoordMap = new ArrayList<>();
@@ -905,14 +923,16 @@ public class Vehicle {
 		if(newCoordMap.size() == 0) {
 			return false;
 		}
-
-		double transitionDistance = this.distance(this.getCurrentCoord(), newCoordMap.get(0));
+		if (projectedCoord == null) {
+			return false;
+		}
 
 		if(this.distance_ > GlobalVariables.NO_LANECHANGING_LENGTH) {
-			this.nextDistance_ = transitionDistance;
 			this.distance_ = newDistance;
+			this.setCurrentCoord(projectedCoord);
 			this.coordMap.clear();
 			this.coordMap.addAll(newCoordMap);
+			this.updateBearingAndNextDistanceToCoordMap();
 
 			this.removeFromCurrentLane();
 			this.insertToLane(plane);
@@ -921,6 +941,26 @@ public class Vehicle {
 			return this.lane != oldLane && this.lane == plane;
 		}
 		return false;
+	}
+
+	private void updateBearingAndNextDistanceToCoordMap() {
+		if (this.coordMap.isEmpty()) {
+			this.nextDistance_ = 0;
+			return;
+		}
+		double[] distAndAngle = new double[2];
+		this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
+		this.nextDistance_ = distAndAngle[0];
+		if (this.nextDistance_ > 1e-4) {
+			this.bearing_ = distAndAngle[1];
+			return;
+		}
+		if (this.coordMap.size() > 1) {
+			this.distance2(this.coordMap.get(0), this.coordMap.get(1), distAndAngle);
+			if (distAndAngle[0] > 1e-4) {
+				this.bearing_ = distAndAngle[1];
+			}
+		}
 	}
 
 	/**
@@ -3644,6 +3684,21 @@ public class Vehicle {
 	 * Get vehicle bearing
 	 */
 	public double getBearing() {
+		return this.bearing_;
+	}
+
+	public double getSnapshotBearing(double prevX, double prevY, Coordinate currentCoord) {
+		if (currentCoord == null || Double.isNaN(prevX) || Double.isNaN(prevY)
+				|| Double.isInfinite(prevX) || Double.isInfinite(prevY)
+				|| Double.isNaN(currentCoord.x) || Double.isNaN(currentCoord.y)
+				|| Double.isInfinite(currentCoord.x) || Double.isInfinite(currentCoord.y)) {
+			return this.bearing_;
+		}
+		double[] returnVals = new double[2];
+		this.distance2(new Coordinate(prevX, prevY, currentCoord.z), currentCoord, returnVals);
+		if (returnVals[0] > 0.1 && !Double.isNaN(returnVals[1]) && !Double.isInfinite(returnVals[1])) {
+			return returnVals[1];
+		}
 		return this.bearing_;
 	}
 	

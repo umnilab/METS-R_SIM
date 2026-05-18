@@ -116,7 +116,9 @@ public class BusSnapshot {
 	 */
 	public BusSnapshot(ElectricBus vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getRouteID(), vehicle.getpreviousEpochCoord().x,
-				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(),
+				vehicle.getpreviousEpochCoord().y, coordinate.x, coordinate.y,
+				vehicle.getSnapshotBearing(vehicle.getpreviousEpochCoord().x,
+				vehicle.getpreviousEpochCoord().y, coordinate), vehicle.currentSpeed(),
 				vehicle.currentAcc(), vehicle.getBatteryLevel(), vehicle.getTotalConsume(),
 				vehicle.getRoad().getID(), vehicle.getMatchedRequests(), vehicle.getMatchedPassengers(),
 				vehicle.getPickupRequests(), vehicle.getPickupPassengers(), vehicle.getDropoffRequests(),

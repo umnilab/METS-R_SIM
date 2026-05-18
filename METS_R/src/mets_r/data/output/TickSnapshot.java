@@ -112,7 +112,6 @@ public class TickSnapshot {
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
 		double y = coordinate.y;
-		double bearing = vehicle.getBearing();
 		double speed = vehicle.currentSpeed();
 		double originalX = vehicle.getOriginCoord().x;
 		double originalY = vehicle.getOriginCoord().y;
@@ -127,6 +126,7 @@ public class TickSnapshot {
 			prev_x = this.getVehicleSnapshot(id).prev_x;
 			prev_y = this.getVehicleSnapshot(id).prev_y;
 		}
+		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
 		VehicleSnapshot snapshot = new VehicleSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originalX, originalY, destX,
 				destY, vehicleClass, roadID);
@@ -150,7 +150,6 @@ public class TickSnapshot {
 		double x = coordinate.x;
 		double y = coordinate.y;
 		double speed = vehicle.currentSpeed();
-		double bearing = vehicle.getBearing();
 		int originID = vehicle.getOriginID();
 		int destID = vehicle.getDestID();
 		int nearlyArrived = vehicle.nearlyArrived();
@@ -164,6 +163,7 @@ public class TickSnapshot {
 			prev_x = this.getPrivateEVSnapshot(id).prev_x;
 			prev_y = this.getPrivateEVSnapshot(id).prev_y;
 		}
+		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
 		// Create a snapshot for the vehicle and store it in the map
 		if(vehState == Vehicle.CHARGING_TRIP) {
@@ -197,7 +197,6 @@ public class TickSnapshot {
 		double x = coordinate.x;
 		double y = coordinate.y;
 		double speed = vehicle.currentSpeed();
-		double bearing = vehicle.getBearing();
 		int originID = vehicle.getOriginID();
 		int destID = vehicle.getDestID();
 		int nearlyArrived = vehicle.nearlyArrived();
@@ -216,6 +215,7 @@ public class TickSnapshot {
 			prev_x = this.getETaxiSnapshot(id, vehicle.getState()).prev_x;
 			prev_y = this.getETaxiSnapshot(id, vehicle.getState()).prev_y;
 		}
+		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
 		// Create a snapshot for the vehicle and store it in the map
 		ETaxiSnapshot snapshot = new ETaxiSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
@@ -258,7 +258,6 @@ public class TickSnapshot {
 		double prev_y = vehicle.getpreviousEpochCoord().y;
 		double x = coordinate.x;
 		double y = coordinate.y;
-		double bearing = vehicle.getBearing();
 		double speed = vehicle.currentSpeed();
 		double acc = vehicle.currentAcc();
 		double batteryLevel = vehicle.getBatteryLevel();
@@ -275,6 +274,7 @@ public class TickSnapshot {
 			prev_x = this.getBusSnapshot(id).prev_x;
 			prev_y = this.getBusSnapshot(id).prev_y;
 		}
+		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
 		BusSnapshot snapshot = new BusSnapshot(id, routeID, prev_x, prev_y, x, y, bearing, speed, acc, batteryLevel,
 				energyConsumption, roadID, matchedRequests, matchedPassengers,

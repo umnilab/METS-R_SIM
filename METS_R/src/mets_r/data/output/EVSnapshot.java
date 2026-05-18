@@ -32,7 +32,8 @@ public class EVSnapshot {
 
 	public EVSnapshot(ElectricVehicle vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
-				coordinate.y, vehicle.getBearing(), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
+				coordinate.y, vehicle.getSnapshotBearing(vehicle.getpreviousEpochCoord().x,
+				vehicle.getpreviousEpochCoord().y, coordinate), vehicle.currentSpeed(), vehicle.getOriginID(), vehicle.getDestID(),
 				vehicle.nearlyArrived(), vehicle.getVehicleClass(), vehicle.getBatteryLevel(),
 				vehicle.getTotalConsume(), vehicle.getRoad().getID(), vehicle.getNumTrips());
 	}
