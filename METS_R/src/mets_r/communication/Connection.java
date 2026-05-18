@@ -96,7 +96,10 @@ public class Connection{
 			jsonMsg = (JSONObject) parser.parse(message);
 			String[] msgType = jsonMsg.get("TYPE").toString().split("_");
 			if (msgType[0].equals("STEP")) {
-				ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg); // stepHandler is shared
+				String answer = ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg);
+				if (answer != null && session != null) {
+					this.answerSender.sendMessage(session, answer);
+				}
 			}
 			else if (msgType[0].equals("CTRL")) {
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
