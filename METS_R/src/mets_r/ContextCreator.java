@@ -89,7 +89,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* Synchronize mode flags */
 	// Volatile for thread-read-safe 
 	public static volatile int waitNextStepCommand = GlobalVariables.SYNCHRONIZED?0:-1;
+	private static volatile int nextStepTargetTick = Integer.MIN_VALUE;
 	private static final Object stepCommandLock = new Object();
+	private static volatile boolean schedulerAtStepGate = false;
+	private static volatile long lastStepGateEnterMs = 0;
+	private static volatile long lastStepGateReleaseMs = 0;
+	private static volatile int lastStepGateTick = Integer.MIN_VALUE;
+	private static volatile long lastStepCommandMs = 0;
+	private static volatile int lastStepCommandRequestTick = Integer.MIN_VALUE;
+	private static volatile int lastStepCommandAcceptedNum = 0;
 	
 	/**
 	 * Number of ticks for which waitForNextStepCommand() has fired (i.e. ticks
@@ -99,26 +107,74 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 */
 	public static volatile long completedTickCount = 0;
 
-	public static int setNextStepCommand(int stepNum) {
+	public static class StepCommandResult {
+		public final boolean accepted;
+		public final int currentTick;
+		public final int acceptedStepNum;
+		public final int targetTick;
+
+		private StepCommandResult(boolean accepted, int currentTick, int acceptedStepNum, int targetTick) {
+			this.accepted = accepted;
+			this.currentTick = currentTick;
+			this.acceptedStepNum = acceptedStepNum;
+			this.targetTick = targetTick;
+		}
+	}
+
+	public static StepCommandResult setNextStepCommand(int requestTick, int stepNum) {
 		synchronized (stepCommandLock) {
+			int currentTick = getCurrentTick();
+			if (requestTick != currentTick) {
+				return new StepCommandResult(false, currentTick, 0, currentTick);
+			}
 			int requestedStepNum = Math.max(stepNum, 1);
-			// A duplicate or retry STEP can arrive while a previous batch is
-			// still in flight; do not let it shorten the remaining credits.
-			if (waitNextStepCommand > 0) {
-				waitNextStepCommand = Math.max(waitNextStepCommand, requestedStepNum);
-			} else {
-				waitNextStepCommand = requestedStepNum;
+			// The Python client retries with the remaining steps to its same
+			// absolute target, so normal STEP must replace the target.
+			nextStepTargetTick = currentTick + requestedStepNum;
+			waitNextStepCommand = requestedStepNum;
+			lastStepCommandMs = System.currentTimeMillis();
+			lastStepCommandRequestTick = requestTick;
+			lastStepCommandAcceptedNum = requestedStepNum;
+			if (!schedulerAtStepGate && lastStepGateReleaseMs > 0
+					&& lastStepCommandMs - lastStepGateReleaseMs > 30000) {
+				logger.warn("STEP accepted while scheduler has not returned to the step gate for "
+						+ (lastStepCommandMs - lastStepGateReleaseMs) + " ms; status="
+						+ getStepStatus());
 			}
 			stepCommandLock.notifyAll();
-			return waitNextStepCommand;
+			return new StepCommandResult(true, currentTick, requestedStepNum, nextStepTargetTick);
 		}
 	}
 
 	private static void setWaitNextStepCommand(int stepCommand) {
 		synchronized (stepCommandLock) {
 			waitNextStepCommand = stepCommand;
+			int currentTick = getCurrentTick();
+			nextStepTargetTick = stepCommand > 0 ? currentTick + stepCommand : currentTick;
 			stepCommandLock.notifyAll();
 		}
+	}
+
+	public static LinkedHashMap<String, Object> getStepStatus() {
+		LinkedHashMap<String, Object> status = new LinkedHashMap<String, Object>();
+		long now = System.currentTimeMillis();
+		synchronized (stepCommandLock) {
+			status.put("currentTick", getCurrentTick());
+			status.put("completedTickCount", completedTickCount);
+			status.put("waitNextStepCommand", waitNextStepCommand);
+			status.put("nextStepTargetTick", nextStepTargetTick);
+			status.put("schedulerAtStepGate", schedulerAtStepGate);
+			status.put("lastStepGateTick", lastStepGateTick);
+			status.put("lastStepGateAgeMs", lastStepGateEnterMs == 0 ? -1 : now - lastStepGateEnterMs);
+			status.put("lastStepGateReleaseAgeMs", lastStepGateReleaseMs == 0 ? -1 : now - lastStepGateReleaseMs);
+			status.put("lastStepCommandAgeMs", lastStepCommandMs == 0 ? -1 : now - lastStepCommandMs);
+			status.put("lastStepCommandRequestTick", lastStepCommandRequestTick);
+			status.put("lastStepCommandAcceptedNum", lastStepCommandAcceptedNum);
+		}
+		if (tscheduler != null) {
+			status.put("threadedScheduler", tscheduler.getStatus());
+		}
+		return status;
 	}
 	
 	/* For enable the reset function*/
@@ -506,6 +562,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			// remaining credits; reaching the next LAST_PRIORITY slot is enough
 			// to make the schedule quiescent for reset/load removal.
 			if (waitNextStepCommand == 0) {
+				nextStepTargetTick = getCurrentTick() + 1;
 				waitNextStepCommand = 1;
 			}
 			stepCommandLock.notifyAll();
@@ -531,6 +588,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 						+ "target completedTickCount=" + targetTickCount
 						+ ", current completedTickCount=" + completedTickCount
 						+ ", waitNextStepCommand=" + waitNextStepCommand
+						+ ", nextStepTargetTick=" + nextStepTargetTick
 						+ "; proceeding inline (some scheduled actions may leak).");
 				return false;
 			}
@@ -892,16 +950,24 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// in a fully quiescent state where removeAction() works reliably.
 		synchronized (stepCommandLock) {
 			completedTickCount++;
+			schedulerAtStepGate = true;
+			lastStepGateTick = ContextCreator.getCurrentTick();
+			lastStepGateEnterMs = System.currentTimeMillis();
 			stepCommandLock.notifyAll();
 		}
 		long prevTime = -10001; // for the first tick
 		while(true) {
 			synchronized (stepCommandLock) {
-				if (waitNextStepCommand != 0) {
-					waitNextStepCommand -= 1;
+				int currentTick = ContextCreator.getCurrentTick();
+				if (waitNextStepCommand != 0 && currentTick < nextStepTargetTick) {
+					waitNextStepCommand = nextStepTargetTick - currentTick;
+					schedulerAtStepGate = false;
+					lastStepGateReleaseMs = System.currentTimeMillis();
 					stepCommandLock.notifyAll();
 					return;
 				}
+				waitNextStepCommand = 0;
+				nextStepTargetTick = currentTick;
 				try{
 					stepCommandLock.wait(100);
 				} catch (InterruptedException e) {

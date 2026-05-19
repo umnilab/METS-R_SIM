@@ -38,6 +38,7 @@ public class QueryMessageHandler extends MessageHandler {
 	
 	public QueryMessageHandler() {
 		messageHandlers.put("tick", this::getTick);
+		messageHandlers.put("stepStatus", this::getStepStatus);
         // =============================================================
         // Vehicles
         // =============================================================
@@ -112,6 +113,13 @@ public class QueryMessageHandler extends MessageHandler {
 	    jsonObj.put("CODE", "OK");
 	    jsonObj.put("TICK", ContextCreator.getCurrentTick());
 	    return jsonObj;
+	}
+
+	public HashMap<String, Object> getStepStatus(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("CODE", "OK");
+		jsonObj.putAll(ContextCreator.getStepStatus());
+		return jsonObj;
 	}
 	
 	// =============================================================

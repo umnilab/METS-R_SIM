@@ -19,6 +19,12 @@ public class ThreadedScheduler {
 	private int max_para_time;
 	private int avg_para_time;
 	private int seq_time;
+	private volatile String activeStage = "idle";
+	private volatile int activeStageTick = -1;
+	private volatile long activeStageStartMs = 0;
+	private volatile String lastFinishedStage = "none";
+	private volatile int lastFinishedStageTick = -1;
+	private volatile long lastFinishedStageMs = 0;
 
 	// Per-tick idempotency guards: Repast's schedule.removeAction() may silently
 	// leave recurring actions in its internal "on-deck" queue across reset(),
@@ -55,6 +61,38 @@ public class ThreadedScheduler {
 		this.lastSignalStepTick = -1;
 	}
 
+	private void beginStage(String stage) {
+		this.activeStage = stage;
+		this.activeStageTick = ContextCreator.getCurrentTick();
+		this.activeStageStartMs = System.currentTimeMillis();
+	}
+
+	private void endStage(String stage) {
+		long now = System.currentTimeMillis();
+		long duration = this.activeStageStartMs == 0 ? -1 : now - this.activeStageStartMs;
+		if (duration > 30000) {
+			ContextCreator.logger.warn("ThreadedScheduler slow stage " + stage
+					+ " tick=" + this.activeStageTick + " durationMs=" + duration);
+		}
+		this.lastFinishedStage = stage;
+		this.lastFinishedStageTick = this.activeStageTick;
+		this.lastFinishedStageMs = now;
+		this.activeStage = "idle";
+		this.activeStageStartMs = 0;
+	}
+
+	public LinkedHashMap<String, Object> getStatus() {
+		LinkedHashMap<String, Object> status = new LinkedHashMap<String, Object>();
+		long now = System.currentTimeMillis();
+		status.put("activeStage", this.activeStage);
+		status.put("activeStageTick", this.activeStageTick);
+		status.put("activeStageAgeMs", this.activeStageStartMs == 0 ? -1 : now - this.activeStageStartMs);
+		status.put("lastFinishedStage", this.lastFinishedStage);
+		status.put("lastFinishedStageTick", this.lastFinishedStageTick);
+		status.put("lastFinishedStageAgeMs", this.lastFinishedStageMs == 0 ? -1 : now - this.lastFinishedStageMs);
+		return status;
+	}
+
 	public void paraRoadStep() {
 		synchronized (this) {
 			int currentTick = ContextCreator.getCurrentTick();
@@ -71,6 +109,7 @@ public class ThreadedScheduler {
 			tasks.add(new PartitionRoadThreadPart1(partitionedInRoads.get(i), i));
 		}
 
+		beginStage("road.part1");
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
@@ -81,7 +120,9 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			ContextCreator.logger.error("ThreadedScheduler road.part1 failed", ex);
+		} finally {
+			endStage("road.part1");
 		}
 		
 		List<PartitionRoadThreadPart2> tasks2 = new ArrayList<PartitionRoadThreadPart2>();
@@ -89,6 +130,7 @@ public class ThreadedScheduler {
 			tasks2.add(new PartitionRoadThreadPart2(partitionedInRoads.get(i), i));
 		}
 
+		beginStage("road.part2");
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks2);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
@@ -99,7 +141,9 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			ContextCreator.logger.error("ThreadedScheduler road.part2 failed", ex);
+		} finally {
+			endStage("road.part2");
 		}
 		
 //		List<PartitionRoadThreadPart3> tasks3 = new ArrayList<PartitionRoadThreadPart3>();
@@ -120,7 +164,14 @@ public class ThreadedScheduler {
 //			ex.printStackTrace();
 //		}
 		
-		ContextCreator.getVehicleContext().executeGlobalTransfers();
+		beginStage("vehicle.globalTransfers");
+		try {
+			ContextCreator.getVehicleContext().executeGlobalTransfers();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("ThreadedScheduler vehicle.globalTransfers failed", ex);
+		} finally {
+			endStage("vehicle.globalTransfers");
+		}
 		
 	}
 
@@ -132,8 +183,15 @@ public class ThreadedScheduler {
 			}
 			this.lastZoneStepTick = currentTick;
 		}
-		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			z.stepPart1();
+		beginStage("zone.part1");
+		try {
+			for (Zone z : ContextCreator.getZoneContext().getAll()) {
+				z.stepPart1();
+			}
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("ThreadedScheduler zone.part1 failed", ex);
+		} finally {
+			endStage("zone.part1");
 		}
 		
 		
@@ -162,6 +220,7 @@ public class ThreadedScheduler {
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks2.add(new PartitionZoneThread2(partitionedZones.get(i), i));
 		}
+		beginStage("zone.part2");
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks2);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
@@ -172,7 +231,9 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			ContextCreator.logger.error("ThreadedScheduler zone.part2 failed", ex);
+		} finally {
+			endStage("zone.part2");
 		}
 		
 	}
@@ -194,6 +255,7 @@ public class ThreadedScheduler {
 			tasks.add(new PartitionChargingStationThread(patitionChargingStations.get(i), i));
 		}
 
+		beginStage("charging.part1");
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
@@ -204,11 +266,20 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			ContextCreator.logger.error("ThreadedScheduler charging.part1 failed", ex);
+		} finally {
+			endStage("charging.part1");
 		}
 		
-		for(ChargingStation cs: ContextCreator.getChargingStationContext().getAll()) {
-			cs.stepPart2();
+		beginStage("charging.part2");
+		try {
+			for(ChargingStation cs: ContextCreator.getChargingStationContext().getAll()) {
+				cs.stepPart2();
+			}
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("ThreadedScheduler charging.part2 failed", ex);
+		} finally {
+			endStage("charging.part2");
 		}
 	}
 	
@@ -228,6 +299,7 @@ public class ThreadedScheduler {
 		for (int i = 0; i < this.N_Partition; i++) {
 			tasks.add(new PartitionSignalThread(patitionSignals.get(i), i));
 		}
+		beginStage("signal");
 		try {
 			List<Future<Integer>> futures = executor.invokeAll(tasks);
 			ArrayList<Integer> time_stat = new ArrayList<Integer>();
@@ -238,7 +310,9 @@ public class ThreadedScheduler {
 			max_para_time = max_para_time + time_result.get(1);
 			avg_para_time = avg_para_time + time_result.get(2);
 		} catch (Exception ex) {
-			ex.printStackTrace();
+			ContextCreator.logger.error("ThreadedScheduler signal failed", ex);
+		} finally {
+			endStage("signal");
 		}
 	}
 
@@ -299,8 +373,8 @@ class PartitionRoadThreadPart1 implements Callable<Integer> {
 			for (Road r : this.RoadSet) {
 				r.stepPart1();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("road.part1 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -326,8 +400,8 @@ class PartitionRoadThreadPart2 implements Callable<Integer> {
 			for (Road r : this.RoadSet) {
 				r.stepPart2();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("road.part2 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -380,8 +454,8 @@ class PartitionZoneThread1 implements Callable<Integer> {
 			for (Zone z : this.ZoneSet) {
 				z.stepPart1();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("zone.part1 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -407,8 +481,8 @@ class PartitionZoneThread2 implements Callable<Integer> {
 			for (Zone z : this.ZoneSet) {
 				z.stepPart2();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("zone.part2 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -434,8 +508,8 @@ class PartitionChargingStationThread implements Callable<Integer> {
 			for (ChargingStation cs : this.ChargingStationSet) {
 				cs.stepPart1();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("charging.part1 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -461,8 +535,8 @@ class PartitionSignalThread implements Callable<Integer> {
 			for (Signal s : this.signalSet) {
 				s.step();
 			}
-		} catch (Exception ex) {
-			ex.printStackTrace();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("signal partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}

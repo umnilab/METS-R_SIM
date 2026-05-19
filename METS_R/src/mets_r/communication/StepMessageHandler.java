@@ -5,6 +5,7 @@ import java.util.HashMap;
 import org.json.simple.JSONObject;
 
 import mets_r.ContextCreator;
+import mets_r.ContextCreator.StepCommandResult;
 
 public class StepMessageHandler extends MessageHandler {
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -12,7 +13,8 @@ public class StepMessageHandler extends MessageHandler {
 		int stepNum = ((Long) jsonMsg.get("NUM")).intValue();
 		stepNum = Math.max(stepNum, 1);
 
-		int currentTick = ContextCreator.getCurrentTick();
+		StepCommandResult stepCommand = ContextCreator.setNextStepCommand(requestTick, stepNum);
+		int currentTick = stepCommand.currentTick;
 
 		HashMap<String, Object> ans = new HashMap<String, Object>();
 		ans.put("TYPE", "STEP");
@@ -20,11 +22,10 @@ public class StepMessageHandler extends MessageHandler {
 		ans.put("REQUEST_TICK", requestTick);
 		ans.put("NUM", stepNum);
 
-		if (requestTick == currentTick) {
-			int acceptedStepNum = ContextCreator.setNextStepCommand(stepNum);
+		if (stepCommand.accepted) {
 			ans.put("CODE", "OK");
-			ans.put("ACCEPTED_NUM", acceptedStepNum);
-			ans.put("TARGET_TICK", currentTick + acceptedStepNum);
+			ans.put("ACCEPTED_NUM", stepCommand.acceptedStepNum);
+			ans.put("TARGET_TICK", stepCommand.targetTick);
 		} else {
 			ans.put("CODE", "KO");
 			ans.put("MSG", "STEP tick mismatch");
