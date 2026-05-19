@@ -187,20 +187,20 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 
-	public Collection<ElectricTaxi> getTaxis() {
-		return this.taxiMap.values();
+	public synchronized Collection<ElectricTaxi> getTaxis() {
+		return new ArrayList<ElectricTaxi>(this.taxiMap.values());
 	}
 
-	public Collection<ElectricBus> getBuses() {
-		return this.busMap.values();
+	public synchronized Collection<ElectricBus> getBuses() {
+		return new ArrayList<ElectricBus>(this.busMap.values());
 	}
 	
-	public ElectricTaxi getTaxi(int vid) {
+	public synchronized ElectricTaxi getTaxi(int vid) {
 		if(this.taxiMap.containsKey(vid)) return this.taxiMap.get(vid);
 		return null;
 	}
 	
-	public ElectricBus getBus(int vid) {
+	public synchronized ElectricBus getBus(int vid) {
 		if(this.busMap.containsKey(vid)) return this.busMap.get(vid);
 		return null;
 	}
@@ -225,17 +225,17 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		return new ArrayList<Integer>(this.vidToAgentMap.keySet());
 	}
 	
-	public List<Integer> getTaxiIDList(){
+	public synchronized List<Integer> getTaxiIDList(){
 		List<Integer> vehicleIDList = new ArrayList<Integer>(this.taxiMap.keySet());
 	    return vehicleIDList;
 	}
 	
-	public List<Integer> getBusIDList(){
+	public synchronized List<Integer> getBusIDList(){
 		List<Integer> vehicleIDList = new ArrayList<Integer>(this.busMap.keySet());
 	    return vehicleIDList;
 	}
 	
-	public List<Integer> getPublicVehicleIDList(){
+	public synchronized List<Integer> getPublicVehicleIDList(){
 		List<Integer> vehicleIDList = new ArrayList<Integer>(this.taxiMap.keySet());
 	    vehicleIDList.addAll(this.busMap.keySet());
 	    return vehicleIDList;
@@ -335,12 +335,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 
-	public Collection<ElectricVehicle> getPrivateEVs() {
-		return this.privateEVMap.values();
+	public synchronized Collection<ElectricVehicle> getPrivateEVs() {
+		return new ArrayList<ElectricVehicle>(this.privateEVMap.values());
 	}
 
-	public Collection<Vehicle> getPrivateGVs() {
-		return this.privateGVMap.values();
+	public synchronized Collection<Vehicle> getPrivateGVs() {
+		return new ArrayList<Vehicle>(this.privateGVMap.values());
 	}
 	
 	public synchronized void registerPrivateEV(int vid, ElectricVehicle ev) {
@@ -373,7 +373,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	/* Methods for save/load support */
-	public void clearMaps() {
+	public synchronized void clearMaps() {
 		this.taxiMap.clear();
 		this.busMap.clear();
 		this.privateEVMap.clear();
@@ -388,11 +388,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 	
-	public void registerTaxi(ElectricTaxi v) {
+	public synchronized void registerTaxi(ElectricTaxi v) {
 		this.taxiMap.put(v.getID(), v);
 	}
 	
-	public void registerBus(ElectricBus v) {
+	public synchronized void registerBus(ElectricBus v) {
 		this.busMap.put(v.getID(), v);
 	}
 

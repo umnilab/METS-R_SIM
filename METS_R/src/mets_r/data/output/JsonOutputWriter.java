@@ -19,11 +19,6 @@ import org.json.simple.JSONObject;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.DataConsumer;
-import mets_r.facility.Road;
-import mets_r.facility.Zone;
-import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricTaxi;
-import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -336,7 +331,7 @@ public class JsonOutputWriter implements DataConsumer {
 		this.writingThread = null;
 
 		// Reset the counter to the the initial position
-		this.currentTick = -1;
+		this.currentTick = Integer.MAX_VALUE;
 
 		// Dispose of anything we no longer need (like the writer)
 		this.closeOutputFileWriter();
@@ -649,28 +644,22 @@ public class JsonOutputWriter implements DataConsumer {
 			}
 		}
 
-		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
-			privateEVEnergy += (float) ev.getTotalConsume();
+		if (tick.hasFrameSummary()) {
+			privateEVEnergy = tick.getPrivateEVEnergy();
+			eTaxiEnergy = tick.getETaxiEnergy();
+			eBusEnergy = tick.getEBusEnergy();
+			energyConsumption = tick.getEnergyConsumption();
+			matchedRequests = tick.getMatchedRequests();
+			matchedPassengers = tick.getMatchedPassengers();
+			pickupRequests = tick.getPickupRequests();
+			pickupPassengers = tick.getPickupPassengers();
+			dropoffRequests = tick.getDropoffRequests();
+			dropoffPassengers = tick.getDropoffPassengers();
+			leftRequests = tick.getLeftRequests();
+			leftPassengers = tick.getLeftPassengers();
+			vehNum = tick.getVehicleCount();
+			meanSpeed = tick.getMeanSpeed();
 		}
-		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
-			eTaxiEnergy += (float) ev.getTotalConsume();
-			matchedRequests += ev.getMatchedRequests();
-			matchedPassengers += ev.getMatchedPassengers();
-			pickupRequests += ev.getPickupRequests();
-			pickupPassengers += ev.getPickupPassengers();
-			dropoffRequests += ev.getDropoffRequests();
-			dropoffPassengers += ev.getDropoffPassengers();
-		}
-		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
-			eBusEnergy += (float) bus.getTotalConsume();
-			matchedRequests += bus.getMatchedRequests();
-			matchedPassengers += bus.getMatchedPassengers();
-			pickupRequests += bus.getPickupRequests();
-			pickupPassengers += bus.getPickupPassengers();
-			dropoffRequests += bus.getDropoffRequests();
-			dropoffPassengers += bus.getDropoffPassengers();
-		}
-		energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
 		
 		
 		evIDs = tick.getETaxiList(Vehicle.OCCUPIED_TRIP);
@@ -759,27 +748,10 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 		
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
-        
-		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			leftRequests += z.numberOfLeavedTaxiRequest + z.numberOfLeavedBusRequest;
-			leftPassengers += z.numberOfLeavedTaxiPassengers + z.numberOfLeavedBusPassengers;
-		}
-
-		if(currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
-			for (Road r: ContextCreator.getRoadContext().getAll()) {
-				if(r.stateHasChanged()) {
-					// Store the link state
-					String id = r.getOrigID();
-					double speed = r.calcSpeed();
-					int nVehicles = r.getVehicleNum();
-					double energy = r.getTotalEnergy();
-					int flow = r.getTotalFlow();
-					meanSpeed += speed * nVehicles;
-					vehNum += nVehicles;
-					LinkSnapshot snapshot = new LinkSnapshot(id, speed, nVehicles, energy, flow);
-					ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
-					linkArrayArray.add(linkArray);
-				}
+		for (LinkSnapshot snapshot : tick.getLinkSnapshots()) {
+			ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
+			if (linkArray != null) {
+				linkArrayArray.add(linkArray);
 			}
 		}
 		
@@ -808,7 +780,7 @@ public class JsonOutputWriter implements DataConsumer {
 		tickArray.put("energy_etaxi", eTaxiEnergy);
 		tickArray.put("energy_ebus", eBusEnergy);
 		tickArray.put("num_veh", vehNum);
-		tickArray.put("mean_speed", meanSpeed/Math.max(vehNum,1));
+		tickArray.put("mean_speed", meanSpeed);
 		
 		return tickArray;
 	}

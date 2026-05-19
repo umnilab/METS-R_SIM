@@ -1,5 +1,6 @@
 package mets_r.data.output;
 
+import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
@@ -10,6 +11,8 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.DataConsumer;
 import mets_r.data.input.NetworkEventObject;
+import mets_r.facility.Road;
+import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
@@ -230,6 +233,7 @@ public class DataCollector {
 		if(this.currentSnapshot != null) {
 			// Place the current tick into the buffer if anything was recorded
 			if (!this.currentSnapshot.isEmpty()) {
+				this.recordFrameSummary(this.currentSnapshot);
 				this.buffer.add(this.currentSnapshot);
 			}
 	
@@ -239,6 +243,72 @@ public class DataCollector {
 			// Remove the reference to the current tick snapshot object
 			this.currentSnapshot = null;
 		}
+	}
+
+	private void recordFrameSummary(TickSnapshot snapshot) {
+		int matchedRequests = 0;
+		int matchedPassengers = 0;
+		int pickupRequests = 0;
+		int pickupPassengers = 0;
+		int dropoffRequests = 0;
+		int dropoffPassengers = 0;
+		int leftRequests = 0;
+		int leftPassengers = 0;
+		float privateEVEnergy = 0;
+		float eTaxiEnergy = 0;
+		float eBusEnergy = 0;
+		int vehicleCount = 0;
+		float meanSpeed = 0;
+		ArrayList<LinkSnapshot> links = new ArrayList<LinkSnapshot>();
+
+		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
+			privateEVEnergy += (float) ev.getTotalConsume();
+		}
+		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
+			eTaxiEnergy += (float) ev.getTotalConsume();
+			matchedRequests += ev.getMatchedRequests();
+			matchedPassengers += ev.getMatchedPassengers();
+			pickupRequests += ev.getPickupRequests();
+			pickupPassengers += ev.getPickupPassengers();
+			dropoffRequests += ev.getDropoffRequests();
+			dropoffPassengers += ev.getDropoffPassengers();
+		}
+		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+			eBusEnergy += (float) bus.getTotalConsume();
+			matchedRequests += bus.getMatchedRequests();
+			matchedPassengers += bus.getMatchedPassengers();
+			pickupRequests += bus.getPickupRequests();
+			pickupPassengers += bus.getPickupPassengers();
+			dropoffRequests += bus.getDropoffRequests();
+			dropoffPassengers += bus.getDropoffPassengers();
+		}
+
+		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+			leftRequests += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
+			leftPassengers += zone.numberOfLeavedTaxiPassengers + zone.numberOfLeavedBusPassengers;
+		}
+
+		if (snapshot.getTickNumber() % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
+			float weightedSpeed = 0;
+			for (Road road : ContextCreator.getRoadContext().getAll()) {
+				if (!road.stateHasChanged()) {
+					continue;
+				}
+				double speed = road.calcSpeed();
+				int nVehicles = road.getVehicleNum();
+				double energy = road.getTotalEnergy();
+				int flow = road.getTotalFlow();
+				weightedSpeed += (float) speed * nVehicles;
+				vehicleCount += nVehicles;
+				links.add(new LinkSnapshot(road.getOrigID(), speed, nVehicles, energy, flow));
+			}
+			meanSpeed = weightedSpeed / Math.max(vehicleCount, 1);
+		}
+
+		snapshot.logFrameSummary(matchedRequests, matchedPassengers, pickupRequests,
+				pickupPassengers, dropoffRequests, dropoffPassengers, leftRequests,
+				leftPassengers, privateEVEnergy, eTaxiEnergy, eBusEnergy,
+				vehicleCount, meanSpeed, links);
 	}
 
 	/**

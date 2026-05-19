@@ -40,6 +40,22 @@ public class TickSnapshot {
 	private HashMap<Integer, ETaxiSnapshot> evs_relocation;
 	private HashMap<Integer, ETaxiSnapshot> evs_charging;
 	private HashMap<Integer, BusSnapshot> buses;
+	private boolean frameSummaryRecorded;
+	private int matchedRequests;
+	private int matchedPassengers;
+	private int pickupRequests;
+	private int pickupPassengers;
+	private int dropoffRequests;
+	private int dropoffPassengers;
+	private int leftRequests;
+	private int leftPassengers;
+	private float energyConsumption;
+	private float privateEVEnergy;
+	private float eTaxiEnergy;
+	private float eBusEnergy;
+	private int vehicleCount;
+	private float meanSpeed;
+	private ArrayList<LinkSnapshot> links;
 
 	// Link energy consumptions for UCB
 //	private Map<Integer, ArrayList<Double>> link_UCB; // the link energy consumption for taxis
@@ -76,6 +92,8 @@ public class TickSnapshot {
 		this.evs_occupied = new HashMap<Integer, ETaxiSnapshot>();
 		this.evs_relocation = new HashMap<Integer, ETaxiSnapshot>();
 		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
+		this.frameSummaryRecorded = false;
+		this.links = new ArrayList<LinkSnapshot>();
 
 		// Setup the map for holding the event data. Two subarraylists (for starting
 		// events and ending events) is created in a large arraylist
@@ -86,6 +104,29 @@ public class TickSnapshot {
 
 		// Setup the map for holding the link energy consumption, which is a map of
 		// linkid: link of passed vehicles, we store this for each tick
+	}
+
+	public void logFrameSummary(int matchedRequests, int matchedPassengers,
+			int pickupRequests, int pickupPassengers, int dropoffRequests,
+			int dropoffPassengers, int leftRequests, int leftPassengers,
+			float privateEVEnergy, float eTaxiEnergy, float eBusEnergy,
+			int vehicleCount, float meanSpeed, ArrayList<LinkSnapshot> links) {
+		this.frameSummaryRecorded = true;
+		this.matchedRequests = matchedRequests;
+		this.matchedPassengers = matchedPassengers;
+		this.pickupRequests = pickupRequests;
+		this.pickupPassengers = pickupPassengers;
+		this.dropoffRequests = dropoffRequests;
+		this.dropoffPassengers = dropoffPassengers;
+		this.leftRequests = leftRequests;
+		this.leftPassengers = leftPassengers;
+		this.privateEVEnergy = privateEVEnergy;
+		this.eTaxiEnergy = eTaxiEnergy;
+		this.eBusEnergy = eBusEnergy;
+		this.energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
+		this.vehicleCount = vehicleCount;
+		this.meanSpeed = meanSpeed;
+		this.links = links == null ? new ArrayList<LinkSnapshot>() : new ArrayList<LinkSnapshot>(links);
 	}
 
 	/**
@@ -437,6 +478,70 @@ public class TickSnapshot {
 
 		// return the found vehicle snapshot or null if nothing found
 		return snapshot;
+	}
+
+	public boolean hasFrameSummary() {
+		return this.frameSummaryRecorded;
+	}
+
+	public int getMatchedRequests() {
+		return this.matchedRequests;
+	}
+
+	public int getMatchedPassengers() {
+		return this.matchedPassengers;
+	}
+
+	public int getPickupRequests() {
+		return this.pickupRequests;
+	}
+
+	public int getPickupPassengers() {
+		return this.pickupPassengers;
+	}
+
+	public int getDropoffRequests() {
+		return this.dropoffRequests;
+	}
+
+	public int getDropoffPassengers() {
+		return this.dropoffPassengers;
+	}
+
+	public int getLeftRequests() {
+		return this.leftRequests;
+	}
+
+	public int getLeftPassengers() {
+		return this.leftPassengers;
+	}
+
+	public float getEnergyConsumption() {
+		return this.energyConsumption;
+	}
+
+	public float getPrivateEVEnergy() {
+		return this.privateEVEnergy;
+	}
+
+	public float getETaxiEnergy() {
+		return this.eTaxiEnergy;
+	}
+
+	public float getEBusEnergy() {
+		return this.eBusEnergy;
+	}
+
+	public int getVehicleCount() {
+		return this.vehicleCount;
+	}
+
+	public float getMeanSpeed() {
+		return this.meanSpeed;
+	}
+
+	public ArrayList<LinkSnapshot> getLinkSnapshots() {
+		return new ArrayList<LinkSnapshot>(this.links);
 	}
 
 	public boolean isEmpty() {

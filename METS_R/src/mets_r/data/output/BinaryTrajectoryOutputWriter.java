@@ -26,9 +26,6 @@ import mets_r.communication.DataConsumer;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
-import mets_r.mobility.ElectricBus;
-import mets_r.mobility.ElectricTaxi;
-import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Vehicle;
 
 /**
@@ -215,6 +212,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 					BinaryTrajectoryOutputWriter.this.paused = false;
 					BinaryTrajectoryOutputWriter.this.consuming = false;
+					BinaryTrajectoryOutputWriter.this.currentTick = Integer.MAX_VALUE;
 				}
 			}
 		};
@@ -233,7 +231,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writingThread.interrupt();
 		this.writingThread.join();
 		this.writingThread = null;
-		this.currentTick = -1;
+		this.currentTick = Integer.MAX_VALUE;
 		this.closeOutputFileWriter();
 	}
 
@@ -424,7 +422,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.currentChunkFirstTick = tick.getTickNumber();
 		}
 
-		FrameSummary summary = this.createFrameSummary(currentTick);
+		FrameSummary summary = this.createFrameSummary(tick);
 		ArrayList<EVSnapshot> privateEvs = this.getPrivateEVRecords(tick);
 		ArrayList<ETaxiSnapshot> occupiedTaxis = this.getETaxiRecords(tick, Vehicle.OCCUPIED_TRIP);
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
@@ -468,55 +466,29 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.ticksWritten++;
 	}
 
-	private FrameSummary createFrameSummary(int currentTick) {
+	private FrameSummary createFrameSummary(TickSnapshot tick) {
 		FrameSummary summary = new FrameSummary();
-		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
-			summary.privateEVEnergy += (float) ev.getTotalConsume();
-		}
-		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
-			summary.eTaxiEnergy += (float) ev.getTotalConsume();
-			summary.matchedRequests += ev.getMatchedRequests();
-			summary.matchedPassengers += ev.getMatchedPassengers();
-			summary.pickupRequests += ev.getPickupRequests();
-			summary.pickupPassengers += ev.getPickupPassengers();
-			summary.dropoffRequests += ev.getDropoffRequests();
-			summary.dropoffPassengers += ev.getDropoffPassengers();
-		}
-		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
-			summary.eBusEnergy += (float) bus.getTotalConsume();
-			summary.matchedRequests += bus.getMatchedRequests();
-			summary.matchedPassengers += bus.getMatchedPassengers();
-			summary.pickupRequests += bus.getPickupRequests();
-			summary.pickupPassengers += bus.getPickupPassengers();
-			summary.dropoffRequests += bus.getDropoffRequests();
-			summary.dropoffPassengers += bus.getDropoffPassengers();
-		}
-		summary.energyConsumption = summary.privateEVEnergy + summary.eTaxiEnergy + summary.eBusEnergy;
-
-		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
-			summary.leftRequests += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
-			summary.leftPassengers += zone.numberOfLeavedTaxiPassengers + zone.numberOfLeavedBusPassengers;
-		}
-
-		if (currentTick % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT != 0) {
+		if (tick == null || !tick.hasFrameSummary()) {
 			return summary;
 		}
-
-		float weightedSpeed = 0;
-		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if (!road.stateHasChanged()) {
-				continue;
-			}
-			double speed = road.calcSpeed();
-			int nVehicles = road.getVehicleNum();
-			double energy = road.getTotalEnergy();
-			int flow = road.getTotalFlow();
-			weightedSpeed += (float) speed * nVehicles;
-			summary.vehicleCount += nVehicles;
-			summary.links.add(new BinaryLinkRecord(this.getRoadDictionaryIndex(road.getOrigID()),
-					nVehicles, (float) speed, flow, (float) energy));
+		summary.matchedRequests = tick.getMatchedRequests();
+		summary.matchedPassengers = tick.getMatchedPassengers();
+		summary.pickupRequests = tick.getPickupRequests();
+		summary.pickupPassengers = tick.getPickupPassengers();
+		summary.dropoffRequests = tick.getDropoffRequests();
+		summary.dropoffPassengers = tick.getDropoffPassengers();
+		summary.leftRequests = tick.getLeftRequests();
+		summary.leftPassengers = tick.getLeftPassengers();
+		summary.energyConsumption = tick.getEnergyConsumption();
+		summary.privateEVEnergy = tick.getPrivateEVEnergy();
+		summary.eTaxiEnergy = tick.getETaxiEnergy();
+		summary.eBusEnergy = tick.getEBusEnergy();
+		summary.vehicleCount = tick.getVehicleCount();
+		summary.meanSpeed = tick.getMeanSpeed();
+		for (LinkSnapshot link : tick.getLinkSnapshots()) {
+			summary.links.add(new BinaryLinkRecord(this.getRoadDictionaryIndex(link.getId()),
+					link.nVehicles(), (float) link.getSpeed(), link.getFlow(), (float) link.getEnergy()));
 		}
-		summary.meanSpeed = weightedSpeed / Math.max(summary.vehicleCount, 1);
 		return summary;
 	}
 
