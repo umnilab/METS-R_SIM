@@ -37,6 +37,7 @@ public class QueryMessageHandler extends MessageHandler {
 	private Random rand_route = new Random(GlobalVariables.RandomGenerator.nextInt());
 	
 	public QueryMessageHandler() {
+		messageHandlers.put("tick", this::getTick);
         // =============================================================
         // Vehicles
         // =============================================================
@@ -104,6 +105,13 @@ public class QueryMessageHandler extends MessageHandler {
     	jsonAns.put("TYPE", "ANS_" + msgType);
     	count++;
         return JSONObject.toJSONString(jsonAns);
+	}
+	
+	public HashMap<String, Object> getTick(JSONObject jsonMsg) {
+	    HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+	    jsonObj.put("CODE", "OK");
+	    jsonObj.put("TICK", ContextCreator.getCurrentTick());
+	    return jsonObj;
 	}
 	
 	// =============================================================
