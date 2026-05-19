@@ -143,70 +143,79 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				int totalCount = 0;
 				int writeCount = 0;
 				BinaryTrajectoryOutputWriter.this.currentTick = 0;
-				while (true) {
-					if (!BinaryTrajectoryOutputWriter.this.consuming) {
-						DataCollector.printDebug("BIN", "NOT CONSUMING");
-						break;
-					}
-
-					if (BinaryTrajectoryOutputWriter.this.paused) {
-						DataCollector.printDebug("BIN", "PAUSED");
-						try {
-							Thread.sleep(GlobalVariables.JSON_BUFFER_REFRESH);
-							continue;
-						} catch (InterruptedException ie) {
-							break;
-						}
-					}
-
-					int nextTick = BinaryTrajectoryOutputWriter.this.currentTick
-							+ GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS;
-					TickSnapshot snapshot = ContextCreator.dataCollector.getNextTick(nextTick);
-					if (snapshot == null) {
-						if (writeCount > 0) {
-							String report = "Wrote " + writeCount + " binary trajectory ticks to disk ("
-									+ totalCount + " total)";
-							DataCollector.printDebug("BIN", report);
-							writeCount = 0;
-						}
-
-						if (!ContextCreator.dataCollector.isCollecting() && !ContextCreator.dataCollector.isPaused()) {
-							break;
-						}
-
-						try {
-							Thread.sleep(GlobalVariables.JSON_BUFFER_REFRESH);
-							continue;
-						} catch (InterruptedException ie) {
-							break;
-						}
-					}
-
-					BinaryTrajectoryOutputWriter.this.currentTick += GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS;
-					try {
-						BinaryTrajectoryOutputWriter.this.writeTickSnapshot(
-								snapshot, BinaryTrajectoryOutputWriter.this.currentTick);
-						totalCount++;
-						writeCount++;
-					} catch (IOException ioe) {
-						DataCollector.printDebug("BIN", "WRITE ERROR: " + ioe.getMessage());
-					}
-
-					try {
-						Thread.sleep(5);
-					} catch (InterruptedException ie) {
-						break;
-					}
-				}
-
 				try {
-					BinaryTrajectoryOutputWriter.this.closeOutputFileWriter();
-				} catch (IOException ioe) {
-					DataCollector.printDebug("BIN", "CLOSE ERROR: " + ioe.getMessage());
-				}
+					while (true) {
+						if (!BinaryTrajectoryOutputWriter.this.consuming) {
+							DataCollector.printDebug("BIN", "NOT CONSUMING");
+							break;
+						}
 
-				BinaryTrajectoryOutputWriter.this.paused = false;
-				BinaryTrajectoryOutputWriter.this.consuming = false;
+						if (BinaryTrajectoryOutputWriter.this.paused) {
+							DataCollector.printDebug("BIN", "PAUSED");
+							try {
+								Thread.sleep(GlobalVariables.JSON_BUFFER_REFRESH);
+								continue;
+							} catch (InterruptedException ie) {
+								break;
+							}
+						}
+
+						int nextTick = BinaryTrajectoryOutputWriter.this.currentTick
+								+ GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS;
+						TickSnapshot snapshot = ContextCreator.dataCollector.getNextTick(nextTick);
+						if (snapshot == null) {
+							if (writeCount > 0) {
+								String report = "Wrote " + writeCount + " binary trajectory ticks to disk ("
+										+ totalCount + " total)";
+								DataCollector.printDebug("BIN", report);
+								writeCount = 0;
+							}
+
+							if (!ContextCreator.dataCollector.isCollecting() && !ContextCreator.dataCollector.isPaused()) {
+								break;
+							}
+
+							try {
+								Thread.sleep(GlobalVariables.JSON_BUFFER_REFRESH);
+								continue;
+							} catch (InterruptedException ie) {
+								break;
+							}
+						}
+
+						BinaryTrajectoryOutputWriter.this.currentTick += GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS;
+						try {
+							BinaryTrajectoryOutputWriter.this.writeTickSnapshot(
+									snapshot, BinaryTrajectoryOutputWriter.this.currentTick);
+							totalCount++;
+							writeCount++;
+						} catch (Throwable t) {
+							ContextCreator.logger.error("Binary trajectory writer failed at tick "
+									+ BinaryTrajectoryOutputWriter.this.currentTick, t);
+							break;
+						}
+
+						try {
+							Thread.sleep(5);
+						} catch (InterruptedException ie) {
+							break;
+						}
+					}
+				} catch (Throwable t) {
+					ContextCreator.logger.error("Binary trajectory writer failed at tick "
+							+ BinaryTrajectoryOutputWriter.this.currentTick, t);
+				} finally {
+					try {
+						BinaryTrajectoryOutputWriter.this.closeOutputFileWriter();
+					} catch (IOException ioe) {
+						ContextCreator.logger.error("Failed to close binary trajectory writer", ioe);
+					} catch (Throwable t) {
+						ContextCreator.logger.error("Failed to close binary trajectory writer", t);
+					}
+
+					BinaryTrajectoryOutputWriter.this.paused = false;
+					BinaryTrajectoryOutputWriter.this.consuming = false;
+				}
 			}
 		};
 		this.writingThread = new Thread(writingRunnable);

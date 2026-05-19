@@ -166,16 +166,10 @@ public class DataCollector {
 		this.paused = false;
 		this.collecting = false;
 
-		// Stop the cleanup thread 
-		this.cleanupTimer.cancel();
-
-		// Tell each of the consumers to stop 
-		for (DataConsumer dc : this.registeredConsumers) {
-			try {
-				dc.stopConsumer();
-			} catch (Throwable e) {
-				e.printStackTrace();
-			}
+		// Stop the cleanup thread. Consumers may still need buffered snapshots
+		// while they drain after collecting is disabled.
+		if (this.cleanupTimer != null) {
+			this.cleanupTimer.cancel();
 		}
 	}
 
