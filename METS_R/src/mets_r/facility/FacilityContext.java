@@ -17,7 +17,7 @@ public class FacilityContext<T> extends DefaultContext<T>{
 		facilityDictionary = new LinkedHashMap<Integer, T>();
 	}
 	
-	public synchronized void put(int ID, T newFacility) {
+	public void put(int ID, T newFacility) {
 		if(facilityDictionary.containsKey(ID)) {
 			ContextCreator.logger.warn("Facility with ID: " + ID + " already exists.");
 		}
@@ -25,7 +25,7 @@ public class FacilityContext<T> extends DefaultContext<T>{
 		this.add(newFacility);
 	}
 	
-	public synchronized T get(int ID) {
+	public T get(int ID) {
 		if (this.facilityDictionary.containsKey(ID)) {
 			return this.facilityDictionary.get(ID);
 		} else {
@@ -33,7 +33,7 @@ public class FacilityContext<T> extends DefaultContext<T>{
 		}
 	}
 	
-	public synchronized boolean contains(int ID) {
+	public boolean contains(int ID) {
 		if(this.facilityDictionary.containsKey(ID)) {
 			return true;
 		}
@@ -42,16 +42,16 @@ public class FacilityContext<T> extends DefaultContext<T>{
 		}
 	}
 	
-	public synchronized Collection<T> getAll(){
-		return new ArrayList<T>(this.facilityDictionary.values());
+	public Collection<T> getAll(){
+		return this.facilityDictionary.values();
 	}
 	
-	public synchronized List<Integer> getIDList(){
+	public List<Integer> getIDList(){
 		List<Integer> facilityIDList = new ArrayList<>(this.facilityDictionary.keySet());
 		return facilityIDList;
 	}
 
-	public synchronized void remove(int ID) {
+	public void remove(int ID) {
 		T facility = this.facilityDictionary.remove(ID);
 		if (facility != null) {
 			super.remove(facility); // also removes from all Repast projections (e.g. Geography)

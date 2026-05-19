@@ -179,6 +179,9 @@ public class Road {
 			}
 			currentVehicle = nextVehicle;
 		}
+		if (shouldRecordSnapshot) {
+			ContextCreator.dataCollector.recordLinkSnapshot(this);
+		}
 
 		/* Vehicle departure */
 		if (this.getControlType() != Road.COSIM) {

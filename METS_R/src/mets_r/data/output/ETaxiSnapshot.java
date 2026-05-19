@@ -28,6 +28,7 @@ public class ETaxiSnapshot {
 	final public double batteryLevel;
 	final public double totalConsumption;
 	final public int roadID;
+	final public int vehicleClass;
 	final public int matchedRequests;
 	final public int matchedPassengers;
 	final public int pickupRequests;
@@ -83,6 +84,7 @@ public class ETaxiSnapshot {
 		this.batteryLevel =  batteryLevel;
 		this.totalConsumption =  energyConsumption;
 		this.roadID = roadID;
+		this.vehicleClass = vehicleClass;
 		this.matchedRequests = matchedRequests;
 		this.matchedPassengers = matchedPassengers;
 		this.pickupRequests = pickupRequests;
@@ -137,6 +139,10 @@ public class ETaxiSnapshot {
 
 	public int getRoadID() {
 		return this.roadID;
+	}
+
+	public int getVehicleClass() {
+		return this.vehicleClass;
 	}
 
 	public int getMatchedRequests() {

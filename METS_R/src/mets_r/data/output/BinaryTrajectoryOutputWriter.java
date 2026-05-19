@@ -422,12 +422,13 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.currentChunkFirstTick = tick.getTickNumber();
 		}
 
-		FrameSummary summary = this.createFrameSummary(tick);
 		ArrayList<EVSnapshot> privateEvs = this.getPrivateEVRecords(tick);
 		ArrayList<ETaxiSnapshot> occupiedTaxis = this.getETaxiRecords(tick, Vehicle.OCCUPIED_TRIP);
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ETaxiSnapshot> chargingTaxis = this.getETaxiRecords(tick, Vehicle.CHARGING_TRIP);
 		ArrayList<BusSnapshot> buses = this.getBusRecords(tick);
+		FrameSummary summary = this.createFrameSummary(tick, privateEvs, occupiedTaxis,
+				relocationTaxis, chargingTaxis, buses);
 		BinaryZoneGroup zones = this.getChangedZoneRecords();
 		BinaryChargingStationGroup chargingStations = this.getChangedChargingStationRecords();
 
@@ -466,30 +467,57 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.ticksWritten++;
 	}
 
-	private FrameSummary createFrameSummary(TickSnapshot tick) {
+	private FrameSummary createFrameSummary(TickSnapshot tick, ArrayList<EVSnapshot> privateEvs,
+			ArrayList<ETaxiSnapshot> occupiedTaxis, ArrayList<ETaxiSnapshot> relocationTaxis,
+			ArrayList<ETaxiSnapshot> chargingTaxis, ArrayList<BusSnapshot> buses) {
 		FrameSummary summary = new FrameSummary();
 		if (tick == null || !tick.hasFrameSummary()) {
 			return summary;
 		}
-		summary.matchedRequests = tick.getMatchedRequests();
-		summary.matchedPassengers = tick.getMatchedPassengers();
-		summary.pickupRequests = tick.getPickupRequests();
-		summary.pickupPassengers = tick.getPickupPassengers();
-		summary.dropoffRequests = tick.getDropoffRequests();
-		summary.dropoffPassengers = tick.getDropoffPassengers();
 		summary.leftRequests = tick.getLeftRequests();
 		summary.leftPassengers = tick.getLeftPassengers();
-		summary.energyConsumption = tick.getEnergyConsumption();
-		summary.privateEVEnergy = tick.getPrivateEVEnergy();
-		summary.eTaxiEnergy = tick.getETaxiEnergy();
-		summary.eBusEnergy = tick.getEBusEnergy();
-		summary.vehicleCount = tick.getVehicleCount();
-		summary.meanSpeed = tick.getMeanSpeed();
+		for (EVSnapshot ev : privateEvs) {
+			summary.privateEVEnergy += (float) ev.getTotalEnergyConsumption();
+		}
+		this.addETaxiSummary(summary, occupiedTaxis);
+		this.addETaxiSummary(summary, relocationTaxis);
+		this.addETaxiSummary(summary, chargingTaxis);
+		for (BusSnapshot bus : buses) {
+			summary.eBusEnergy += (float) bus.getTotalEnergyConsumption();
+			summary.matchedRequests += bus.getMatchedRequests();
+			summary.matchedPassengers += bus.getMatchedPassengers();
+			summary.pickupRequests += bus.getPickupRequests();
+			summary.pickupPassengers += bus.getPickupPassengers();
+			summary.dropoffRequests += bus.getDropoffRequests();
+			summary.dropoffPassengers += bus.getDropoffPassengers();
+		}
+		summary.energyConsumption = summary.privateEVEnergy + summary.eTaxiEnergy + summary.eBusEnergy;
+
+		float weightedSpeed = 0;
 		for (LinkSnapshot link : tick.getLinkSnapshots()) {
+			weightedSpeed += (float) link.getSpeed() * link.nVehicles();
+			summary.vehicleCount += link.nVehicles();
 			summary.links.add(new BinaryLinkRecord(this.getRoadDictionaryIndex(link.getId()),
 					link.nVehicles(), (float) link.getSpeed(), link.getFlow(), (float) link.getEnergy()));
 		}
+		summary.meanSpeed = weightedSpeed / Math.max(summary.vehicleCount, 1);
 		return summary;
+	}
+
+	private void addETaxiSummary(FrameSummary summary, ArrayList<ETaxiSnapshot> records) {
+		for (ETaxiSnapshot ev : records) {
+			if (ev.getVehicleClass() == Vehicle.EV) {
+				summary.privateEVEnergy += (float) ev.getTotalEnergyConsumption();
+			} else {
+				summary.eTaxiEnergy += (float) ev.getTotalEnergyConsumption();
+			}
+			summary.matchedRequests += ev.getMatchedRequests();
+			summary.matchedPassengers += ev.getMatchedPassengers();
+			summary.pickupRequests += ev.getPickupRequests();
+			summary.pickupPassengers += ev.getPickupPassengers();
+			summary.dropoffRequests += ev.getDropoffRequests();
+			summary.dropoffPassengers += ev.getDropoffPassengers();
+		}
 	}
 
 	private int getRoadDictionaryIndex(String origID) {

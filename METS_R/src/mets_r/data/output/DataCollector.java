@@ -1,6 +1,5 @@
 package mets_r.data.output;
 
-import java.util.ArrayList;
 import java.util.Timer;
 import java.util.TimerTask;
 import java.util.Vector;
@@ -246,69 +245,30 @@ public class DataCollector {
 	}
 
 	private void recordFrameSummary(TickSnapshot snapshot) {
-		int matchedRequests = 0;
-		int matchedPassengers = 0;
-		int pickupRequests = 0;
-		int pickupPassengers = 0;
-		int dropoffRequests = 0;
-		int dropoffPassengers = 0;
 		int leftRequests = 0;
 		int leftPassengers = 0;
-		float privateEVEnergy = 0;
-		float eTaxiEnergy = 0;
-		float eBusEnergy = 0;
-		int vehicleCount = 0;
-		float meanSpeed = 0;
-		ArrayList<LinkSnapshot> links = new ArrayList<LinkSnapshot>();
-
-		for (ElectricVehicle ev : ContextCreator.getVehicleContext().getPrivateEVs()) {
-			privateEVEnergy += (float) ev.getTotalConsume();
-		}
-		for (ElectricTaxi ev : ContextCreator.getVehicleContext().getTaxis()) {
-			eTaxiEnergy += (float) ev.getTotalConsume();
-			matchedRequests += ev.getMatchedRequests();
-			matchedPassengers += ev.getMatchedPassengers();
-			pickupRequests += ev.getPickupRequests();
-			pickupPassengers += ev.getPickupPassengers();
-			dropoffRequests += ev.getDropoffRequests();
-			dropoffPassengers += ev.getDropoffPassengers();
-		}
-		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
-			eBusEnergy += (float) bus.getTotalConsume();
-			matchedRequests += bus.getMatchedRequests();
-			matchedPassengers += bus.getMatchedPassengers();
-			pickupRequests += bus.getPickupRequests();
-			pickupPassengers += bus.getPickupPassengers();
-			dropoffRequests += bus.getDropoffRequests();
-			dropoffPassengers += bus.getDropoffPassengers();
-		}
-
 		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
 			leftRequests += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
 			leftPassengers += zone.numberOfLeavedTaxiPassengers + zone.numberOfLeavedBusPassengers;
 		}
 
-		if (snapshot.getTickNumber() % GlobalVariables.JSON_FREQ_RECORD_LINK_SNAPSHOT == 0) {
-			float weightedSpeed = 0;
-			for (Road road : ContextCreator.getRoadContext().getAll()) {
-				if (!road.stateHasChanged()) {
-					continue;
-				}
-				double speed = road.calcSpeed();
-				int nVehicles = road.getVehicleNum();
-				double energy = road.getTotalEnergy();
-				int flow = road.getTotalFlow();
-				weightedSpeed += (float) speed * nVehicles;
-				vehicleCount += nVehicles;
-				links.add(new LinkSnapshot(road.getOrigID(), speed, nVehicles, energy, flow));
-			}
-			meanSpeed = weightedSpeed / Math.max(vehicleCount, 1);
-		}
+		snapshot.logFrameSummary(0, 0, 0, 0, 0, 0, leftRequests,
+				leftPassengers, 0, 0, 0, 0, 0, null);
+	}
 
-		snapshot.logFrameSummary(matchedRequests, matchedPassengers, pickupRequests,
-				pickupPassengers, dropoffRequests, dropoffPassengers, leftRequests,
-				leftPassengers, privateEVEnergy, eTaxiEnergy, eBusEnergy,
-				vehicleCount, meanSpeed, links);
+	public void recordLinkSnapshot(Road road) {
+		if (this.currentSnapshot == null || road == null) {
+			return;
+		}
+		if (!road.stateHasChanged()) {
+			return;
+		}
+		try {
+			this.currentSnapshot.logLinkSnapshot(new LinkSnapshot(road.getOrigID(), road.calcSpeed(),
+					road.getVehicleNum(), road.getTotalEnergy(), road.getTotalFlow()));
+		} catch (Throwable t) {
+			ContextCreator.logger.error("Failed to record link snapshot for road " + road.getID(), t);
+		}
 	}
 
 	/**

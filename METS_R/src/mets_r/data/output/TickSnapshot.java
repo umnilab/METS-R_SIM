@@ -126,7 +126,20 @@ public class TickSnapshot {
 		this.energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
 		this.vehicleCount = vehicleCount;
 		this.meanSpeed = meanSpeed;
-		this.links = links == null ? new ArrayList<LinkSnapshot>() : new ArrayList<LinkSnapshot>(links);
+		if (links != null) {
+			synchronized (this.links) {
+				this.links.clear();
+				this.links.addAll(links);
+			}
+		}
+	}
+
+	public void logLinkSnapshot(LinkSnapshot link) {
+		if (link != null) {
+			synchronized (this.links) {
+				this.links.add(link);
+			}
+		}
 	}
 
 	/**
@@ -541,7 +554,9 @@ public class TickSnapshot {
 	}
 
 	public ArrayList<LinkSnapshot> getLinkSnapshots() {
-		return new ArrayList<LinkSnapshot>(this.links);
+		synchronized (this.links) {
+			return new ArrayList<LinkSnapshot>(this.links);
+		}
 	}
 
 	public boolean isEmpty() {
