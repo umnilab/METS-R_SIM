@@ -21,9 +21,10 @@ public class StepMessageHandler extends MessageHandler {
 		ans.put("NUM", stepNum);
 
 		if (requestTick == currentTick) {
-			ContextCreator.waitNextStepCommand = stepNum;
+			int acceptedStepNum = ContextCreator.setNextStepCommand(stepNum);
 			ans.put("CODE", "OK");
-			ans.put("TARGET_TICK", currentTick + stepNum);
+			ans.put("ACCEPTED_NUM", acceptedStepNum);
+			ans.put("TARGET_TICK", currentTick + acceptedStepNum);
 		} else {
 			ans.put("CODE", "KO");
 			ans.put("MSG", "STEP tick mismatch");

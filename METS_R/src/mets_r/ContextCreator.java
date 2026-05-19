@@ -89,6 +89,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* Synchronize mode flags */
 	// Volatile for thread-read-safe 
 	public static volatile int waitNextStepCommand = GlobalVariables.SYNCHRONIZED?0:-1;
+	private static final Object stepCommandLock = new Object();
 	
 	/**
 	 * Number of ticks for which waitForNextStepCommand() has fired (i.e. ticks
@@ -97,6 +98,28 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * has been rescheduled, so that reset() can remove them cleanly.
 	 */
 	public static volatile long completedTickCount = 0;
+
+	public static int setNextStepCommand(int stepNum) {
+		synchronized (stepCommandLock) {
+			int requestedStepNum = Math.max(stepNum, 1);
+			// A duplicate or retry STEP can arrive while a previous batch is
+			// still in flight; do not let it shorten the remaining credits.
+			if (waitNextStepCommand > 0) {
+				waitNextStepCommand = Math.max(waitNextStepCommand, requestedStepNum);
+			} else {
+				waitNextStepCommand = requestedStepNum;
+			}
+			stepCommandLock.notifyAll();
+			return waitNextStepCommand;
+		}
+	}
+
+	private static void setWaitNextStepCommand(int stepCommand) {
+		synchronized (stepCommandLock) {
+			waitNextStepCommand = stepCommand;
+			stepCommandLock.notifyAll();
+		}
+	}
 	
 	/* For enable the reset function*/
 	public static int initTick = 0;
@@ -459,9 +482,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * rescheduled into the main queue with a future nextTime, so a subsequent
 	 * removeAction() will succeed for every entry in scheduledActions.
 	 *
-	 * Cost: one extra simulation tick. In SYNCHRONIZED mode that tick runs
-	 * normally on the soon-to-be-discarded contexts and then the schedule is
-	 * torn down by the caller.
+	 * Cost: up to one extra simulation tick if the scheduler is already
+	 * parked. In SYNCHRONIZED mode that tick runs normally on the
+	 * soon-to-be-discarded contexts and then the schedule is torn down by the
+	 * caller.
 	 *
 	 * Returns false if the wait timed out or was interrupted (caller may
 	 * still proceed but should expect the on-deck leak).
@@ -474,16 +498,29 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (!GlobalVariables.SYNCHRONIZED) {
 			return false;
 		}
-		long startTickCount = completedTickCount;
-		// Wake the parked scheduler so it executes one more tick.
-		waitNextStepCommand = 1;
+		long targetTickCount;
+		synchronized (stepCommandLock) {
+			targetTickCount = completedTickCount + 1;
+			// Wake the parked scheduler so it reaches a LAST_PRIORITY slot.
+			// If a normal STEP is already in flight, do not overwrite its
+			// remaining credits; reaching the next LAST_PRIORITY slot is enough
+			// to make the schedule quiescent for reset/load removal.
+			if (waitNextStepCommand == 0) {
+				waitNextStepCommand = 1;
+			}
+			stepCommandLock.notifyAll();
+		}
 		// Block until that tick has reached its LAST_PRIORITY slot, which
 		// means every other action of the tick has executed AND been
 		// rescheduled into the queue with a future nextTime.
 		long startWait = System.currentTimeMillis();
-		while (completedTickCount == startTickCount) {
+		while (completedTickCount < targetTickCount) {
 			try {
-				Thread.sleep(1);
+				synchronized (stepCommandLock) {
+					if (completedTickCount < targetTickCount) {
+						stepCommandLock.wait(100);
+					}
+				}
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 				logger.warn(callerLabel + " interrupted while waiting for tick to complete");
@@ -491,7 +528,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 			if (System.currentTimeMillis() - startWait > 30000) {
 				logger.error(callerLabel + " timed out waiting for tick to complete; "
-						+ "proceeding inline (some scheduled actions may leak).");
+						+ "target completedTickCount=" + targetTickCount
+						+ ", current completedTickCount=" + completedTickCount
+						+ ", waitNextStepCommand=" + waitNextStepCommand
+						+ "; proceeding inline (some scheduled actions may leak).");
 				return false;
 			}
 		}
@@ -502,7 +542,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * Performs a reset that is safe with respect to Repast's scheduler.
 	 *
 	 * See {@link #waitForScheduleQuiescence(String)} for why this is needed.
-	 * Cost: one additional simulation tick per call.
+	 * Cost: up to one additional simulation tick per call.
 	 *
 	 * Thread safety: must be called from the connection (control) thread.
 	 */
@@ -522,7 +562,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * the prior run's heap state and firing every tick on the static
 	 * singletons against the freshly-loaded contexts.
 	 *
-	 * Cost: one additional simulation tick per call.
+	 * Cost: up to one additional simulation tick per call.
 	 *
 	 * Thread safety: must be called from the connection (control) thread.
 	 */
@@ -591,7 +631,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		bus_schedule.postProcessing();
 
 		partitioner = new MetisPartition(GlobalVariables.N_Partition);
-		waitNextStepCommand = GlobalVariables.SYNCHRONIZED ? 0 : -1;
+		setWaitNextStepCommand(GlobalVariables.SYNCHRONIZED ? 0 : -1);
 		if (tscheduler != null) {
 			tscheduler.resetTickGuards();
 		}
@@ -662,7 +702,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
-		waitNextStepCommand = 0;
+		setWaitNextStepCommand(0);
 		// Clear per-tick idempotency guards on the singleton schedulers so that
 		// the first tick of the new run is never treated as a duplicate call
 		// from an orphaned scheduled action.
@@ -785,7 +825,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition);
-		waitNextStepCommand = GlobalVariables.SYNCHRONIZED ? 0 : -1;
+		setWaitNextStepCommand(GlobalVariables.SYNCHRONIZED ? 0 : -1);
 		// Clear per-tick idempotency guards on the singleton schedulers so the
 		// first tick after load is never treated as a duplicate call from an
 		// orphaned scheduled action (defense-in-depth; mirrors reset()).
@@ -850,20 +890,29 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// already put its repeating instance back into the schedule queue, so
 		// from this moment until waitNextStepCommand is bumped, the schedule is
 		// in a fully quiescent state where removeAction() works reliably.
-		completedTickCount++;
+		synchronized (stepCommandLock) {
+			completedTickCount++;
+			stepCommandLock.notifyAll();
+		}
 		long prevTime = -10001; // for the first tick
-		while(waitNextStepCommand == 0) {
-			try{
-				Thread.sleep(1);
-				if ((System.currentTimeMillis()-prevTime)>10000 && connection != null) {
-					connection.sendStepMessage(ContextCreator.getCurrentTick());
-					prevTime = System.currentTimeMillis();
+		while(true) {
+			synchronized (stepCommandLock) {
+				if (waitNextStepCommand != 0) {
+					waitNextStepCommand -= 1;
+					stepCommandLock.notifyAll();
+					return;
 				}
-			} catch (InterruptedException e) {
-				e.printStackTrace();
+				try{
+					stepCommandLock.wait(100);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}
+			if ((System.currentTimeMillis()-prevTime)>10000 && connection != null) {
+				connection.sendStepMessage(ContextCreator.getCurrentTick());
+				prevTime = System.currentTimeMillis();
 			}
 		}
-		waitNextStepCommand -= 1;
 	}
 	
 	public static int generateAgentID() {
