@@ -94,10 +94,20 @@ public class Zone {
 	public int numberOfGeneratedPrivateGVTrip;
 	public int arrivedPrivateEVTrip;
 	public int arrivedPrivateGVTrip;
+	// Legacy "pickup" counters are updated when requests are matched/assigned.
 	public int taxiPickupRequest;
 	public int busPickupRequest;
+	public int taxiPickupPassengers;
+	public int busPickupPassengers;
+	// Actual pickup counters are updated when passengers board a taxi or bus.
+	public int taxiPickedUpRequest;
+	public int busPickedUpRequest;
+	public int taxiPickedUpPassengers;
+	public int busPickedUpPassengers;
 	public int taxiServedRequest;
 	public int busServedRequest;
+	public int taxiServedPassengers;
+	public int busServedPassengers;
 	public int numberOfLeavedTaxiRequest;
 	public int numberOfLeavedBusRequest;
 	/** Sum of {@link Request#getNumPeople()} for taxi requests that abandoned queues (shareable + main). */
@@ -143,8 +153,16 @@ public class Zone {
 		this.arrivedPrivateGVTrip = 0;
 		this.taxiPickupRequest = 0;
 		this.busPickupRequest = 0;
+		this.taxiPickupPassengers = 0;
+		this.busPickupPassengers = 0;
+		this.taxiPickedUpRequest = 0;
+		this.busPickedUpRequest = 0;
+		this.taxiPickedUpPassengers = 0;
+		this.busPickedUpPassengers = 0;
 		this.taxiServedRequest = 0; // Drop-off request number
 		this.busServedRequest = 0; // Drop-off request number
+		this.taxiServedPassengers = 0;
+		this.busServedPassengers = 0;
 		this.numberOfLeavedTaxiRequest = 0;
 		this.numberOfLeavedBusRequest = 0;
 		this.numberOfLeavedTaxiPassengers = 0;
@@ -640,6 +658,7 @@ public class Zone {
 								p.matchedTime = ContextCreator.getCurrentTick();
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
+								this.taxiPickupPassengers += p.getNumPeople();
 								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
 								pass_num = pass_num - tmp_pass.size();
 								if(passQueue.peek() == null) break;
@@ -672,6 +691,7 @@ public class Zone {
 					ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 				}
 				this.taxiPickupRequest += 1;
+				this.taxiPickupPassengers += current_taxi_pass.getNumPeople();
 				current_taxi_pass.matchedTime = ContextCreator.getCurrentTick();
 				v.servePassenger(Arrays.asList(current_taxi_pass));
 				// Update future supply of the target zone
@@ -707,6 +727,7 @@ public class Zone {
 			b.pickUpPassenger(p);
 			this.busServedPassWaitingTime += p.getCurrentWaitingTime();
 			this.busPickupRequest += 1;
+			this.busPickupPassengers += p.getNumPeople();
 		}
 		this.nRequestForBus -= passToServe.size();
 		this.requestInQueueForBus.removeAll(passToServe);
@@ -1025,8 +1046,16 @@ public class Zone {
 		this.arrivedPrivateGVTrip = 0;
 		this.taxiPickupRequest = 0;
 		this.busPickupRequest = 0;
+		this.taxiPickupPassengers = 0;
+		this.busPickupPassengers = 0;
+		this.taxiPickedUpRequest = 0;
+		this.busPickedUpRequest = 0;
+		this.taxiPickedUpPassengers = 0;
+		this.busPickedUpPassengers = 0;
 		this.taxiServedRequest = 0;
 		this.busServedRequest = 0;
+		this.taxiServedPassengers = 0;
+		this.busServedPassengers = 0;
 		this.numberOfLeavedTaxiRequest = 0;
 		this.numberOfLeavedBusRequest = 0;
 		this.numberOfLeavedTaxiPassengers = 0;

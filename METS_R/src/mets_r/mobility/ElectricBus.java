@@ -292,6 +292,11 @@ public class ElectricBus extends ElectricVehicle {
 		}
 		this.pickupRequests += 1;
 		this.pickupPassengers += p.getNumPeople();
+		Zone pickupZone = ContextCreator.getZoneContext().get(p.getOriginZone());
+		if (pickupZone != null) {
+			pickupZone.busPickedUpRequest += 1;
+			pickupZone.busPickedUpPassengers += p.getNumPeople();
+		}
 		this.passNum = this.getPassNum() + p.getNumPeople();
 		if(this.passNum > this.numSeat) {
 			ContextCreator.logger.error("Bus " + this.getID() + " has " + this.passNum + " passengers which exceed its capacity " + this.numSeat);
@@ -301,13 +306,20 @@ public class ElectricBus extends ElectricVehicle {
 	
 	public int dropOffPassenger(int stopIndex) {
 		Queue<Request> arrivingRequests = this.onBoardRequests.get(stopIndex);
+		Zone arrivedZone = ContextCreator.getZoneContext().get(this.stopZones.get(stopIndex));
 		for(Request arrived_request: arrivingRequests) {
 			this.passNum = this.passNum - arrived_request.getNumPeople();
 			this.recordPassengerDropoff(arrived_request);
+			if (arrivedZone != null) {
+				arrivedZone.busServedRequest += 1;
+				arrivedZone.busServedPassengers += arrived_request.getNumPeople();
+			}
 			if(arrived_request.lenOfActivity() >= 2){
 				// generate a pass and add it to the corresponding zone
 				arrived_request.moveToNextActivity();
-				ContextCreator.getZoneContext().get(this.stopZones.get(stopIndex)).insertTaxiPass(arrived_request);
+				if (arrivedZone != null) {
+					arrivedZone.insertTaxiPass(arrived_request);
+				}
 			}
 			else {
 				arrived_request.arriveTIme = ContextCreator.getCurrentTick();

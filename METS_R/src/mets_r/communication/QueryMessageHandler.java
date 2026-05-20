@@ -719,6 +719,18 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
 					record2.put("z", coord.z);
+					record2.put("matchedTaxiRequests", zone.taxiPickupRequest);
+					record2.put("matchedTaxiPassengers", zone.taxiPickupPassengers);
+					record2.put("matchedBusRequests", zone.busPickupRequest);
+					record2.put("matchedBusPassengers", zone.busPickupPassengers);
+					record2.put("pickupTaxiRequests", zone.taxiPickedUpRequest);
+					record2.put("pickupTaxiPassengers", zone.taxiPickedUpPassengers);
+					record2.put("pickupBusRequests", zone.busPickedUpRequest);
+					record2.put("pickupBusPassengers", zone.busPickedUpPassengers);
+					record2.put("dropoffTaxiRequests", zone.taxiServedRequest);
+					record2.put("dropoffTaxiPassengers", zone.taxiServedPassengers);
+					record2.put("dropoffBusRequests", zone.busServedRequest);
+					record2.put("dropoffBusPassengers", zone.busServedPassengers);
 					record2.put("leftTaxiRequests", zone.numberOfLeavedTaxiRequest);
 					record2.put("leftTaxiPassengers", zone.numberOfLeavedTaxiPassengers);
 					record2.put("leftBusRequests", zone.numberOfLeavedBusRequest);

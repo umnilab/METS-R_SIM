@@ -1270,6 +1270,7 @@ public class ControlMessageHandler extends MessageHandler {
 				Request p = found.request;
 				p.matchedTime = ContextCreator.getCurrentTick();
 				origZone.taxiPickupRequest += 1;
+				origZone.taxiPickupPassengers += p.getNumPeople();
 				origZone.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
 				destZone.addFutureSupply();
 				
@@ -1776,6 +1777,7 @@ public class ControlMessageHandler extends MessageHandler {
 					p.matchedTime = ContextCreator.getCurrentTick();
 					if(veh.addToBoardPass(p)) {
 						ref.zone.busPickupRequest += 1;
+						ref.zone.busPickupPassengers += p.getNumPeople();
 						ref.zone.busServedPassWaitingTime += p.getCurrentWaitingTime();
 						record2.put("STATUS", "OK");
 					} else {

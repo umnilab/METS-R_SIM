@@ -623,6 +623,15 @@ public class JsonOutputWriter implements DataConsumer {
 			return tickArray; // empty array
 		}
 
+		matchedRequests = tick.getMatchedRequests();
+		matchedPassengers = tick.getMatchedPassengers();
+		pickupRequests = tick.getPickupRequests();
+		pickupPassengers = tick.getPickupPassengers();
+		dropoffRequests = tick.getDropoffRequests();
+		dropoffPassengers = tick.getDropoffPassengers();
+		leftRequests = tick.getLeftRequests();
+		leftPassengers = tick.getLeftPassengers();
+
 		// Get the list of of vehicles stored in the tick snapshot
 		Collection<Integer> evIDs = tick.getPrivateEVList();
 		ArrayList<ArrayList<Object>> privateArrayArray = new ArrayList<ArrayList<Object>>();
@@ -639,16 +648,10 @@ public class JsonOutputWriter implements DataConsumer {
 				if (evArray == null) {
 					continue;
 				}
-				privateEVEnergy += (float) ev.getTotalEnergyConsumption();
-
 				privateArrayArray.add(evArray);
 			}
 		}
 
-		leftRequests = tick.getLeftRequests();
-		leftPassengers = tick.getLeftPassengers();
-		
-		
 		evIDs = tick.getETaxiList(Vehicle.OCCUPIED_TRIP);
 		ArrayList<ArrayList<Object>> occupiedArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
@@ -664,14 +667,6 @@ public class JsonOutputWriter implements DataConsumer {
 				if (evArray == null) {
 					continue;
 				}
-				eTaxiEnergy += (float) ev.getTotalEnergyConsumption();
-				matchedRequests += ev.getMatchedRequests();
-				matchedPassengers += ev.getMatchedPassengers();
-				pickupRequests += ev.getPickupRequests();
-				pickupPassengers += ev.getPickupPassengers();
-				dropoffRequests += ev.getDropoffRequests();
-				dropoffPassengers += ev.getDropoffPassengers();
-
 				occupiedArrayArray.add(evArray);
 			}
 		}
@@ -692,14 +687,6 @@ public class JsonOutputWriter implements DataConsumer {
 				if (evArray == null) {
 					continue;
 				}
-				eTaxiEnergy += (float) ev.getTotalEnergyConsumption();
-				matchedRequests += ev.getMatchedRequests();
-				matchedPassengers += ev.getMatchedPassengers();
-				pickupRequests += ev.getPickupRequests();
-				pickupPassengers += ev.getPickupPassengers();
-				dropoffRequests += ev.getDropoffRequests();
-				dropoffPassengers += ev.getDropoffPassengers();
-
 				relocationArrayArray.add(evArray);
 			}
 		}
@@ -720,18 +707,6 @@ public class JsonOutputWriter implements DataConsumer {
 				if (evArray == null) {
 					continue;
 				}
-				if (ev.getVehicleClass() == Vehicle.EV) {
-					privateEVEnergy += (float) ev.getTotalEnergyConsumption();
-				} else {
-					eTaxiEnergy += (float) ev.getTotalEnergyConsumption();
-				}
-				matchedRequests += ev.getMatchedRequests();
-				matchedPassengers += ev.getMatchedPassengers();
-				pickupRequests += ev.getPickupRequests();
-				pickupPassengers += ev.getPickupPassengers();
-				dropoffRequests += ev.getDropoffRequests();
-				dropoffPassengers += ev.getDropoffPassengers();
-
 				chargingArrayArray.add(evArray);
 			}
 		}
@@ -752,14 +727,6 @@ public class JsonOutputWriter implements DataConsumer {
 				if (busArray == null) {
 					continue;
 				}
-				eBusEnergy += (float) bus.getTotalEnergyConsumption();
-				matchedRequests += bus.getMatchedRequests();
-				matchedPassengers += bus.getMatchedPassengers();
-				pickupRequests += bus.getPickupRequests();
-				pickupPassengers += bus.getPickupPassengers();
-				dropoffRequests += bus.getDropoffRequests();
-				dropoffPassengers += bus.getDropoffPassengers();
-
 				// Add the vehicle array to the tick arraylist
 				busArrayArray.add(busArray);
 
@@ -767,16 +734,17 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 		
 		ArrayList<ArrayList<Object>> linkArrayArray = new ArrayList<ArrayList<Object>>();
-		float weightedSpeed = 0;
 		for (LinkSnapshot snapshot : tick.getLinkSnapshots()) {
 			ArrayList<Object> linkArray = JsonOutputWriter.createLinkLine(snapshot);
 			if (linkArray != null) {
-				weightedSpeed += (float) snapshot.getSpeed() * snapshot.nVehicles();
-				vehNum += snapshot.nVehicles();
 				linkArrayArray.add(linkArray);
 			}
 		}
-		meanSpeed = weightedSpeed / Math.max(vehNum, 1);
+		vehNum = tick.getVehicleCount();
+		meanSpeed = tick.getMeanSpeed();
+		privateEVEnergy = tick.getPrivateEVEnergy();
+		eTaxiEnergy = tick.getETaxiEnergy();
+		eBusEnergy = tick.getEBusEnergy();
 		energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
 		
 		

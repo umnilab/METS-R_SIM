@@ -55,6 +55,9 @@ public class TickSnapshot {
 	private float eBusEnergy;
 	private int vehicleCount;
 	private float meanSpeed;
+	private int roadVehicleCount;
+	private double roadWeightedSpeed;
+	private final Object summaryLock = new Object();
 	private ArrayList<LinkSnapshot> links;
 
 	// Link energy consumptions for UCB
@@ -93,6 +96,8 @@ public class TickSnapshot {
 		this.evs_relocation = new HashMap<Integer, ETaxiSnapshot>();
 		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
 		this.frameSummaryRecorded = false;
+		this.roadVehicleCount = 0;
+		this.roadWeightedSpeed = 0;
 		this.links = new ArrayList<LinkSnapshot>();
 
 		// Setup the map for holding the event data. Two subarraylists (for starting
@@ -120,17 +125,37 @@ public class TickSnapshot {
 		this.dropoffPassengers = dropoffPassengers;
 		this.leftRequests = leftRequests;
 		this.leftPassengers = leftPassengers;
-		this.privateEVEnergy = privateEVEnergy;
-		this.eTaxiEnergy = eTaxiEnergy;
-		this.eBusEnergy = eBusEnergy;
-		this.energyConsumption = privateEVEnergy + eTaxiEnergy + eBusEnergy;
-		this.vehicleCount = vehicleCount;
-		this.meanSpeed = meanSpeed;
-		if (links != null) {
-			synchronized (this.links) {
+		synchronized (this.summaryLock) {
+			if (privateEVEnergy != 0 || eTaxiEnergy != 0 || eBusEnergy != 0
+					|| this.energyConsumption == 0) {
+				this.privateEVEnergy = privateEVEnergy;
+				this.eTaxiEnergy = eTaxiEnergy;
+				this.eBusEnergy = eBusEnergy;
+			}
+			this.energyConsumption = this.privateEVEnergy + this.eTaxiEnergy + this.eBusEnergy;
+		}
+		synchronized (this.links) {
+			if (vehicleCount > 0 || this.roadVehicleCount == 0) {
+				this.vehicleCount = vehicleCount;
+				this.meanSpeed = meanSpeed;
+			} else {
+				this.vehicleCount = this.roadVehicleCount;
+				this.meanSpeed = (float) (this.roadWeightedSpeed / Math.max(this.roadVehicleCount, 1));
+			}
+			if (links != null) {
 				this.links.clear();
 				this.links.addAll(links);
 			}
+		}
+	}
+
+	public void logRoadSummary(int nVehicles, double speed) {
+		if (nVehicles <= 0) {
+			return;
+		}
+		synchronized (this.links) {
+			this.roadVehicleCount += nVehicles;
+			this.roadWeightedSpeed += speed * nVehicles;
 		}
 	}
 
@@ -140,6 +165,57 @@ public class TickSnapshot {
 				this.links.add(link);
 			}
 		}
+	}
+
+	private void addEnergy(float privateEVEnergyDelta, float eTaxiEnergyDelta, float eBusEnergyDelta) {
+		synchronized (this.summaryLock) {
+			this.privateEVEnergy += privateEVEnergyDelta;
+			this.eTaxiEnergy += eTaxiEnergyDelta;
+			this.eBusEnergy += eBusEnergyDelta;
+			this.energyConsumption = this.privateEVEnergy + this.eTaxiEnergy + this.eBusEnergy;
+		}
+	}
+
+	private void updatePrivateEVEnergy(EVSnapshot oldSnapshot, EVSnapshot newSnapshot) {
+		float delta = 0;
+		if (oldSnapshot != null) {
+			delta -= (float) oldSnapshot.getTotalEnergyConsumption();
+		}
+		if (newSnapshot != null) {
+			delta += (float) newSnapshot.getTotalEnergyConsumption();
+		}
+		this.addEnergy(delta, 0, 0);
+	}
+
+	private void updateETaxiEnergy(ETaxiSnapshot oldSnapshot, ETaxiSnapshot newSnapshot) {
+		float privateDelta = 0;
+		float taxiDelta = 0;
+		if (oldSnapshot != null) {
+			if (oldSnapshot.getVehicleClass() == Vehicle.EV) {
+				privateDelta -= (float) oldSnapshot.getTotalEnergyConsumption();
+			} else {
+				taxiDelta -= (float) oldSnapshot.getTotalEnergyConsumption();
+			}
+		}
+		if (newSnapshot != null) {
+			if (newSnapshot.getVehicleClass() == Vehicle.EV) {
+				privateDelta += (float) newSnapshot.getTotalEnergyConsumption();
+			} else {
+				taxiDelta += (float) newSnapshot.getTotalEnergyConsumption();
+			}
+		}
+		this.addEnergy(privateDelta, taxiDelta, 0);
+	}
+
+	private void updateBusEnergy(BusSnapshot oldSnapshot, BusSnapshot newSnapshot) {
+		float delta = 0;
+		if (oldSnapshot != null) {
+			delta -= (float) oldSnapshot.getTotalEnergyConsumption();
+		}
+		if (newSnapshot != null) {
+			delta += (float) newSnapshot.getTotalEnergyConsumption();
+		}
+		this.addEnergy(0, 0, delta);
 	}
 
 	/**
@@ -224,14 +300,16 @@ public class TickSnapshot {
 			ETaxiSnapshot snapshot = new ETaxiSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
 					vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
 			synchronized(this.evs_charging) {
-				this.evs_charging.put(id, snapshot);
+				ETaxiSnapshot oldSnapshot = this.evs_charging.put(id, snapshot);
+				this.updateETaxiEnergy(oldSnapshot, snapshot);
 			}
 		}
 		else{
 			EVSnapshot snapshot = new EVSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originID, destID, nearlyArrived,
 					vehicleClass, batteryLevel, energyConsumption, roadID, numTrip);
 			synchronized(this.evs_private) {
-				this.evs_private.put(id, snapshot);
+				EVSnapshot oldSnapshot = this.evs_private.put(id, snapshot);
+				this.updatePrivateEVEnergy(oldSnapshot, snapshot);
 			}
 		}
 	}
@@ -279,19 +357,22 @@ public class TickSnapshot {
 
 		if (vehState == Vehicle.OCCUPIED_TRIP) {
 			synchronized(this.evs_occupied) {
-				this.evs_occupied.put(id, snapshot);
+				ETaxiSnapshot oldSnapshot = this.evs_occupied.put(id, snapshot);
+				this.updateETaxiEnergy(oldSnapshot, snapshot);
 			}
 			
 		} else if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP ||
 				vehState == Vehicle.CRUISING_TRIP ||
 				vehState == Vehicle.PICKUP_TRIP ) {
 			synchronized(this.evs_relocation) {
-				this.evs_relocation.put(id, snapshot);
+				ETaxiSnapshot oldSnapshot = this.evs_relocation.put(id, snapshot);
+				this.updateETaxiEnergy(oldSnapshot, snapshot);
 			}
 			
 		} else if (vehState == Vehicle.CHARGING_TRIP) {
 			synchronized(this.evs_charging) {
-				this.evs_charging.put(id, snapshot);
+				ETaxiSnapshot oldSnapshot = this.evs_charging.put(id, snapshot);
+				this.updateETaxiEnergy(oldSnapshot, snapshot);
 			}
 		}
 	}
@@ -335,7 +416,8 @@ public class TickSnapshot {
 				pickupRequests, pickupPassengers, dropoffRequests, dropoffPassengers,
 				vehicle.getRouteName(), vehicle.getBusStops());
 		synchronized(this.buses) {
-			this.buses.put(id, snapshot);
+			BusSnapshot oldSnapshot = this.buses.put(id, snapshot);
+			this.updateBusEnergy(oldSnapshot, snapshot);
 		}
 	}
 
@@ -530,19 +612,27 @@ public class TickSnapshot {
 	}
 
 	public float getEnergyConsumption() {
-		return this.energyConsumption;
+		synchronized (this.summaryLock) {
+			return this.energyConsumption;
+		}
 	}
 
 	public float getPrivateEVEnergy() {
-		return this.privateEVEnergy;
+		synchronized (this.summaryLock) {
+			return this.privateEVEnergy;
+		}
 	}
 
 	public float getETaxiEnergy() {
-		return this.eTaxiEnergy;
+		synchronized (this.summaryLock) {
+			return this.eTaxiEnergy;
+		}
 	}
 
 	public float getEBusEnergy() {
-		return this.eBusEnergy;
+		synchronized (this.summaryLock) {
+			return this.eBusEnergy;
+		}
 	}
 
 	public int getVehicleCount() {

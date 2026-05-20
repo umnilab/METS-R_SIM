@@ -210,6 +210,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				this.passNum = this.passNum - arrived_request.getNumPeople(); // passenger arrived
 				this.recordPassengerDropoff(arrived_request);
 				z.taxiServedRequest += 1;
+				z.taxiServedPassengers += arrived_request.getNumPeople();
 				// if pass need to take the bus to complete his or her trip
 				if(arrived_request.lenOfActivity() >= 2){
 					// generate a pass and add it to the corresponding zone
@@ -278,6 +279,11 @@ public class ElectricTaxi extends ElectricVehicle {
 				Request pickedup_request = this.toBoardRequests.poll();
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
 				this.recordPassengerPickup(pickedup_request);
+				Zone pickupZone = ContextCreator.getZoneContext().get(pickedup_request.getOriginZone());
+				if (pickupZone != null) {
+					pickupZone.taxiPickedUpRequest += 1;
+					pickupZone.taxiPickedUpPassengers += pickedup_request.getNumPeople();
+				}
 				this.onBoardRequests.add(pickedup_request);
 
 				if(this.toBoardRequests.size() == 0) {

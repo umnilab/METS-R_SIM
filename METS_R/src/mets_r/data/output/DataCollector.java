@@ -245,27 +245,47 @@ public class DataCollector {
 	}
 
 	private void recordFrameSummary(TickSnapshot snapshot) {
+		int matchedRequests = 0;
+		int matchedPassengers = 0;
+		int pickupRequests = 0;
+		int pickupPassengers = 0;
+		int dropoffRequests = 0;
+		int dropoffPassengers = 0;
 		int leftRequests = 0;
 		int leftPassengers = 0;
 		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+			matchedRequests += zone.taxiPickupRequest + zone.busPickupRequest;
+			matchedPassengers += zone.taxiPickupPassengers + zone.busPickupPassengers;
+			pickupRequests += zone.taxiPickedUpRequest + zone.busPickedUpRequest;
+			pickupPassengers += zone.taxiPickedUpPassengers + zone.busPickedUpPassengers;
+			dropoffRequests += zone.taxiServedRequest + zone.busServedRequest;
+			dropoffPassengers += zone.taxiServedPassengers + zone.busServedPassengers;
 			leftRequests += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
 			leftPassengers += zone.numberOfLeavedTaxiPassengers + zone.numberOfLeavedBusPassengers;
 		}
 
-		snapshot.logFrameSummary(0, 0, 0, 0, 0, 0, leftRequests,
-				leftPassengers, 0, 0, 0, 0, 0, null);
+		snapshot.logFrameSummary(matchedRequests, matchedPassengers,
+				pickupRequests, pickupPassengers, dropoffRequests,
+				dropoffPassengers, leftRequests, leftPassengers, 0, 0, 0,
+				0, 0, null);
 	}
 
 	public void recordLinkSnapshot(Road road) {
-		if (this.currentSnapshot == null || road == null) {
-			return;
-		}
-		if (!road.stateHasChanged()) {
+		TickSnapshot snapshot = this.currentSnapshot;
+		if (snapshot == null || road == null) {
 			return;
 		}
 		try {
-			this.currentSnapshot.logLinkSnapshot(new LinkSnapshot(road.getOrigID(), road.calcSpeed(),
-					road.getVehicleNum(), road.getTotalEnergy(), road.getTotalFlow()));
+			int nVehicles = road.getVehicleNum();
+			boolean changed = road.stateHasChanged();
+			double speed = (nVehicles > 0 || changed) ? road.calcSpeed() : 0;
+			// Every road contributes to frame-level metrics; only changed roads
+			// are stored as sparse link records.
+			snapshot.logRoadSummary(nVehicles, speed);
+			if (changed) {
+				snapshot.logLinkSnapshot(new LinkSnapshot(road.getOrigID(), speed,
+						nVehicles, road.getTotalEnergy(), road.getTotalFlow()));
+			}
 		} catch (Throwable t) {
 			ContextCreator.logger.error("Failed to record link snapshot for road " + road.getID(), t);
 		}
