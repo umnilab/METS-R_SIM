@@ -187,6 +187,7 @@ public class Road {
 		if (this.getControlType() != Road.COSIM) {
 			while (!this.departureVehMap.isEmpty()) {
 			    Vehicle v = this.departureVehicleQueueHead();
+			    if (v == null) break;
 			    int departTime = v.getDepTime();
 			    if (tickcount >= departTime) {
 			        // Use value-based equality for Coordinates: getCurrentCoord()/getDestCoord() return
@@ -196,7 +197,12 @@ public class Road {
 			        Coordinate cur = v.getCurrentCoord();
 			        Coordinate dst = v.getDestCoord();
 			        boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
-			        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))) {
+			        // Buses use same-road legs as a heartbeat between runs; complete them immediately.
+			        boolean sameBusRoad = (v.getState() == Vehicle.BUS_TRIP)
+			                && v.getOriginRoad() >= 0
+			                && v.getOriginRoad() == v.getDestRoad();
+			        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))
+			                || sameBusRoad) {
 			            this.removeVehicleFromNewQueue(departTime, v);
 			            ContextCreator.getVehicleContext().addArrivalVehicles(v);
 			        } else if (v.enterNetwork(this)) {
@@ -571,9 +577,15 @@ public class Road {
 	}
 
 	public synchronized Vehicle departureVehicleQueueHead() {
-		if (this.departureVehMap.isEmpty()) return null;
-		int firstDeparture_ = this.departureVehMap.firstKey();
-		return this.departureVehMap.get(firstDeparture_).get(0);
+		while (!this.departureVehMap.isEmpty()) {
+			int firstDeparture_ = this.departureVehMap.firstKey();
+			ArrayList<Vehicle> queue = this.departureVehMap.get(firstDeparture_);
+			if (queue != null && !queue.isEmpty()) {
+				return queue.get(0);
+			}
+			this.departureVehMap.remove(firstDeparture_);
+		}
+		return null;
 	}
 
 	public synchronized List<Vehicle> getEnteringVehicleQueueSnapshot() {

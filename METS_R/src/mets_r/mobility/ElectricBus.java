@@ -244,7 +244,12 @@ public class ElectricBus extends ElectricVehicle {
 			} else {
 				// Passengers get on board
 				Zone arrivedZone = ContextCreator.getZoneContext().get(this.stopZones.get(this.nextStop));
-				delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
+				if (arrivedZone != null) {
+					delay = Math.max(arrivedZone.servePassengerByBus(this), delay);
+				} else {
+					ContextCreator.logger.warn("Bus " + this.ID + " arrived at missing zone "
+							+ this.stopZones.get(this.nextStop) + "; continuing without boarding.");
+				}
 				Queue<Request> boardingRequests = this.toBoardRequests.get(this.nextStop);
 				for(Request p: boardingRequests) {
 					this.pickUpMatchedPassenger(p);
@@ -256,14 +261,27 @@ public class ElectricBus extends ElectricVehicle {
 				// Head to the next Stop
 				int destZoneID = stopZones.get(nextStop % stopZones.size());
 				Road destRoad = stopRoads.get(nextStop % stopZones.size());
+				if (destRoad == null) {
+					ContextCreator.logger.warn("Bus " + this.ID + " cannot depart to zone " + destZoneID
+							+ " because the destination road is null.");
+					return;
+				}
 				this.addPlan(destZoneID, destRoad.getID(),
 						Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop-1)));
 				this.setNextPlan();
 				this.departure();
 				if(roadsBwStops != null) {
-					List<Road> path = roadsBwStops.get(nextStop % stopZones.size());
-					if(path != null)
-						this.updateRoute(path);
+					int segmentIndex = nextStop - 1;
+					if (segmentIndex >= 0 && segmentIndex < roadsBwStops.size()) {
+						List<Road> path = roadsBwStops.get(segmentIndex);
+						if(path != null && !this.updateRoute(path)) {
+							ContextCreator.logger.warn("Bus " + this.ID
+									+ " ignored an invalid precomputed route segment and will use dynamic routing.");
+						}
+					} else {
+						ContextCreator.logger.warn("Bus " + this.ID + " has no precomputed route segment "
+								+ segmentIndex + "; using dynamic routing.");
+					}
 				}
 				
 			}

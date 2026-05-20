@@ -215,6 +215,15 @@ public class Zone {
 	}
 	
 	public void stepPart1() {
+		try {
+			stepPart1Unsafe();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("Zone.stepPart1 failed; zone=" + this.ID
+					+ ", tick=" + ContextCreator.getCurrentTick(), ex);
+		}
+	}
+
+	private void stepPart1Unsafe() {
 		// Guard against a stale scheduled action firing after this zone was removed
 		// (e.g. after the meta zone is removed when real zones are added at runtime).
 		if (ContextCreator.getZoneContext().get(this.getID()) == null) return;
@@ -242,6 +251,15 @@ public class Zone {
 	}
 	
 	public void stepPart2() {
+		try {
+			stepPart2Unsafe();
+		} catch (Throwable ex) {
+			ContextCreator.logger.error("Zone.stepPart2 failed; zone=" + this.ID
+					+ ", tick=" + ContextCreator.getCurrentTick(), ex);
+		}
+	}
+
+	private void stepPart2Unsafe() {
 		if (ContextCreator.getZoneContext().get(this.getID()) == null) return;
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) return;
 		// Happens between t and t + 1

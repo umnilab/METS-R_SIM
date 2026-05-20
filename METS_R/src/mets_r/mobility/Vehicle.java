@@ -465,6 +465,10 @@ public class Vehicle {
 	 * If this vehicle is on road, ignore the road variable and reroute it
 	 */
 	public void departure(Road road) {
+		if (road == null) {
+			ContextCreator.logger.warn("departure skipped for vehicle " + this.getID() + " because departure road is null.");
+			return;
+		}
 		this.numTrips ++;
 		this.originRoad_ = road;
 		this.isReachDest = false;
@@ -650,22 +654,35 @@ public class Vehicle {
 		this.atOrigin = false;
 		// Clear legacy impact
 		this.clearShadowImpact();
-		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
-		this.setShadowImpact();
 		this.distToTravel_ = 0;
+		if (this.road == null || this.destRoad_ == null) {
+			ContextCreator.logger.warn("Cannot reroute vehicle " + this.getID()
+					+ " because current road or destination road is null.");
+			this.roadPath = null;
+			this.nextRoad_ = null;
+			return;
+		}
+		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
 		if (this.roadPath == null) {
 			// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
 			// Fallback to use valid roads,  this fallback would fail when the r2 or the new departure road are not properly connnected. How to fix this?
 			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
 			
-			this.roadPath = RouteContext.shortestPathRoute(this.road, r2, this.rand_route_only); // K-shortest path or shortest path
+			if (r2 != null) {
+				this.roadPath = RouteContext.shortestPathRoute(this.road, r2, this.rand_route_only); // K-shortest path or shortest path
+			}
 			
 			if(this.roadPath == null) {
 				Road r1 = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road);
 				
-				this.roadPath = RouteContext.shortestPathRoute(r1, r2, this.rand_route_only); 
+				if (r1 != null && r2 != null) {
+					this.roadPath = RouteContext.shortestPathRoute(r1, r2, this.rand_route_only);
+				}
 				
 				if(this.roadPath == null) {
+					ContextCreator.logger.warn("Cannot find path from road " + this.road.getOrigID()
+							+ " to destination road " + this.destRoad_.getOrigID()
+							+ " for vehicle " + this.getID() + "; ending this leg without entering a bad route.");
 					this.nextRoad_ = null;
 					return;
 				}
@@ -677,6 +694,14 @@ public class Vehicle {
 			else{
 				this.destRoad_ = r2;
 			}
+		}
+
+		if (this.roadPath.isEmpty()) {
+			ContextCreator.logger.warn("Routing returned an empty path for vehicle " + this.getID()
+					+ "; ending this leg without entering a bad route.");
+			this.roadPath = null;
+			this.nextRoad_ = null;
+			return;
 		}
 		
 		this.setShadowImpact();
@@ -701,9 +726,21 @@ public class Vehicle {
 	 * a direct downstream neighbor of the vehicle's currently stored road.
 	 */
 	public void rerouteWithSpecifiedNextRoad(Road nextRoad) {
+		if (nextRoad == null) {
+			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
+					+ " has null requested next road.");
+			this.nextRoad_ = null;
+			return;
+		}
 		if (this.road == null) {
 			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
 					+ " has null current road, cannot reroute to " + nextRoad.getOrigID());
+			return;
+		}
+		if (this.destRoad_ == null) {
+			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
+					+ " has null destination road, cannot reroute to " + nextRoad.getOrigID());
+			this.nextRoad_ = null;
 			return;
 		}
 		if (this.nextRoad_ == nextRoad) {
@@ -724,7 +761,9 @@ public class Vehicle {
 		if (this.roadPath == null) {
 			// Fallback: destination road may be a dead-end; try nearest valid road
 			Road r2 = ContextCreator.getCityContext().findRoadAtCoordinates(this.destRoad_.getEndCoord(), true, this.destRoad_);
-			this.roadPath = RouteContext.shortestPathRoute(nextRoad, r2, this.rand_route_only);
+			if (r2 != null) {
+				this.roadPath = RouteContext.shortestPathRoute(nextRoad, r2, this.rand_route_only);
+			}
 			if (this.roadPath == null) {
 				ContextCreator.logger.warn("Cannot find path from " + nextRoad.getOrigID() + " to the vehicle destination, gracefully removing this trip.");
 				this.nextRoad_ = null;
@@ -732,6 +771,12 @@ public class Vehicle {
 			} else {
 				this.destRoad_ = r2;
 			}
+		}
+		if (this.roadPath.isEmpty()) {
+			ContextCreator.logger.warn("Routing returned an empty path from " + nextRoad.getOrigID()
+					+ " to the vehicle destination, gracefully removing this trip.");
+			this.nextRoad_ = null;
+			return;
 		}
 
 		this.roadPath.add(0, this.road); // Prepend the current road
@@ -771,15 +816,37 @@ public class Vehicle {
 	 * Update route based on list of road, return false if the route start and end links are inconsistent 
 	 */
 	public boolean updateRoute(List<Road> newPath) {
+		if (newPath == null || newPath.isEmpty()) {
+			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID() + " because the route is empty.");
+			return false;
+		}
+		if (this.road == null || this.destRoad_ == null) {
+			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
+					+ " because current road or destination road is null.");
+			return false;
+		}
 		if(this.road == newPath.get(0) && this.destRoad_ == newPath.get(newPath.size() - 1)){
 			double dtt = 0;
 			for(Road r: newPath) {
+				if (r == null) {
+					ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
+							+ " because the route contains a null road.");
+					return false;
+				}
 				dtt += r.getLength();
 			}
-			this.distToTravel_ = dtt;
 			// Vehicle departured
 			this.atOrigin = false;
+			this.clearShadowImpact();
 			this.roadPath = newPath;
+			if (newPath.size() < 2) {
+				// Intentional same-road / one-road route: arrive immediately instead of rerouting forever.
+				this.distToTravel_ = this.distance_;
+				this.nextRoad_ = null;
+				this.setShadowImpact();
+				return true;
+			}
+			this.distToTravel_ = dtt;
 			this.nextRoad_ = newPath.get(1);
 			this.setShadowImpact();
 			this.assignNextLane();
@@ -2650,6 +2717,7 @@ public class Vehicle {
 	 * Get origin road
 	 */
 	public int getOriginRoad() {
+		if (this.originRoad_ == null) return -1;
 		return this.originRoad_.getID();
 	}
 	
@@ -2657,6 +2725,7 @@ public class Vehicle {
 	 * Get destination road
 	 */
 	public int getDestRoad() {
+		if (this.destRoad_ == null) return -1;
 		return this.destRoad_.getID();
 	}
 	
