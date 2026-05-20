@@ -143,16 +143,48 @@ public class TickSnapshot {
 	}
 
 	private float meanSpeedFromVehicleSnapshots(float fallbackMeanSpeed) {
+		double speedSum = 0;
+		int speedCount = 0;
 		synchronized (this.vehicles) {
-			if (this.vehicles == null || this.vehicles.isEmpty()) {
-				return fallbackMeanSpeed;
-			}
-			double speedSum = 0;
 			for (VehicleSnapshot snapshot : this.vehicles.values()) {
 				speedSum += snapshot.getSpeed();
+				speedCount++;
 			}
-			return (float) (speedSum / this.vehicles.size());
 		}
+		synchronized (this.evs_private) {
+			for (EVSnapshot snapshot : this.evs_private.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
+		synchronized (this.evs_occupied) {
+			for (ETaxiSnapshot snapshot : this.evs_occupied.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
+		synchronized (this.evs_relocation) {
+			for (ETaxiSnapshot snapshot : this.evs_relocation.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
+		synchronized (this.evs_charging) {
+			for (ETaxiSnapshot snapshot : this.evs_charging.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
+		synchronized (this.buses) {
+			for (BusSnapshot snapshot : this.buses.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
+		if (speedCount == 0) {
+			return fallbackMeanSpeed;
+		}
+		return (float) (speedSum / speedCount);
 	}
 
 	public void logRoadSummary(int nVehicles, double speed) {
