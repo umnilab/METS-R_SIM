@@ -257,6 +257,13 @@ public class GlobalVariables {
 	public static double KRAUSS_EMERGENCY_DECEL = Double.valueOf(loadConfig("KRAUSS_EMERGENCY_DECEL"));
 	public static double KRAUSS_ACTION_STEP_LENGTH = Double.valueOf(loadConfig("KRAUSS_ACTION_STEP_LENGTH"));
 
+	// SUMO IDM car following model parameters
+	public static double IDM_TAU = Double.valueOf(loadConfig("IDM_TAU"));
+	public static double IDM_MIN_GAP = Double.valueOf(loadConfig("IDM_MIN_GAP"));
+	public static double IDM_DECEL = Double.valueOf(loadConfig("IDM_DECEL"));
+	public static double IDM_DELTA = Double.valueOf(loadConfig("IDM_DELTA"));
+	public static double IDM_STEPPING = Double.valueOf(loadConfig("IDM_STEPPING"));
+
 	// VISSIM Wiedemann 74 car following parameters
 	public static double WIEDEMANN74_AX = Double.valueOf(loadConfig("WIEDEMANN74_AX"));
 	public static double WIEDEMANN74_BX_ADD = Double.valueOf(loadConfig("WIEDEMANN74_BX_ADD"));

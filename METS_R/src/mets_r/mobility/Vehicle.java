@@ -38,6 +38,10 @@ import org.opengis.referencing.operation.TransformException;
  *   tau, minGap, driver imperfection sigma, and normal/apparent/emergency
  *   braking constraints. Compared with HERMAN, it is explicitly safety-speed
  *   driven and more directly tied to leader braking assumptions.
+ * - {@code IDM}: SUMO's Intelligent Driver Model. It integrates a next-step
+ *   speed from desired speed, tau, minGap, delta, acceleration, comfortable
+ *   deceleration, and leader closing speed, then converts that speed back to a
+ *   METS-R acceleration command.
  * - {@code WIEDEMANN74}: a VISSIM-style psycho-physical model for urban
  *   following. It uses driver-specific standstill distance, oscillation, and
  *   threshold regimes such as free, approaching, following, braking, and
@@ -1345,6 +1349,9 @@ public class Vehicle {
 		if ("KRAUSS".equals(model)) {
 			return calcKraussCarFollowingRate(front);
 		}
+		if ("IDM".equals(model)) {
+			return calcIdmCarFollowingRate(front);
+		}
 		if ("WIEDEMANN74".equals(model) || "WIEDEMANN_74".equals(model) || "W74".equals(model)) {
 			return calcWiedemann74CarFollowingRate(front);
 		}
@@ -1449,6 +1456,77 @@ public class Vehicle {
 			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
 		}
 		return clampAcceleration(acc);
+	}
+
+	private double calcIdmCarFollowingRate(Vehicle front) {
+		double step = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 1e-6);
+		double desiredSpeed = Math.max(0.0, desiredSpeed_);
+		if (desiredSpeed <= 1e-6) {
+			regime_ = front == null ? GlobalVariables.STATUS_REGIME_FREEFLOWING
+					: GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+			return clampAcceleration(-idmDecelMagnitude());
+		}
+
+		double leaderSpeed = front == null ? desiredSpeed : Math.max(0.0, front.currentSpeed_);
+		double gap = front == null ? 1.0e6 : gapDistance(front);
+		double idmSpeed = idmNextSpeed(gap, currentSpeed_, leaderSpeed, desiredSpeed, front != null);
+		double freeFlowSpeed = Math.max(0.0, currentSpeed_ + calcFreeFlowRate() * step);
+		double targetSpeed = Math.min(Math.min(idmSpeed, freeFlowSpeed), desiredSpeed);
+		double acc = (Math.max(0.0, targetSpeed) - currentSpeed_) / step;
+
+		if (front == null) {
+			regime_ = GlobalVariables.STATUS_REGIME_FREEFLOWING;
+		} else if (gap <= Math.max(0.1, GlobalVariables.IDM_MIN_GAP) || acc < -idmDecelMagnitude()) {
+			regime_ = GlobalVariables.STATUS_REGIME_EMERGENCY;
+		} else {
+			regime_ = GlobalVariables.STATUS_REGIME_CARFOLLOWING;
+		}
+		return clampAcceleration(acc);
+	}
+
+	private double idmNextSpeed(double gap, double egoSpeed, double leaderSpeed,
+			double desiredSpeed, boolean hasLeader) {
+		double step = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 1e-6);
+		int iterations = Math.max(1, (int) (step / positiveOr(GlobalVariables.IDM_STEPPING, 0.25) + 0.5));
+		double dt = step / iterations;
+		double newSpeed = Math.max(0.0, egoSpeed);
+		double remainingGap = hasLeader ? Math.max(0.0, gap) : 1.0e6;
+
+		for (int i = 0; i < iterations; i++) {
+			double acc = idmAcceleration(newSpeed, leaderSpeed, remainingGap, desiredSpeed, hasLeader);
+			newSpeed = Math.max(0.0, newSpeed + acc * dt);
+			if (hasLeader) {
+				remainingGap -= Math.max(0.0, (newSpeed - leaderSpeed) * dt);
+			}
+		}
+		return newSpeed;
+	}
+
+	private double idmAcceleration(double speed, double leaderSpeed, double gap,
+			double desiredSpeed, boolean hasLeader) {
+		double speedRatio = Math.max(0.0, speed) / Math.max(1e-6, desiredSpeed);
+		double delta = Math.max(0.0, GlobalVariables.IDM_DELTA);
+		double interaction = 0.0;
+		if (hasLeader) {
+			double desiredGap = idmDesiredGap(speed, leaderSpeed);
+			double effectiveGap = Math.max(1e-6, gap);
+			interaction = desiredGap * desiredGap / (effectiveGap * effectiveGap);
+		}
+		return maxAcceleration_ * (1.0 - Math.pow(speedRatio, delta) - interaction)
+				- GRAVITY * currentLaneSlope_;
+	}
+
+	private double idmDesiredGap(double speed, double leaderSpeed) {
+		double twoSqrtAccelDecel = 2.0 * Math.sqrt(Math.max(0.1, maxAcceleration_)
+				* idmDecelMagnitude());
+		double closingSpeed = Math.max(0.0, speed) - Math.max(0.0, leaderSpeed);
+		double dynamicGap = speed * Math.max(0.0, GlobalVariables.IDM_TAU)
+				+ speed * closingSpeed / twoSqrtAccelDecel;
+		return Math.max(0.0, GlobalVariables.IDM_MIN_GAP) + Math.max(0.0, dynamicGap);
+	}
+
+	private double idmDecelMagnitude() {
+		return positiveOr(GlobalVariables.IDM_DECEL, Math.max(0.1, -effectiveNormalDeceleration()));
 	}
 
 	private double calcWiedemann74CarFollowingRate(Vehicle front) {
