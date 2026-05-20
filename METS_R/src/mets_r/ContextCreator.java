@@ -174,6 +174,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			status.put("lastStepCommandAgeMs", lastStepCommandMs == 0 ? -1 : now - lastStepCommandMs);
 			status.put("lastStepCommandRequestTick", lastStepCommandRequestTick);
 			status.put("lastStepCommandAcceptedNum", lastStepCommandAcceptedNum);
+			status.put("stepGateActionTracked", stepGateAction != null);
+			status.put("scheduledActionCount", scheduledActions.size());
 		}
 		if (tscheduler != null) {
 			status.put("threadedScheduler", tscheduler.getStatus());
@@ -184,6 +186,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* For enable the reset function*/
 	public static int initTick = 0;
 	private static List<ISchedulableAction> scheduledActions = new ArrayList<ISchedulableAction>();
+	private static ContextCreator scheduleOwner = null;
+	private static ISchedulableAction stepGateAction = null;
 	private static SnapshotUtil.SimulationSnapshot initialSnapshot = null;
 	
 	/* Functions */
@@ -224,6 +228,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// Schedule simulation events
 	public static void scheduleEvents() {
+		if (GlobalVariables.SYNCHRONIZED) {
+			scheduleNextStepUpdating();
+		}
 		schedulePrivateTripLoader();
 		scheduleRoadNetworkRefresh();
 		scheduleFreeFlowSpeedRefresh();
@@ -296,10 +303,21 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 
 	// Schedule the event for synchronized update
-	public void scheduleNextStepUpdating() {
+	public static void scheduleNextStepUpdating() {
+		if (!GlobalVariables.SYNCHRONIZED) {
+			return;
+		}
+		if (scheduleOwner == null) {
+			logger.warn("Synchronized step gate cannot be scheduled before ContextCreator.build() sets the owner.");
+			return;
+		}
+		if (stepGateAction != null) {
+			return;
+		}
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, ScheduleParameters.LAST_PRIORITY);
-		schedule.schedule(nextStepParams, this, "waitForNextStepCommand");
+		stepGateAction = schedule.schedule(nextStepParams, scheduleOwner, "waitForNextStepCommand");
+		scheduledActions.add(stepGateAction);
 	}
 	
 	// Schedule the event for vehicle movements (multi-thread)
@@ -494,6 +512,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		start_time = System.currentTimeMillis(); // Record the start time of the simulation
 		
 		mainContext = context;
+		scheduleOwner = this;
 		
 		logger.info("Building subcontexts");
 		buildSubContexts();
@@ -516,8 +535,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 			
 			connection.sendReadyMessage(); 
-			
-			scheduleNextStepUpdating(); // Schedule synchronized updates
 		}
 		else {
 			scheduleEnd();
@@ -640,13 +657,19 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		int sizeBefore = scheduledActions.size();
 		int actuallyRemoved = 0;
+		ArrayList<ISchedulableAction> remainingActions = new ArrayList<ISchedulableAction>();
 		for (ISchedulableAction scheduledAction : scheduledActions) {
 			if (schedule.removeAction(scheduledAction)) {
 				actuallyRemoved++;
+			} else {
+				remainingActions.add(scheduledAction);
 			}
 		}
 		logger.info(logLabel + ": tracked=" + sizeBefore + " removed=" + actuallyRemoved);
-		scheduledActions = new ArrayList<ISchedulableAction>();
+		scheduledActions = remainingActions;
+		if (stepGateAction != null && !scheduledActions.contains(stepGateAction)) {
+			stepGateAction = null;
+		}
 		return actuallyRemoved;
 	}
 
@@ -764,7 +787,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition); 
-		setWaitNextStepCommand(0);
+		setWaitNextStepCommand(GlobalVariables.SYNCHRONIZED ? 0 : -1);
 		// Clear per-tick idempotency guards on the singleton schedulers so that
 		// the first tick of the new run is never treated as a duplicate call
 		// from an orphaned scheduled action.
@@ -845,16 +868,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Clear scheduled actions (mirror of reset(): track removal so the
 		// on-deck-queue leak is visible if deferredLoad ever fails to land in
 		// a quiescent state)
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		int sizeBefore = scheduledActions.size();
-		int actuallyRemoved = 0;
-		for (ISchedulableAction scheduledAction : scheduledActions) {
-			if (schedule.removeAction(scheduledAction)) {
-				actuallyRemoved++;
-			}
-		}
-		logger.info("LOAD-SCHED: tracked=" + sizeBefore + " removed=" + actuallyRemoved);
-		scheduledActions = new ArrayList<ISchedulableAction>();
+		clearScheduledActions("LOAD-SCHED");
 		dataContext.stopCollecting();
 		agg_logger.close();
 		travel_demand.close();

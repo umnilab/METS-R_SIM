@@ -56,7 +56,6 @@ public class TickSnapshot {
 	private int vehicleCount;
 	private float meanSpeed;
 	private int roadVehicleCount;
-	private double roadWeightedSpeed;
 	private final Object summaryLock = new Object();
 	private ArrayList<LinkSnapshot> links;
 
@@ -97,7 +96,6 @@ public class TickSnapshot {
 		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
 		this.frameSummaryRecorded = false;
 		this.roadVehicleCount = 0;
-		this.roadWeightedSpeed = 0;
 		this.links = new ArrayList<LinkSnapshot>();
 
 		// Setup the map for holding the event data. Two subarraylists (for starting
@@ -135,17 +133,25 @@ public class TickSnapshot {
 			this.energyConsumption = this.privateEVEnergy + this.eTaxiEnergy + this.eBusEnergy;
 		}
 		synchronized (this.links) {
-			if (vehicleCount > 0 || this.roadVehicleCount == 0) {
-				this.vehicleCount = vehicleCount;
-				this.meanSpeed = meanSpeed;
-			} else {
-				this.vehicleCount = this.roadVehicleCount;
-				this.meanSpeed = (float) (this.roadWeightedSpeed / Math.max(this.roadVehicleCount, 1));
-			}
+			this.vehicleCount = vehicleCount > 0 ? vehicleCount : this.roadVehicleCount;
+			this.meanSpeed = meanSpeedFromVehicleSnapshots(meanSpeed);
 			if (links != null) {
 				this.links.clear();
 				this.links.addAll(links);
 			}
+		}
+	}
+
+	private float meanSpeedFromVehicleSnapshots(float fallbackMeanSpeed) {
+		synchronized (this.vehicles) {
+			if (this.vehicles == null || this.vehicles.isEmpty()) {
+				return fallbackMeanSpeed;
+			}
+			double speedSum = 0;
+			for (VehicleSnapshot snapshot : this.vehicles.values()) {
+				speedSum += snapshot.getSpeed();
+			}
+			return (float) (speedSum / this.vehicles.size());
 		}
 	}
 
@@ -155,7 +161,6 @@ public class TickSnapshot {
 		}
 		synchronized (this.links) {
 			this.roadVehicleCount += nVehicles;
-			this.roadWeightedSpeed += speed * nVehicles;
 		}
 	}
 
