@@ -95,6 +95,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static volatile long lastStepGateEnterMs = 0;
 	private static volatile long lastStepGateReleaseMs = 0;
 	private static volatile int lastStepGateTick = Integer.MIN_VALUE;
+	private static volatile long stepGateLoopCount = 0;
+	private static volatile long lastStepGateLoopMs = 0;
 	private static volatile long lastStepCommandMs = 0;
 	private static volatile int lastStepCommandRequestTick = Integer.MIN_VALUE;
 	private static volatile int lastStepCommandAcceptedNum = 0;
@@ -167,6 +169,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 			status.put("lastStepGateTick", lastStepGateTick);
 			status.put("lastStepGateAgeMs", lastStepGateEnterMs == 0 ? -1 : now - lastStepGateEnterMs);
 			status.put("lastStepGateReleaseAgeMs", lastStepGateReleaseMs == 0 ? -1 : now - lastStepGateReleaseMs);
+			status.put("stepGateLoopCount", stepGateLoopCount);
+			status.put("lastStepGateLoopAgeMs", lastStepGateLoopMs == 0 ? -1 : now - lastStepGateLoopMs);
 			status.put("lastStepCommandAgeMs", lastStepCommandMs == 0 ? -1 : now - lastStepCommandMs);
 			status.put("lastStepCommandRequestTick", lastStepCommandRequestTick);
 			status.put("lastStepCommandAcceptedNum", lastStepCommandAcceptedNum);
@@ -957,8 +961,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		long prevTime = -10001; // for the first tick
 		while(true) {
+			int currentTick;
 			synchronized (stepCommandLock) {
-				int currentTick = ContextCreator.getCurrentTick();
+				currentTick = ContextCreator.getCurrentTick();
 				if (waitNextStepCommand != 0 && currentTick < nextStepTargetTick) {
 					waitNextStepCommand = nextStepTargetTick - currentTick;
 					schedulerAtStepGate = false;
@@ -968,11 +973,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 				}
 				waitNextStepCommand = 0;
 				nextStepTargetTick = currentTick;
-				try{
-					stepCommandLock.wait(100);
-				} catch (InterruptedException e) {
-					e.printStackTrace();
-				}
+				stepGateLoopCount++;
+				lastStepGateLoopMs = System.currentTimeMillis();
+			}
+			try{
+				Thread.sleep(1);
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				ContextCreator.logger.warn("waitForNextStepCommand interrupted at tick " + currentTick, e);
+				return;
 			}
 			if ((System.currentTimeMillis()-prevTime)>10000 && connection != null) {
 				connection.sendStepMessage(ContextCreator.getCurrentTick());
