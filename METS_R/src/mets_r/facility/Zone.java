@@ -641,8 +641,36 @@ public class Zone {
 					}
 					int v_num = eligibleTaxis.size();
 					for (int i = 0; i < v_num; i++) {
+						Request firstRequest = passQueue.peek();
+						if (firstRequest == null || pass_num <= 0) {
+							break;
+						}
 						ElectricTaxi v = eligibleTaxis.poll();
 						if (v != null) {
+							int assignedPassengers = v.getPassNum();
+							if (assignedPassengers >= 4 || assignedPassengers + firstRequest.getNumPeople() > 4) {
+								continue;
+							}
+							ArrayList<Request> tmp_pass = new ArrayList<Request>();
+							while (!passQueue.isEmpty()) {
+								Request p = passQueue.peek();
+								if (p == null || assignedPassengers + p.getNumPeople() > 4) {
+									break;
+								}
+								passQueue.poll();
+								tmp_pass.add(p);
+								assignedPassengers += p.getNumPeople();
+								// Record served passengers
+								p.matchedTime = ContextCreator.getCurrentTick();
+								this.nRequestForTaxi -= 1;
+								this.taxiPickupRequest += 1;
+								this.taxiPickupPassengers += p.getNumPeople();
+								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
+								pass_num -= p.getNumPeople();
+							}
+							if (tmp_pass.isEmpty()) {
+								continue;
+							}
 							ContextCreator.vehicleContext.removeAvailableTaxi(v, this.getID());
 							if(v.getState() == Vehicle.PARKING) {
 								this.removeOneParkingVehicle();
@@ -650,23 +678,13 @@ public class Zone {
 							else if(v.getState() != Vehicle.CRUISING_TRIP) {
 								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
-							ArrayList<Request> tmp_pass = new ArrayList<Request>();
-							while(v.getPassNum() + passQueue.peek().getNumPeople() <= 4) {
-								Request p = passQueue.poll();
-								tmp_pass.add(p);
-								// Record served passengers
-								p.matchedTime = ContextCreator.getCurrentTick();
-								this.nRequestForTaxi -= 1;
-								this.taxiPickupRequest += 1;
-								this.taxiPickupPassengers += p.getNumPeople();
-								this.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
-								pass_num = pass_num - tmp_pass.size();
-								if(passQueue.peek() == null) break;
-							}
 							v.servePassenger(tmp_pass);
 							// Update future supply of the target zone
-							ContextCreator.getZoneContext().get(tmp_pass.get(0).getDestZone()).addFutureSupply();
-							if(pass_num == 0) break;
+							Zone destZone = ContextCreator.getZoneContext().get(tmp_pass.get(0).getDestZone());
+							if (destZone != null) {
+								destZone.addFutureSupply();
+							}
+							if(pass_num <= 0) break;
 						}
 						else {
 							break;
