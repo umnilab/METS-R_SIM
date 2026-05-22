@@ -2945,14 +2945,6 @@ public class Vehicle {
 		this.futureRoutingRoad = new ArrayList<Road>();
 	}
 
-	public boolean goParking(Road road) {
-		return this.getParked(road);
-	}
-
-	public boolean goParking(int roadID) {
-		return this.goParking(ContextCreator.getRoadContext().get(roadID));
-	}
-
 	public boolean getParked(Road road) {
 		if (road == null || !road.tryAddParkedVehicle()) {
 			return false;
