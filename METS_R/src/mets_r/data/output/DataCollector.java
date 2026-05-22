@@ -284,7 +284,8 @@ public class DataCollector {
 			snapshot.logRoadSummary(nVehicles, speed);
 			if (changed) {
 				snapshot.logLinkSnapshot(new LinkSnapshot(road.getOrigID(), speed,
-						nVehicles, road.getTotalEnergy(), road.getTotalFlow()));
+						nVehicles, road.getTotalEnergy(), road.getTotalFlow(),
+						road.getParkingCapacity(), road.getParkedNum()));
 			}
 		} catch (Throwable t) {
 			ContextCreator.logger.error("Failed to record link snapshot for road " + road.getID(), t);

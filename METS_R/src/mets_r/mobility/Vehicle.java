@@ -133,6 +133,7 @@ public class Vehicle {
 	private boolean isReachDest;
 	private boolean onLane; // On a lane, false when the vehicle is in an intersection or not on road
 	private boolean onRoad; // On a road, false when the vehicle is parking/charging
+	private int currentParkingRoad; // Road-backed parking spot, or -1 when not parked on a road
 	private Road road;
 	private Lane lane;
 	
@@ -232,6 +233,7 @@ public class Vehicle {
 		this.isReachDest = false;
 		this.onLane = false;
 		this.onRoad = false;
+		this.currentParkingRoad = -1;
 		this.accRate_ = 0;
 		this.lane = null;
 		this.nextLane_ = null;
@@ -2941,6 +2943,52 @@ public class Vehicle {
 		// For adaptive network partitioning
 		this.Nshadow = 0;
 		this.futureRoutingRoad = new ArrayList<Road>();
+	}
+
+	public boolean goParking(Road road) {
+		return this.getParked(road);
+	}
+
+	public boolean goParking(int roadID) {
+		return this.goParking(ContextCreator.getRoadContext().get(roadID));
+	}
+
+	public boolean getParked(Road road) {
+		if (road == null || !road.tryAddParkedVehicle()) {
+			return false;
+		}
+		int zoneID = road.getNeighboringZone(true);
+		if (ContextCreator.getZoneContext().get(zoneID) == null) {
+			zoneID = road.getNeighboringZone(false);
+		}
+		this.onParkedOnRoad(road, zoneID);
+		this.currentParkingRoad = road.getID();
+		this.leaveNetwork();
+		this.setState(Vehicle.PARKING);
+		return true;
+	}
+
+	protected void onParkedOnRoad(Road road, int zoneID) {
+	}
+
+	public boolean releaseRoadParkingSpot() {
+		if (this.currentParkingRoad < 0) {
+			return false;
+		}
+		Road parkedRoad = ContextCreator.getRoadContext().get(this.currentParkingRoad);
+		if (parkedRoad != null) {
+			parkedRoad.removeOneParkedVehicle();
+		}
+		this.currentParkingRoad = -1;
+		return true;
+	}
+
+	public int getCurrentParkingRoad() {
+		return this.currentParkingRoad;
+	}
+
+	public void setCurrentParkingRoad(int currentParkingRoad) {
+		this.currentParkingRoad = currentParkingRoad;
 	}
 
 	public double currentSpeed() {

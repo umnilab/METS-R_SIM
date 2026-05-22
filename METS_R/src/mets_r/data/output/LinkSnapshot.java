@@ -6,13 +6,18 @@ class LinkSnapshot {
 	final int nVehicles; //  number of vehicles currently on the road, including the downstream junction
 	final float energy;
 	final int flow;
+	final int parkingCapacity;
+	final int parkedNum;
 
-	LinkSnapshot(String id, double speed, int nVehicles, double energy, int flow) {
+	LinkSnapshot(String id, double speed, int nVehicles, double energy, int flow,
+			int parkingCapacity, int parkedNum) {
 		this.id = id;
 		this.speed = (float) speed;
 		this.nVehicles = nVehicles;
 		this.energy = (float) energy;
 		this.flow = flow;
+		this.parkingCapacity = parkingCapacity;
+		this.parkedNum = parkedNum;
 		if (Double.isNaN(speed) || Double.isInfinite(speed)) {
 			throw new NumberFormatException("Speed is NaN or Inifinite for " + id);
 		}
@@ -39,8 +44,17 @@ class LinkSnapshot {
 		return this.flow;
 	}
 
+	public int getParkingCapacity() {
+		return this.parkingCapacity;
+	}
+
+	public int getParkedNum() {
+		return this.parkedNum;
+	}
+
 	String getJSONLine() {
-		return String.format("%d,%d,%.3f, %d, $.3f", id, nVehicles, speed, flow, energy);
+		return String.format("%s,%d,%.3f,%d,%.3f,%d,%d", id, nVehicles, speed, flow,
+				energy, parkingCapacity, parkedNum);
 	}
 
 }

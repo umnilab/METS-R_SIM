@@ -41,7 +41,7 @@ import mets_r.mobility.Vehicle;
  */
 public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private static final String FORMAT_NAME = "metsr-trajectory-binary";
-	private static final int FORMAT_VERSION = 6;
+	private static final int FORMAT_VERSION = 7;
 	private static final String CHUNK_MAGIC = "MRTB";
 
 	private boolean append;
@@ -491,7 +491,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 		for (LinkSnapshot link : tick.getLinkSnapshots()) {
 			summary.links.add(new BinaryLinkRecord(this.getRoadDictionaryIndex(link.getId()),
-					link.nVehicles(), (float) link.getSpeed(), link.getFlow(), (float) link.getEnergy()));
+					link.nVehicles(), (float) link.getSpeed(), link.getFlow(), (float) link.getEnergy(),
+					link.getParkingCapacity(), link.getParkedNum()));
 		}
 		return summary;
 	}
@@ -699,6 +700,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.writer.writeFloat(link.speed);
 			this.writer.writeInt(link.flow);
 			this.writer.writeFloat(link.energy);
+			this.writer.writeInt(link.parkingCapacity);
+			this.writer.writeInt(link.parkedNum);
 		}
 	}
 
@@ -883,7 +886,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"dropoffRequests:int32", "dropoffPassengers:int32", "stopZoneCount:int32",
 				"stopZones:int32[stopZoneCount]"));
 		schemas.put("link", schema("roadIndex:int32", "nVehicles:int32", "speed:float32",
-				"flow:int32", "energy:float32"));
+				"flow:int32", "energy:float32", "parkingCapacity:int32", "parkedNum:int32"));
 		schemas.put("zone", schema("updateCount:int32", "updates:zoneRecord[updateCount]",
 				"removedCount:int32", "removedIds:int32[removedCount]"));
 		schemas.put("zoneRecord", schema("id:int32", "x:int32", "y:int32", "zoneType:int32",
@@ -943,13 +946,18 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		final float speed;
 		final int flow;
 		final float energy;
+		final int parkingCapacity;
+		final int parkedNum;
 
-		BinaryLinkRecord(int roadIndex, int nVehicles, float speed, int flow, float energy) {
+		BinaryLinkRecord(int roadIndex, int nVehicles, float speed, int flow, float energy,
+				int parkingCapacity, int parkedNum) {
 			this.roadIndex = roadIndex;
 			this.nVehicles = nVehicles;
 			this.speed = speed;
 			this.flow = flow;
 			this.energy = energy;
+			this.parkingCapacity = parkingCapacity;
+			this.parkedNum = parkedNum;
 		}
 	}
 

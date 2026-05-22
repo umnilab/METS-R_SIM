@@ -259,6 +259,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public synchronized void removeAvailableTaxi(ElectricTaxi v, int z) {
 		this.availableTaxiMap.get(z).remove(v);
 	}
+
+	public synchronized void removeAvailableTaxiFromAllZones(ElectricTaxi v) {
+		for (TreeSet<ElectricTaxi> set : this.availableTaxiMap.values()) {
+			set.remove(v);
+		}
+	}
 	
 	public synchronized void updateAvailableTaxi(ElectricTaxi v, int oldZone, int newZone) {
 		if (this.availableTaxiMap.containsKey(oldZone)) {
@@ -291,6 +297,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    if (set != null) {
 	        set.remove(v);
 	    }
+	}
+
+	public synchronized void removeRelocationTaxiFromAllZones(ElectricTaxi v) {
+		for (TreeSet<ElectricTaxi> set : this.relocationTaxiMap.values()) {
+			set.remove(v);
+		}
 	}
 	
 //	public List<ElectricTaxi> getRelocationTaxi(int z){

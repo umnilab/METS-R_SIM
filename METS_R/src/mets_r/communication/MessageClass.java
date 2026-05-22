@@ -203,6 +203,25 @@ public class MessageClass{
     		this.zoneID = zoneID;
     	}
     }
+
+    // For goParking: send an idle taxi to park on a target zone/road.
+    class VehIDZoneRoad{
+        int vehID;
+        Integer zoneID;
+        Integer zone;
+        Integer dest;
+        Integer parkingZone;
+        String roadID;
+        String origID;
+        String orig_id;
+        String ID;
+
+        public VehIDZoneRoad(int vehID, Integer zoneID, String roadID) {
+            this.vehID = vehID;
+            this.zoneID = zoneID;
+            this.roadID = roadID;
+        }
+    }
     
     /** Taxi request payload for {@code addTaxiRequests}. */
     class OriginDestNumMaxW{
@@ -328,6 +347,21 @@ public class MessageClass{
 	    public RoadIDWeight(String roadID, double weight) {
 	        this.roadID = roadID;
 	        this.weight = weight;
+	    }
+    }
+
+    class RoadParkingCapacity{
+	    String roadID;
+	    String origID;
+	    String orig_id;
+	    String ID;
+	    Integer parkingCapacity;
+	    Integer parking_capacity;
+	    Integer capacity;
+
+	    public RoadParkingCapacity(String roadID, Integer parkingCapacity) {
+	        this.roadID = roadID;
+	        this.parkingCapacity = parkingCapacity;
 	    }
     }
     
@@ -619,6 +653,8 @@ public class MessageClass{
         Integer lanes;
         Double laneWidth;
         Double lane_width;
+        Integer parkingCapacity;
+        Integer parking_capacity;
 
         public RoadParams(String origID, ArrayList<ArrayList<Double>> centerline, boolean transformCoord,
                 String upStreamRoadOrigID, String downStreamRoadOrigID, Integer roadType, Integer controlType,

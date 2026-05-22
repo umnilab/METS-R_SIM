@@ -7,6 +7,7 @@ import java.util.Queue;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.Road;
 import mets_r.facility.Zone;
 
 /**
@@ -17,6 +18,8 @@ import mets_r.facility.Zone;
  */
 
 public class ElectricTaxi extends ElectricVehicle {
+	private static final int MAX_PASSENGERS = 4;
+
 	/* Local variables */
 	private int passNum; // no of people inside the vehicle
 	private double avgPersonMass_; // average mass of a person in lbs
@@ -120,8 +123,25 @@ public class ElectricTaxi extends ElectricVehicle {
 	
 	// Parking at Zone z
 	public void getParked(Zone z) {
+		if (z != null) {
+			this.setCurrentZone(z.getID());
+		}
+		this.setCurrentParkingRoad(-1);
 		super.leaveNetwork();
 		this.setState(Vehicle.PARKING);
+	}
+
+	@Override
+	protected void onParkedOnRoad(Road road, int zoneID) {
+		if (ContextCreator.getZoneContext().get(zoneID) != null) {
+			this.setCurrentZone(zoneID);
+		}
+	}
+
+	public void releaseParkingSpot(Zone fallbackZone) {
+		if (!this.releaseRoadParkingSpot() && fallbackZone != null) {
+			fallbackZone.removeOneParkingVehicle();
+		}
 	}
 
 	// Relocate vehicle
@@ -143,10 +163,11 @@ public class ElectricTaxi extends ElectricVehicle {
 			if(this.getState() == Vehicle.CRUISING_TRIP) {
 				this.stopCruising();
 			}
+			this.ensureCurrentPlanAnchor(plist.get(0));
 			// Dispatch the vehicle to serve the request
 			for (Request p: plist) {
 				this.toBoardRequests.add(p);
-				this.addPlan(this.getOriginID(),
+				this.addPlan(p.getOriginZone(),
 						p.getOriginRoad(),
 						ContextCreator.getNextTick());
 				this.recordPassengerMatch(p);
@@ -158,6 +179,137 @@ public class ElectricTaxi extends ElectricVehicle {
 			// Add vehicle to new queue of corresponding road
 			this.departure();
 		}
+	}
+
+	private void ensureCurrentPlanAnchor(Request request) {
+		if (!this.getPlan().isEmpty()) {
+			return;
+		}
+		int zoneID = this.getCurrentZone() >= 0 ? this.getCurrentZone() : this.getDestID();
+		if (zoneID < 0 && request != null) {
+			zoneID = request.getOriginZone();
+		}
+		int roadID = this.getDestRoad();
+		if (roadID < 0 && request != null) {
+			roadID = request.getOriginRoad();
+		}
+		this.setOriginID(zoneID);
+		this.setDestID(zoneID);
+		if (roadID >= 0) {
+			Road road = ContextCreator.getRoadContext().get(roadID);
+			this.setOriginRoad(road);
+			this.setDestRoad(road);
+			this.addPlan(zoneID, roadID, ContextCreator.getNextTick());
+		}
+	}
+
+	public int remainingCapacity() {
+		return Math.max(0, MAX_PASSENGERS - this.passNum);
+	}
+
+	public boolean hasPassengerAssignments() {
+		return !this.toBoardRequests.isEmpty() || !this.onBoardRequests.isEmpty();
+	}
+
+	public void queuePassengerAfterCurrentTrip(Request request) {
+		if (request == null) {
+			return;
+		}
+		if (this.getState() == Vehicle.PICKUP_TRIP && !this.toBoardRequests.isEmpty()) {
+			insertToBoardRequest(request, 1);
+			int insertIndex = Math.min(1, this.getPlan().size());
+			this.getPlan().add(insertIndex, new Plan(request.getOriginZone(), request.getOriginRoad(),
+					ContextCreator.getNextTick()));
+		} else {
+			this.toBoardRequests.add(request);
+		}
+		this.recordPassengerMatch(request);
+		this.passNum += request.getNumPeople();
+	}
+
+	public boolean startQueuedPickupTrip(boolean addFutureSupply) {
+		Request nextPickup = this.toBoardRequests.peek();
+		if (nextPickup == null) {
+			return false;
+		}
+		if (addFutureSupply) {
+			Zone destZone = ContextCreator.getZoneContext().get(nextPickup.getDestZone());
+			if (destZone != null) {
+				destZone.addFutureSupply();
+			}
+		}
+		if (this.getPlan().size() < 2) {
+			this.addPlan(nextPickup.getOriginZone(), nextPickup.getOriginRoad(),
+					ContextCreator.getNextTick());
+		}
+		this.setState(Vehicle.PICKUP_TRIP);
+		this.setNextPlan();
+		this.departure();
+		return true;
+	}
+
+	private boolean shouldWaitForExternalDispatchControl() {
+		return GlobalVariables.DISPATCHING_CONTROLLED_BY_CONTROL_APIS
+				|| GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS;
+	}
+
+	private boolean shouldWaitForExternalRepositioningControl() {
+		return GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS;
+	}
+
+	private void becomeAvailableForExternalControl(Zone z) {
+		if (z == null) {
+			return;
+		}
+		int idleRoadID = this.resolveIdleRoadID(z);
+		Road idleRoad = idleRoadID >= 0 ? ContextCreator.getRoadContext().get(idleRoadID) : null;
+
+		ContextCreator.getVehicleContext().removeAvailableTaxiFromAllZones(this);
+		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(this);
+		this.setCurrentZone(z.getID());
+		this.setCurrentParkingRoad(-1);
+		this.cruisingTime_ = 0;
+		this.setState(Vehicle.NONE_OF_THE_ABOVE);
+		this.setOriginID(z.getID());
+		this.setDestID(z.getID());
+		this.getPlan().clear();
+		if (idleRoad != null) {
+			this.setOriginRoad(idleRoad);
+			this.setDestRoad(idleRoad);
+			this.addPlan(z.getID(), idleRoad.getID(), ContextCreator.getNextTick());
+		}
+		ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
+	}
+
+	private int resolveIdleRoadID(Zone z) {
+		int idleRoadID = this.getDestRoad();
+		if (idleRoadID >= 0) {
+			return idleRoadID;
+		}
+		Integer arrivalRoad = z.getClosestRoad(true);
+		if (arrivalRoad != null) {
+			return arrivalRoad;
+		}
+		Integer departureRoad = z.getClosestRoad(false);
+		return departureRoad == null ? -1 : departureRoad;
+	}
+
+	private void insertToBoardRequest(Request request, int index) {
+		LinkedList<Request> updatedRequests = new LinkedList<Request>();
+		int position = 0;
+		boolean inserted = false;
+		while (!this.toBoardRequests.isEmpty()) {
+			if (!inserted && position == index) {
+				updatedRequests.add(request);
+				inserted = true;
+			}
+			updatedRequests.add(this.toBoardRequests.poll());
+			position++;
+		}
+		if (!inserted) {
+			updatedRequests.add(request);
+		}
+		this.toBoardRequests = updatedRequests;
 	}
 
 	@Override
@@ -245,6 +397,9 @@ public class ElectricTaxi extends ElectricVehicle {
 					ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
 					this.departure();
 				}
+				else if (this.startQueuedPickupTrip(true)) {
+					// The newly queued request becomes active after the current drop-off.
+				}
 				else { // charging or join the current zone
 					// Built-in charging trigger is bypassed when CHARGING is
 					// controlled by an external Control API.
@@ -253,21 +408,18 @@ public class ElectricTaxi extends ElectricVehicle {
 							&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 						this.goCharging(ChargingStation.L3);
 					}
+					else if (this.shouldWaitForExternalDispatchControl()) {
+						this.becomeAvailableForExternalControl(z);
+					}
 					else { 
-						// Built-in parking/cruising (repositioning) is
-						// bypassed when REPOSITIONING is controlled by an
-						// external Control API; the taxi is still registered
-						// as available so the external dispatcher can see it.
-						if (!GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS) {
-							// join the current zone
-							if(z.getCapacity() > 0) { // Has capacity
-								z.addOneParkingVehicle();
-			                	this.getParked(z);
-						    }
-			                else {
-			                	// Select a neighboring link and cruise to there
-			                	this.goCruising(z);
-			                }
+						// join the current zone
+						if(z.getCapacity() > 0) { // Has capacity
+							z.addOneParkingVehicle();
+							this.getParked(z);
+					    }
+		                else {
+							// Select a neighboring link and cruise to there
+							this.goCruising(z);
 						}
 						ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
 					}
@@ -288,11 +440,14 @@ public class ElectricTaxi extends ElectricVehicle {
 
 				if(this.toBoardRequests.size() == 0) {
 					this.setState(Vehicle.OCCUPIED_TRIP);
-					this.addPlan(pickedup_request.getDestZone(),
-							pickedup_request.getDestRoad(),
-								ContextCreator.getNextTick());
+					Request nextDropoff = this.onBoardRequests.peek();
+					if (nextDropoff != null) {
+						this.addPlan(nextDropoff.getDestZone(),
+								nextDropoff.getDestRoad(),
+									ContextCreator.getNextTick());
+					}
 				}
-				if(this.getPlan().size()<2) {
+				if(this.getPlan().size()<2 && this.toBoardRequests.peek() != null) {
 					this.addPlan(this.toBoardRequests.peek().getOriginZone(), this.toBoardRequests.peek().getOriginRoad(), ContextCreator.getNextTick());
 				}
 				
@@ -303,11 +458,17 @@ public class ElectricTaxi extends ElectricVehicle {
 				// Built-in charging trigger is bypassed when CHARGING is
 				// controlled by an external Control API. Parking/cruising at
 				// the end of a sim-initiated cruise remains sim-controlled.
-				if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
+				if (this.startQueuedPickupTrip(true)) {
+					// Continue with the queued assignment after the current cruise leg.
+				}
+				else if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(1)))
 						&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 					ContextCreator.getVehicleContext().removeAvailableTaxi(this, z.getID());
 					this.goCharging(ChargingStation.L3);
+				}
+				else if (this.shouldWaitForExternalRepositioningControl()) {
+					this.becomeAvailableForExternalControl(z);
 				}
 				else {
 					if(this.cruisingTime_ <= GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME) {
@@ -332,6 +493,9 @@ public class ElectricTaxi extends ElectricVehicle {
 				if (this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP)
 					ContextCreator.getVehicleContext().removeRelocationTaxi(this);
 				z.removeFutureSupply();
+				if (this.startQueuedPickupTrip(true)) {
+					return;
+				}
 				// Built-in charging trigger is bypassed when CHARGING is
 				// controlled by an external Control API. Parking/cruising at
 				// the end of a sim-initiated relocation/charging-return trip
@@ -340,6 +504,9 @@ public class ElectricTaxi extends ElectricVehicle {
 						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
 						&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
 					this.goCharging(ChargingStation.L3);
+				}
+				else if (this.shouldWaitForExternalRepositioningControl()) {
+					this.becomeAvailableForExternalControl(z);
 				}
 				else { // join the current zone
 					if(z.getCapacity() > 0) { // Has capacity
@@ -436,8 +603,8 @@ public class ElectricTaxi extends ElectricVehicle {
 	public void setPassNum(int v) { this.passNum = v; }
 	public Queue<Request> getToBoardRequests() { return this.toBoardRequests; }
 	public Queue<Request> getOnBoardRequests() { return this.onBoardRequests; }
-	public void setToBoardRequests(Queue<Request> q) { this.toBoardRequests = q; }
-	public void setOnBoardRequests(Queue<Request> q) { this.onBoardRequests = q; }
+	public void setToBoardRequests(Queue<Request> q) { this.toBoardRequests = q == null ? new LinkedList<Request>() : q; }
+	public void setOnBoardRequests(Queue<Request> q) { this.onBoardRequests = q == null ? new LinkedList<Request>() : q; }
 	public int getMatchedRequests() { return this.matchedRequests; }
 	public void setMatchedRequests(int v) { this.matchedRequests = v; }
 	public int getMatchedPassengers() { return this.matchedPassengers; }

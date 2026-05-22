@@ -691,9 +691,9 @@ public class Zone {
 							}
 							ContextCreator.vehicleContext.removeAvailableTaxi(v, this.getID());
 							if(v.getState() == Vehicle.PARKING) {
-								this.removeOneParkingVehicle();
+								v.releaseParkingSpot(this);
 							}
-							else if(v.getState() != Vehicle.CRUISING_TRIP) {
+							else if(v.getState() != Vehicle.CRUISING_TRIP && v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
 								ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 							}
 							v.servePassenger(tmp_pass);
@@ -721,9 +721,9 @@ public class Zone {
 				ContextCreator.vehicleContext.removeAvailableTaxi(v, this.getID());
 				Request current_taxi_pass = this.requestInQueueForTaxi.poll();
 				if(v.getState() == Vehicle.PARKING) {
-					this.removeOneParkingVehicle();
+					v.releaseParkingSpot(this);
 				}
-				else if(v.getState() != Vehicle.CRUISING_TRIP) {
+				else if(v.getState() != Vehicle.CRUISING_TRIP && v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
 					ContextCreator.logger.error("Something went wrong, the vehicle is not cruising or parking but still in the zone!");
 				}
 				this.taxiPickupRequest += 1;
@@ -827,7 +827,7 @@ public class Zone {
 
 	                this.numberOfRelocatedVehicles += 1;
 	                if (v.getState() == Vehicle.PARKING) {
-	                    this.removeOneParkingVehicle();
+	                    v.releaseParkingSpot(this);
 	                }
 	                
 	                ContextCreator.getVehicleContext().removeAvailableTaxi(v, this.getID());

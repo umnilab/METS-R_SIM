@@ -378,7 +378,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * (external original IDs) of all roads.
 	 *
 	 * <p>Output DATA: list of {@code {ID, r_type, num_veh, speed_limit,
-	 * avg_travel_time, length, energy_consumed, down_stream_road}}
+	 * avg_travel_time, length, energy_consumed, parking_capacity,
+	 * parked_num, down_stream_road}}
 	 * records.
 	 */
 	public HashMap<String, Object> getRoad(JSONObject jsonMsg) {
@@ -405,6 +406,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("avg_travel_time", road.getTravelTime());
 					record2.put("length", road.getLength());
 					record2.put("energy_consumed", road.getTotalEnergy());
+					record2.put("parking_capacity", road.getParkingCapacity());
+					record2.put("parked_num", road.getParkedNum());
 					record2.put("down_stream_road", road.getDownStreamRoadOrigIDs());
 					jsonData.add(record2);
 				}

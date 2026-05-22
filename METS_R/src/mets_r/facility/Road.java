@@ -33,6 +33,8 @@ public class Road {
 	public final static int COSIM = 1;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
+
+	private static final double DEFAULT_STREET_PARKING_CAPACITY_PER_METER = 0.115;
 	
 	/* Private variables */
 	private int ID;
@@ -61,6 +63,11 @@ public class Road {
 	// For vehicle movement
 	private int lastUpdateHour; // To find the current hour of the simulation
 	private AtomicInteger nVehicles_; // Number of vehicles currently in the road
+	private volatile int parking_capacity; // Maximum number of parked vehicles this road provides
+	private boolean parkingCapacityExplicitlySet;
+	private AtomicInteger parked_num; // Number of vehicles currently parked on this road
+	private int prevParkingCapacity;
+	private int prevParkedNum;
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
 	private Vehicle firstVehicle_;
 	private Vehicle prevFirstVehicle; // For parallel computing
@@ -91,6 +98,11 @@ public class Road {
 		this.origID = Integer.toString(id);
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = new AtomicInteger(0);
+		this.parking_capacity = 0;
+		this.parkingCapacityExplicitlySet = false;
+		this.parked_num = new AtomicInteger(0);
+		this.prevParkingCapacity = 0;
+		this.prevParkedNum = 0;
 		this.speedLimit_ = 31.2928; // m/s, 70 mph
 		this.downStreamRoads = new ArrayList<Integer>();
 		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
@@ -366,15 +378,17 @@ public class Road {
 	
 	public void setLength(double length) {
 		this.length = length;
+		this.refreshDefaultParkingCapacity();
 	}
 
 	public double getLength() {
-		if (this.length <= 0){ // no length is provided
+		if (this.length <= 0 && this.lanes.size() > 0){ // no length is provided
 		    for(Lane lane: this.lanes) {
 		    	this.length += lane.getLength();
 		    }
 		    this.length /= this.lanes.size();
 		}
+		this.refreshDefaultParkingCapacity();
 		return this.length;
 	}
 
@@ -464,6 +478,60 @@ public class Road {
 		return this.nVehicles_.get();
 	}
 
+	public int getParkingCapacity() {
+		return this.parking_capacity;
+	}
+
+	public void setParkingCapacity(int parkingCapacity) {
+		this.parkingCapacityExplicitlySet = true;
+		this.parking_capacity = Math.max(0, parkingCapacity);
+	}
+
+	private void refreshDefaultParkingCapacity() {
+		if (this.parkingCapacityExplicitlySet) {
+			return;
+		}
+		if (this.roadType != Road.Street || this.length <= 0 || Double.isNaN(this.length)
+				|| Double.isInfinite(this.length)) {
+			this.parking_capacity = 0;
+			return;
+		}
+		this.parking_capacity = Math.max(0,
+				(int) Math.floor(this.length * DEFAULT_STREET_PARKING_CAPACITY_PER_METER));
+	}
+
+	public int getParkedNum() {
+		return this.parked_num.get();
+	}
+
+	public void setParkedNum(int parkedNum) {
+		this.parked_num.set(Math.max(0, parkedNum));
+	}
+
+	public boolean hasParkingSpace() {
+		return this.parked_num.get() < this.parking_capacity;
+	}
+
+	public boolean tryAddParkedVehicle() {
+		while (true) {
+			int currentParked = this.parked_num.get();
+			if (currentParked >= this.parking_capacity) return false;
+			if (this.parked_num.compareAndSet(currentParked, currentParked + 1)) return true;
+		}
+	}
+
+	public boolean addOneParkedVehicle() {
+		return this.tryAddParkedVehicle();
+	}
+
+	public void removeOneParkedVehicle() {
+		int val = this.parked_num.decrementAndGet();
+		if (val < 0) {
+			ContextCreator.logger.error(this.ID + " road parking out of stock, parked_num: " + val);
+			this.parked_num.compareAndSet(val, 0);
+		}
+	}
+
 	public boolean hasActiveVehicles() {
 		if (this.nVehicles_.get() > 0 || this.firstVehicle_ != null || this.lastVehicle_ != null
 				|| !this.departureVehMap.isEmpty() || !this.toAddDepartureVeh.isEmpty()) {
@@ -477,7 +545,8 @@ public class Road {
 
 	public void restoreRuntimeState(double restoredTravelTime, double restoredSpeedLimit,
 			double restoredCurrentEnergy, double restoredTotalEnergy, int restoredCurrentFlow,
-			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType) {
+			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType,
+			int restoredParkingCapacity, int restoredParkedNum) {
 		this.lastUpdateHour = -1;
 		this.nVehicles_.set(0);
 		this.firstVehicle_ = null;
@@ -498,6 +567,11 @@ public class Road {
 		this.totalFlow = restoredTotalFlow;
 		this.prevFlow = restoredPrevFlow;
 		this.controlType = restoredControlType;
+		this.parking_capacity = Math.max(0, restoredParkingCapacity);
+		this.parkingCapacityExplicitlySet = true;
+		this.parked_num.set(Math.max(0, restoredParkedNum));
+		this.prevParkingCapacity = this.parking_capacity;
+		this.prevParkedNum = this.parked_num.get();
 	}
 
 	/* For adaptive network partitioning */
@@ -659,11 +733,16 @@ public class Road {
 	}
 	
 	public boolean stateHasChanged() {
-		if(this.prevFlow == this.totalFlow) {
+		int currentParkingCapacity = this.parking_capacity;
+		int currentParkedNum = this.parked_num.get();
+		if(this.prevFlow == this.totalFlow && this.prevParkingCapacity == currentParkingCapacity
+				&& this.prevParkedNum == currentParkedNum) {
 			return false;
 		}
 		else {
 			this.prevFlow = this.totalFlow;
+			this.prevParkingCapacity = currentParkingCapacity;
+			this.prevParkedNum = currentParkedNum;
 			return true;
 		}
 	}
@@ -682,10 +761,12 @@ public class Road {
 
 	public void addLane(Lane l) {
 		this.lanes.add(l);
+		this.refreshDefaultParkingCapacity();
 	}
 	
 	public void addLane(Lane l, int index) {
 		this.lanes.add(index, l);
+		this.refreshDefaultParkingCapacity();
 	}
 
 	public ArrayList<Lane> getLanes() {
@@ -828,6 +909,7 @@ public class Road {
 				break;
 		}
 		this.roadType = roadType;
+		this.refreshDefaultParkingCapacity();
 	}
 	
 	public int getRoadType() {

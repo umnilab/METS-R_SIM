@@ -129,6 +129,7 @@ public class SnapshotUtil {
 		m.put("onRoad", v.isOnRoad());
 		m.put("onLane", v.isOnLane());
 		m.put("movingFlag", v.getMovingFlag());
+		m.put("currentParkingRoad", v.getCurrentParkingRoad());
 
 		// Origin road
 		try {
@@ -366,6 +367,8 @@ public class SnapshotUtil {
 		m.put("currentFlow", r.currentFlow);
 		m.put("totalFlow", r.totalFlow);
 		m.put("prevFlow", r.prevFlow);
+		m.put("parkingCapacity", r.getParkingCapacity());
+		m.put("parkedNum", r.getParkedNum());
 		ArrayList<Integer> enteringVehicleIDs = new ArrayList<>();
 		for (Vehicle v : r.getEnteringVehicleQueueSnapshot()) {
 			enteringVehicleIDs.add(v.getID());
@@ -560,7 +563,9 @@ public class SnapshotUtil {
 						toInt(rs.get("currentFlow")),
 						toInt(rs.get("totalFlow")),
 						toInt(rs.get("prevFlow")),
-						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE);
+						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE,
+						rs.containsKey("parkingCapacity") ? toInt(rs.get("parkingCapacity")) : toInt(rs.get("parking_capacity")),
+						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")));
 				if (r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
@@ -886,7 +891,9 @@ public class SnapshotUtil {
 						toInt(rs.get("currentFlow")),
 						toInt(rs.get("totalFlow")),
 						toInt(rs.get("prevFlow")),
-						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE);
+						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE,
+						rs.containsKey("parkingCapacity") ? toInt(rs.get("parkingCapacity")) : toInt(rs.get("parking_capacity")),
+						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")));
 				if (r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
@@ -992,6 +999,7 @@ public class SnapshotUtil {
 			v.setAccumulatedDistance(toDouble(vs.get("accumulatedDistance")));
 			v.setNumTrips(toInt(vs.get("numTrips")));
 			v.setMovingFlag(toBool(vs.get("movingFlag")));
+			v.setCurrentParkingRoad(vs.containsKey("currentParkingRoad") ? toInt(vs.get("currentParkingRoad")) : -1);
 
 			// Restore origin road
 			int originRoadID = toInt(vs.get("originRoadID"));
@@ -1179,6 +1187,7 @@ public class SnapshotUtil {
 			v.setAccumulatedDistance(toDouble(vs.get("accumulatedDistance")));
 			v.setNumTrips(toInt(vs.get("numTrips")));
 			v.setMovingFlag(toBool(vs.get("movingFlag")));
+			v.setCurrentParkingRoad(vs.containsKey("currentParkingRoad") ? toInt(vs.get("currentParkingRoad")) : -1);
 
 			int originRoadID = toInt(vs.get("originRoadID"));
 			if (originRoadID >= 0) {
