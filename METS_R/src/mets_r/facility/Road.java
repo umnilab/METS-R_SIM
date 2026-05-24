@@ -35,6 +35,7 @@ public class Road {
 	public final static int NONE_OF_THE_ABOVE = -1;
 
 	private static final double DEFAULT_STREET_PARKING_CAPACITY_PER_METER = 0.115;
+	private static final double DEFAULT_STREET_PARKING_MAX_SPEED_MPS = 30.0 * 0.44694;
 	
 	/* Private variables */
 	private int ID;
@@ -66,6 +67,7 @@ public class Road {
 	private volatile int parking_capacity; // Maximum number of parked vehicles this road provides
 	private boolean parkingCapacityExplicitlySet;
 	private AtomicInteger parked_num; // Number of vehicles currently parked on this road
+	private volatile boolean parkingStateDirty;
 	private int prevParkingCapacity;
 	private int prevParkedNum;
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
@@ -77,7 +79,8 @@ public class Road {
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
 	private double speedLimit_; // Speed for travel time estimation
 	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
-	private ConcurrentLinkedQueue<Double> travelTimeHistory_; 
+	private double travelTimeSum;
+	private int travelTimeCount;
 	
 	// For parallel computing - AtomicInteger for thread safety since these are
 	// modified by setShadowImpact/clearShadowImpact from parallel road step threads
@@ -101,6 +104,7 @@ public class Road {
 		this.parking_capacity = 0;
 		this.parkingCapacityExplicitlySet = false;
 		this.parked_num = new AtomicInteger(0);
+		this.parkingStateDirty = false;
 		this.prevParkingCapacity = 0;
 		this.prevParkedNum = 0;
 		this.speedLimit_ = 31.2928; // m/s, 70 mph
@@ -109,7 +113,8 @@ public class Road {
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
-		this.travelTimeHistory_ = new ConcurrentLinkedQueue<Double>();
+		this.travelTimeSum = 0.0;
+		this.travelTimeCount = 0;
 		this.neighboringDepartureZone = 0;
 		this.neighboringArrivalZone = 0;
 		this.distToArrivalZone = Double.MAX_VALUE;
@@ -179,20 +184,30 @@ public class Road {
 		this.prevFirstVehicle = currentVehicle;
 		if (this.prevFirstVehicle != null) this.prevFirstVehicle.recordPrevState();
 		boolean shouldReportStatus = GlobalVariables.V2X;
-		boolean shouldRecordSnapshot = tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0;
+		boolean shouldRecordSnapshot = GlobalVariables.ENABLE_DATA_COLLECTION
+				&& tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0;
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
-			if (shouldReportStatus) {
-				currentVehicle.reportStatus();
-			}
-			if (shouldRecordSnapshot) {
-				currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
-															// so we record vehicle location here!
+			try {
+				if (shouldReportStatus) {
+					currentVehicle.reportStatus();
+				}
+				if (shouldRecordSnapshot) {
+					currentVehicle.recVehSnaphotForVisInterp(); // Note vehicle can be killed after calling pv.travel,
+																// so we record vehicle location here!
+				}
+			} catch (Throwable ex) {
+				ContextCreator.logger.error("Road.stepPart1 status/snapshot failed road=" + this.ID
+						+ " vehicle=" + currentVehicle.getID(), ex);
 			}
 			currentVehicle = nextVehicle;
 		}
 		if (shouldRecordSnapshot) {
-			ContextCreator.dataCollector.recordLinkSnapshot(this);
+			try {
+				ContextCreator.dataCollector.recordLinkSnapshot(this);
+			} catch (Throwable ex) {
+				ContextCreator.logger.error("Road.stepPart1 link snapshot failed road=" + this.ID, ex);
+			}
 		}
 
 		/* Vehicle departure */
@@ -200,36 +215,34 @@ public class Road {
 			while (!this.departureVehMap.isEmpty()) {
 			    Vehicle v = this.departureVehicleQueueHead();
 			    if (v == null) break;
-			    int departTime = v.getDepTime();
-			    if (tickcount >= departTime) {
-			        // Use value-based equality for Coordinates: getCurrentCoord()/getDestCoord() return
-			        // freshly allocated Coordinate copies, so '==' would always be false and the
-			        // origin-equals-destination shortcut would never trigger, leaving such trips
-			        // stranded in the network and inflating nVehicles_.
-			        Coordinate cur = v.getCurrentCoord();
-			        Coordinate dst = v.getDestCoord();
-			        boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
-			        // Buses use same-road legs as a heartbeat between runs; complete them immediately.
-			        boolean sameBusRoad = (v.getState() == Vehicle.BUS_TRIP)
-			                && v.getOriginRoad() >= 0
-			                && v.getOriginRoad() == v.getDestRoad();
-			        if (originEqualsDest || ((v.getState() == Vehicle.BUS_TRIP) && (v.getOriginID() == v.getDestID()))
-			                || sameBusRoad) {
-			            this.removeVehicleFromNewQueue(departTime, v);
-			            ContextCreator.getVehicleContext().addArrivalVehicles(v);
-			        } else if (v.enterNetwork(this)) {
-			            this.removeVehicleFromNewQueue(departTime, v);
-			        } else {
-			            break; // Network is full, stop processing departures
-			        }
-			    } else {
-			        break; // Reached vehicles scheduled for future ticks
+			    try {
+			    	int departTime = v.getDepTime();
+				    if (tickcount >= departTime) {
+				        boolean busTrip = (v.getVehicleClass() == Vehicle.EBUS);
+				        if ((busTrip && (v.getOriginID() == v.getDestID()))) {
+				            this.removeVehicleFromNewQueue(departTime, v);
+				            v.reachDest();
+				        } else if(v.enterNetwork(this)) {
+				        	this.removeVehicleFromNewQueue(departTime, v);
+				        }
+				        else {
+				            break; // Network is full, stop processing departures
+				        }
+				    } else {
+				        break; // Reached vehicles scheduled for future ticks
+				    }
+			    } catch (Throwable ex) {
+				    ContextCreator.logger.error("Road.stepPart1 departure failed road=" + this.ID
+						    + " vehicle=" + v.getID(), ex);
+				    break;
 			    }
 			}
 		}
 
 		/* Vehicle decision uses three-phase approach to avoid stale acceleration after lane changes */
 		if(!(this.getControlType() == Road.COSIM)) {
+			if (this.firstVehicle_ == null) return;
+
 			boolean usesLaneChangeAdvice = "LC2013".equals(GlobalVariables.LANE_CHANGING_MODEL);
 			if (usesLaneChangeAdvice) {
 				currentVehicle = this.firstVehicle();
@@ -244,7 +257,16 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				currentVehicle.calcLaneChangingState(tickcount);
+				if (currentVehicle.isDormantOnRoad()) {
+					currentVehicle = nextVehicle;
+					continue;
+				}
+				try {
+					currentVehicle.calcLaneChangingState(tickcount);
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("Road.stepPart1 lane-change failed road=" + this.ID
+							+ " vehicle=" + currentVehicle.getID(), ex);
+				}
 				currentVehicle = nextVehicle;
 			}
 
@@ -260,21 +282,39 @@ public class Road {
 
 			// 2. Iterate through the buffered list to safely apply macro list repairs
 			for (Vehicle v : vehicleBuffer) {
-			    v.advanceInMacroList();
-			    v.retreatInMacroList();
-			    v.advanceInLaneList();
+				if (v.isDormantOnRoad()) {
+					continue;
+				}
+				try {
+				    v.advanceInMacroList();
+				    v.retreatInMacroList();
+				    v.advanceInLaneList();
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("Road.stepPart1 list repair failed road=" + this.ID
+							+ " vehicle=" + v.getID(), ex);
+				}
 			}
 
 			// Phase 3: acceleration decisions (now with correct leading vehicles)
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				currentVehicle.calcAccState();
+				if (currentVehicle.isDormantOnRoad()) {
+					currentVehicle = nextVehicle;
+					continue;
+				}
+				try {
+					currentVehicle.calcAccState();
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("Road.stepPart1 acceleration failed road=" + this.ID
+							+ " vehicle=" + currentVehicle.getID(), ex);
+					currentVehicle.ensureAccelerationPlan(0.0);
+				}
 				currentVehicle = nextVehicle;
 			}
 		}
 	}
-	
+
 	// Realization step
 	public void stepPart2() {
 		if (ContextCreator.getRoadContext().get(this.getID()) != this) return;
@@ -286,8 +326,18 @@ public class Road {
 			// happened during time t to t + 1, conducting vehicle movements
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				currentVehicle.move();
-				currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				if (currentVehicle.isDormantOnRoad()) {
+					currentVehicle = nextVehicle;
+					continue;
+				}
+				try {
+					currentVehicle.move();
+					currentVehicle.updateBatteryLevel(); // Update the energy for each move
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("Road.stepPart2 movement failed road=" + this.ID
+							+ " vehicle=" + currentVehicle.getID(), ex);
+					currentVehicle.ensureAccelerationPlan(0.0);
+				}
 				currentVehicle = nextVehicle;
 			}
 		}
@@ -478,26 +528,55 @@ public class Road {
 		return this.nVehicles_.get();
 	}
 
+	public synchronized int getPendingDepartureVehicleNum() {
+		int count = this.toAddDepartureVeh.size();
+		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
+			if (queue != null) {
+				count += queue.size();
+			}
+		}
+		return count;
+	}
+
+	public int getStepLoadWeight() {
+		long weight = 1L
+				+ (long) this.getVehicleNum() * Math.max(1, GlobalVariables.PART_ALPHA)
+				+ (long) this.getPendingDepartureVehicleNum() * Math.max(1, GlobalVariables.PART_ALPHA)
+				+ (long) this.getShadowVehicleNum() * Math.max(1, GlobalVariables.PART_BETA)
+				+ (long) this.getFutureRoutingVehNum() * Math.max(1, GlobalVariables.PART_GAMMA);
+		return weight >= Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) weight;
+	}
+
 	public int getParkingCapacity() {
 		return this.parking_capacity;
 	}
 
-	public void setParkingCapacity(int parkingCapacity) {
+	public synchronized void setParkingCapacity(int parkingCapacity) {
 		this.parkingCapacityExplicitlySet = true;
-		this.parking_capacity = Math.max(0, parkingCapacity);
+		int newCapacity = Math.max(0, parkingCapacity);
+		if (this.parking_capacity != newCapacity) {
+			this.parking_capacity = newCapacity;
+			this.markParkingStateChanged();
+		}
 	}
 
 	private void refreshDefaultParkingCapacity() {
 		if (this.parkingCapacityExplicitlySet) {
 			return;
 		}
-		if (this.roadType != Road.Street || this.length <= 0 || Double.isNaN(this.length)
-				|| Double.isInfinite(this.length)) {
-			this.parking_capacity = 0;
-			return;
+		int newCapacity;
+		if (this.roadType != Road.Street || this.speedLimit_ >= DEFAULT_STREET_PARKING_MAX_SPEED_MPS
+				|| Double.isNaN(this.speedLimit_) || Double.isInfinite(this.speedLimit_)
+				|| this.length <= 0 || Double.isNaN(this.length) || Double.isInfinite(this.length)) {
+			newCapacity = 0;
+		} else {
+			newCapacity = Math.max(0,
+					(int) Math.floor(this.length * DEFAULT_STREET_PARKING_CAPACITY_PER_METER));
 		}
-		this.parking_capacity = Math.max(0,
-				(int) Math.floor(this.length * DEFAULT_STREET_PARKING_CAPACITY_PER_METER));
+		if (this.parking_capacity != newCapacity) {
+			this.parking_capacity = newCapacity;
+			this.markParkingStateChanged();
+		}
 	}
 
 	public int getParkedNum() {
@@ -505,7 +584,10 @@ public class Road {
 	}
 
 	public void setParkedNum(int parkedNum) {
-		this.parked_num.set(Math.max(0, parkedNum));
+		int newParkedNum = Math.max(0, parkedNum);
+		if (this.parked_num.getAndSet(newParkedNum) != newParkedNum) {
+			this.markParkingStateChanged();
+		}
 	}
 
 	public boolean hasParkingSpace() {
@@ -516,7 +598,10 @@ public class Road {
 		while (true) {
 			int currentParked = this.parked_num.get();
 			if (currentParked >= this.parking_capacity) return false;
-			if (this.parked_num.compareAndSet(currentParked, currentParked + 1)) return true;
+			if (this.parked_num.compareAndSet(currentParked, currentParked + 1)) {
+				this.markParkingStateChanged();
+				return true;
+			}
 		}
 	}
 
@@ -530,6 +615,12 @@ public class Road {
 			ContextCreator.logger.error(this.ID + " road parking out of stock, parked_num: " + val);
 			this.parked_num.compareAndSet(val, 0);
 		}
+		this.markParkingStateChanged();
+	}
+
+	private void markParkingStateChanged() {
+		this.parkingStateDirty = true;
+		ContextCreator.dataCollector.recordRoadParkingStateChange(this);
 	}
 
 	public boolean hasActiveVehicles() {
@@ -558,7 +649,8 @@ public class Road {
 		this.speedLimit_ = restoredSpeedLimit;
 		this.cachedSpeedLimit_ = restoredSpeedLimit;
 		this.travelTime = restoredTravelTime;
-		this.travelTimeHistory_.clear();
+		this.travelTimeSum = 0.0;
+		this.travelTimeCount = 0;
 		this.nShadowVehicles.set(0);
 		this.nFutureRoutingVehicles.set(0);
 		this.currentEnergy = restoredCurrentEnergy;
@@ -572,6 +664,7 @@ public class Road {
 		this.parked_num.set(Math.max(0, restoredParkedNum));
 		this.prevParkingCapacity = this.parking_capacity;
 		this.prevParkedNum = this.parked_num.get();
+		this.parkingStateDirty = true;
 	}
 
 	/* For adaptive network partitioning */
@@ -632,7 +725,10 @@ public class Road {
 
 	// This add vehicle to the thread-safe pending list
 	public void addVehicleToPendingQueue(Vehicle v) {
-		if (v != null) this.toAddDepartureVeh.add(v);
+		if (v != null) {
+			this.toAddDepartureVeh.add(v);
+			ContextCreator.getRoadContext().markRoadActive(this);
+		}
 	}
 
 	/*
@@ -704,20 +800,10 @@ public class Road {
 	public boolean updateTravelTimeEstimation() {
 		// for output travel times
 		double newTravelTime;
-		if(travelTimeHistory_.size()>0) {
-			double sum = 0;
-			int num = 0;
-			for(double d: travelTimeHistory_) {
-				sum += d;
-				num++;
-			}
-			if(num>0) {
-				newTravelTime = GlobalVariables.SIMULATION_STEP_SIZE * sum / num;
-			}
-			else {
-				newTravelTime = this.length / this.calcSpeed();
-			}
-			travelTimeHistory_.clear();
+		if(travelTimeCount > 0) {
+			newTravelTime = GlobalVariables.SIMULATION_STEP_SIZE * travelTimeSum / travelTimeCount;
+			travelTimeSum = 0.0;
+			travelTimeCount = 0;
 		}
 		else {
 			newTravelTime =  this.length / this.speedLimit_;
@@ -732,17 +818,18 @@ public class Road {
 		}
 	}
 	
-	public boolean stateHasChanged() {
+	public synchronized boolean stateHasChanged() {
 		int currentParkingCapacity = this.parking_capacity;
 		int currentParkedNum = this.parked_num.get();
 		if(this.prevFlow == this.totalFlow && this.prevParkingCapacity == currentParkingCapacity
-				&& this.prevParkedNum == currentParkedNum) {
+				&& this.prevParkedNum == currentParkedNum && !this.parkingStateDirty) {
 			return false;
 		}
 		else {
 			this.prevFlow = this.totalFlow;
 			this.prevParkingCapacity = currentParkingCapacity;
 			this.prevParkedNum = currentParkedNum;
+			this.parkingStateDirty = false;
 			return true;
 		}
 	}
@@ -909,6 +996,7 @@ public class Road {
 				break;
 		}
 		this.roadType = roadType;
+		this.cachedSpeedLimit_ = this.speedLimit_;
 		this.refreshDefaultParkingCapacity();
 	}
 	
@@ -1056,7 +1144,8 @@ public class Road {
 	}
 
 	public void recordTravelTime(Vehicle v) {
-		this.travelTimeHistory_.add(v.getLinkTravelTime());
+		this.travelTimeSum += v.getLinkTravelTime();
+		this.travelTimeCount += 1;
 		if (v.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 			ContextCreator.kafkaManager.produceLinkTravelTime(v.getID(), v.getVehicleClass(), this.getID(),
 					v.getLinkTravelTime(), this.getLength());
@@ -1102,6 +1191,8 @@ public class Road {
 
 	public void setSpeedLimit(double speedLimit) {
 		this.speedLimit_ = speedLimit;
+		this.cachedSpeedLimit_ = speedLimit;
+		this.refreshDefaultParkingCapacity();
 	}
 	
 	public String getOrigID() {
@@ -1113,41 +1204,56 @@ public class Road {
 	}
 	
 	public boolean noEnterRoadConflict(Road usroad) {
+		 return this.enterRoadConflictBlocker(usroad) == null;
+	}
+
+	public Vehicle enterRoadConflictBlocker(Road usroad) {
+		 return this.enterRoadConflictBlocker(usroad, null);
+	}
+
+	public Vehicle enterRoadConflictBlocker(Road usroad, Vehicle enteringVehicle) {
+		 Junction prevJunction = ContextCreator.getJunctionContext().get(this.getUpStreamJunction());
 		 for(Road r: this.upStreamRoads) {
-			 if(r == usroad) break;
+			 if(this.isSameRoad(r, usroad)) break;
 			 if(r.prevFirstVehicle()!= null) {
 				Vehicle v = r.prevFirstVehicle();
-				Junction prevJunction = ContextCreator.getJunctionContext().get(this.getUpStreamJunction());
-				if(v.aboutToEnterRoad(this)) {
-					boolean movable = false;
-					switch(prevJunction.getControlType()) {
-						case Junction.NoControl:
-							movable = true;
-							break;
-						case Junction.DynamicSignal:
-							if(prevJunction.getSignalState(r.getID(), this.getID())<= Signal.Yellow)
-								movable = true;
-							break;
-						case Junction.StaticSignal:
-							if(prevJunction.getSignalState(r.getID(), this.getID())<= Signal.Yellow)
-								movable = true;
-							break;
-						case Junction.StopSign:
-							if(prevJunction.getDelay(r.getID(), this.getID()) <= v.getStuckTime())
-								movable = true;
-							break;
-						case Junction.Yield:
-							if(prevJunction.getDelay(r.getID(), this.getID()) <= v.getStuckTime())
-								movable = true;
-							break;
-						default:
-							movable = true;
-							break;
-						}
-					if(movable) return false;
+				if(this.isSameVehicle(v, enteringVehicle)) continue;
+				if(!v.wasPreviouslyOnRoad(r)) continue;
+				if(prevJunction != null && v.aboutToEnterRoad(this)
+						&& this.isConflictVehicleMovable(prevJunction, r, v)) {
+					return v;
 				}
 			 }
 		 }
-		 return true;
+		 return null;
+	}
+
+	private boolean isSameRoad(Road r1, Road r2) {
+		if(r1 == r2) return true;
+		if(r1 == null || r2 == null) return false;
+		return r1.getID() == r2.getID();
+	}
+
+	private boolean isSameVehicle(Vehicle v1, Vehicle v2) {
+		if(v1 == v2) return true;
+		if(v1 == null || v2 == null) return false;
+		return v1.getID() == v2.getID();
+	}
+
+	private boolean isConflictVehicleMovable(Junction prevJunction, Road upstreamRoad, Vehicle v) {
+		switch(prevJunction.getControlType()) {
+			case Junction.NoControl:
+				return true;
+			case Junction.DynamicSignal:
+				return prevJunction.getSignalState(upstreamRoad.getID(), this.getID()) <= Signal.Yellow;
+			case Junction.StaticSignal:
+				return prevJunction.getSignalState(upstreamRoad.getID(), this.getID()) <= Signal.Yellow;
+			case Junction.StopSign:
+				return prevJunction.getDelay(upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
+			case Junction.Yield:
+				return prevJunction.getDelay(upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
+			default:
+				return true;
+		}
 	}
 }

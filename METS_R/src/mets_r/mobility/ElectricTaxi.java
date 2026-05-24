@@ -19,6 +19,7 @@ import mets_r.facility.Zone;
 
 public class ElectricTaxi extends ElectricVehicle {
 	private static final int MAX_PASSENGERS = 4;
+	private static final int RESERVED_ZONE_PARKING = -2;
 
 	/* Local variables */
 	private int passNum; // no of people inside the vehicle
@@ -45,7 +46,9 @@ public class ElectricTaxi extends ElectricVehicle {
 
 	public ElectricTaxi() {
 		super(Vehicle.ETAXI, Vehicle.NONE_OF_THE_ABOVE);
-		initializeEVFields(GlobalVariables.TAXI_BATTERY, 1521, 5000, GlobalVariables.TAXI_RECHARGE_LEVEL_LOW, GlobalVariables.TAXI_RECHARGE_LEVEL_HIGH);
+		initializeEVFields(GlobalVariables.TAXI_BATTERY, GlobalVariables.TAXI_MASS,
+				GlobalVariables.TAXI_METERS_PER_KWH, GlobalVariables.TAXI_RECHARGE_LEVEL_LOW,
+				GlobalVariables.TAXI_RECHARGE_LEVEL_HIGH);
 		this.passNum = 0;
 		this.cruisingTime_ = 0;
 		this.avgPersonMass_ = 60; // kg
@@ -84,18 +87,47 @@ public class ElectricTaxi extends ElectricVehicle {
 		
 	}
 	
-	// Find the closest Zone with parking space and relocate to there
-	public void goParking() {
-		ContextCreator.getZoneContext().get(this.getDestID()).submitParkingRequest(this);
+	// Dispatch to the closest parkable zone and reserve a zone parking spot.
+	public boolean goParking() {
+		Zone parkingZone = this.closestParkableZone();
+		if (parkingZone == null) {
+			ContextCreator.logger.warn("Taxi " + this.getID()
+					+ " cannot find an available parking zone.");
+			return false;
+		}
+		return this.goParking(parkingZone);
 	}
 
 	public boolean goParking(int roadID) {
 		Road road = ContextCreator.getRoadContext().get(roadID);
-		return this.goParking(this.resolveParkingZoneForRoad(road), road);
+		return this.goParking(road);
 	}
 
 	public boolean goParking(Road road) {
 		return this.goParking(this.resolveParkingZoneForRoad(road), road);
+	}
+
+	public boolean goParking(Zone targetZone) {
+		if (targetZone == null || targetZone.getClosestRoad(true) == null) {
+			return false;
+		}
+		if (this.getState() == Vehicle.PARKING && this.getCurrentZone() == targetZone.getID()
+				&& this.getCurrentParkingRoad() < 0) {
+			return true;
+		}
+		if (targetZone.getCapacity() <= 0) {
+			return false;
+		}
+		Road targetRoad = ContextCreator.getRoadContext().get(targetZone.getClosestRoad(true));
+		if (targetRoad == null || !targetRoad.canBeDest()) {
+			return false;
+		}
+		targetZone.addOneParkingVehicle();
+		if (!this.dispatchToReservedParking(targetZone, targetRoad, RESERVED_ZONE_PARKING)) {
+			targetZone.removeOneParkingVehicle();
+			return false;
+		}
+		return true;
 	}
 
 	public boolean goParking(Zone targetZone, Road targetRoad) {
@@ -109,7 +141,14 @@ public class ElectricTaxi extends ElectricVehicle {
 		if (!targetRoad.tryAddParkedVehicle()) {
 			return false;
 		}
+		if (!this.dispatchToReservedParking(targetZone, targetRoad, targetRoad.getID())) {
+			targetRoad.removeOneParkedVehicle();
+			return false;
+		}
+		return true;
+	}
 
+	private boolean dispatchToReservedParking(Zone targetZone, Road targetRoad, int parkingReservation) {
 		int previousState = this.getState();
 		Zone currentZone = ContextCreator.getZoneContext().get(this.getCurrentZone());
 		int anchorZoneID = currentZone == null ? this.getCurrentZone() : currentZone.getID();
@@ -127,13 +166,35 @@ public class ElectricTaxi extends ElectricVehicle {
 		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(this);
 		this.ensureCurrentPlanAnchor(anchorZoneID, anchorRoadID);
 		this.setCurrentZone(targetZone.getID());
-		this.setCurrentParkingRoad(targetRoad.getID());
+		this.setCurrentParkingRoad(parkingReservation);
 		this.addPlan(targetZone.getID(), targetRoad.getID(), ContextCreator.getNextTick());
 		this.setNextPlan();
 		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		targetZone.addFutureSupply();
 		this.departure();
 		return true;
+	}
+
+	private Zone closestParkableZone() {
+		Zone bestZone = null;
+		double bestDistance = Double.MAX_VALUE;
+		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+			if (zone == null || zone.getCapacity() <= 0 || zone.getClosestRoad(true) == null
+					|| zone.getCoord() == null || this.getCurrentCoord() == null) {
+				continue;
+			}
+			Road parkingRoad = ContextCreator.getRoadContext().get(zone.getClosestRoad(true));
+			if (parkingRoad == null || !parkingRoad.canBeDest()) {
+				continue;
+			}
+			double distance = ContextCreator.getCityContext().getDistance(this.getCurrentCoord(), zone.getCoord());
+			if (distance < bestDistance || (distance == bestDistance && bestZone != null
+					&& zone.getID() < bestZone.getID())) {
+				bestZone = zone;
+				bestDistance = distance;
+			}
+		}
+		return bestZone;
 	}
 
 	private int currentRoadAnchorID(Zone currentZone, Road fallbackRoad) {
@@ -201,10 +262,24 @@ public class ElectricTaxi extends ElectricVehicle {
 		}
 	}
 
-	public void releaseParkingSpot(Zone fallbackZone) {
-		if (!this.releaseRoadParkingSpot() && fallbackZone != null) {
+	public boolean releaseParkingSpot(Zone fallbackZone) {
+		if (this.getCurrentParkingRoad() == RESERVED_ZONE_PARKING) {
+			Zone reservedZone = ContextCreator.getZoneContext().get(this.getCurrentZone());
+			if (reservedZone == null) {
+				reservedZone = fallbackZone;
+			}
+			if (reservedZone != null) {
+				reservedZone.removeOneParkingVehicle();
+			}
+			this.setCurrentParkingRoad(-1);
+			return reservedZone != null;
+		} else if (this.releaseRoadParkingSpot()) {
+			return true;
+		} else if (fallbackZone != null) {
 			fallbackZone.removeOneParkingVehicle();
+			return true;
 		}
+		return false;
 	}
 
 	// Relocate vehicle
@@ -353,6 +428,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			this.setDestRoad(idleRoad);
 			this.addPlan(z.getID(), idleRoad.getID(), ContextCreator.getNextTick());
 		}
+		this.pauseOnRoadWithoutMovement();
 		ContextCreator.getVehicleContext().addAvailableTaxi(this, z.getID());
 	}
 
@@ -369,6 +445,9 @@ public class ElectricTaxi extends ElectricVehicle {
 
 	private boolean hasReservedParkingAtDestination() {
 		int parkingRoadID = this.getCurrentParkingRoad();
+		if (parkingRoadID == RESERVED_ZONE_PARKING) {
+			return this.getCurrentZone() == this.getDestID();
+		}
 		return parkingRoadID >= 0 && parkingRoadID == this.getDestRoad();
 	}
 
@@ -377,7 +456,19 @@ public class ElectricTaxi extends ElectricVehicle {
 				&& this.hasReservedParkingAtDestination();
 	}
 
-	private boolean completeReservedRoadParking(Zone fallbackZone) {
+	private boolean completeReservedParking(Zone fallbackZone) {
+		if (this.getCurrentParkingRoad() == RESERVED_ZONE_PARKING) {
+			Zone parkingZone = ContextCreator.getZoneContext().get(this.getCurrentZone());
+			if (parkingZone == null) {
+				parkingZone = fallbackZone;
+			}
+			if (parkingZone == null) {
+				return false;
+			}
+			this.getParked(parkingZone);
+			ContextCreator.getVehicleContext().addAvailableTaxi(this, parkingZone.getID());
+			return true;
+		}
 		Road parkingRoad = ContextCreator.getRoadContext().get(this.getCurrentParkingRoad());
 		if (parkingRoad == null) {
 			return false;
@@ -598,21 +689,30 @@ public class ElectricTaxi extends ElectricVehicle {
 		                }
 					}
 					else {
-						this.goParking();
+						if (!this.goParking()) {
+							ContextCreator.logger.warn("Taxi " + this.getID()
+									+ " cannot reserve parking near zone " + z.getID() + "; continuing to cruise.");
+							this.goCruising(z);
+						}
 					}
 				}
 				
 			}
-			else if (this.getState() == Vehicle.INACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.CHARGING_RETURN_TRIP) {
+			else if (this.getState() == Vehicle.INACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
 				if (this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP)
 					ContextCreator.getVehicleContext().removeRelocationTaxi(this);
 				z.removeFutureSupply();
 				if (this.hasReservedParkingAtDestination()) {
 					if (this.toBoardRequests.peek() != null) {
-						this.releaseRoadParkingSpot();
+						this.releaseParkingSpot(z);
 						this.startQueuedPickupTrip(true);
 					} else {
-						this.completeReservedRoadParking(z);
+						if (!this.completeReservedParking(z)) {
+							ContextCreator.logger.warn("Taxi " + this.getID()
+									+ " could not complete reserved parking at destination zone " + z.getID());
+							this.setCurrentParkingRoad(-1);
+							this.goCruising(z);
+						}
 					}
 					return;
 				}
@@ -621,8 +721,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				}
 				// Built-in charging trigger is bypassed when CHARGING is
 				// controlled by an external Control API. Parking/cruising at
-				// the end of a sim-initiated relocation/charging-return trip
-				// remains sim-controlled.
+				// the end of a sim-initiated relocation trip remains sim-controlled.
 				if((this.batteryLevel <= lowerBatteryRechargeLevel_ || (GlobalVariables.PROACTIVE_CHARGING
 						&& this.batteryLevel <= higherBatteryRechargeLevel_ && z.hasEnoughTaxi(5)))
 						&& !GlobalVariables.CHARGING_CONTROLLED_BY_CONTROL_APIS) {
@@ -678,7 +777,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		
 		this.setNextPlan(); // Return to where it was before goCharging
 		
-		this.setState(Vehicle.CHARGING_RETURN_TRIP);
+		this.setState(Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		this.departure(ContextCreator.getChargingStationContext().get(chargerID).getClosestRoad(false)); 
 		ContextCreator.getZoneContext().get(this.getDestID()).addFutureSupply();
 	}

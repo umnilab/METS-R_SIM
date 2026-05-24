@@ -242,8 +242,10 @@ public class Zone {
 		
 		if (ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) return;
 		// Handle private vehicle first
-		this.generatePrivateEVTrip();
-		this.generatePrivateGVTrip();
+		if (ContextCreator.travel_demand.hasPrivateDemandAtTime(privateTripTimeIndex)) {
+			this.generatePrivateEVTrip();
+			this.generatePrivateGVTrip();
+		}
 		privateTripTimeIndex += 1;
 		
 		// Handle public vehicle requests
@@ -378,10 +380,12 @@ public class Zone {
 		if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
 			this.futureDemand = 0.0;
 		}
+		boolean updateFutureDemand = this.lastDemandUpdateHour != this.publicTripTimeIndex;
 		this.refreshModeSplitCacheIfNeeded();
 		for (Zone destZone : ContextCreator.getZoneContext().getAll()) {
 			int destination = destZone.getID();
-			double passRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex)
+			double baseDemand = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex);
+			double passRate = baseDemand
 					* (GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL
 							/ (3600 / GlobalVariables.SIMULATION_STEP_SIZE));
 		    
@@ -390,24 +394,26 @@ public class Zone {
 				int basePassengers = (int) passRate;
 				int numToGenerate = basePassengers
 						+ (rand_demand_only.nextDouble() < (passRate - basePassengers) ? 1 : 0);
-				double sharableRate = ContextCreator.travel_demand.getPublicTravelDemand(this.getID(), destination, this.publicTripTimeIndex);
+				if (numToGenerate <= 0 && !updateFutureDemand) {
+					continue;
+				}
 
 				ModeSplitChoice modeSplit = this.getModeSplitChoice(destZone, destination);
 				if (modeSplit.hasBusChoice()) {
 					for (int i = 0; i < numToGenerate; i++) {
 						if (rand_mode_only.nextDouble() >= modeSplit.busShare
 								|| !this.generateBusRequest(destZone, destination, modeSplit.busRouteID)) {
-							this.generateTaxiRequest(destZone, destination, sharableRate);
+							this.generateTaxiRequest(destZone, destination, baseDemand);
 						}
 					}
-					if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
+					if (updateFutureDemand) {
 						this.futureDemand += passRate * modeSplit.taxiShare;
 					}
 				} else {
 					for (int i = 0; i < numToGenerate; i++) {
-						this.generateTaxiRequest(destZone, destination, sharableRate);
+						this.generateTaxiRequest(destZone, destination, baseDemand);
 					}
-					if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
+					if (updateFutureDemand) {
 						this.futureDemand += passRate;
 					}
 				}

@@ -17,20 +17,6 @@ import mets_r.facility.Road;
  */
 
 public class ElectricVehicle extends Vehicle {
-	/* Constant */
-	public static double gravity = 9.8; // the gravity is 9.80N/kg for NYC
-	
-	// Parameters for Fiori (2016) model
-	public static double p0 = 1.2256;
-	public static double A = 2.3316;
-	public static double cd = 0.28;
-	public static double cr = 1.75;
-	public static double c1 = 0.0328;
-	public static double c2 = 4.575;
-	public static double etaM = 0.92;
-	public static double etaG = 0.91;
-	public static double Pconst = 1500; // energy consumption by auxiliary accessories
-
 	// Local variables
 	protected double batteryCapacity; // the battery capacity
 	protected double batteryLevel; // current battery level, unit KWh
@@ -51,12 +37,16 @@ public class ElectricVehicle extends Vehicle {
 	
 	public ElectricVehicle(int vType, int vSensor) {
 		super(vType, vSensor);
-		initializeEVFields(GlobalVariables.EV_BATTERY, 1521, 5000, GlobalVariables.RECHARGE_LEVEL_LOW, GlobalVariables.RECHARGE_LEVEL_HIGH);
+		initializeEVFields(GlobalVariables.EV_BATTERY, GlobalVariables.EV_MASS,
+				GlobalVariables.EV_METERS_PER_KWH, GlobalVariables.RECHARGE_LEVEL_LOW,
+				GlobalVariables.RECHARGE_LEVEL_HIGH);
 	}
 	
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
 		super(maximumAcceleration, maximumDeceleration, vClass, vSensor);
-		initializeEVFields(GlobalVariables.EV_BATTERY, 1521, 5000, GlobalVariables.RECHARGE_LEVEL_LOW, GlobalVariables.RECHARGE_LEVEL_HIGH);
+		initializeEVFields(GlobalVariables.EV_BATTERY, GlobalVariables.EV_MASS,
+				GlobalVariables.EV_METERS_PER_KWH, GlobalVariables.RECHARGE_LEVEL_LOW,
+				GlobalVariables.RECHARGE_LEVEL_HIGH);
 	}
 	
 	protected void initializeEVFields(double battery_capacity, double mass, double meters_per_kwh, double recharge_low, double reacharge_high) {
@@ -72,11 +62,7 @@ public class ElectricVehicle extends Vehicle {
 	@Override
 	public void updateBatteryLevel() {
 		double tickEnergy = calculateEnergy(); // The energy consumption(kWh) for this tick
-		tickConsume = tickEnergy;
-		totalConsume += tickEnergy;
-		linkConsume += tickEnergy;
-		tripConsume += tickEnergy;
-		batteryLevel -= tickEnergy;
+		applyTickEnergy(tickEnergy);
 	}
 	
 	@Override
@@ -246,7 +232,7 @@ public class ElectricVehicle extends Vehicle {
 	// Charge the battery.
 	public void chargeItself(double batteryValue) {
 		chargingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-		batteryLevel += batteryValue;
+		batteryLevel = clampBatteryLevel(batteryLevel + Math.max(0.0, batteryValue));
 	}
 
 	// EV energy consumption model
@@ -258,29 +244,67 @@ public class ElectricVehicle extends Vehicle {
 	public double calculateEnergy() {
 		double velocity = currentSpeed(); // obtain the speed
 		double acceleration = currentAcc(); // obtain the acceleration
-		if (!this.movingFlag) { // static, no movement energy consumed
+		if (!this.movingFlag) { // static vehicles still consume auxiliary power
 			velocity = 0;
 			acceleration = 0;
 		}
 		double slope = 0.0f; // positive: uphill; negative: downhill, this is always 0, change this if the
 								// slope data is available
 		double dt = GlobalVariables.SIMULATION_STEP_SIZE; // the length of one tick
+		double gravity = this.energyGravity();
+		double airDensity = this.energyAirDensity();
+		double frontalArea = this.energyFrontalArea();
+		double dragCoefficient = this.energyDragCoefficient();
+		double rollingCoefficient = this.energyRollingCoefficient();
+		double rollingC1 = this.energyRollingC1();
+		double rollingC2 = this.energyRollingC2();
+		double motorEfficiency = this.energyMotorEfficiency();
+		double gearEfficiency = this.energyGearEfficiency();
+		double auxiliaryPower = this.energyAuxiliaryPower();
 		double f1 = getMass() * acceleration;
-		double f2 = getMass() * gravity * Math.cos(slope) * cr / 1000 * (c1 * velocity + c2);
-		double f3 = 1 / 2 * p0 * A * cd * velocity * velocity;
+		double f2 = getMass() * gravity * Math.cos(slope) * rollingCoefficient / 1000
+				* (rollingC1 * velocity + rollingC2);
+		double f3 = 0.5 * airDensity * frontalArea * dragCoefficient * velocity * velocity;
 		double f4 = getMass() * gravity * Math.sin(slope);
 		double F = f1 + f2 + f3 + f4;
 		double Pte = F * velocity;
 		double Pbat;
-		if (acceleration >= 0) {
-			Pbat = (Pte/etaM + Pconst) / etaG;
+		if (Pte >= 0) {
+			Pbat = (Pte / motorEfficiency + auxiliaryPower) / gearEfficiency;
 		} else {
-			double nrb = 1 / Math.exp(0.0411 / Math.abs(acceleration)); // 0.0411 from the equation (10)
-			Pbat = Pte * nrb + Pconst / etaG;
+			double nrb = 0.0;
+			if (Math.abs(acceleration) > 1e-6) {
+				nrb = 1 / Math.exp(this.energyRegenCoefficient() / Math.abs(acceleration)); // From Fiori eq. (10)
+			}
+			Pbat = Pte * nrb + auxiliaryPower / gearEfficiency;
 		}
-		double energyConsumption = Pbat * dt / (3600 * 1000); // wh to kw
+		double energyConsumption = Pbat * dt / (3600 * 1000); // W*s to kWh
 		return energyConsumption;
 	}
+
+	protected void applyTickEnergy(double tickEnergy) {
+		tickConsume = tickEnergy;
+		totalConsume += tickEnergy;
+		linkConsume += tickEnergy;
+		tripConsume += tickEnergy;
+		batteryLevel = clampBatteryLevel(batteryLevel - tickEnergy);
+	}
+
+	protected double clampBatteryLevel(double level) {
+		return Math.max(0.0, Math.min(this.batteryCapacity, level));
+	}
+
+	protected double energyGravity() { return GlobalVariables.EV_ENERGY_GRAVITY; }
+	protected double energyAirDensity() { return GlobalVariables.EV_ENERGY_AIR_DENSITY; }
+	protected double energyFrontalArea() { return GlobalVariables.EV_ENERGY_FRONTAL_AREA; }
+	protected double energyDragCoefficient() { return GlobalVariables.EV_ENERGY_DRAG_COEFFICIENT; }
+	protected double energyRollingCoefficient() { return GlobalVariables.EV_ENERGY_ROLLING_COEFFICIENT; }
+	protected double energyRollingC1() { return GlobalVariables.EV_ENERGY_ROLLING_C1; }
+	protected double energyRollingC2() { return GlobalVariables.EV_ENERGY_ROLLING_C2; }
+	protected double energyMotorEfficiency() { return GlobalVariables.EV_ENERGY_MOTOR_EFFICIENCY; }
+	protected double energyGearEfficiency() { return GlobalVariables.EV_ENERGY_GEAR_EFFICIENCY; }
+	protected double energyAuxiliaryPower() { return GlobalVariables.EV_ENERGY_AUXILIARY_POWER; }
+	protected double energyRegenCoefficient() { return GlobalVariables.EV_ENERGY_REGEN_COEFFICIENT; }
 
 
 	// spline interpolation
@@ -317,7 +341,7 @@ public class ElectricVehicle extends Vehicle {
 		//Put vehicle back to the departure link of the charging station
 		this.onChargingRoute_ = false;
 		this.setNextPlan(); // Return to where it was before goCharging
-		this.setState(Vehicle.CHARGING_RETURN_TRIP);
+		this.setState(Vehicle.PRIVATE_TRIP);
 		this.departure(ContextCreator.getChargingStationContext().get(chargerID).getClosestRoad(false)); 
 	}
 	

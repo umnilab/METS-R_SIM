@@ -118,6 +118,46 @@ public class CityContext extends DefaultContext<Object> {
         return coords;
     }
 
+	private Coordinate copyCoordinate(Coordinate coord) {
+		return new Coordinate(coord.x, coord.y, Double.isNaN(coord.z) ? 0.0 : coord.z);
+	}
+
+	private double turnAngleDegrees(Coordinate previous, Coordinate current, Coordinate next) {
+		double inX = current.x - previous.x;
+		double inY = current.y - previous.y;
+		double outX = next.x - current.x;
+		double outY = next.y - current.y;
+		double inLength = Math.sqrt(inX * inX + inY * inY);
+		double outLength = Math.sqrt(outX * outX + outY * outY);
+		if (inLength <= 1e-12 || outLength <= 1e-12) return 0.0;
+
+		double cosTheta = (inX * outX + inY * outY) / (inLength * outLength);
+		cosTheta = Math.max(-1.0, Math.min(1.0, cosTheta));
+		return Math.toDegrees(Math.acos(cosTheta));
+	}
+
+	private boolean hasSharpTurnBack(Coordinate incomingPoint, ArrayList<Coordinate> turnCoords,
+			Coordinate outgoingPoint) {
+		if (turnCoords.size() < 2) return false;
+		ArrayList<Coordinate> sequence = new ArrayList<Coordinate>(turnCoords.size() + 2);
+		sequence.add(incomingPoint);
+		sequence.addAll(turnCoords);
+		sequence.add(outgoingPoint);
+		for (int i = 1; i < sequence.size() - 1; i++) {
+			if (turnAngleDegrees(sequence.get(i - 1), sequence.get(i), sequence.get(i + 1)) > 150.0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private ArrayList<Coordinate> directTurnCoords(Coordinate fromCoord, Coordinate toCoord) {
+		ArrayList<Coordinate> coords = new ArrayList<Coordinate>();
+		coords.add(copyCoordinate(fromCoord));
+		coords.add(copyCoordinate(toCoord));
+		return coords;
+	}
+
 	private double projectionAlongSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
 		double segX = segmentEnd.x - segmentStart.x;
 		double segY = segmentEnd.y - segmentStart.y;
@@ -149,6 +189,9 @@ public class CityContext extends DefaultContext<Object> {
 		Coordinate p3 = lane2.getCoords().get(1);
 		ArrayList<Coordinate> coords = catmullRomInterpolate(p0, p1, p2, p3);
 		skipBehindFirstTurnControlPoints(coords);
+		if (hasSharpTurnBack(p0, coords, p3)) {
+			coords = directTurnCoords(p1, p2);
+		}
 		double distance = 0;
 		for (int i = 0; i < coords.size() - 1; i++) {
 			distance += getDistance(coords.get(i), coords.get(i+1));
@@ -983,6 +1026,12 @@ public class CityContext extends DefaultContext<Object> {
 				ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(road.getTravelTime());
 				RouteContext.setEdgeWeight(node1, node2, road.getTravelTime());
 			}
+		}
+	}
+
+	public void updateFreeFlowSpeeds() {
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			road.updateFreeFlowSpeed();
 		}
 	}
 

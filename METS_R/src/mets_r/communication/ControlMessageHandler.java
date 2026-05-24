@@ -1299,8 +1299,9 @@ public class ControlMessageHandler extends MessageHandler {
 					veh.releaseParkingSpot(parkedZone);
 				} else if (veh.isGoingToReservedParking()) {
 					// The current leg can still finish, so its futureSupply is
-					// consumed normally at arrival; release only the road slot.
-					releasedParkingReservation = veh.releaseRoadParkingSpot();
+					// consumed normally at arrival; release only the reserved capacity.
+					Zone parkingZone = ContextCreator.getZoneContext().get(veh.getDestID());
+					releasedParkingReservation = veh.releaseParkingSpot(parkingZone);
 				}
 				
 				p.matchedTime = ContextCreator.getCurrentTick();
@@ -1354,8 +1355,8 @@ public class ControlMessageHandler extends MessageHandler {
 			return false;
 		}
 		int oldParkingZoneID = taxi.getDestID();
-		boolean released = taxi.releaseRoadParkingSpot();
 		Zone oldParkingZone = ContextCreator.getZoneContext().get(oldParkingZoneID);
+		boolean released = taxi.releaseParkingSpot(oldParkingZone);
 		if (oldParkingZone != null) {
 			oldParkingZone.removeFutureSupply();
 		}
@@ -1468,12 +1469,13 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	/**
-	 * Reroute an idle taxi to park on a target road.
+	 * Reroute an idle taxi to a reserved parking destination.
 	 *
 	 * <p>Input DATA: list of {@code {vehID, zoneID?, roadID?}}. If
-	 * {@code roadID} is omitted, a destination road is sampled from
-	 * {@code zoneID}. If {@code zoneID} is omitted, it is inferred from the
-	 * target road. When both are supplied, the road must belong to the zone.
+	 * {@code roadID} is omitted, zone parking is reserved and the taxi routes to
+	 * the zone's closest destination road. If {@code zoneID} is omitted, it is
+	 * inferred from the target road. When both are supplied, the road must
+	 * belong to the zone.
 	 */
 	private HashMap<String, Object> goParking(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -1527,8 +1529,9 @@ public class ControlMessageHandler extends MessageHandler {
 
 				Integer zoneID = firstIntegerOrNull(entry.zoneID, entry.zone, entry.dest, entry.parkingZone);
 				String roadID = firstNonBlank(entry.roadID, entry.origID, entry.orig_id, entry.ID);
+				boolean roadSpecified = cleanString(roadID) != null;
 				Zone targetZone = zoneID == null ? null : ContextCreator.getZoneContext().get(zoneID);
-				Road targetRoad = cleanString(roadID) == null ? null : findRoadByOrigOrInternalID(roadID);
+				Road targetRoad = roadSpecified ? findRoadByOrigOrInternalID(roadID) : null;
 
 				if (zoneID != null && targetZone == null) {
 					record.put("zoneID", zoneID);
@@ -1584,9 +1587,11 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonData.add(record);
 					continue;
 				}
-				boolean alreadyParkedThere = state == Vehicle.PARKING
-						&& veh.getCurrentParkingRoad() == targetRoad.getID();
-				if (!alreadyParkedThere && !targetRoad.hasParkingSpace()) {
+				boolean alreadyParkedThere = roadSpecified
+						? state == Vehicle.PARKING && veh.getCurrentParkingRoad() == targetRoad.getID()
+						: state == Vehicle.PARKING && veh.getCurrentZone() == targetZone.getID()
+								&& veh.getCurrentParkingRoad() < 0;
+				if (!alreadyParkedThere && roadSpecified && !targetRoad.hasParkingSpace()) {
 					record.put("parking_capacity", targetRoad.getParkingCapacity());
 					record.put("parked_num", targetRoad.getParkedNum());
 					record.put("STATUS", "KO");
@@ -1594,18 +1599,34 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonData.add(record);
 					continue;
 				}
-
-				if (!alreadyParkedThere && !veh.goParking(targetZone, targetRoad)) {
-					record.put("parking_capacity", targetRoad.getParkingCapacity());
-					record.put("parked_num", targetRoad.getParkedNum());
+				if (!alreadyParkedThere && !roadSpecified && targetZone.getCapacity() <= 0) {
+					record.put("parking_capacity", targetZone.getCapacity());
 					record.put("STATUS", "KO");
-					record.put("WARN", "target road has no parking capacity");
+					record.put("WARN", "target zone has no parking capacity");
 					jsonData.add(record);
 					continue;
 				}
 
-				record.put("parking_capacity", targetRoad.getParkingCapacity());
-				record.put("parked_num", targetRoad.getParkedNum());
+				boolean parkingDispatched = alreadyParkedThere
+						|| (roadSpecified ? veh.goParking(targetRoad) : veh.goParking(targetZone));
+				if (!parkingDispatched) {
+					if (roadSpecified) {
+						record.put("parking_capacity", targetRoad.getParkingCapacity());
+						record.put("parked_num", targetRoad.getParkedNum());
+					} else {
+						record.put("parking_capacity", targetZone.getCapacity());
+					}
+					record.put("STATUS", "KO");
+					record.put("WARN", roadSpecified ? "target road has no parking capacity"
+							: "target zone has no parking capacity");
+					jsonData.add(record);
+					continue;
+				}
+
+				record.put("parking_capacity", roadSpecified ? targetRoad.getParkingCapacity() : targetZone.getCapacity());
+				if (roadSpecified) {
+					record.put("parked_num", targetRoad.getParkedNum());
+				}
 				record.put("STATUS", "OK");
 				jsonData.add(record);
 			}
@@ -1650,12 +1671,6 @@ public class ControlMessageHandler extends MessageHandler {
 	private Road parkingRoadForZone(Zone zone) {
 		if (zone == null) {
 			return null;
-		}
-		for (Integer roadID : zone.getNeighboringLinks(true)) {
-			Road road = ContextCreator.getRoadContext().get(roadID);
-			if (road != null && road.canBeDest() && road.hasParkingSpace()) {
-				return road;
-			}
 		}
 		Integer closestRoadID = zone.getClosestRoad(true);
 		return closestRoadID == null ? null : ContextCreator.getRoadContext().get(closestRoadID);
@@ -3172,9 +3187,13 @@ public class ControlMessageHandler extends MessageHandler {
 
 					Coordinate cur = vehicle.getCurrentCoord();
 					Coordinate dst = vehicle.getDestCoord();
+					boolean busTrip = (vehicle.getState() == Vehicle.BUS_TRIP);
 					boolean originEqualsDest = (cur != null && dst != null && cur.equals2D(dst));
-					if (originEqualsDest || ((vehicle.getState() == Vehicle.BUS_TRIP)
-							&& (vehicle.getOriginID() == vehicle.getDestID()))) {
+					boolean sameBusRoad = busTrip
+							&& vehicle.getOriginRoad() >= 0
+							&& vehicle.getOriginRoad() == vehicle.getDestRoad();
+					if ((busTrip && originEqualsDest) || (busTrip && (vehicle.getOriginID() == vehicle.getDestID()))
+							|| sameBusRoad) {
 						road.removeVehicleFromNewQueue(vehicle.getDepTime(), vehicle);
 						ContextCreator.getVehicleContext().addArrivalVehicles(vehicle);
 						record.put("STATUS", "ARRIVED");

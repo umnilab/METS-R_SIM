@@ -39,7 +39,7 @@ public class ThreadedScheduler {
 	private int lastSignalStepTick = -1;
 
 	public ThreadedScheduler(int N_threads) {
-		this.N_threads = N_threads;
+		this.N_threads = Math.max(1, N_threads);
 		this.executor = Executors.newFixedThreadPool(this.N_threads);
 		this.N_Partition = GlobalVariables.N_Partition;
 
@@ -90,6 +90,10 @@ public class ThreadedScheduler {
 		status.put("lastFinishedStage", this.lastFinishedStage);
 		status.put("lastFinishedStageTick", this.lastFinishedStageTick);
 		status.put("lastFinishedStageAgeMs", this.lastFinishedStageMs == 0 ? -1 : now - this.lastFinishedStageMs);
+		status.put("activeRoadStepping", GlobalVariables.ACTIVE_ROAD_STEPPING);
+		if (GlobalVariables.ACTIVE_ROAD_STEPPING && ContextCreator.getRoadContext() != null) {
+			status.put("activeRoadCount", ContextCreator.getRoadContext().getActiveRoadCount());
+		}
 		return status;
 	}
 
@@ -102,7 +106,7 @@ public class ThreadedScheduler {
 			this.lastRoadStepTick = currentTick;
 		}
 		// Load the partitions, each partition is a subgraph of the road network
-		ArrayList<ArrayList<Road>> partitionedInRoads = ContextCreator.partitioner.getPartitionedInRoads();
+		ArrayList<ArrayList<Road>> partitionedInRoads = getRoadStepPartitions();
 		// Creates tasks to run road.step() function in each partition 
 		List<PartitionRoadThreadPart1> tasks = new ArrayList<PartitionRoadThreadPart1>();
 		for (int i = 0; i < this.N_Partition; i++) {
@@ -172,7 +176,32 @@ public class ThreadedScheduler {
 		} finally {
 			endStage("vehicle.globalTransfers");
 		}
+
+		if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
+			ContextCreator.getRoadContext().refreshActiveRoads(flattenRoadPartitions(partitionedInRoads));
+		}
 		
+	}
+
+	private ArrayList<ArrayList<Road>> getRoadStepPartitions() {
+		if (!GlobalVariables.ACTIVE_ROAD_STEPPING) {
+			return ContextCreator.partitioner.getPartitionedInRoads();
+		}
+		return ContextCreator.partitioner.partitionRoadsForCurrentPartitions(
+				ContextCreator.getRoadContext().getActiveRoadsSnapshot());
+	}
+
+	private ArrayList<Road> flattenRoadPartitions(ArrayList<ArrayList<Road>> partitions) {
+		ArrayList<Road> roads = new ArrayList<Road>();
+		if (partitions == null) {
+			return roads;
+		}
+		for (ArrayList<Road> partition : partitions) {
+			if (partition != null) {
+				roads.addAll(partition);
+			}
+		}
+		return roads;
 	}
 
 	public void paraZoneStep() {
@@ -369,12 +398,15 @@ class PartitionRoadThreadPart1 implements Callable<Integer> {
 
 	public Integer call() {
 		double start_t = System.currentTimeMillis();
-		try {
-			for (Road r : this.RoadSet) {
+		for (Road r : this.RoadSet) {
+			try {
 				r.stepPart1();
+			} catch (Throwable ex) {
+				int roadID = r == null ? -1 : r.getID();
+				int vehicleCount = r == null ? -1 : r.getVehicleNum();
+				ContextCreator.logger.error("road.part1 partition " + this.threadID
+						+ " failed on road " + roadID + " vehicles=" + vehicleCount, ex);
 			}
-		} catch (Throwable ex) {
-			ContextCreator.logger.error("road.part1 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}
@@ -396,12 +428,15 @@ class PartitionRoadThreadPart2 implements Callable<Integer> {
 
 	public Integer call() {
 		double start_t = System.currentTimeMillis();
-		try {
-			for (Road r : this.RoadSet) {
+		for (Road r : this.RoadSet) {
+			try {
 				r.stepPart2();
+			} catch (Throwable ex) {
+				int roadID = r == null ? -1 : r.getID();
+				int vehicleCount = r == null ? -1 : r.getVehicleNum();
+				ContextCreator.logger.error("road.part2 partition " + this.threadID
+						+ " failed on road " + roadID + " vehicles=" + vehicleCount, ex);
 			}
-		} catch (Throwable ex) {
-			ContextCreator.logger.error("road.part2 partition " + this.threadID + " failed", ex);
 		}
 		return (int) (System.currentTimeMillis() - start_t);
 	}

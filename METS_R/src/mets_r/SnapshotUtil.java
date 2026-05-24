@@ -137,6 +137,7 @@ public class SnapshotUtil {
 		} catch (Exception e) {
 			m.put("originRoadID", -1);
 		}
+		m.put("lastDeparturableRoadID", v.getLastDeparturableRoad());
 
 		// Dest road
 		try {
@@ -1007,6 +1008,11 @@ public class SnapshotUtil {
 				Road originRoad = ContextCreator.getRoadContext().get(originRoadID);
 				if (originRoad != null) v.setOriginRoad(originRoad);
 			}
+			int lastDeparturableRoadID = vs.containsKey("lastDeparturableRoadID") ? toInt(vs.get("lastDeparturableRoadID")) : -1;
+			if (lastDeparturableRoadID >= 0) {
+				Road lastDeparturableRoad = ContextCreator.getRoadContext().get(lastDeparturableRoadID);
+				if (lastDeparturableRoad != null) v.setLastDeparturableRoad(lastDeparturableRoad);
+			}
 
 			// Resolve dest road (but don't set it yet -- setting it before
 			// teleportVehicle would cause appendToRoad to trigger
@@ -1193,6 +1199,11 @@ public class SnapshotUtil {
 			if (originRoadID >= 0) {
 				Road originRoad = ContextCreator.getRoadContext().get(originRoadID);
 				if (originRoad != null) v.setOriginRoad(originRoad);
+			}
+			int lastDeparturableRoadID = vs.containsKey("lastDeparturableRoadID") ? toInt(vs.get("lastDeparturableRoadID")) : -1;
+			if (lastDeparturableRoadID >= 0) {
+				Road lastDeparturableRoad = ContextCreator.getRoadContext().get(lastDeparturableRoadID);
+				if (lastDeparturableRoad != null) v.setLastDeparturableRoad(lastDeparturableRoad);
 			}
 
 			int destRoadID = toInt(vs.get("destRoadID"));

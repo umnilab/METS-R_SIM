@@ -2,6 +2,7 @@ package mets_r.data.output;
 
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.TreeMap;
 import java.util.Vector;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
@@ -49,6 +50,8 @@ public class DataCollector {
 	/** The current tick snapshot into which new data is being stored. */
 	private TickSnapshot currentSnapshot;
 
+	private ConcurrentLinkedQueue<Road> pendingRoadParkingSnapshots;
+
 	/** This timer manages periodically cleaning the buffer of old data. */
 	private Timer cleanupTimer;
 
@@ -79,6 +82,7 @@ public class DataCollector {
 		this.collecting = false;
 		this.paused = false;
 		this.currentSnapshot = null;
+		this.pendingRoadParkingSnapshots = new ConcurrentLinkedQueue<Road>();
 		this.lastTick = -1.0;
 	}
 
@@ -122,6 +126,7 @@ public class DataCollector {
 		this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
 		this.lastTick = -1.0;
 		this.currentSnapshot = null;
+		this.pendingRoadParkingSnapshots = new ConcurrentLinkedQueue<Road>();
 
 		// Start the cleanup thread
 		if (this.cleanupTask != null) {
@@ -230,6 +235,7 @@ public class DataCollector {
 	 */
 	public void stopTickCollection() {
 		if(this.currentSnapshot != null) {
+			this.recordPendingRoadParkingSnapshots();
 			// Place the current tick into the buffer if anything was recorded
 			if (!this.currentSnapshot.isEmpty()) {
 				this.recordFrameSummary(this.currentSnapshot);
@@ -241,6 +247,26 @@ public class DataCollector {
 	
 			// Remove the reference to the current tick snapshot object
 			this.currentSnapshot = null;
+		}
+	}
+
+	public void recordRoadParkingStateChange(Road road) {
+		if (road != null && this.collecting) {
+			this.pendingRoadParkingSnapshots.add(road);
+		}
+	}
+
+	private void recordPendingRoadParkingSnapshots() {
+		if (this.currentSnapshot == null) {
+			return;
+		}
+		TreeMap<Integer, Road> roadsByID = new TreeMap<Integer, Road>();
+		for (Road road = this.pendingRoadParkingSnapshots.poll(); road != null;
+				road = this.pendingRoadParkingSnapshots.poll()) {
+			roadsByID.put(road.getID(), road);
+		}
+		for (Road road : roadsByID.values()) {
+			this.recordSparseLinkSnapshot(road, false);
 		}
 	}
 
@@ -271,6 +297,10 @@ public class DataCollector {
 	}
 
 	public void recordLinkSnapshot(Road road) {
+		this.recordSparseLinkSnapshot(road, true);
+	}
+
+	private void recordSparseLinkSnapshot(Road road, boolean includeRoadSummary) {
 		TickSnapshot snapshot = this.currentSnapshot;
 		if (snapshot == null || road == null) {
 			return;
@@ -281,7 +311,9 @@ public class DataCollector {
 			double speed = (nVehicles > 0 || changed) ? road.calcSpeed() : 0;
 			// Every road contributes to frame-level metrics; only changed roads
 			// are stored as sparse link records.
-			snapshot.logRoadSummary(nVehicles, speed);
+			if (includeRoadSummary) {
+				snapshot.logRoadSummary(nVehicles, speed);
+			}
 			if (changed) {
 				snapshot.logLinkSnapshot(new LinkSnapshot(road.getOrigID(), speed,
 						nVehicles, road.getTotalEnergy(), road.getTotalFlow(),

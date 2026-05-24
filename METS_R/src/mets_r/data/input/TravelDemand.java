@@ -11,7 +11,6 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 import java.util.*;
-import java.util.Map.Entry;
 
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
@@ -22,8 +21,8 @@ import org.json.simple.parser.JSONParser;
  **/
 
 public class TravelDemand {
-	private TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>> privateEVTravelDemand; // The outer key is departure time, the inner key is vid
-	private TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>> privateGVTravelDemand;
+	private TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> privateEVTravelDemandByOrigin;
+	private TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> privateGVTravelDemandByOrigin;
 	private TreeMap<Integer, ArrayList<Double>> privateEVProfile;
 	
 	private TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>> publicTravelDemand; // The outer key is the origin and the
@@ -34,14 +33,19 @@ public class TravelDemand {
 	private BufferedReader privateEVTripReader;
 	private BufferedReader privateGVTripReader;
 	private BufferedReader privateEVProfileReader;
+	private String pendingPrivateEVTripLine;
+	private String pendingPrivateGVTripLine;
+	private boolean privateEVTripReaderExhausted;
+	private boolean privateGVTripReaderExhausted;
+	private volatile boolean privateDemandActive;
 	
 	private volatile boolean closed = false;
 	private int hour;
 
 	public TravelDemand() {
 		ContextCreator.logger.info("Read demand.");
-		privateEVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>>();
-		privateGVTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Integer>>>();
+		privateEVTravelDemandByOrigin = new TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>>();
+		privateGVTravelDemandByOrigin = new TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>>();
 		privateEVProfile = new TreeMap<Integer, ArrayList<Double>>();
 		publicTravelDemand = new TreeMap<Integer, TreeMap<Integer, ArrayList<Double>>>();
 		waitingThreshold = new ArrayList<Integer>();
@@ -68,6 +72,15 @@ public class TravelDemand {
 			privateEVTripReader.readLine();
 			privateGVTripReader.readLine();
 			privateEVProfileReader.readLine();
+
+			this.pendingPrivateEVTripLine = privateEVTripReader.readLine();
+			this.pendingPrivateGVTripLine = privateGVTripReader.readLine();
+			this.privateEVTripReaderExhausted = this.pendingPrivateEVTripLine == null;
+			this.privateGVTripReaderExhausted = this.pendingPrivateGVTripLine == null;
+			this.privateDemandActive = !this.privateEVTripReaderExhausted || !this.privateGVTripReaderExhausted;
+			if (!this.privateDemandActive) {
+				closePrivateTripReaders();
+			}
 			
 			String line = privateEVProfileReader.readLine();
 			while(line != null) {
@@ -83,9 +96,13 @@ public class TravelDemand {
 				
 				line = privateEVProfileReader.readLine();
 			}
+			privateEVProfileReader.close();
 			
 		} catch (IOException e) {
 			e.printStackTrace();
+			this.privateEVTripReaderExhausted = true;
+			this.privateGVTripReaderExhausted = true;
+			this.privateDemandActive = false;
 		}
 		
 	}
@@ -122,80 +139,24 @@ public class TravelDemand {
 	}
 	
 	public void loadPrivateDemandChunk() { // For loading the next hour demand
-		if (closed) return; // stale call after reset – readers are already closed
+		if (closed || !privateDemandActive) return; // stale or exhausted call
 		// Add the logger
 		int ev_trip_number = 0;
 		int gv_trip_number = 0;
 		
 		// clear the previous chunk
-		Iterator<Map.Entry<Integer, TreeMap<Integer, ArrayList<Integer>>>> iter = this.privateGVTravelDemand.entrySet().iterator();
-	    while (iter.hasNext()) {
-	        if (iter.next().getKey() < hour * 60) {
-	            iter.remove();
-	        }
-	    }
-	    Iterator<Map.Entry<Integer,TreeMap<Integer, ArrayList<Integer>>>> iter2 = this.privateEVTravelDemand.entrySet().iterator();
-	    while (iter2.hasNext()) {
-	        if (iter2.next().getKey() < hour * 60) {
-	            iter2.remove();
-	        }
-	    }
+	    clearOldIndexedPrivateDemand(this.privateGVTravelDemandByOrigin, hour * 60);
+	    clearOldIndexedPrivateDemand(this.privateEVTravelDemandByOrigin, hour * 60);
 		// read the new chunk
 	    try {
-	    	boolean flag = true;
-		    while(flag) {
-		    	String line = privateEVTripReader.readLine();
-		    	if(line != null) {
-		    		String[] result = line.split(",");
-		    		int vid = Integer.parseInt(result[0]);
-		    		int time_ind = Integer.parseInt(result[1]);
-		    		int origin = Integer.parseInt(result[2]) + 1;
-		    		int dest = Integer.parseInt(result[3]) + 1;
-		    		
-		    		// add it to the privateEVTravelDemand
-		    		if(!privateEVTravelDemand.containsKey(time_ind)) {
-		    			privateEVTravelDemand.put(time_ind, new TreeMap<Integer, ArrayList<Integer>>());
-		    		}
-		    		ArrayList<Integer> od = new ArrayList<Integer>();
-		    		od.add(origin);
-		    		od.add(dest);
-		    		privateEVTravelDemand.get(time_ind).put(vid, od);
-		    		
-		    		ev_trip_number += 1;
-		    		
-		    		// if this demand happens earlier/within than this hour, continue the reading
-		    		if(time_ind <= (hour+1) * 60 ) continue;
-		    	}
-		    	flag = false;
-		    }
-		    flag = true;
-		    while(flag) {
-		    	String line = privateGVTripReader.readLine();
-		    	if(line != null) {
-		    		String[] result = line.split(",");
-		    		int vid = Integer.parseInt(result[0]);
-		    		int time_ind = Integer.parseInt(result[1]);
-		    		int origin = Integer.parseInt(result[2]) + 1;
-		    		int dest = Integer.parseInt(result[3]) + 1;
-		    		
-		    		// add it to the privateEVTravelDemand
-		    		if(!privateGVTravelDemand.containsKey(time_ind)) {
-		    			privateGVTravelDemand.put(time_ind, new TreeMap<Integer, ArrayList<Integer>>());
-		    		}
-		    		ArrayList<Integer> od = new ArrayList<Integer>();
-		    		od.add(origin);
-		    		od.add(dest);
-		    		privateGVTravelDemand.get(time_ind).put(vid, od);
-		    		
-		    		gv_trip_number += 1;
-		    		
-		    		// if this demand happens earlier/within than this hour, continue the reading
-		    		if(time_ind <= (hour+1) * 60 ) continue;
-		    	}
-		    	flag = false;
-		    }
+			int chunkEndMinute = (hour + 1) * 60;
+		    ev_trip_number = loadPrivateEVTripsUntil(chunkEndMinute);
+		    gv_trip_number = loadPrivateGVTripsUntil(chunkEndMinute);
+		    updatePrivateDemandActive();
 		    
-		    ContextCreator.logger.info("Private trips at hour " + hour + " has been loaded, EV trip number: " + ev_trip_number + ", GV trip number: " + gv_trip_number);
+		    if (ev_trip_number > 0 || gv_trip_number > 0) {
+				ContextCreator.logger.info("Private trips at hour " + hour + " has been loaded, EV trip number: " + ev_trip_number + ", GV trip number: " + gv_trip_number);
+		    }
 	    }
 	    catch (IOException e) {
 	    	ContextCreator.logger.error(
@@ -205,6 +166,74 @@ public class TravelDemand {
 	    
 	    hour += 1;
 		
+	}
+
+	private int loadPrivateEVTripsUntil(int chunkEndMinute) throws IOException {
+		int tripNumber = 0;
+		while (this.pendingPrivateEVTripLine != null) {
+			PrivateTripRecord trip = parsePrivateTrip(this.pendingPrivateEVTripLine);
+			if (trip == null) {
+				this.pendingPrivateEVTripLine = privateEVTripReader.readLine();
+				continue;
+			}
+			if (trip.timeIndex > chunkEndMinute) {
+				break;
+			}
+			addPrivateDemand(privateEVTravelDemandByOrigin, trip.timeIndex, trip.vehicleID, trip.origin, trip.dest);
+			tripNumber += 1;
+			this.pendingPrivateEVTripLine = privateEVTripReader.readLine();
+		}
+		if (this.pendingPrivateEVTripLine == null) {
+			this.privateEVTripReaderExhausted = true;
+		}
+		return tripNumber;
+	}
+
+	private int loadPrivateGVTripsUntil(int chunkEndMinute) throws IOException {
+		int tripNumber = 0;
+		while (this.pendingPrivateGVTripLine != null) {
+			PrivateTripRecord trip = parsePrivateTrip(this.pendingPrivateGVTripLine);
+			if (trip == null) {
+				this.pendingPrivateGVTripLine = privateGVTripReader.readLine();
+				continue;
+			}
+			if (trip.timeIndex > chunkEndMinute) {
+				break;
+			}
+			addPrivateDemand(privateGVTravelDemandByOrigin, trip.timeIndex, trip.vehicleID, trip.origin, trip.dest);
+			tripNumber += 1;
+			this.pendingPrivateGVTripLine = privateGVTripReader.readLine();
+		}
+		if (this.pendingPrivateGVTripLine == null) {
+			this.privateGVTripReaderExhausted = true;
+		}
+		return tripNumber;
+	}
+
+	private PrivateTripRecord parsePrivateTrip(String line) {
+		if (line == null || line.isEmpty()) return null;
+		String[] result = line.split(",");
+		if (result.length < 4) return null;
+		return new PrivateTripRecord(Integer.parseInt(result[0]), Integer.parseInt(result[1]),
+				Integer.parseInt(result[2]) + 1, Integer.parseInt(result[3]) + 1);
+	}
+
+	private void addPrivateDemand(TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> demandByTimeAndOrigin,
+			int timeIndex, int vid, int origin, int dest) {
+		if (!demandByTimeAndOrigin.containsKey(timeIndex)) {
+			demandByTimeAndOrigin.put(timeIndex, new TreeMap<Integer, TreeMap<Integer, Integer>>());
+		}
+		TreeMap<Integer, TreeMap<Integer, Integer>> demandAtTime = demandByTimeAndOrigin.get(timeIndex);
+		if (!demandAtTime.containsKey(origin)) {
+			demandAtTime.put(origin, new TreeMap<Integer, Integer>());
+		}
+		demandAtTime.get(origin).put(vid, dest);
+	}
+
+	private void clearOldIndexedPrivateDemand(
+			TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> demandByTimeAndOrigin,
+			int earliestTimeToKeep) {
+		demandByTimeAndOrigin.headMap(earliestTimeToKeep).clear();
 	}
 	
 	public void readWaitTimeFile() {
@@ -262,20 +291,8 @@ public class TravelDemand {
 		}
 	}
 	
-	public TreeMap<Integer, Integer> getPrivateEVTravelDemand(int timeIndex, int originID) {
-		// return a list of vid, dest
-		TreeMap<Integer, Integer> result = new TreeMap<Integer, Integer>();
-		if (this.privateEVTravelDemand.containsKey(timeIndex)) {
-			for(Entry<Integer, ArrayList<Integer>> item: this.privateEVTravelDemand.get(timeIndex).entrySet()) {
-				int vid = item.getKey();
-				int origin = item.getValue().get(0);
-				int dest = item.getValue().get(1);
-				if(origin == originID) {
-					result.put(vid, dest);
-				}
-			}
-		}
-		return result;
+	public Map<Integer, Integer> getPrivateEVTravelDemand(int timeIndex, int originID) {
+		return getPrivateTravelDemandByOrigin(this.privateEVTravelDemandByOrigin, timeIndex, originID);
 	}
 	
 	public ArrayList<Double> getPrivateEVProfile(int vehID){
@@ -285,20 +302,46 @@ public class TravelDemand {
 			return null;
 	}
 	
-	public TreeMap<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {
-		// return a list of vid, dest
-		TreeMap<Integer, Integer> result = new TreeMap<Integer, Integer>();
-		if (this.privateGVTravelDemand.containsKey(timeIndex)) {
-			for(Entry<Integer, ArrayList<Integer>> item: this.privateGVTravelDemand.get(timeIndex).entrySet()) {
-				int vid = item.getKey();
-				int origin = item.getValue().get(0);
-				int dest = item.getValue().get(1);
-				if(origin == originID) {
-					result.put(vid, dest);
-				}
-			}
+	public Map<Integer, Integer> getPrivateGVTravelDemand(int timeIndex, int originID) {
+		return getPrivateTravelDemandByOrigin(this.privateGVTravelDemandByOrigin, timeIndex, originID);
+	}
+
+	public boolean hasPrivateDemandAtTime(int timeIndex) {
+		if (!privateDemandActive) return false;
+		synchronized (this) {
+			return this.privateEVTravelDemandByOrigin.containsKey(timeIndex)
+					|| this.privateGVTravelDemandByOrigin.containsKey(timeIndex);
 		}
-		return result;
+	}
+
+	public boolean hasAnyPrivateDemand() {
+		return this.privateDemandActive;
+	}
+
+	private void updatePrivateDemandActive() {
+		this.privateDemandActive = !this.privateEVTripReaderExhausted || !this.privateGVTripReaderExhausted
+				|| !this.privateEVTravelDemandByOrigin.isEmpty() || !this.privateGVTravelDemandByOrigin.isEmpty();
+		if (!this.privateDemandActive) {
+			closePrivateTripReaders();
+		}
+	}
+
+	private synchronized Map<Integer, Integer> getPrivateTravelDemandByOrigin(
+			TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> demandByTimeAndOrigin,
+			int timeIndex, int originID) {
+		TreeMap<Integer, TreeMap<Integer, Integer>> demandAtTime = demandByTimeAndOrigin.get(timeIndex);
+		if (demandAtTime == null) {
+			return Collections.emptyMap();
+		}
+		TreeMap<Integer, Integer> demandAtOrigin = demandAtTime.remove(originID);
+		if (demandAtOrigin == null) {
+			return Collections.emptyMap();
+		}
+		if (demandAtTime.isEmpty()) {
+			demandByTimeAndOrigin.remove(timeIndex);
+			updatePrivateDemandActive();
+		}
+		return demandAtOrigin;
 	}
 	
 	public double getPublicTravelDemand(int originID, int destID, int hour) {
@@ -340,12 +383,30 @@ public class TravelDemand {
 		}
 		return 600;
 	}
+
+	private static class PrivateTripRecord {
+		final int vehicleID;
+		final int timeIndex;
+		final int origin;
+		final int dest;
+
+		PrivateTripRecord(int vehicleID, int timeIndex, int origin, int dest) {
+			this.vehicleID = vehicleID;
+			this.timeIndex = timeIndex;
+			this.origin = origin;
+			this.dest = dest;
+		}
+	}
 	
 	public void close() {
 		closed = true;
+		closePrivateTripReaders();
+	}
+
+	private void closePrivateTripReaders() {
 		try {
-			this.privateEVTripReader.close();
-			this.privateGVTripReader.close();
+			if (this.privateEVTripReader != null) this.privateEVTripReader.close();
+			if (this.privateGVTripReader != null) this.privateGVTripReader.close();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

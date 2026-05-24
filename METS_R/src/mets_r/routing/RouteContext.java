@@ -47,6 +47,12 @@ public class RouteContext {
 			sameRoadPath.add(originRoad);
 			return sameRoadPath;
 		}
+		if (!originRoad.canBeOrigin() || !destRoad.canBeDest()) {
+			ContextCreator.logger.debug("shortestPathRoute skipped for non-routable endpoint: origin="
+					+ roadLabel(originRoad) + " originAllowed=" + originRoad.canBeOrigin()
+					+ ", destination=" + roadLabel(destRoad) + " destAllowed=" + destRoad.canBeDest());
+			return null;
+		}
 		Node originDownStreamNode = originRoad.getDownStreamNode();
 		Node destUpStreamNode = destRoad.getUpStreamNode();
 		if (originDownStreamNode == null || destUpStreamNode == null) {
@@ -75,6 +81,7 @@ public class RouteContext {
 
 	public static List<List<Road>> kShortestPathRoute(int K, Road originRoad, Road destRoad) {
 		if (originRoad == null || destRoad == null || vbr == null) return null;
+		if (!originRoad.canBeOrigin() || !destRoad.canBeDest()) return null;
 		Node originDownStreamNode = originRoad.getDownStreamNode();
 		Node destUpStreamNode = destRoad.getUpStreamNode();
 		if (originDownStreamNode == null || destUpStreamNode == null) return null;

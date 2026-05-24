@@ -22,14 +22,6 @@ import mets_r.facility.Zone;
  */
 
 public class ElectricBus extends ElectricVehicle {
-	/* Constants */
-	// Parameters for Fiori (2016) model,
-	// Modified frontal area and draft coefficient according to Bus 2 in the paper
-	// "Aerodynamic Exterior Body Design of Bus"
-	public static double A = 6.93; // frontal area of the vehicle
-	public static double cd = 0.68; // draft coefficient
-	public static double Pconst = 5500; // energy consumption by auxiliary accessories
-	
 	/* Local variables */
 	private int routeID;
 	private int passNum;
@@ -52,8 +44,7 @@ public class ElectricBus extends ElectricVehicle {
 	
 	// [x0,x1,x2,x3,x4,x5,x6,x7,x8,x9]. xi means that there are xi passengers having
 	// the destination of zone i.
-	private double avgPersonMass_; // average mass of a person in lbs
-	private double mass; // mass of the vehicle in kg
+	private double avgPersonMass_; // average mass of a person in kg
 	
 	/* Public variables */
 	// Service metrics are cumulative for the vehicle.
@@ -71,9 +62,11 @@ public class ElectricBus extends ElectricVehicle {
 	// Constructor
 	public ElectricBus(int routeID, ArrayList<Integer> route, ArrayList<Integer> departureTime) {
 		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
-		initializeEVFields(GlobalVariables.BUS_BATTERY, 18000, 666, GlobalVariables.BUS_RECHARGE_LEVEL_LOW, GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);
+		initializeEVFields(GlobalVariables.BUS_BATTERY, GlobalVariables.BUS_MASS,
+				GlobalVariables.BUS_METERS_PER_KWH, GlobalVariables.BUS_RECHARGE_LEVEL_LOW,
+				GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);
 		this.routeID = routeID;
-		this.stopZones = route;
+		this.stopZones = new ArrayList<Integer>(route);
 		// Add stop Roads
 		this.stopRoads = new ArrayList<Road>();
 		for(int zid: this.stopZones) {
@@ -87,22 +80,27 @@ public class ElectricBus extends ElectricVehicle {
 			this.stopRoads.add(ContextCreator.getRoadContext().get(closestRoadID));
 		}
 		this.zoneStops = new HashMap<Integer, Integer>();
-		for (int i = 0; i < route.size(); i++) {
-			zoneStops.put(route.get(i), i);
+		for (int i = 0; i < this.stopZones.size(); i++) {
+			zoneStops.put(this.stopZones.get(i), i);
 		}
-		this.departureTime = new ArrayList<Integer>();
+		this.departureTime = departureTime == null
+				? new ArrayList<Integer>()
+				: new ArrayList<Integer>(departureTime);
 		this.toBoardRequests = new ArrayList<Queue<Request>>();
-		for (int i = 0; i < route.size(); i++) {
+		for (int i = 0; i < this.stopZones.size(); i++) {
 			this.toBoardRequests.add(new LinkedList<Request>());
 		}
 		this.onBoardRequests = new ArrayList<Queue<Request>>();
-		for (int i = 0; i < route.size(); i++) {
+		for (int i = 0; i < this.stopZones.size(); i++) {
 			this.onBoardRequests.add(new LinkedList<Request>());
 		}
 		this.passNum = 0;
-		this.nextStop = Math.min(1, this.stopZones.size() - 1);
+		this.nextStop = 0;
 		this.numSeat = 40;
 		this.avgPersonMass_ = 60.0;
+		if (this.routeID >= 0) {
+			this.setState(Vehicle.BUS_TRIP);
+		}
 	}
 
 	// UpdateBatteryLevel
@@ -110,17 +108,23 @@ public class ElectricBus extends ElectricVehicle {
 	public void updateBatteryLevel() {
 		if (this.routeID >= 0) {
 			double tickEnergy = calculateEnergy(); // the energy consumption(kWh) for this tick
-			tickConsume = tickEnergy;
-			totalConsume += tickEnergy;
-			linkConsume += tickEnergy;
-			tripConsume += tickEnergy;
-			batteryLevel -= tickEnergy;
+			applyTickEnergy(tickEnergy);
+		} else {
+			this.tickConsume = 0.0;
 		}
 	}
 	
 	@Override
 	public int decideChargerType() {
 		return ChargingStation.BUS;
+	}
+
+	private int scheduledDepartureTime(int stopIndex) {
+		if (this.departureTime == null || this.departureTime.isEmpty()) {
+			return (int) ContextCreator.getNextTick();
+		}
+		int safeIndex = Math.max(0, Math.min(stopIndex, this.departureTime.size() - 1));
+		return this.departureTime.get(safeIndex);
 	}
 	
 	@Override
@@ -234,10 +238,13 @@ public class ElectricBus extends ElectricVehicle {
 				// stopRoads is null when popSchedule found no pending schedule and called
 				// updateSchedule(null); in that case the bus stays idle rather than departing.
 				if (stopRoads != null) {
+					int departTick = Math.max((int) ContextCreator.getNextTick() + delay,
+							this.scheduledDepartureTime(nextStop));
 					this.addPlan(stopZones.get(nextStop),
 							stopRoads.get(nextStop).getID(),
-							Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop)));
+							departTick);
 					this.setNextPlan();
+					this.setState(Vehicle.BUS_TRIP);
 					this.departure();
 				}
 			}
@@ -266,9 +273,12 @@ public class ElectricBus extends ElectricVehicle {
 							+ " because the destination road is null.");
 					return;
 				}
+				int departTick = Math.max((int) ContextCreator.getNextTick() + delay,
+						this.scheduledDepartureTime(nextStop - 1));
 				this.addPlan(destZoneID, destRoad.getID(),
-						Math.max((int) ContextCreator.getNextTick() + delay, departureTime.get(nextStop-1)));
+						departTick);
 				this.setNextPlan();
+				this.setState(Vehicle.BUS_TRIP);
 				this.departure();
 				if(roadsBwStops != null) {
 					int segmentIndex = nextStop - 1;
@@ -431,6 +441,40 @@ public class ElectricBus extends ElectricVehicle {
 	public double getMass() {
 		return mass + passNum * avgPersonMass_;
 	}
+
+	@Override
+	protected double energyFrontalArea() {
+		return GlobalVariables.BUS_ENERGY_FRONTAL_AREA;
+	}
+
+	@Override
+	protected double energyDragCoefficient() {
+		return GlobalVariables.BUS_ENERGY_DRAG_COEFFICIENT;
+	}
+
+	@Override
+	protected double energyAuxiliaryPower() {
+		return GlobalVariables.BUS_ENERGY_AUXILIARY_POWER;
+	}
+
+	@Override
+	public void finishCharging(Integer chargerID, String chargerType) {
+		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
+				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
+				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
+		try {
+			ContextCreator.agg_logger.charger_logger.write(formated_msg);
+			this.chargingWaitingTime = 0;
+			this.chargingTime = 0;
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		this.onChargingRoute_ = false;
+		this.setNextPlan();
+		this.setState(Vehicle.BUS_TRIP);
+		this.departure(ContextCreator.getChargingStationContext().get(chargerID).getClosestRoad(false));
+	}
 	
 	public int remainingCapacity() {
 		return this.numSeat - this.passNum;
@@ -449,6 +493,7 @@ public class ElectricBus extends ElectricVehicle {
 			this.departureTime = new ArrayList<Integer>(Arrays.asList((int) (ContextCreator.getCurrentTick() + 60/GlobalVariables.SIMULATION_STEP_SIZE)));
 			this.stopRoads = null;
 			this.roadsBwStops = null;
+			this.setState(Vehicle.PARKING);
 		} else {
 			this.routeID = obs.routeID;
 			this.stopZones = obs.stopZones; 
@@ -459,6 +504,7 @@ public class ElectricBus extends ElectricVehicle {
 				this.zoneStops.put(this.stopZones.get(i), i);
 			}
 			this.departureTime = obs.departureTime;
+			this.setState(Vehicle.BUS_TRIP);
 		}
 		this.nextStop = 0;
 

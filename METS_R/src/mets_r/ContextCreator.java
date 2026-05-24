@@ -20,7 +20,6 @@ import repast.simphony.space.gis.Geography;
 import repast.simphony.space.graph.Network;
 
 import org.apache.log4j.Logger;
-import galois.partition.*;
 import mets_r.GlobalVariables;
 import mets_r.communication.BSMDataStream;
 import mets_r.communication.Connection;
@@ -63,7 +62,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static MetisPartition partitioner = new MetisPartition(GlobalVariables.N_Partition); 
 	
 	/* Multi-thread scheduler */
-	public static ThreadedScheduler tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_Partition):null;
+	public static ThreadedScheduler tscheduler = GlobalVariables.MULTI_THREADING?new ThreadedScheduler(GlobalVariables.N_THREADS):null;
 	
 	/* Simulation objects */
 	public static CityContext cityContext;
@@ -217,6 +216,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if(GlobalVariables.MULTI_THREADING) {
 			try {
 				partitioner.first_run();
+				if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
+					getRoadContext().rebuildActiveRoadsFromState();
+				}
 				ContextCreator.logger.info("Reset partitioner");
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -268,6 +270,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// Schedule the event of loading the demand chunk
 	public static void schedulePrivateTripLoader() {
+		if (!travel_demand.hasAnyPrivateDemand()) {
+			logger.info("Private trip loader skipped: no private EV/GV demand records.");
+			return;
+		}
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters privateTripLoaderParams = ScheduleParameters.createRepeating(initTick, 
 				(int) 3600/GlobalVariables.SIMULATION_STEP_SIZE, 2);
@@ -289,9 +295,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
-		for (Road r : getRoadContext().getObjects(Road.class)) {
-			scheduledActions.add(schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed"));
-		}
+		scheduledActions.add(schedule.schedule(speedProfileParams, cityContext, "updateFreeFlowSpeeds"));
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
@@ -332,12 +336,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 0);
 		scheduledActions.add(schedule.schedule(timerParaParams, tscheduler, "reportTime"));
 
-		// Schedule graph partitioning
-		ScheduleParameters partitionParams = ScheduleParameters.createRepeating(
-				initTick + GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL,
-				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 2);
-		
-		scheduledActions.add(schedule.schedule(partitionParams, partitioner, "check_run"));
+		// Full-road stepping uses a cached partition list; active-road stepping
+		// rebalances active roads every tick in ThreadedScheduler.
+		if (!GlobalVariables.ACTIVE_ROAD_STEPPING) {
+			ScheduleParameters partitionParams = ScheduleParameters.createRepeating(
+					initTick + GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL,
+					GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 2);
+			scheduledActions.add(schedule.schedule(partitionParams, partitioner, "check_run"));
+		}
 	}
 
 	// Schedule the event for vehicle movements (single-thread)
@@ -359,23 +365,18 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 *
 	 * In single-threaded mode road movement is scheduled per road, so the new road
 	 * needs stepPart1 and stepPart2 actions. In multi-threaded mode movement is
-	 * driven by ThreadedScheduler partitions, but the free-flow speed refresh is
-	 * still scheduled per road in both modes.
+	 * driven by ThreadedScheduler partitions. Free-flow speed refresh is batched
+	 * for all roads in CityContext.
 	 */
 	public static void scheduleNewRoad(Road r) {
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		if (!GlobalVariables.MULTI_THREADING) {
+			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 			ScheduleParameters agentParams = ScheduleParameters.createRepeating(getCurrentTick() + 1, 1, 0);
 			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
 			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
 		}
-
-		double speedStartTick = Math.ceil((getCurrentTick() + 1.0)
-				/ GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL)
-				* GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL;
-		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(speedStartTick,
-				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
-		scheduledActions.add(schedule.schedule(speedProfileParams, r, "updateFreeFlowSpeed"));
+		// Free-flow speed refresh is batched in cityContext.updateFreeFlowSpeeds(),
+		// so newly added roads are picked up automatically at the next refresh.
 	}
 
 	// Schedule the event for zone updates (multi-thread)
@@ -731,6 +732,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (GlobalVariables.MULTI_THREADING) {
 			try {
 				partitioner.first_run();
+				if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
+					getRoadContext().rebuildActiveRoadsFromState();
+				}
 				ContextCreator.logger.info("Reset partitioner");
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -931,6 +935,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (GlobalVariables.MULTI_THREADING) {
 			try {
 				partitioner.first_run();
+				if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
+					getRoadContext().rebuildActiveRoadsFromState();
+				}
 			} catch (Exception e) {
 				e.printStackTrace();
 			}

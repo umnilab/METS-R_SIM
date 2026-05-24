@@ -84,6 +84,12 @@ public class VehicleRouting {
 				YenKShortestPath<Node, RepastEdge<Node>> ksp = new YenKShortestPath<Node, RepastEdge<Node>>(
 						transformedNetwork);
 				List<GraphPath<Node, RepastEdge<Node>>> kshortestPath = ksp.getPaths(currNode, destNode, K);
+				if (kshortestPath == null || kshortestPath.isEmpty()) {
+					ContextCreator.logger.warn("No routing path between " + roadLabel(currentRoad) + ", "
+							+ roadLabel(destRoad) + " originAllowed=" + currentRoad.canBeOrigin()
+							+ " destAllowed=" + destRoad.canBeDest());
+					return null;
+				}
 	
 				List<Double> pathLength = new ArrayList<Double>();
 				List<Double> pathProb = new ArrayList<Double>();
@@ -122,10 +128,18 @@ public class VehicleRouting {
 				try {
 					BidirectionalDijkstraShortestPath<Node, RepastEdge<Node>> sp = new BidirectionalDijkstraShortestPath<Node, RepastEdge<Node>>(
 							transformedNetwork);
-					shortestPath = sp.getPath(currNode, destNode).getEdgeList();
+					GraphPath<Node, RepastEdge<Node>> graphPath = sp.getPath(currNode, destNode);
+					if (graphPath == null) {
+						ContextCreator.logger.warn("No routing path between " + roadLabel(currentRoad) + ", "
+								+ roadLabel(destRoad) + " originAllowed=" + currentRoad.canBeOrigin()
+								+ " destAllowed=" + destRoad.canBeDest());
+						return null;
+					}
+					shortestPath = graphPath.getEdgeList();
 				}
 				catch(Exception e) {
-					ContextCreator.logger.warn("Routing engine error between " + currentRoad.getOrigID() + ", " + destRoad.getOrigID() + ": " + e.getMessage());
+					ContextCreator.logger.warn("Routing engine error between " + roadLabel(currentRoad) + ", "
+							+ roadLabel(destRoad) + ": " + e.getMessage());
 				}
 			}
 	
@@ -143,5 +157,10 @@ public class VehicleRouting {
 			}
 		}
 		return roadPath_;
+	}
+
+	private String roadLabel(Road road) {
+		if (road == null) return "null";
+		return road.getOrigID() + "(" + road.getID() + ")";
 	}
 }

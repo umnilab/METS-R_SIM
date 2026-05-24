@@ -1,6 +1,8 @@
 package mets_r.communication;
 
 import java.util.HashMap;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.Random;
 
@@ -51,6 +53,12 @@ public class BSMDataStream {
 	public double true_x; // for deciding who will see this message and should never be used in operation!
 	public double true_y; // for deciding who will see this message and should never be used in operation!
 	public double true_z; // for deciding who will see this message and should never be used in operation!
+	public int vehicle_class;
+	public double vehicle_length_m;
+	private HashMap<String, Object> messagingLayer;
+	private HashMap<String, Object> communicationLayer;
+	private HashMap<String, Object> securityLayer;
+	private HashMap<String, Object> qualityLayer;
 
 
 	public BSMDataStream(int vid, Vehicle vehicle, Coordinate coordinate, int type) {
@@ -95,6 +103,9 @@ public class BSMDataStream {
 				ContextCreator.getCurrentTick(),
 				type,
 				coordinate.x, coordinate.y, coordinate.z);
+		this.vehicle_class = vehicle.getVehicleClass();
+		this.vehicle_length_m = vehicle.length();
+		this.initializeMetadata();
 	}
 
 	public BSMDataStream(int vid, int utc_fix_mode, double latitude, double longitude, double altitude,
@@ -130,6 +141,9 @@ public class BSMDataStream {
 		this.true_x = true_x;
 		this.true_y = true_y;
 		this.true_z = true_z;
+		this.vehicle_class = -1;
+		this.vehicle_length_m = 5.0;
+		this.initializeMetadata();
 	}
 
 	// static random getter/setter for snapshot save/restore
@@ -245,6 +259,89 @@ public class BSMDataStream {
 	public double getTrue_z() {
 		return true_z;
 	}
+
+	private void initializeMetadata() {
+		int payloadBytes = 96;
+		this.messagingLayer = this.buildJ2735Layer();
+		this.communicationLayer = WaveMessageMetadata.buildCommunicationLayer(type, "SAE_J2735_BSM", "0x20",
+				WaveMessageMetadata.bsmChannel(), payloadBytes, 1, WaveMessageMetadata.bsmRangeMeters());
+		this.securityLayer = WaveMessageMetadata.buildSecurityLayer(vid, "SAE_J2735_BSM", payloadBytes);
+		this.qualityLayer = WaveMessageMetadata.buildQualityLayer(payloadBytes,
+				this.layerLatencyMs(this.communicationLayer, this.securityLayer),
+				WaveMessageMetadata.clamp(Math.min(velocity_confidence, elevation_confidence / 15.0), 0.0, 1.0));
+	}
+
+	private HashMap<String, Object> buildJ2735Layer() {
+		HashMap<String, Object> layer = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> coreData = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> accuracy = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> accelSet = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> brakes = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> size = new LinkedHashMap<String, Object>();
+		HashMap<String, Object> spoofingSurface = new LinkedHashMap<String, Object>();
+
+		accuracy.put("semi_major_m", WaveMessageMetadata.round3(SemiMajorAxisAccuracy));
+		accuracy.put("semi_minor_m", WaveMessageMetadata.round3(SemiMinorAxisAccuracy));
+		accuracy.put("orientation_deg", WaveMessageMetadata.round3(SemiMajorAxisOrientation));
+
+		accelSet.put("longitudinal_mps2", 0.0);
+		accelSet.put("lateral_mps2", 0.0);
+		accelSet.put("vertical_mps2", 0.0);
+		accelSet.put("yaw_rate_deg_per_s", 0.0);
+
+		brakes.put("wheel_brakes", "unavailable");
+		brakes.put("traction_control", "unavailable");
+		brakes.put("abs", "unavailable");
+		brakes.put("brake_boost", "unavailable");
+
+		size.put("length_cm", (int) Math.round(Math.max(0.0, vehicle_length_m) * 100.0));
+		size.put("width_cm", vehicle_class == Vehicle.EBUS ? 260 : 200);
+
+		coreData.put("msg_id", 2);
+		coreData.put("msg_count", WaveMessageMetadata.j2735MessageCount(utc_time));
+		coreData.put("temporary_id", WaveMessageMetadata.temporaryId(vid, utc_time));
+		coreData.put("sec_mark", WaveMessageMetadata.dSecond(utc_time));
+		coreData.put("latitude_e7", WaveMessageMetadata.latitudeE7(latitude));
+		coreData.put("longitude_e7", WaveMessageMetadata.longitudeE7(longitude));
+		coreData.put("elevation_dm", WaveMessageMetadata.elevationDecimeters(altitude));
+		coreData.put("accuracy", accuracy);
+		coreData.put("transmission_state", "unavailable");
+		coreData.put("speed_mps", WaveMessageMetadata.round3(velocity));
+		coreData.put("speed_raw_0_02mps", WaveMessageMetadata.speedRaw(velocity));
+		coreData.put("heading_deg", WaveMessageMetadata.round3(WaveMessageMetadata.normalizeHeading(heading)));
+		coreData.put("heading_raw_0_0125deg", WaveMessageMetadata.headingRaw(heading));
+		coreData.put("angle_deg", 0.0);
+		coreData.put("accel_set", accelSet);
+		coreData.put("brakes", brakes);
+		coreData.put("size", size);
+
+		spoofingSurface.put("mutable_fields", Arrays.asList("latitude", "longitude", "altitude", "speed_mps",
+				"heading_deg", "accel_set", "brakes", "size"));
+		spoofingSurface.put("truth_reference_fields", Arrays.asList("true_x", "true_y", "true_z"));
+		spoofingSurface.put("message_count_wrap", 128);
+
+		layer.put("standard", "SAE J2735");
+		layer.put("message_name", "BasicSafetyMessage");
+		layer.put("core_data", coreData);
+		layer.put("spoofing_surface", spoofingSurface);
+		return layer;
+	}
+
+	private double layerLatencyMs(HashMap<String, Object> communication, HashMap<String, Object> security) {
+		double latency = 0.0;
+		Object macObj = communication.get("mac");
+		if (macObj instanceof HashMap<?, ?>) {
+			Object macLatency = ((HashMap<?, ?>) macObj).get("mac_latency_ms");
+			if (macLatency instanceof Number) {
+				latency += ((Number) macLatency).doubleValue();
+			}
+		}
+		Object signLatency = security.get("signing_latency_ms");
+		if (signLatency instanceof Number) {
+			latency += ((Number) signLatency).doubleValue();
+		}
+		return latency;
+	}
 	
 	// --- helpers for deriving fields from coordinateRandomness ---
 
@@ -334,9 +431,16 @@ public class BSMDataStream {
 		jsonObj.put("elevation_confidence", elevation_confidence);
 		jsonObj.put("leap_seconds", leap_seconds);
 		jsonObj.put("utc_time", utc_time);
+		jsonObj.put("type", type);
+		jsonObj.put("vehicle_class", vehicle_class);
+		jsonObj.put("vehicle_length_m", vehicle_length_m);
 		jsonObj.put("true_x", true_x);
 		jsonObj.put("true_y", true_y);
 		jsonObj.put("true_z", true_z);
+		jsonObj.put("messaging_layer", messagingLayer);
+		jsonObj.put("communication_layer", communicationLayer);
+		jsonObj.put("security_layer", securityLayer);
+		jsonObj.put("quality_layer", qualityLayer);
         return JSONObject.toJSONString(jsonObj);
 	}
 	

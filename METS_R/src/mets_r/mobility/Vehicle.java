@@ -91,7 +91,6 @@ public class Vehicle {
 	public final static int PICKUP_TRIP = 6;
 	public final static int ACCESSIBLE_RELOCATION_TRIP = 7; // Vehicles are available to the zone that they travel through
 	public final static int PRIVATE_TRIP = 8;
-	public final static int CHARGING_RETURN_TRIP = 9;
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 	private static final int LC_REASON_STRATEGIC = 1;
@@ -105,6 +104,7 @@ public class Vehicle {
 	/* Private variables that are not visible to descendant classes */
 	private Road destRoad_;
 	private Road originRoad_;
+	private Road lastDeparturableRoad_;
 	private Coordinate currentCoord_; // this variable is created when the vehicle is initialized
 	private Coordinate originCoord_;
 	private double length; // vehicle length
@@ -139,6 +139,8 @@ public class Vehicle {
 	
 	private double prevDistance;
 	private double prevSpeed;
+	private Road prevRoad_;
+	private Road prevNextRoad_;
 	
 	// Speed snapshot taken at the start of each move() tick, used to keep
 	// the speed unchanged within the tick a vehicle transitions onto a
@@ -253,7 +255,9 @@ public class Vehicle {
 		this.nextRoad_ = null;
 		this.coordMap = new ArrayList<Coordinate>();
 		this.originCoord_ = null;
+		this.originRoad_ = null;
 		this.destRoad_ = null;
+		this.lastDeparturableRoad_ = null;
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
 		this.linkTravelTime = 0;
@@ -471,20 +475,246 @@ public class Vehicle {
 	 * If this vehicle is on road, ignore the road variable and reroute it
 	 */
 	public void departure(Road road) {
-		if (road == null) {
+		Road departureRoad = this.isOnRoad()
+				? resolveOnRoadDepartureRoad(road)
+				: resolveQueuedDepartureRoad(road);
+		if (departureRoad == null) {
 			ContextCreator.logger.warn("departure skipped for vehicle " + this.getID() + " because departure road is null.");
 			return;
 		}
 		this.numTrips ++;
-		this.originRoad_ = road;
+		this.originRoad_ = departureRoad;
+		updateLastDeparturableRoad(departureRoad);
 		this.isReachDest = false;
 		if(!this.isOnRoad()) { // If the vehicle not in the network, we add it to a pending list to the closest link
-			this.originCoord_ = road.getStartCoord();
-			road.addVehicleToPendingQueue(this);
+			this.originCoord_ = departureRoad.getStartCoord();
+			departureRoad.addVehicleToPendingQueue(this);
+		}
+		else if (!sameRoad(this.road, departureRoad)) {
+			queueDepartureFromRoad(departureRoad);
 		}
 		else { // The vehicle is on road, we just need to reroute it
+			ContextCreator.getRoadContext().markRoadActive(this.road);
 			this.rerouteAndSetNextRoad(); // refresh the CoordMap
 		}
+	}
+
+	private Road resolveOnRoadDepartureRoad(Road requestedRoad) {
+		if (isDeparturableRoad(this.road)) {
+			return this.road;
+		}
+		if (isDeparturableRoad(this.lastDeparturableRoad_)) {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
+					+ roadLabel(this.road) + "; departing from last departurable road "
+					+ roadLabel(this.lastDeparturableRoad_) + ".");
+			return this.lastDeparturableRoad_;
+		}
+		if (isDeparturableRoad(requestedRoad)) {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
+					+ roadLabel(this.road) + " and has no cached departurable road; using requested road "
+					+ roadLabel(requestedRoad) + ".");
+			return requestedRoad;
+		}
+		ContextCreator.logger.warn("Vehicle " + this.getID() + " is departing from non-departurable road "
+				+ roadLabel(this.road) + " and has no cached departurable road.");
+		return this.road != null ? this.road : requestedRoad;
+	}
+
+	private Road resolveQueuedDepartureRoad(Road requestedRoad) {
+		if (isDeparturableRoad(requestedRoad)) {
+			return requestedRoad;
+		}
+		if (isDeparturableRoad(this.lastDeparturableRoad_)) {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " requested departure road "
+					+ roadLabel(requestedRoad) + " is not departurable; using last departurable road "
+					+ roadLabel(this.lastDeparturableRoad_) + ".");
+			return this.lastDeparturableRoad_;
+		}
+		if (requestedRoad != null) {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " requested departure road "
+					+ roadLabel(requestedRoad) + " is not departurable and no cached departurable road is available.");
+		}
+		return requestedRoad;
+	}
+
+	private boolean isDeparturableRoad(Road road) {
+		return road != null && road.canBeOrigin();
+	}
+
+	private void updateLastDeparturableRoad(Road road) {
+		if (isDeparturableRoad(road)) {
+			this.lastDeparturableRoad_ = road;
+		}
+	}
+
+	private boolean sameRoad(Road first, Road second) {
+		return first == second || (first != null && second != null && first.getID() == second.getID());
+	}
+
+	private String roadLabel(Road road) {
+		if (road == null) return "null";
+		return road.getOrigID() + "(" + road.getID() + ")";
+	}
+
+	private String laneLabel(Lane lane) {
+		if (lane == null) return "null";
+		return lane.getOrigID() + "(" + lane.getID() + ")";
+	}
+
+	private String formatDebugDouble(double value) {
+		if (Double.isNaN(value)) return "NaN";
+		if (Double.isInfinite(value)) return value > 0 ? "Inf" : "-Inf";
+		return String.format(java.util.Locale.US, "%.3f", value);
+	}
+
+	private boolean shouldLogStuckTransferFailure() {
+		if (!GlobalVariables.DEBUG_STUCK_VEHICLE) return false;
+		if (this.stuckTime < GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME) return false;
+		int interval = Math.max(1, GlobalVariables.DEBUG_STUCK_VEHICLE_LOG_INTERVAL);
+		int firstLogTick = Math.max(0, GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME);
+		return this.stuckTime == firstLogTick || (this.stuckTime > firstLogTick
+				&& (this.stuckTime - firstLogTick) % interval == 0);
+	}
+
+	private boolean shouldLogStuckTransferSuccess() {
+		return GlobalVariables.DEBUG_STUCK_VEHICLE
+				&& this.stuckTime >= GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME;
+	}
+
+	private String signalDebugLabel(Signal signal) {
+		if (signal == null) return "null";
+		return signal.getID() + ":state=" + signal.getState()
+				+ ":nextState=" + signal.getNextState()
+				+ ":nextUpdateTick=" + signal.getNextUpdateTick()
+				+ ":phaseTicks=" + signal.getPhaseTick();
+	}
+
+	private String vehicleDebugLabel(Vehicle vehicle) {
+		if (vehicle == null) return "null";
+		return vehicle.getID()
+				+ ":class=" + vehicle.getVehicleClass()
+				+ ":state=" + vehicle.getState()
+				+ ":road=" + roadLabel(vehicle.getRoad())
+				+ ":lane=" + laneLabel(vehicle.getLane())
+				+ ":dist=" + formatDebugDouble(vehicle.getDistanceToNextJunction())
+				+ ":speed=" + formatDebugDouble(vehicle.currentSpeed_)
+				+ ":stuck=" + vehicle.getStuckTime();
+	}
+
+	private void logStuckTransferFailure(String reason, Junction junction, Signal signal,
+			boolean movable, boolean conflictFree, Lane targetLane, double entranceGap,
+			double requiredGap, Vehicle conflictBlocker) {
+		if (!shouldLogStuckTransferFailure()) return;
+		Vehicle targetLeader = targetLane == null ? null : targetLane.lastVehicle();
+		StringBuilder msg = new StringBuilder();
+		msg.append("STUCK_TRANSFER_FAIL")
+				.append(" tick=").append(ContextCreator.getCurrentTick())
+				.append(" veh=").append(this.getID())
+				.append(" class=").append(this.vehicleClass)
+				.append(" state=").append(this.vehicleState)
+				.append(" stuckTicks=").append(this.stuckTime)
+				.append(" stuckSeconds=").append(formatDebugDouble(this.stuckTime * GlobalVariables.SIMULATION_STEP_SIZE))
+				.append(" reason=").append(reason)
+				.append(" originZone=").append(this.originID)
+				.append(" destZone=").append(this.destinationID)
+				.append(" currentRoad=").append(roadLabel(this.road))
+				.append(" currentLane=").append(laneLabel(this.lane))
+				.append(" distToJunction=").append(formatDebugDouble(this.distance_))
+				.append(" speed=").append(formatDebugDouble(this.currentSpeed_))
+				.append(" nextRoad=").append(roadLabel(this.nextRoad_))
+				.append(" nextLane=").append(laneLabel(targetLane))
+				.append(" destRoad=").append(roadLabel(this.destRoad_))
+				.append(" pathSize=").append(this.roadPath == null ? -1 : this.roadPath.size())
+				.append(" junction=").append(junction == null ? "null" : junction.getID())
+				.append(" controlType=").append(junction == null ? "null" : junction.getControlType())
+				.append(" signal=").append(signalDebugLabel(signal))
+				.append(" ticksToSignalUpdate=").append(signal == null
+						? "null" : signal.getNextUpdateTick() - ContextCreator.getCurrentTick())
+				.append(" delay=").append(junction == null || this.road == null || this.nextRoad_ == null
+						? "null" : junction.getDelay(this.road.getID(), this.nextRoad_.getID()))
+				.append(" movable=").append(movable)
+				.append(" conflictFree=").append(conflictFree)
+				.append(" conflictBlocker=").append(vehicleDebugLabel(conflictBlocker))
+				.append(" entranceGap=").append(formatDebugDouble(entranceGap))
+				.append(" requiredGap=").append(formatDebugDouble(requiredGap))
+				.append(" targetLeader=").append(vehicleDebugLabel(targetLeader))
+				.append(" targetRoadVeh=").append(this.nextRoad_ == null ? "null" : this.nextRoad_.getVehicleNum())
+				.append(" targetLaneVeh=").append(targetLane == null ? "null" : targetLane.nVehicles())
+				.append(" onLane=").append(this.onLane)
+				.append(" onRoad=").append(this.onRoad);
+		ContextCreator.logger.info(msg.toString());
+	}
+
+	private void logStuckTransferSuccess(String reason, Lane targetLane, Road targetRoad) {
+		if (!shouldLogStuckTransferSuccess()) return;
+		ContextCreator.logger.info("STUCK_TRANSFER_SUCCESS"
+				+ " tick=" + ContextCreator.getCurrentTick()
+				+ " veh=" + this.getID()
+				+ " class=" + this.vehicleClass
+				+ " state=" + this.vehicleState
+				+ " stuckTicks=" + this.stuckTime
+				+ " stuckSeconds=" + formatDebugDouble(this.stuckTime * GlobalVariables.SIMULATION_STEP_SIZE)
+				+ " reason=" + reason
+				+ " fromRoad=" + roadLabel(this.road)
+				+ " fromLane=" + laneLabel(this.lane)
+				+ " targetRoad=" + roadLabel(targetRoad)
+				+ " targetLane=" + laneLabel(targetLane)
+				+ " originZone=" + this.originID
+				+ " destZone=" + this.destinationID);
+	}
+
+	private void queueDepartureFromRoad(Road departureRoad) {
+		this.clearShadowImpact();
+		this.removeFromCurrentLane();
+		this.removeFromCurrentRoad();
+		this.onLane = false;
+		this.onRoad = false;
+		this.accRate_ = 0;
+		this.accDecided_ = false;
+		this.accPlan_.clear();
+		this.nextLane_ = null;
+		this.nextRoad_ = null;
+		this.macroLeading_ = null;
+		this.macroTrailing_ = null;
+		this.leading_ = null;
+		this.trailing_ = null;
+		this.roadPath = null;
+		this.Nshadow = 0;
+		this.futureRoutingRoad = new ArrayList<Road>();
+		this.originCoord_ = departureRoad.getStartCoord();
+		this.setCurrentCoord(this.originCoord_);
+		this.setPreviousEpochCoord(this.originCoord_);
+		departureRoad.addVehicleToPendingQueue(this);
+	}
+
+	private Road departurableFallbackRoad() {
+		if (isDeparturableRoad(this.lastDeparturableRoad_)) {
+			return this.lastDeparturableRoad_;
+		}
+		Road nearbyRoad = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road);
+		return isDeparturableRoad(nearbyRoad) ? nearbyRoad : null;
+	}
+
+	private boolean requeueFromDeparturableRoadForReroute(String source) {
+		if (isDeparturableRoad(this.road)) {
+			return false;
+		}
+		Road fallbackRoad = departurableFallbackRoad();
+		if (fallbackRoad == null) {
+			ContextCreator.logger.warn(source + ": vehicle " + this.getID()
+					+ " is on non-departurable road " + roadLabel(this.road)
+					+ " and has no departurable fallback road; skipping reroute.");
+			this.roadPath = null;
+			this.nextRoad_ = null;
+			return true;
+		}
+		ContextCreator.logger.warn(source + ": vehicle " + this.getID()
+				+ " is on non-departurable road " + roadLabel(this.road)
+				+ "; requeueing departure from " + roadLabel(fallbackRoad) + ".");
+		this.originRoad_ = fallbackRoad;
+		updateLastDeparturableRoad(fallbackRoad);
+		queueDepartureFromRoad(fallbackRoad);
+		return true;
 	}
 	
 	public void departure(int roadID) {
@@ -668,6 +898,9 @@ public class Vehicle {
 			this.nextRoad_ = null;
 			return;
 		}
+		if (requeueFromDeparturableRoadForReroute("rerouteAndSetNextRoad")) {
+			return;
+		}
 		this.roadPath = RouteContext.shortestPathRoute(this.road, this.destRoad_, this.rand_route_only); // K-shortest path or shortest path
 		if (this.roadPath == null) {
 			// Cannot find route between this.road and this.destRoad_, meaning this.road or this.destRoad_ is at a deadend
@@ -681,7 +914,7 @@ public class Vehicle {
 			if(this.roadPath == null) {
 				Road r1 = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road);
 				
-				if (r1 != null && r2 != null) {
+				if (isDeparturableRoad(r1) && r2 != null) {
 					this.roadPath = RouteContext.shortestPathRoute(r1, r2, this.rand_route_only);
 				}
 				
@@ -693,7 +926,18 @@ public class Vehicle {
 					return;
 				}
 				else {
-					this.roadPath.add(0, this.road);
+					if (this.road.getDownStreamRoads().contains(r1.getID())) {
+						this.roadPath.add(0, this.road);
+					} else {
+						ContextCreator.logger.warn("rerouteAndSetNextRoad: fallback origin " + roadLabel(r1)
+								+ " is not connected from current road " + roadLabel(this.road)
+								+ "; requeueing departure from fallback road.");
+						this.originRoad_ = r1;
+						updateLastDeparturableRoad(r1);
+						this.isReachDest = false;
+						queueDepartureFromRoad(r1);
+						return;
+					}
 				}
 				
 			}
@@ -756,6 +1000,24 @@ public class Vehicle {
 			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: vehicle " + this.getID()
 					+ " current road " + this.road.getOrigID() + " is not directly connected to next road "
 					+ nextRoad.getOrigID() + " — updating path anyway for co-sim tracking.");
+		}
+		if (!isDeparturableRoad(nextRoad)) {
+			Road fallbackRoad = departurableFallbackRoad();
+			if (fallbackRoad == null) {
+				ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: requested next road " + roadLabel(nextRoad)
+						+ " is not departurable and vehicle " + this.getID()
+						+ " has no departurable fallback road; skipping reroute.");
+				this.nextRoad_ = null;
+				return;
+			}
+			ContextCreator.logger.warn("rerouteWithSpecifiedNextRoad: requested next road " + roadLabel(nextRoad)
+					+ " is not departurable; requeueing vehicle " + this.getID()
+					+ " from " + roadLabel(fallbackRoad) + ".");
+			this.originRoad_ = fallbackRoad;
+			updateLastDeparturableRoad(fallbackRoad);
+			this.isReachDest = false;
+			queueDepartureFromRoad(fallbackRoad);
+			return;
 		}
 
 		// Vehicle departed
@@ -1253,6 +1515,7 @@ public class Vehicle {
 			this.makeAcceleratingDecision();
 		} else {
 			this.accDecided_ = false;
+			this.ensureAccelerationPlan(this.accRate_);
 		}
 	}
 
@@ -1313,10 +1576,10 @@ public class Vehicle {
 		double comfortableDec = Math.max(0.1, -effNormalDec);
 		
 		// road ends
-		if (this.nextRoad_ != null && this.road.getID() != this.nextRoad_.getID()) {
-			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
+		if (this.nextRoad_ != null && this.road != null && this.road.getID() != this.nextRoad_.getID()) {
+			Junction nextJunction = this.nextJunction();
 			
-			if (nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID())>0) { // edge case 1: brake for the red light
+			if (nextJunction != null && nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) > 0) { // edge case 1: brake for the red light
 				double decTime = this.currentSpeed_ / comfortableDec;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
 					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_ / this.distance_)));
@@ -1819,6 +2082,9 @@ public class Vehicle {
 	 * Get the upcoming intersection
 	 */
 	public Junction nextJunction() {
+		if (this.road == null) {
+			return null;
+		}
 		return ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 	}
 	
@@ -2230,6 +2496,9 @@ public class Vehicle {
 	 * @param newCoord New cooridnates of the vehicle
 	 */
 	protected void setPreviousEpochCoord(Coordinate newCoord) {
+		if (newCoord == null) {
+			return;
+		}
 		this.previousEpochCoord.x = newCoord.x;
 		this.previousEpochCoord.y = newCoord.y;
 	}
@@ -2241,8 +2510,27 @@ public class Vehicle {
 	 * Also, the vehicle will be removed from the network if it arrives its destination.
 	 */
 	public void move() {
+		if (this.isDormantOnRoad()) {
+			this.currentSpeed_ = 0.0;
+			this.accRate_ = 0.0;
+			this.accDecided_ = false;
+			this.accPlan_.clear();
+			this.movingFlag = false;
+			return;
+		}
+
 		/* Load the acc decision */
-		accRate_ = accPlan_.pop();
+		if (accPlan_.isEmpty()) {
+			ContextCreator.logger.debug("Vehicle.move missing acceleration plan; using zero acceleration. tick="
+					+ ContextCreator.getCurrentTick() + " vehicle=" + this.getID()
+					+ " road=" + (this.road == null ? -1 : this.road.getID())
+					+ " lane=" + (this.lane == null ? -1 : this.lane.getID())
+					+ " onLane=" + this.onLane + " state=" + this.vehicleState);
+			accRate_ = 0.0;
+			this.accDecided_ = false;
+		} else {
+			accRate_ = accPlan_.pop();
+		}
 		
 		// Snapshot the speed at the start of this tick. If this tick ends
 		// with the vehicle transitioning onto a CoSim road,
@@ -2399,19 +2687,49 @@ public class Vehicle {
 			return true; // Only reach destination once
 		} 
 		else if (this.nextRoad_ != null) {
+			if (this.road == null) {
+				logStuckTransferFailure("NO_CURRENT_ROAD", null, null, false, true,
+						this.nextLane_, Double.NaN, 1.2 * this.length(), null);
+				this.onLane = false;
+				return false;
+			}
 			coordMap.clear();
-			Junction nextJunction = ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
+			if (!this.nextRoadMatchesPath()) {
+				logStuckTransferFailure("ROUTE_MISMATCH", null, null, false, true,
+						this.nextLane_, Double.NaN, 1.2 * this.length(), null);
+				ContextCreator.logger.warn("changeRoad: route mismatch for vehicle " + this.getID()
+						+ " current road " + this.road.getOrigID()
+						+ " next road " + this.nextRoad_.getOrigID() + "; rerouting.");
+				this.rerouteAndSetNextRoad();
+				this.onLane = false;
+				return false;
+			}
+			if (this.nextLane_ == null) {
+				this.assignNextLane();
+			}
+			if (this.nextLane_ == null) {
+				logStuckTransferFailure("NO_NEXT_LANE", this.nextJunction(), null, false, true,
+						null, Double.NaN, 1.2 * this.length(), null);
+				this.onLane = false;
+				return false;
+			}
+			Junction nextJunction = this.nextJunction();
+			Signal signal = null;
 			boolean movable = false;
-			if(this.nextRoad_.getID() == this.roadPath.get(1).getID()) { // nextRoad data is consistent
+			if (nextJunction == null) {
+				movable = true;
+			} else { // nextRoad data is consistent
 				switch(nextJunction.getControlType()) {
 					case Junction.NoControl:
 						movable = true;
 						break;
 					case Junction.DynamicSignal:
+						signal = nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID());
 						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 							movable = true;
 						break;
 					case Junction.StaticSignal:
+						signal = nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID());
 						if(nextJunction.getSignalState(this.road.getID(), this.nextRoad_.getID())<= Signal.Yellow)
 							movable = true;
 						break;
@@ -2428,44 +2746,81 @@ public class Vehicle {
 						break;
 				}
 			}
-			
 
-			if((movable && this.nextRoad_.noEnterRoadConflict(this.road)) || this.road.getControlType() == Road.COSIM) { // Cosim road would rely the external simulator to decide movable or not
-				// Check if the target road has space
-				if(this.nextRoad_.getControlType() == Road.COSIM) {
-						// For cosim road, get the last vehicle, check whether the distance is greater than 1.2 * this.length
-						Vehicle lastVeh = nextLane_.lastVehicle();
-						if((lastVeh == null)) {
-							this.executeRoadTransition(nextLane_, nextRoad_);
-							
-							return true;
-						}
-						else {
-							Coordinate c1 = lastVeh.getCurrentCoord();
-							// Get dist between the coord and the begining coord of the lane
-							Coordinate c2 = nextLane_.getStartCoord();
-							if((ContextCreator.getCityContext().getDistance(c1, c2) >= 1.2 * this.length())){
-								this.executeRoadTransition(nextLane_, nextRoad_);
-								
+			double requiredGap = 1.2 * this.length();
+			double targetGapForDebug = this.entranceGap(nextLane_);
+			boolean sourceRoadControlledByCosim = this.road.getControlType() == Road.COSIM;
+			if(!sourceRoadControlledByCosim && !movable) {
+				logStuckTransferFailure("CONTROL_GATE", nextJunction, signal, movable, true,
+						this.nextLane_, targetGapForDebug, requiredGap, null);
+				this.onLane = false;
+				return false;
+			}
+
+			Vehicle conflictBlocker = null;
+			boolean conflictFree = true;
+			if(!sourceRoadControlledByCosim) {
+				conflictBlocker = this.nextRoad_.enterRoadConflictBlocker(this.road, this);
+				conflictFree = conflictBlocker == null;
+			}
+			if(!conflictFree) {
+				logStuckTransferFailure("CONFLICT_GATE", nextJunction, signal, movable, conflictFree,
+						this.nextLane_, Double.NaN, requiredGap, conflictBlocker);
+				this.onLane = false;
+				return false;
+			}
+
+			// Check if the target road has space
+			if(this.nextRoad_.getControlType() == Road.COSIM) {
+				// For cosim road, get the last vehicle, check whether the distance is greater than 1.2 * this.length
+				Vehicle lastVeh = nextLane_.lastVehicle();
+				if((lastVeh == null)) {
+					logStuckTransferSuccess("COSIM_EMPTY_TARGET", nextLane_, nextRoad_);
+					this.executeRoadTransition(nextLane_, nextRoad_);
+					return true;
+				}
+				else {
+					Coordinate c1 = lastVeh.getCurrentCoord();
+					// Get dist between the coord and the begining coord of the lane
+					Coordinate c2 = nextLane_.getStartCoord();
+					double cosimEntranceGap = ContextCreator.getCityContext().getDistance(c1, c2);
+					if(cosimEntranceGap >= requiredGap){
+						logStuckTransferSuccess("COSIM_TARGET_GAP", nextLane_, nextRoad_);
+						this.executeRoadTransition(nextLane_, nextRoad_);
+						return true;
+					}
+					logStuckTransferFailure("COSIM_ENTRANCE_GAP", nextJunction, signal, movable, conflictFree,
+							this.nextLane_, cosimEntranceGap, requiredGap, null);
+				}
+			}
+			else {
+				double targetGap = this.entranceGap(nextLane_);
+				if (targetGap >= requiredGap) {
+					logStuckTransferSuccess("TARGET_LANE_GAP", nextLane_, nextRoad_);
+					this.executeRoadTransition(nextLane_, nextRoad_);
+					return true;
+				}
+				else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock 
+					if (this.lane == null) {
+						logStuckTransferFailure("NO_CURRENT_LANE_FOR_GRIDLOCK_ESCAPE", nextJunction, signal,
+								movable, conflictFree, this.nextLane_, targetGap, requiredGap, null);
+					} else {
+						for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
+							Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
+							double altGap = this.entranceGap(dnlane);
+							if (altGap >= requiredGap) {
+								logStuckTransferSuccess("GRIDLOCK_ESCAPE_ALTERNATE_LANE", dnlane, dnlane.getRoad());
+								this.executeRoadTransition(dnlane, dnlane.getRoad());
 								return true;
 							}
 						}
+						logStuckTransferFailure("ENTRANCE_GAP_AFTER_GRIDLOCK_ESCAPE", nextJunction, signal,
+								movable, conflictFree, this.nextLane_, targetGap, requiredGap, null);
 					}
-					else {
-						if ((this.entranceGap(nextLane_) >= 1.2 * this.length())) {
-							this.executeRoadTransition(nextLane_, nextRoad_);
-							return true;
-						}
-						else if (this.stuckTime >= GlobalVariables.MAX_STUCK_TIME) { // addressing gridlock 
-							for(Integer dnlaneID: this.lane.getDownStreamLanes()) {
-								Lane dnlane = ContextCreator.getLaneContext().get(dnlaneID);
-								if (this.entranceGap(dnlane) >= 1.2*this.length()) {
-									this.executeRoadTransition(dnlane, dnlane.getRoad());
-									return true;
-								}
-							}
-						}
-					}
+				} else {
+					logStuckTransferFailure("ENTRANCE_GAP", nextJunction, signal, movable, conflictFree,
+							this.nextLane_, targetGap, requiredGap, null);
+				}
 			}
 			
 			this.onLane = false;
@@ -2554,6 +2909,7 @@ public class Vehicle {
 	 */
 	public void appendToRoad(Road road) {
 		this.road = road;
+		updateLastDeparturableRoad(road);
 		
 		// If the macroLeading is modified in advanceInMacroList by other thread
 		// then this vehicle will be misplaced in the Linked List
@@ -2568,6 +2924,7 @@ public class Vehicle {
 		
 		// After this appending, update the number of vehicles
 		road.changeNumberOfVehicles(1);
+		ContextCreator.getRoadContext().markRoadActive(road);
 		this.onRoad = true;
 		
 		// Set next road
@@ -2800,6 +3157,14 @@ public class Vehicle {
 		if (this.originRoad_ == null) return -1;
 		return this.originRoad_.getID();
 	}
+
+	/**
+	 * Get the last road visited by this vehicle that can be used as a route origin.
+	 */
+	public int getLastDeparturableRoad() {
+		if (this.lastDeparturableRoad_ == null) return -1;
+		return this.lastDeparturableRoad_.getID();
+	}
 	
 	/**
 	 * Get destination road
@@ -2879,6 +3244,33 @@ public class Vehicle {
 			return 0;
 		}
 	}
+
+	/**
+	 * Vehicles controlled by external APIs may intentionally stay visible on the
+	 * last road after completing a dispatch or repositioning leg. They should not
+	 * keep cycling through the intersection transfer queue or consuming traction
+	 * energy until a new command assigns an active trip.
+	 */
+	public boolean isDormantOnRoad() {
+		if (!this.onRoad) return false;
+		if (this.vehicleState != Vehicle.NONE_OF_THE_ABOVE && this.vehicleState != Vehicle.PARKING) return false;
+		if (this.nextRoad_ != null) return false;
+		return true;
+	}
+
+	protected void pauseOnRoadWithoutMovement() {
+		this.clearShadowImpact();
+		this.currentSpeed_ = 0.0;
+		this.accRate_ = 0.0;
+		this.accDecided_ = false;
+		this.accPlan_.clear();
+		this.nextRoad_ = null;
+		this.nextLane_ = null;
+		this.roadPath = null;
+		this.movingFlag = false;
+		this.stuckTime = 0;
+		this.resetLaneChangeRuntimeState();
+	}
 	
 	/**
 	 *  Call when arriving the destination
@@ -2953,6 +3345,7 @@ public class Vehicle {
 		if (ContextCreator.getZoneContext().get(zoneID) == null) {
 			zoneID = road.getNeighboringZone(false);
 		}
+		updateLastDeparturableRoad(road);
 		this.onParkedOnRoad(road, zoneID);
 		this.currentParkingRoad = road.getID();
 		this.leaveNetwork();
@@ -3036,6 +3429,7 @@ public class Vehicle {
 				pr.lastVehicle(macroLeading_);
 			}
 			this.road = null;
+			ContextCreator.getRoadContext().markRoadActive(pr);
 		}
 	}
 
@@ -3166,7 +3560,7 @@ public class Vehicle {
 	 * value
 	 */
 	public boolean isInCorrectLane() {
-		if (nextRoad_ == null) {
+		if (nextRoad_ == null || nextLane_ == null || lane == null) {
 			return true;
 		}
 		// If using dynamic shortest path then we need to check lane only after
@@ -3188,9 +3582,10 @@ public class Vehicle {
 		boolean connected = false;
 		Lane curLane = this.lane;
 
-		if (nextRoad != null) {
+		if (nextRoad != null && curLane != null) {
 			for (int dl : curLane.getDownStreamLanes()) {
-				if (ContextCreator.getLaneContext().get(dl).getRoad() == nextRoad) {
+				Lane downStreamLane = ContextCreator.getLaneContext().get(dl);
+				if (downStreamLane != null && downStreamLane.getRoad() == nextRoad) {
 					// if this lane already connects to downstream road then
 					// assign to the connected lane
 					connected = true;
@@ -3217,8 +3612,9 @@ public class Vehicle {
 			}
 			else {
 				for (int dl : curLane.getDownStreamLanes()) {
-					if (ContextCreator.getLaneContext().get(dl).getRoad() == this.nextRoad_) {
-						this.nextLane_ = ContextCreator.getLaneContext().get(dl);
+					Lane downStreamLane = ContextCreator.getLaneContext().get(dl);
+					if (downStreamLane != null && downStreamLane.getRoad() == this.nextRoad_) {
+						this.nextLane_ = downStreamLane;
 						// If this lane already connects to downstream road then assign to the connected lane
 						return;
 					}
@@ -3232,27 +3628,55 @@ public class Vehicle {
 					}
 				}
 				
-				// Fallback, use the first lane
+				if (this.patchDisconnectedNextRoad()) {
+					return;
+				}
+				if (this.nextRoad_ == null) {
+					return;
+				}
+				if (!isDeparturableRoad(this.road)) {
+					if (requeueFromDeparturableRoadForReroute("assignNextLane")) {
+						return;
+					}
+				}
+				if (this.road.getControlType() != Road.COSIM && this.nextRoad_.getControlType() != Road.COSIM) {
+					ContextCreator.logger.warn("assignNextLane: no lane connection from curLane " + curLane
+							+ " curRoad " + this.getRoad() + " to nextRoad " + this.nextRoad_
+							+ "; clearing invalid next road.");
+					this.nextLane_ = null;
+					this.nextRoad_ = null;
+					return;
+				}
+
+				// Co-sim transitions may be externally routed across non-adjacent METS-R roads.
 				this.nextLane_ = this.nextRoad_.getLane(0);
-				
-				// Vehicle's route data is broken and there is not connection between this.road and this.nextRoad_
-				// Raise a warning and call the routing function to complete the missing route
-//				ContextCreator.logger.warn("No connection between curRoad " + this.road + " to nextRoad" + this.nextRoad_ + " for vehicle " + this.getID() + " fixing by reroute it.");
-//				List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only); // K-shortest path or shortest path
-//				if (patchPath != null && patchPath.size() > 2) {
-//					List<Road> subPatch = patchPath.subList(1, patchPath.size() - 1);
-//					this.roadPath.addAll(1, subPatch); // insert pathPath between roadPath
-//					this.nextRoad_ = this.roadPath.get(1); // update the nextRoad
-//					this.setShadowImpact();
-//					this.assignNextLane(); // try to get next lane again 
-//					return;
-//				}
 			}
 		}
 		// nextRoad is not connected to the current lane — acceptable in co-sim where the
 		// external simulator may route the vehicle across non-adjacent roads. Lane 0 of
 		// nextRoad is used as the fallback entry point.
 		ContextCreator.logger.warn("assignNextLane: no lane connection from curLane " + curLane + " curRoad " + this.getRoad() + " to nextRoad " + this.nextRoad_ + " — using lane 0 as fallback");
+	}
+
+	private boolean nextRoadMatchesPath() {
+		return this.roadPath != null && this.roadPath.size() > 1 && this.roadPath.get(1) != null
+				&& this.nextRoad_ != null && this.nextRoad_.getID() == this.roadPath.get(1).getID();
+	}
+
+	private boolean patchDisconnectedNextRoad() {
+		if (this.road == null || this.nextRoad_ == null || this.roadPath == null) {
+			return false;
+		}
+		List<Road> patchPath = RouteContext.shortestPathRoute(this.road, this.nextRoad_, this.rand_route_only);
+		if (patchPath == null || patchPath.size() <= 2) {
+			return false;
+		}
+		this.clearShadowImpact();
+		this.roadPath.addAll(1, new ArrayList<Road>(patchPath.subList(1, patchPath.size() - 1)));
+		this.nextRoad_ = this.roadPath.get(1);
+		this.setShadowImpact();
+		this.assignNextLane();
+		return this.nextLane_ != null;
 	}
 
 	/**
@@ -3847,6 +4271,13 @@ public class Vehicle {
 		}
 		return false;
 	}
+
+	public void ensureAccelerationPlan(double fallbackAcc) {
+		if (this.accPlan_.isEmpty()) {
+			this.accPlan_.add(Double.isNaN(fallbackAcc) ? 0.0 : fallbackAcc);
+		}
+		this.accDecided_ = false;
+	}
 	
 	public int getVehicleClass() {
 		return this.vehicleClass;
@@ -4025,10 +4456,20 @@ public class Vehicle {
 	 * Check if the current vehicle is about to enter a next Road
 	 */
 	public boolean aboutToEnterRoad(Road dsRoad) {
-		if(this.nextRoad_ == dsRoad) {
+		if(isSameRoad(this.prevNextRoad_, dsRoad)) {
 			if(this.prevDistance < (this.prevSpeed + 0.5 * this.maxAcceleration_) * GlobalVariables.SIMULATION_STEP_SIZE) return true;
 		}
 		return false;
+	}
+
+	public boolean wasPreviouslyOnRoad(Road road) {
+		return isSameRoad(this.prevRoad_, road);
+	}
+
+	private boolean isSameRoad(Road r1, Road r2) {
+		if(r1 == r2) return true;
+		if(r1 == null || r2 == null) return false;
+		return r1.getID() == r2.getID();
 	}
 	
 	/**
@@ -4037,6 +4478,8 @@ public class Vehicle {
 	public void recordPrevState() {
 		this.prevDistance = this.distance_;
 		this.prevSpeed = this.currentSpeed_;
+		this.prevRoad_ = this.road;
+		this.prevNextRoad_ = this.nextRoad_;
 	}
 	
 	public int getStuckTime() {
@@ -4068,7 +4511,8 @@ public class Vehicle {
 	public void setNumTrips(int n) { this.numTrips = n; }
 	public void setLinkTravelTime(double t) { this.linkTravelTime = t; }
 	public void setDestRoad(Road r) { this.destRoad_ = r; }
-	public void setOriginRoad(Road r) { this.originRoad_ = r; if (r != null && this.originCoord_ == null) this.originCoord_ = r.getStartCoord(); }
+	public void setOriginRoad(Road r) { this.originRoad_ = r; if (r != null && this.originCoord_ == null) this.originCoord_ = r.getStartCoord(); updateLastDeparturableRoad(r); }
+	public void setLastDeparturableRoad(Road r) { this.lastDeparturableRoad_ = isDeparturableRoad(r) ? r : null; }
 	public void setActivityPlan(ArrayList<Plan> plan) { this.activityPlan = plan; }
 	public boolean getMovingFlag() { return this.movingFlag; }
 

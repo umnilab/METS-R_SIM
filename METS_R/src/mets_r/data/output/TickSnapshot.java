@@ -687,8 +687,13 @@ public class TickSnapshot {
 	}
 
 	public boolean isEmpty() {
+		boolean linksEmpty;
+		synchronized (this.links) {
+			linksEmpty = this.links.isEmpty();
+		}
 		return (this.vehicles.isEmpty() && this.evs_occupied.isEmpty() && this.evs_relocation.isEmpty()
-				&& this.evs_charging.isEmpty() && this.evs_private.isEmpty() && this.buses.isEmpty());
+				&& this.evs_charging.isEmpty() && this.evs_private.isEmpty() && this.buses.isEmpty()
+				&& linksEmpty);
 	}
 
 	public int getTickNumber() {

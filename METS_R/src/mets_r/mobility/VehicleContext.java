@@ -245,11 +245,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		TreeSet<ElectricTaxi> set = this.availableTaxiMap.get(zoneID);
 		if (set == null || set.isEmpty()) return new ArrayList<>();
 		
-		List<ElectricTaxi> sortedList = new ArrayList<>(set);
-		// Explicitly sort to guarantee ID order, overriding any TreeSet corruption
-		sortedList.sort(Comparator.comparingInt(ElectricTaxi::getID));
-		
-		return sortedList;
+		return new ArrayList<>(set);
 	}
 	
 	public synchronized void addAvailableTaxi(ElectricTaxi v, int z) {
@@ -318,10 +314,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public synchronized List<ElectricTaxi> getRelocationTaxiSorted(int z) {
 	    TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
 	    if (set == null) return new ArrayList<>();
-	    List<ElectricTaxi> sortedList = new ArrayList<>(set);
-		// Explicitly sort to guarantee ID order, overriding any TreeSet corruption
-		sortedList.sort(Comparator.comparingInt(ElectricTaxi::getID));
-	    return sortedList;
+	    return new ArrayList<>(set);
 	}
 	
 	public synchronized int getNumOfRelocationTaxi(int z) {
@@ -427,40 +420,58 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public void executeGlobalTransfers() {
-		List<Vehicle> sortedTransfers = new ArrayList<Vehicle>(this.allTransferringVehicles);
+		List<Vehicle> sortedTransfers = drainVehicleQueue(this.allTransferringVehicles);
 	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
 	    
 	    for (Vehicle currentVehicle: sortedTransfers) {
-	    	Road r = currentVehicle.getRoad();
+	        if (currentVehicle.isDormantOnRoad()) {
+	            currentVehicle.setSpeed(0.0f);
+	            currentVehicle.setAccRate(0.0f);
+	            currentVehicle.setMovingFlag(false);
+	            continue;
+	        }
+	        Road r = currentVehicle.getRoad();
             if (!currentVehicle.changeRoad()) { 
                 currentVehicle.setSpeed(0.0f);
                 currentVehicle.setAccRate(0.0f);
                 currentVehicle.setMovingFlag(false);
             } else { 
-                // Successfully entered the next road
-                r.recordEnergyConsumption(currentVehicle); 
-                r.recordTravelTime(currentVehicle);
+                if (r != null) {
+                    r.recordEnergyConsumption(currentVehicle);
+                    r.recordTravelTime(currentVehicle);
+                }
                 currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance() + currentVehicle.getDistanceToNextJunction());
                 currentVehicle.setMovingFlag(true);
             }
 	    }
 	    
-	    List<Vehicle> sortedArrivals = new ArrayList<>(this.allArrivingVehicles);
+	    List<Vehicle> sortedArrivals = drainVehicleQueue(this.allArrivingVehicles);
 	    sortedArrivals.sort(Comparator.comparingInt(Vehicle::getID));
 	    
 	    for (Vehicle currentVehicle: sortedArrivals) {
 	    	currentVehicle.reachDest();
 	    }
-	    
-    this.allTransferringVehicles.clear();
-    this.allArrivingVehicles.clear();
-}
+	}
+
+	private List<Vehicle> drainVehicleQueue(ConcurrentLinkedQueue<Vehicle> queue) {
+		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+		for (Vehicle v = queue.poll(); v != null; v = queue.poll()) {
+			vehicles.add(v);
+		}
+		return vehicles;
+	}
 	
 	public void addArrivalVehicles(Vehicle v) {
 		this.allArrivingVehicles.add(v);
 	}
 	
 	public void addTransferringVehicles(Vehicle v) {
+		if (v != null && v.isDormantOnRoad()) {
+			return;
+		}
+		if (v != null && v.getRoad() != null) {
+			ContextCreator.getRoadContext().markRoadActive(v.getRoad());
+		}
 		this.allTransferringVehicles.add(v);
 	}
 }

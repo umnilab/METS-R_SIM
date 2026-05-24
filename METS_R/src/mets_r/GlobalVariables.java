@@ -148,6 +148,28 @@ public class GlobalVariables {
 	public static int TAXI_BATTERY = Integer.valueOf(loadConfig("TAXI_BATTERY"));
 	public static int BUS_BATTERY = Integer.valueOf(loadConfig("BUS_BATTERY"));
 
+	// EV energy-consumption model parameters
+	public static double EV_MASS = Double.valueOf(loadConfig("EV_MASS"));
+	public static double TAXI_MASS = Double.valueOf(loadConfig("TAXI_MASS"));
+	public static double BUS_MASS = Double.valueOf(loadConfig("BUS_MASS"));
+	public static double EV_METERS_PER_KWH = Double.valueOf(loadConfig("EV_METERS_PER_KWH"));
+	public static double TAXI_METERS_PER_KWH = Double.valueOf(loadConfig("TAXI_METERS_PER_KWH"));
+	public static double BUS_METERS_PER_KWH = Double.valueOf(loadConfig("BUS_METERS_PER_KWH"));
+	public static double EV_ENERGY_GRAVITY = Double.valueOf(loadConfig("EV_ENERGY_GRAVITY"));
+	public static double EV_ENERGY_AIR_DENSITY = Double.valueOf(loadConfig("EV_ENERGY_AIR_DENSITY"));
+	public static double EV_ENERGY_FRONTAL_AREA = Double.valueOf(loadConfig("EV_ENERGY_FRONTAL_AREA"));
+	public static double EV_ENERGY_DRAG_COEFFICIENT = Double.valueOf(loadConfig("EV_ENERGY_DRAG_COEFFICIENT"));
+	public static double EV_ENERGY_ROLLING_COEFFICIENT = Double.valueOf(loadConfig("EV_ENERGY_ROLLING_COEFFICIENT"));
+	public static double EV_ENERGY_ROLLING_C1 = Double.valueOf(loadConfig("EV_ENERGY_ROLLING_C1"));
+	public static double EV_ENERGY_ROLLING_C2 = Double.valueOf(loadConfig("EV_ENERGY_ROLLING_C2"));
+	public static double EV_ENERGY_MOTOR_EFFICIENCY = Double.valueOf(loadConfig("EV_ENERGY_MOTOR_EFFICIENCY"));
+	public static double EV_ENERGY_GEAR_EFFICIENCY = Double.valueOf(loadConfig("EV_ENERGY_GEAR_EFFICIENCY"));
+	public static double EV_ENERGY_AUXILIARY_POWER = Double.valueOf(loadConfig("EV_ENERGY_AUXILIARY_POWER"));
+	public static double EV_ENERGY_REGEN_COEFFICIENT = Double.valueOf(loadConfig("EV_ENERGY_REGEN_COEFFICIENT"));
+	public static double BUS_ENERGY_FRONTAL_AREA = Double.valueOf(loadConfig("BUS_ENERGY_FRONTAL_AREA"));
+	public static double BUS_ENERGY_DRAG_COEFFICIENT = Double.valueOf(loadConfig("BUS_ENERGY_DRAG_COEFFICIENT"));
+	public static double BUS_ENERGY_AUXILIARY_POWER = Double.valueOf(loadConfig("BUS_ENERGY_AUXILIARY_POWER"));
+
 	// Event file, placeholder for future extension
 	public static String EVENT_FILE = loadConfig("EVENT_FILE");
 	public static int EVENT_CHECK_FREQUENCY = Integer.valueOf(loadConfig("EVENT_CHECK_FREQUENCY"));
@@ -169,6 +191,7 @@ public class GlobalVariables {
 	
 	/* Network Partitioning */
 	public static boolean MULTI_THREADING = Boolean.valueOf(loadConfig("MULTI_THREADING"));
+	public static boolean ACTIVE_ROAD_STEPPING = Boolean.valueOf(loadConfig("ACTIVE_ROAD_STEPPING"));
 	// Load the number of partitions from the config file
 	public static int N_Partition = Integer.valueOf(loadConfig("N_PARTITION"));
 	public static int N_THREADS = Integer.valueOf(loadConfig("N_THREADS"));
@@ -397,4 +420,9 @@ public class GlobalVariables {
 	
 	// Addressing the gridlock in the parallel mode
 	public static int MAX_STUCK_TIME = (int) (Integer.valueOf(loadConfig("MAX_STUCK_TIME"))/SIMULATION_STEP_SIZE);
+	public static boolean DEBUG_STUCK_VEHICLE = Boolean.valueOf(loadConfig("DEBUG_STUCK_VEHICLE"));
+	public static int DEBUG_STUCK_VEHICLE_MIN_TIME = (int) (Integer
+			.valueOf(loadConfig("DEBUG_STUCK_VEHICLE_MIN_TIME"))/SIMULATION_STEP_SIZE);
+	public static int DEBUG_STUCK_VEHICLE_LOG_INTERVAL = (int) (Integer
+			.valueOf(loadConfig("DEBUG_STUCK_VEHICLE_LOG_INTERVAL"))/SIMULATION_STEP_SIZE);
 }

@@ -3,7 +3,10 @@ package mets_r.facility;
 import java.io.File;
 import java.net.URI;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -27,9 +30,11 @@ import repast.simphony.space.gis.ShapefileLoader;
  **/
 
 public class RoadContext extends FacilityContext<Road> {
+	private Set<Integer> activeRoadIDs;
 	
 	public RoadContext() {
 		super("RoadContext");
+		this.activeRoadIDs = ConcurrentHashMap.newKeySet();
 		ContextCreator.logger.info("RoadContext creation");
 		/*
 		 * GIS projection for spatial information about Roads. This is used to then
@@ -114,5 +119,63 @@ public class RoadContext extends FacilityContext<Road> {
 			facilityIDList.add(r.getOrigID());
 		}	
 		return facilityIDList;
+	}
+
+	public void markRoadActive(Road road) {
+		if (road != null) {
+			markRoadActive(road.getID());
+		}
+	}
+
+	public void markRoadActive(int roadID) {
+		this.activeRoadIDs.add(roadID);
+	}
+
+	public List<Road> getActiveRoadsSnapshot() {
+		ArrayList<Road> activeRoads = new ArrayList<Road>(this.activeRoadIDs.size());
+		for (Integer roadID : this.activeRoadIDs) {
+			Road road = this.get(roadID);
+			if (road != null) {
+				activeRoads.add(road);
+			} else {
+				this.activeRoadIDs.remove(roadID);
+			}
+		}
+		return activeRoads;
+	}
+
+	public void refreshActiveRoads(Collection<Road> roads) {
+		if (roads == null) {
+			return;
+		}
+		for (Road road : roads) {
+			if (road == null) {
+				continue;
+			}
+			if (road.hasActiveVehicles()) {
+				this.activeRoadIDs.add(road.getID());
+			} else {
+				this.activeRoadIDs.remove(road.getID());
+			}
+		}
+	}
+
+	public void rebuildActiveRoadsFromState() {
+		this.activeRoadIDs.clear();
+		for (Road road : this.getAll()) {
+			if (road.hasActiveVehicles()) {
+				this.activeRoadIDs.add(road.getID());
+			}
+		}
+	}
+
+	public int getActiveRoadCount() {
+		return this.activeRoadIDs.size();
+	}
+
+	@Override
+	public void remove(int ID) {
+		this.activeRoadIDs.remove(ID);
+		super.remove(ID);
 	}
 }
