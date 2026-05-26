@@ -1128,6 +1128,8 @@ public class SnapshotUtil {
 		}
 //		ContextCreator.logger.info("Loaded vehicle snapshots");
 
+		vc.rebuildTaxiRequestMaps();
+
 		restoreRoadEnteringQueues(roadSnapshots, restoredVehicleMap);
 
 		// 12. Restore charging station queues (now that vehicles are created)
@@ -1307,6 +1309,8 @@ public class SnapshotUtil {
 				v.rerouteAndSetNextRoad();
 			}
 		}
+
+		vc.rebuildTaxiRequestMaps();
 
 		return restoredVehicleMap;
 	}

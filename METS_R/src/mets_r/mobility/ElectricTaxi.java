@@ -305,6 +305,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			// Dispatch the vehicle to serve the request
 			for (Request p: plist) {
 				this.toBoardRequests.add(p);
+				ContextCreator.getVehicleContext().registerPickupTaxiRequest(p, this);
 				this.addPlan(p.getOriginZone(),
 						p.getOriginRoad(),
 						ContextCreator.getNextTick());
@@ -373,6 +374,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		} else {
 			this.toBoardRequests.add(request);
 		}
+		ContextCreator.getVehicleContext().registerPickupTaxiRequest(request, this);
 		this.recordPassengerMatch(request);
 		this.passNum += request.getNumPeople();
 	}
@@ -564,6 +566,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			// Decide the next step
 			if (this.getState() == Vehicle.OCCUPIED_TRIP) {
 				Request arrived_request = this.onBoardRequests.poll();
+				ContextCreator.getVehicleContext().removeOccupiedTaxiRequest(arrived_request);
 				this.passNum = this.passNum - arrived_request.getNumPeople(); // passenger arrived
 				this.recordPassengerDropoff(arrived_request);
 				z.taxiServedRequest += 1;
@@ -634,6 +637,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				// super.leaveNetwork(); // Leave network to pickup passengers
 				// Assume no waiting time for picking up, modify this line if you want to count the waiting time
 				Request pickedup_request = this.toBoardRequests.poll();
+				ContextCreator.getVehicleContext().removePickupTaxiRequest(pickedup_request);
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
 				this.recordPassengerPickup(pickedup_request);
 				Zone pickupZone = ContextCreator.getZoneContext().get(pickedup_request.getOriginZone());
@@ -642,6 +646,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					pickupZone.taxiPickedUpPassengers += pickedup_request.getNumPeople();
 				}
 				this.onBoardRequests.add(pickedup_request);
+				ContextCreator.getVehicleContext().registerOccupiedTaxiRequest(pickedup_request, this);
 
 				if(this.toBoardRequests.size() == 0) {
 					this.setState(Vehicle.OCCUPIED_TRIP);
@@ -825,8 +830,24 @@ public class ElectricTaxi extends ElectricVehicle {
 	public void setPassNum(int v) { this.passNum = v; }
 	public Queue<Request> getToBoardRequests() { return this.toBoardRequests; }
 	public Queue<Request> getOnBoardRequests() { return this.onBoardRequests; }
-	public void setToBoardRequests(Queue<Request> q) { this.toBoardRequests = q == null ? new LinkedList<Request>() : q; }
-	public void setOnBoardRequests(Queue<Request> q) { this.onBoardRequests = q == null ? new LinkedList<Request>() : q; }
+	public void setToBoardRequests(Queue<Request> q) {
+		for (Request request : this.toBoardRequests) {
+			ContextCreator.getVehicleContext().removePickupTaxiRequest(request);
+		}
+		this.toBoardRequests = q == null ? new LinkedList<Request>() : q;
+		for (Request request : this.toBoardRequests) {
+			ContextCreator.getVehicleContext().registerPickupTaxiRequest(request, this);
+		}
+	}
+	public void setOnBoardRequests(Queue<Request> q) {
+		for (Request request : this.onBoardRequests) {
+			ContextCreator.getVehicleContext().removeOccupiedTaxiRequest(request);
+		}
+		this.onBoardRequests = q == null ? new LinkedList<Request>() : q;
+		for (Request request : this.onBoardRequests) {
+			ContextCreator.getVehicleContext().registerOccupiedTaxiRequest(request, this);
+		}
+	}
 	public int getMatchedRequests() { return this.matchedRequests; }
 	public void setMatchedRequests(int v) { this.matchedRequests = v; }
 	public int getMatchedPassengers() { return this.matchedPassengers; }

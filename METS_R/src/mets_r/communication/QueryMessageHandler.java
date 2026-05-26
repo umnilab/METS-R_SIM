@@ -45,6 +45,7 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("vehicle", this::getVehicle);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
+        messageHandlers.put("queryTaxi", this::getTaxi);
         messageHandlers.put("bus", this::getBus);
         
         // =============================================================
@@ -94,10 +95,14 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("pendingRequests", this::getPendingRequests);
         messageHandlers.put("request", this::getRequest);
         messageHandlers.put("availableTaxis", this::getAvailableTaxis);
+        messageHandlers.put("pickupTaxiInfo", this::getPickupTaxiInfo);
+        messageHandlers.put("occupiedTaxiInfo", this::getOccupiedTaxiInfo);
         // Backward-compat aliases for earlier names
         messageHandlers.put("queryPendingRequests", this::getPendingRequests);
         messageHandlers.put("queryRequest", this::getRequest);
         messageHandlers.put("queryAvailableTaxis", this::getAvailableTaxis);
+        messageHandlers.put("queryPickupTaxiInfo", this::getPickupTaxiInfo);
+        messageHandlers.put("queryOccupiedTaxiInfo", this::getOccupiedTaxiInfo);
     }
 	
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
@@ -351,6 +356,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("pickupPassengers", taxi.getPickupPassengers());
 					record2.put("dropoffRequests", taxi.getDropoffRequests());
 					record2.put("dropoffPassengers", taxi.getDropoffPassengers());
+					record2.put("toBoardReqIDs", requestIDs(taxi.getToBoardRequests()));
+					record2.put("onBoardReqIDs", requestIDs(taxi.getOnBoardRequests()));
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -460,6 +467,18 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("CODE", "KO");
 			return jsonObj;
 		}
+	}
+
+	private ArrayList<Integer> requestIDs(Queue<Request> requests) {
+		ArrayList<Integer> ids = new ArrayList<Integer>();
+		if (requests != null) {
+			for (Request request : requests) {
+				if (request != null) {
+					ids.add(request.getID());
+				}
+			}
+		}
+		return ids;
 	}
 
 	/**
@@ -1490,6 +1509,80 @@ public class QueryMessageHandler extends MessageHandler {
 		rec.put("zoneID", zoneID);
 		rec.put("STATUS", "OK");
 		return rec;
+	}
+
+	public HashMap<String, Object> getPickupTaxiInfo(JSONObject jsonMsg) {
+		return getTaxiRequestInfo(jsonMsg, ContextCreator.getVehicleContext().getPickupTaxiRequestMap(),
+				"toBoard");
+	}
+
+	public HashMap<String, Object> getOccupiedTaxiInfo(JSONObject jsonMsg) {
+		return getTaxiRequestInfo(jsonMsg, ContextCreator.getVehicleContext().getOccupiedTaxiRequestMap(),
+				"onBoard");
+	}
+
+	private HashMap<String, Object> getTaxiRequestInfo(JSONObject jsonMsg, Map<Integer, Vehicle> taxiMap,
+			String requestState) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			List<Integer> requestedIDs = parseOptionalReqIDs(jsonMsg);
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (Map.Entry<Integer, Vehicle> entry : taxiMap.entrySet()) {
+				if (requestedIDs != null && !requestedIDs.contains(entry.getKey())) {
+					continue;
+				}
+				Vehicle vehicle = entry.getValue();
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("reqID", entry.getKey());
+				record.put("vehID", vehicle == null ? -1 : vehicle.getID());
+				record.put("requestState", requestState);
+				if (vehicle != null) {
+					record.put("state", vehicle.getState());
+				}
+				record.put("STATUS", vehicle == null ? "KO" : "OK");
+				jsonData.add(record);
+			}
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getTaxiRequestInfo: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	private List<Integer> parseOptionalReqIDs(JSONObject jsonMsg) {
+		if (!jsonMsg.containsKey("DATA")) {
+			return null;
+		}
+		ArrayList<Integer> ids = new ArrayList<Integer>();
+		Object data = jsonMsg.get("DATA");
+		if (data instanceof Iterable<?>) {
+			for (Object value : (Iterable<?>) data) {
+				Integer id = parseInteger(value);
+				if (id != null) {
+					ids.add(id);
+				}
+			}
+		} else {
+			Integer id = parseInteger(data);
+			if (id != null) {
+				ids.add(id);
+			}
+		}
+		return ids;
+	}
+
+	private Integer parseInteger(Object value) {
+		if (value == null) return null;
+		if (value instanceof Number) return Integer.valueOf(((Number) value).intValue());
+		try {
+			return Integer.valueOf(String.valueOf(value).trim());
+		} catch (NumberFormatException e) {
+			return null;
+		}
 	}
 	
 	/**

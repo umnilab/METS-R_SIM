@@ -140,6 +140,7 @@ public class ControlMessageHandler extends MessageHandler {
 		// Ride-hailing: dispatch & repositioning
 		// =============================================================
 		messageHandlers.put("dispatchTaxi", this::dispatchTaxi);
+		messageHandlers.put("cancelRequests", this::cancelRequests);
 		messageHandlers.put("repositionTaxi", this::repositionTaxi);
 		messageHandlers.put("goParking", this::goParking);
 		messageHandlers.put("assignRequestToBus", this::assignRequestToBus);
@@ -1198,6 +1199,134 @@ public class ControlMessageHandler extends MessageHandler {
 	// =============================================================
 	
 	/**
+	 * Cancel taxi or bus requests by request ID and origin zone ID.
+	 *
+	 * <p>Input DATA: a list of objects with {@code reqID} and {@code zoneID}.
+	 * Pending requests are removed from the specified zone queue and counted as
+	 * passengers who left. Matched taxi pickup requests are removed from the
+	 * taxi's pickup queue and trip plan; if the active pickup is removed, the
+	 * taxi advances to its next queued trip with {@link Vehicle#setNextPlan()}.
+	 * Occupied taxi requests are not cancellable.
+	 */
+	private HashMap<String, Object> cancelRequests(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if(!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		try {
+			ArrayList<CancelRequestEntry> entries = parseCancelRequestEntries(jsonMsg.get("DATA"));
+			if (entries.isEmpty()) {
+				jsonAns.put("WARN", "No request entries found in DATA");
+				jsonAns.put("CODE", "KO");
+				return jsonAns;
+			}
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (CancelRequestEntry entry : entries) {
+				Integer reqID = entry.reqID;
+				Integer zoneID = entry.zoneID;
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("reqID", reqID);
+				record.put("zoneID", zoneID);
+				if (reqID == null) {
+					record.put("STATUS", "KO");
+					record.put("WARN", "request ID missing");
+					jsonData.add(record);
+					continue;
+				}
+				if (zoneID == null) {
+					record.put("STATUS", "KO");
+					record.put("WARN", "zone ID missing");
+					jsonData.add(record);
+					continue;
+				}
+				if (ContextCreator.getZoneContext().get(zoneID) == null) {
+					record.put("STATUS", "KO");
+					record.put("WARN", "zone not found");
+					jsonData.add(record);
+					continue;
+				}
+
+				PendingTaxiRequestRef pendingTaxi = findAndRemovePendingTaxiRequest(reqID, zoneID);
+				if (pendingTaxi != null) {
+					recordTaxiRequestLeft(pendingTaxi);
+					record.put("mode", "taxi");
+					record.put("requestState", "pending");
+					record.put("action", "left");
+					record.put("originZone", pendingTaxi.request.getOriginZone());
+					record.put("destZone", pendingTaxi.request.getDestZone());
+					record.put("STATUS", "OK");
+					jsonData.add(record);
+					continue;
+				}
+
+				PendingBusRequestRef pendingBus = findAndRemovePendingBusRequest(reqID, zoneID);
+				if (pendingBus != null) {
+					recordBusRequestLeft(pendingBus);
+					record.put("mode", "bus");
+					record.put("requestState", "pending");
+					record.put("action", "left");
+					record.put("originZone", pendingBus.request.getOriginZone());
+					record.put("destZone", pendingBus.request.getDestZone());
+					record.put("STATUS", "OK");
+					jsonData.add(record);
+					continue;
+				}
+
+				MatchedTaxiCancelResult matchedTaxi = cancelMatchedTaxiRequest(reqID, zoneID);
+				if (matchedTaxi != null) {
+					record.put("mode", "taxi");
+					record.put("requestState", "matched");
+					record.put("vehicleID", matchedTaxi.vehicleID);
+					record.put("removedPickupTrip", matchedTaxi.removedPickupTrip);
+					record.put("removedDropoffTrip", matchedTaxi.removedDropoffTrip);
+					record.put("currentTripRemoved", matchedTaxi.currentTripRemoved);
+					record.put("startedNextTrip", matchedTaxi.startedNextTrip);
+					record.put("originZone", matchedTaxi.request.getOriginZone());
+					record.put("destZone", matchedTaxi.request.getDestZone());
+					if (matchedTaxi.warn != null) {
+						record.put("WARN", matchedTaxi.warn);
+					}
+					record.put("STATUS", matchedTaxi.statusOK ? "OK" : "KO");
+					jsonData.add(record);
+					continue;
+				}
+
+				MatchedBusCancelResult matchedBus = cancelMatchedBusRequest(reqID, zoneID);
+				if (matchedBus != null) {
+					record.put("mode", "bus");
+					record.put("requestState", "matched");
+					record.put("vehicleID", matchedBus.vehicleID);
+					record.put("stopIndex", matchedBus.stopIndex);
+					record.put("onBoard", matchedBus.onBoard);
+					record.put("originZone", matchedBus.request.getOriginZone());
+					record.put("destZone", matchedBus.request.getDestZone());
+					if (matchedBus.warn != null) {
+						record.put("WARN", matchedBus.warn);
+					}
+					record.put("STATUS", matchedBus.statusOK ? "OK" : "KO");
+					jsonData.add(record);
+					continue;
+				}
+
+				record.put("STATUS", "KO");
+				record.put("WARN", "request not found");
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing cancelRequests: " + e.toString());
+			jsonAns.put("CODE", "KO");
+		}
+		return jsonAns;
+	}
+
+	/**
 	 * Dispatch a taxi to serve an already-pending request.
 	 *
 	 * <p>Input DATA: list of {@code {vehID, reqID}}. The request must have
@@ -1707,47 +1836,63 @@ public class ControlMessageHandler extends MessageHandler {
 	 *     insertTaxiPass and drained by processToAddPassengers)
 	 */
 	private PendingTaxiRequestRef findAndRemovePendingTaxiRequest(int reqID) {
+		return findAndRemovePendingTaxiRequest(reqID, null);
+	}
+
+	private PendingTaxiRequestRef findAndRemovePendingTaxiRequest(int reqID, Integer zoneID) {
+		if (zoneID != null) {
+			Zone z = ContextCreator.getZoneContext().get(zoneID);
+			return z == null ? null : findAndRemovePendingTaxiRequestInZone(z, reqID);
+		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			Iterator<Request> it = z.getTaxiRequestQueue().iterator();
-			while (it.hasNext()) {
-				Request r = it.next();
+			PendingTaxiRequestRef ref = findAndRemovePendingTaxiRequestInZone(z, reqID);
+			if (ref != null) {
+				return ref;
+			}
+		}
+		return null;
+	}
+
+	private PendingTaxiRequestRef findAndRemovePendingTaxiRequestInZone(Zone z, int reqID) {
+		Iterator<Request> it = z.getTaxiRequestQueue().iterator();
+		while (it.hasNext()) {
+			Request r = it.next();
+			if (r.getID() == reqID) {
+				it.remove();
+				z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
+				PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+				ref.zone = z;
+				ref.request = r;
+				ref.source = "queue";
+				return ref;
+			}
+		}
+		for (Map.Entry<Integer, Queue<Request>> e : z.getSharableRequestForTaxi().entrySet()) {
+			Iterator<Request> sit = e.getValue().iterator();
+			while (sit.hasNext()) {
+				Request r = sit.next();
 				if (r.getID() == reqID) {
-					it.remove();
+					sit.remove();
 					z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
 					PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
 					ref.zone = z;
 					ref.request = r;
-					ref.source = "queue";
+					ref.source = "sharable";
+					ref.sharableDestination = e.getKey();
 					return ref;
 				}
 			}
-			for (Map.Entry<Integer, Queue<Request>> e : z.getSharableRequestForTaxi().entrySet()) {
-				Iterator<Request> sit = e.getValue().iterator();
-				while (sit.hasNext()) {
-					Request r = sit.next();
-					if (r.getID() == reqID) {
-						sit.remove();
-						z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
-						PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
-						ref.zone = z;
-						ref.request = r;
-						ref.source = "sharable";
-						ref.sharableDestination = e.getKey();
-						return ref;
-					}
-				}
-			}
-			Iterator<Request> tit = z.getToAddTaxiRequestQueue().iterator();
-			while (tit.hasNext()) {
-				Request r = tit.next();
-				if (r.getID() == reqID) {
-					tit.remove();
-					PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
-					ref.zone = z;
-					ref.request = r;
-					ref.source = "toAdd";
-					return ref;
-				}
+		}
+		Iterator<Request> tit = z.getToAddTaxiRequestQueue().iterator();
+		while (tit.hasNext()) {
+			Request r = tit.next();
+			if (r.getID() == reqID) {
+				tit.remove();
+				PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+				ref.zone = z;
+				ref.request = r;
+				ref.source = "toAdd";
+				return ref;
 			}
 		}
 		return null;
@@ -1786,31 +1931,47 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private PendingBusRequestRef findAndRemovePendingBusRequest(int reqID) {
+		return findAndRemovePendingBusRequest(reqID, null);
+	}
+
+	private PendingBusRequestRef findAndRemovePendingBusRequest(int reqID, Integer zoneID) {
+		if (zoneID != null) {
+			Zone z = ContextCreator.getZoneContext().get(zoneID);
+			return z == null ? null : findAndRemovePendingBusRequestInZone(z, reqID);
+		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			Iterator<Request> it = z.getBusRequestQueue().iterator();
-			while (it.hasNext()) {
-				Request r = it.next();
-				if (r.getID() == reqID) {
-					it.remove();
-					z.setNRequestForBus(z.getBusRequestNum() - 1);
-					PendingBusRequestRef ref = new PendingBusRequestRef();
-					ref.zone = z;
-					ref.request = r;
-					ref.source = "queue";
-					return ref;
-				}
+			PendingBusRequestRef ref = findAndRemovePendingBusRequestInZone(z, reqID);
+			if (ref != null) {
+				return ref;
 			}
-			Iterator<Request> tit = z.getToAddBusRequestQueue().iterator();
-			while (tit.hasNext()) {
-				Request r = tit.next();
-				if (r.getID() == reqID) {
-					tit.remove();
-					PendingBusRequestRef ref = new PendingBusRequestRef();
-					ref.zone = z;
-					ref.request = r;
-					ref.source = "toAdd";
-					return ref;
-				}
+		}
+		return null;
+	}
+
+	private PendingBusRequestRef findAndRemovePendingBusRequestInZone(Zone z, int reqID) {
+		Iterator<Request> it = z.getBusRequestQueue().iterator();
+		while (it.hasNext()) {
+			Request r = it.next();
+			if (r.getID() == reqID) {
+				it.remove();
+				z.setNRequestForBus(z.getBusRequestNum() - 1);
+				PendingBusRequestRef ref = new PendingBusRequestRef();
+				ref.zone = z;
+				ref.request = r;
+				ref.source = "queue";
+				return ref;
+			}
+		}
+		Iterator<Request> tit = z.getToAddBusRequestQueue().iterator();
+		while (tit.hasNext()) {
+			Request r = tit.next();
+			if (r.getID() == reqID) {
+				tit.remove();
+				PendingBusRequestRef ref = new PendingBusRequestRef();
+				ref.zone = z;
+				ref.request = r;
+				ref.source = "toAdd";
+				return ref;
 			}
 		}
 		return null;
@@ -1825,6 +1986,371 @@ public class ControlMessageHandler extends MessageHandler {
 			z.getBusRequestQueue().add(r);
 			z.setNRequestForBus(z.getBusRequestNum() + 1);
 		}
+	}
+
+	private static class CancelRequestEntry {
+		Integer reqID;
+		Integer zoneID;
+	}
+
+	private ArrayList<CancelRequestEntry> parseCancelRequestEntries(Object data) {
+		ArrayList<CancelRequestEntry> entries = new ArrayList<CancelRequestEntry>();
+		appendCancelRequestEntry(entries, data);
+		return entries;
+	}
+
+	private void appendCancelRequestEntry(ArrayList<CancelRequestEntry> entries, Object entry) {
+		if (entry == null) return;
+		if (entry instanceof Map<?, ?>) {
+			Map<?, ?> record = (Map<?, ?>) entry;
+			CancelRequestEntry cancelEntry = new CancelRequestEntry();
+			cancelEntry.reqID = integerValue(firstPresent(record, "reqID", "requestID", "requestId", "ID", "id"));
+			cancelEntry.zoneID = integerValue(firstPresent(record,
+					"zoneID", "zoneId", "zone", "originZone", "origZone", "origin"));
+			if (cancelEntry.reqID != null || cancelEntry.zoneID != null) {
+				entries.add(cancelEntry);
+			}
+		} else if (entry instanceof Iterable<?>) {
+			for (Object value : (Iterable<?>) entry) {
+				appendCancelRequestEntry(entries, value);
+			}
+		} else {
+			CancelRequestEntry cancelEntry = new CancelRequestEntry();
+			cancelEntry.reqID = integerValue(entry);
+			if (cancelEntry.reqID != null) {
+				entries.add(cancelEntry);
+			}
+		}
+	}
+
+	private void recordTaxiRequestLeft(PendingTaxiRequestRef ref) {
+		if (ref == null || ref.request == null) return;
+		Zone z = ref.zone != null ? ref.zone : ContextCreator.getZoneContext().get(ref.request.getOriginZone());
+		if (z == null) return;
+		z.taxiLeavedPassWaitingTime += ref.request.getCurrentWaitingTime();
+		z.numberOfLeavedTaxiRequest += 1;
+		z.numberOfLeavedTaxiPassengers += ref.request.getNumPeople();
+	}
+
+	private void recordBusRequestLeft(PendingBusRequestRef ref) {
+		if (ref == null || ref.request == null) return;
+		Zone z = ref.zone != null ? ref.zone : ContextCreator.getZoneContext().get(ref.request.getOriginZone());
+		if (z == null) return;
+		z.busLeavedPassWaitingTime += ref.request.getCurrentWaitingTime();
+		z.numberOfLeavedBusRequest += 1;
+		z.numberOfLeavedBusPassengers += ref.request.getNumPeople();
+	}
+
+	private static class RequestQueueRemoval {
+		Request request;
+		int index;
+
+		RequestQueueRemoval(Request request, int index) {
+			this.request = request;
+			this.index = index;
+		}
+	}
+
+	private RequestQueueRemoval removeRequestFromQueue(Queue<Request> requests, int reqID) {
+		if (requests == null) return null;
+		int index = 0;
+		Iterator<Request> it = requests.iterator();
+		while (it.hasNext()) {
+			Request request = it.next();
+			if (request != null && request.getID() == reqID) {
+				it.remove();
+				return new RequestQueueRemoval(request, index);
+			}
+			index++;
+		}
+		return null;
+	}
+
+	private Request findRequestInQueue(Queue<Request> requests, int reqID) {
+		if (requests == null) return null;
+		for (Request request : requests) {
+			if (request != null && request.getID() == reqID) {
+				return request;
+			}
+		}
+		return null;
+	}
+
+	private boolean requestOriginMatchesZone(Request request, int zoneID) {
+		return request != null && request.getOriginZone() == zoneID;
+	}
+
+	private static class MatchedTaxiCancelResult {
+		int vehicleID;
+		Request request;
+		boolean statusOK;
+		String warn;
+		boolean removedPickupTrip;
+		boolean removedDropoffTrip;
+		boolean currentTripRemoved;
+		boolean startedNextTrip;
+	}
+
+	private MatchedTaxiCancelResult cancelMatchedTaxiRequest(int reqID, int zoneID) {
+		Vehicle pickupVehicle = ContextCreator.getVehicleContext().getPickupTaxiForRequest(reqID);
+		if (pickupVehicle instanceof ElectricTaxi) {
+			MatchedTaxiCancelResult result = cancelPickupTaxiRequest((ElectricTaxi) pickupVehicle, reqID, zoneID);
+			if (result != null) return result;
+		}
+
+		Vehicle occupiedVehicle = ContextCreator.getVehicleContext().getOccupiedTaxiForRequest(reqID);
+		if (occupiedVehicle instanceof ElectricTaxi) {
+			MatchedTaxiCancelResult result = rejectOccupiedTaxiCancellation((ElectricTaxi) occupiedVehicle, reqID, zoneID);
+			if (result != null) return result;
+		}
+
+		for (ElectricTaxi taxi : ContextCreator.getVehicleContext().getTaxis()) {
+			MatchedTaxiCancelResult result = cancelPickupTaxiRequest(taxi, reqID, zoneID);
+			if (result != null) return result;
+
+			result = rejectOccupiedTaxiCancellation(taxi, reqID, zoneID);
+			if (result != null) return result;
+		}
+		return null;
+	}
+
+	private MatchedTaxiCancelResult cancelPickupTaxiRequest(ElectricTaxi taxi, int reqID, int zoneID) {
+		Request request = findRequestInQueue(taxi.getToBoardRequests(), reqID);
+		if (request == null) {
+			ContextCreator.getVehicleContext().removePickupTaxiRequest(reqID);
+			return null;
+		}
+
+		MatchedTaxiCancelResult result = new MatchedTaxiCancelResult();
+		result.vehicleID = taxi.getID();
+		result.request = request;
+		if (!requestOriginMatchesZone(request, zoneID)) {
+			result.statusOK = false;
+			result.warn = "request zone mismatch";
+			return result;
+		}
+
+		RequestQueueRemoval pickup = removeRequestFromQueue(taxi.getToBoardRequests(), reqID);
+		if (pickup == null) {
+			ContextCreator.getVehicleContext().removePickupTaxiRequest(reqID);
+			return null;
+		}
+
+		ContextCreator.getVehicleContext().removePickupTaxiRequest(reqID);
+		result.request = pickup.request;
+		result.statusOK = true;
+		taxi.setPassNum(Math.max(0, taxi.getPassNum() - pickup.request.getNumPeople()));
+		if (taxi.getState() == Vehicle.PICKUP_TRIP) {
+			result.currentTripRemoved = pickup.index == 0;
+			if (result.currentTripRemoved) {
+				result.removedPickupTrip = true;
+				removeFutureSupplyForRequest(pickup.request);
+				TaxiAdvanceResult advance = advanceTaxiAfterCurrentCancellation(taxi);
+				result.startedNextTrip = advance.advanced;
+				if (advance.nextRequest != null) {
+					addFutureSupplyForRequest(advance.nextRequest);
+				}
+			} else {
+				result.removedPickupTrip = removePlanForRequest(taxi, pickup.request, true, pickup.index);
+			}
+		}
+		return result;
+	}
+
+	private MatchedTaxiCancelResult rejectOccupiedTaxiCancellation(ElectricTaxi taxi, int reqID, int zoneID) {
+		Request request = findRequestInQueue(taxi.getOnBoardRequests(), reqID);
+		if (request == null) {
+			ContextCreator.getVehicleContext().removeOccupiedTaxiRequest(reqID);
+			return null;
+		}
+
+		MatchedTaxiCancelResult result = new MatchedTaxiCancelResult();
+		result.vehicleID = taxi.getID();
+		result.request = request;
+		result.statusOK = false;
+		if (!requestOriginMatchesZone(request, zoneID)) {
+			result.warn = "request zone mismatch";
+		} else {
+			result.warn = "request is on an occupied taxi trip and cannot be cancelled";
+		}
+		return result;
+	}
+
+	private static class TaxiAdvanceResult {
+		Request nextRequest;
+		boolean advanced;
+	}
+
+	private TaxiAdvanceResult advanceTaxiAfterCurrentCancellation(ElectricTaxi taxi) {
+		TaxiAdvanceResult result = new TaxiAdvanceResult();
+		Request nextPickup = taxi.getToBoardRequests().peek();
+		if (nextPickup != null) {
+			ensureTaxiPlanAtIndexOne(taxi, nextPickup, true);
+			taxi.setState(Vehicle.PICKUP_TRIP);
+			result.nextRequest = nextPickup;
+		} else {
+			Request nextDropoff = taxi.getOnBoardRequests().peek();
+			if (nextDropoff != null) {
+				ensureTaxiPlanAtIndexOne(taxi, nextDropoff, false);
+				taxi.setState(Vehicle.OCCUPIED_TRIP);
+				result.nextRequest = nextDropoff;
+			}
+		}
+
+		if (result.nextRequest != null && taxi.getPlan().size() >= 2) {
+			taxi.setNextPlan();
+			if (taxi.isOnRoad()) {
+				taxi.departure();
+			}
+			result.advanced = true;
+		} else {
+			if (!taxi.getPlan().isEmpty()) {
+				taxi.getPlan().remove(0);
+			}
+			taxi.setState(Vehicle.CRUISING_TRIP);
+		}
+		return result;
+	}
+
+	private void ensureTaxiPlanAtIndexOne(ElectricTaxi taxi, Request request, boolean pickup) {
+		ArrayList<Plan> plans = taxi.getPlan();
+		if (plans.isEmpty()) {
+			plans.add(anchorPlanForTaxi(taxi, request, pickup));
+		}
+		if (plans.size() > 1 && planMatchesRequest(plans.get(1), request, pickup)) {
+			return;
+		}
+		Plan nextPlan = planForRequest(request, pickup);
+		if (plans.size() <= 1) {
+			plans.add(nextPlan);
+		} else {
+			plans.add(1, nextPlan);
+		}
+	}
+
+	private Plan anchorPlanForTaxi(ElectricTaxi taxi, Request request, boolean pickup) {
+		int zoneID = taxi.getDestID() >= 0 ? taxi.getDestID()
+				: (pickup ? request.getOriginZone() : request.getDestZone());
+		int roadID = taxi.getDestRoad() >= 0 ? taxi.getDestRoad()
+				: (pickup ? request.getOriginRoad() : request.getDestRoad());
+		return new Plan(zoneID, roadID, ContextCreator.getNextTick());
+	}
+
+	private Plan planForRequest(Request request, boolean pickup) {
+		if (pickup) {
+			return new Plan(request.getOriginZone(), request.getOriginRoad(), ContextCreator.getNextTick());
+		}
+		return new Plan(request.getDestZone(), request.getDestRoad(), ContextCreator.getNextTick());
+	}
+
+	private boolean removePlanForRequest(Vehicle vehicle, Request request, boolean pickup, int expectedIndex) {
+		if (vehicle == null || request == null) return false;
+		ArrayList<Plan> plans = vehicle.getPlan();
+		if (plans == null || plans.isEmpty()) return false;
+
+		if (expectedIndex > 0 && expectedIndex < plans.size()
+				&& planMatchesRequest(plans.get(expectedIndex), request, pickup)) {
+			plans.remove(expectedIndex);
+			return true;
+		}
+
+		int matchIndex = -1;
+		for (int i = 1; i < plans.size(); i++) {
+			if (planMatchesRequest(plans.get(i), request, pickup)) {
+				if (matchIndex >= 0) {
+					return false;
+				}
+				matchIndex = i;
+			}
+		}
+		if (matchIndex >= 0) {
+			plans.remove(matchIndex);
+			return true;
+		}
+		return false;
+	}
+
+	private boolean planMatchesRequest(Plan plan, Request request, boolean pickup) {
+		if (plan == null || request == null) return false;
+		if (pickup) {
+			return plan.getDestZoneID() == request.getOriginZone()
+					&& plan.getDestRoadID() == request.getOriginRoad();
+		}
+		return plan.getDestZoneID() == request.getDestZone()
+				&& plan.getDestRoadID() == request.getDestRoad();
+	}
+
+	private void removeFutureSupplyForRequest(Request request) {
+		if (request == null) return;
+		Zone z = ContextCreator.getZoneContext().get(request.getDestZone());
+		if (z != null) {
+			z.removeFutureSupply();
+		}
+	}
+
+	private void addFutureSupplyForRequest(Request request) {
+		if (request == null) return;
+		Zone z = ContextCreator.getZoneContext().get(request.getDestZone());
+		if (z != null) {
+			z.addFutureSupply();
+		}
+	}
+
+	private static class MatchedBusCancelResult {
+		int vehicleID;
+		int stopIndex;
+		boolean onBoard;
+		Request request;
+		boolean statusOK;
+		String warn;
+	}
+
+	private MatchedBusCancelResult cancelMatchedBusRequest(int reqID, int zoneID) {
+		for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+			ArrayList<Queue<Request>> toBoard = bus.getToBoardRequests();
+			for (int i = 0; i < toBoard.size(); i++) {
+				Request request = findRequestInQueue(toBoard.get(i), reqID);
+				if (request != null) {
+					MatchedBusCancelResult result = new MatchedBusCancelResult();
+					result.vehicleID = bus.getID();
+					result.stopIndex = i;
+					result.onBoard = false;
+					result.request = request;
+					if (!requestOriginMatchesZone(request, zoneID)) {
+						result.statusOK = false;
+						result.warn = "request zone mismatch";
+						return result;
+					}
+					RequestQueueRemoval removed = removeRequestFromQueue(toBoard.get(i), reqID);
+					result.request = removed.request;
+					result.statusOK = true;
+					return result;
+				}
+			}
+
+			ArrayList<Queue<Request>> onBoard = bus.getOnBoardRequests();
+			for (int i = 0; i < onBoard.size(); i++) {
+				Request request = findRequestInQueue(onBoard.get(i), reqID);
+				if (request != null) {
+					MatchedBusCancelResult result = new MatchedBusCancelResult();
+					result.vehicleID = bus.getID();
+					result.stopIndex = i;
+					result.onBoard = true;
+					result.request = request;
+					if (!requestOriginMatchesZone(request, zoneID)) {
+						result.statusOK = false;
+						result.warn = "request zone mismatch";
+						return result;
+					}
+					RequestQueueRemoval removed = removeRequestFromQueue(onBoard.get(i), reqID);
+					bus.setPassNum(Math.max(0, bus.getPassNum() - removed.request.getNumPeople()));
+					result.request = removed.request;
+					result.statusOK = true;
+					return result;
+				}
+			}
+		}
+		return null;
 	}
 
 	/**

@@ -23,6 +23,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	// For taxi/ride-hailing operation
 	private Map<Integer, TreeSet<ElectricTaxi>> availableTaxiMap;
 	private Map<Integer, TreeSet<ElectricTaxi>> relocationTaxiMap;
+	private Map<Integer, Vehicle> pickupTaxiRequestMap;
+	private Map<Integer, Vehicle> occupiedTaxiRequestMap;
 	
 	// For data collection
 	private Map<Integer, ElectricTaxi> taxiMap; 
@@ -62,6 +64,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private void initMaps() {
 		this.availableTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
 		this.relocationTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
+		this.pickupTaxiRequestMap = new HashMap<Integer, Vehicle>();
+		this.occupiedTaxiRequestMap = new HashMap<Integer, Vehicle>();
 		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
 		this.busMap = new HashMap<Integer, ElectricBus>();
 		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
@@ -321,6 +325,127 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(z);
 	    return (set != null) ? set.size() : 0;
 	}
+
+	public synchronized void registerPickupTaxiRequest(Request request, Vehicle taxi) {
+		if (request != null && taxi != null) {
+			this.pickupTaxiRequestMap.put(request.getID(), taxi);
+		}
+	}
+
+	public synchronized void registerOccupiedTaxiRequest(Request request, Vehicle taxi) {
+		if (request != null && taxi != null) {
+			this.occupiedTaxiRequestMap.put(request.getID(), taxi);
+		}
+	}
+
+	public synchronized void removePickupTaxiRequest(Request request) {
+		if (request != null) {
+			this.pickupTaxiRequestMap.remove(request.getID());
+		}
+	}
+
+	public synchronized void removePickupTaxiRequest(int reqID) {
+		this.pickupTaxiRequestMap.remove(reqID);
+	}
+
+	public synchronized void removeOccupiedTaxiRequest(Request request) {
+		if (request != null) {
+			this.occupiedTaxiRequestMap.remove(request.getID());
+		}
+	}
+
+	public synchronized void removeOccupiedTaxiRequest(int reqID) {
+		this.occupiedTaxiRequestMap.remove(reqID);
+	}
+
+	public synchronized Vehicle getPickupTaxiForRequest(int reqID) {
+		return this.pickupTaxiRequestMap.get(reqID);
+	}
+
+	public synchronized Vehicle getOccupiedTaxiForRequest(int reqID) {
+		return this.occupiedTaxiRequestMap.get(reqID);
+	}
+
+	public synchronized Map<Integer, Vehicle> getPickupTaxiRequestMap() {
+		return new HashMap<Integer, Vehicle>(this.pickupTaxiRequestMap);
+	}
+
+	public synchronized Map<Integer, Vehicle> getOccupiedTaxiRequestMap() {
+		return new HashMap<Integer, Vehicle>(this.occupiedTaxiRequestMap);
+	}
+
+	public synchronized HashMap<Integer, Integer> savePickupTaxiRequestMap() {
+		return requestVehicleIDMap(this.pickupTaxiRequestMap);
+	}
+
+	public synchronized HashMap<Integer, Integer> saveOccupiedTaxiRequestMap() {
+		return requestVehicleIDMap(this.occupiedTaxiRequestMap);
+	}
+
+	public synchronized void loadPickupTaxiRequestMap(Map<?, ?> savedMap) {
+		this.pickupTaxiRequestMap.clear();
+		loadRequestVehicleMap(savedMap, this.pickupTaxiRequestMap);
+	}
+
+	public synchronized void loadOccupiedTaxiRequestMap(Map<?, ?> savedMap) {
+		this.occupiedTaxiRequestMap.clear();
+		loadRequestVehicleMap(savedMap, this.occupiedTaxiRequestMap);
+	}
+
+	public synchronized void rebuildTaxiRequestMaps() {
+		this.pickupTaxiRequestMap.clear();
+		this.occupiedTaxiRequestMap.clear();
+		for (ElectricTaxi taxi : this.taxiMap.values()) {
+			registerTaxiRequests(taxi);
+		}
+	}
+
+	private HashMap<Integer, Integer> requestVehicleIDMap(Map<Integer, Vehicle> requestMap) {
+		HashMap<Integer, Integer> savedMap = new HashMap<Integer, Integer>();
+		for (Map.Entry<Integer, Vehicle> entry : requestMap.entrySet()) {
+			Vehicle vehicle = entry.getValue();
+			if (entry.getKey() != null && vehicle != null) {
+				savedMap.put(entry.getKey(), vehicle.getID());
+			}
+		}
+		return savedMap;
+	}
+
+	private void loadRequestVehicleMap(Map<?, ?> savedMap, Map<Integer, Vehicle> targetMap) {
+		if (savedMap == null) {
+			return;
+		}
+		for (Map.Entry<?, ?> entry : savedMap.entrySet()) {
+			Integer reqID = integerValue(entry.getKey());
+			Integer taxiID = integerValue(entry.getValue());
+			ElectricTaxi taxi = taxiID == null ? null : this.taxiMap.get(taxiID);
+			if (reqID != null && taxi != null) {
+				targetMap.put(reqID, taxi);
+			}
+		}
+	}
+
+	private Integer integerValue(Object value) {
+		if (value == null) return null;
+		if (value instanceof Number) return Integer.valueOf(((Number) value).intValue());
+		try {
+			return Integer.valueOf(String.valueOf(value));
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
+
+	private void registerTaxiRequests(ElectricTaxi taxi) {
+		if (taxi == null) {
+			return;
+		}
+		for (Request request : taxi.getToBoardRequests()) {
+			registerPickupTaxiRequest(request, taxi);
+		}
+		for (Request request : taxi.getOnBoardRequests()) {
+			registerOccupiedTaxiRequest(request, taxi);
+		}
+	}
 	
 	public synchronized ElectricVehicle getPrivateEV(int vid) {
 		if(this.privateEVMap.containsKey(vid)) {
@@ -381,6 +506,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	public void clearMaps() {
 		this.taxiMap.clear();
 		this.busMap.clear();
+		this.pickupTaxiRequestMap.clear();
+		this.occupiedTaxiRequestMap.clear();
 		this.privateEVMap.clear();
 		this.privateGVMap.clear();
 		this.privateVIDMap.clear();
@@ -395,6 +522,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	public void registerTaxi(ElectricTaxi v) {
 		this.taxiMap.put(v.getID(), v);
+		registerTaxiRequests(v);
 	}
 	
 	public void registerBus(ElectricBus v) {
