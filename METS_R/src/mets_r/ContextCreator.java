@@ -318,7 +318,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 			return;
 		}
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(initTick, 1, ScheduleParameters.LAST_PRIORITY);
+		int firstGateTick = initTick;
+		synchronized (stepCommandLock) {
+			if (schedulerAtStepGate) {
+				firstGateTick = initTick + 1;
+			}
+		}
+		ScheduleParameters nextStepParams = ScheduleParameters.createRepeating(firstGateTick, 1, ScheduleParameters.LAST_PRIORITY);
 		stepGateAction = schedule.schedule(nextStepParams, scheduleOwner, "waitForNextStepCommand");
 		scheduledActions.add(stepGateAction);
 	}
@@ -649,10 +655,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * Thread safety: must be called from the connection (control) thread.
 	 */
 	public static boolean deferredLoad(String zipPath) {
+		return deferredLoad(zipPath, false);
+	}
+
+	public static boolean deferredLoad(String zipPath, boolean reloadNetwork) {
 		waitForScheduleQuiescence("deferredLoad");
 		// Schedule queue is now quiescent; rebuildForLoad() will remove
 		// every tracked action cleanly.
-		return load(zipPath);
+		return load(zipPath, reloadNetwork);
 	}
 
 	// The reset function
@@ -857,14 +867,84 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// The load function: restores simulation from a zip archive
 	public static boolean load(String zipPath) {
+		return load(zipPath, false);
+	}
+
+	public static boolean load(String zipPath, boolean reloadNetwork) {
 		try {
-			SnapshotUtil.loadFromZip(zipPath);
+			SnapshotUtil.loadFromZip(zipPath, reloadNetwork);
 			return true;
 		} catch (Exception e) {
 			logger.error("Failed to load simulation state: " + e.getMessage());
 			e.printStackTrace();
 			return false;
 		}
+	}
+
+	public static void restoreForLoadWithoutNetworkRebuild(SnapshotUtil.SimulationSnapshot snapshot, int savedTick) {
+		logger.info("Fast-loading simulation state without rebuilding network facilities...");
+		clearScheduledActions("LOAD-FAST-SCHED");
+		if (dataContext != null) {
+			dataContext.stopCollecting();
+			mainContext.removeSubContext(dataContext);
+		}
+		if (vehicleContext != null) {
+			mainContext.removeSubContext(vehicleContext);
+		}
+		if (agg_logger != null) {
+			agg_logger.close();
+		}
+		if (travel_demand != null) {
+			travel_demand.close();
+		}
+
+		coSimRoads.clear();
+		eventHandler.reinitialize();
+
+		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
+		initTick = currentRepastTick;
+
+		agg_logger = new AggregatedLogger();
+		background_traffic = new BackgroundTraffic();
+		travel_demand = new TravelDemand();
+		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
+		BusSchedule.route_num = 0;
+		bus_schedule = new BusSchedule();
+		for (Zone z : getZoneContext().getAll()) {
+			z.traversingBusRoutes.clear();
+		}
+		bus_schedule.postProcessing();
+
+		partitioner = new MetisPartition(GlobalVariables.N_Partition);
+		setWaitNextStepCommand(GlobalVariables.SYNCHRONIZED ? 0 : -1);
+		if (tscheduler != null) {
+			tscheduler.resetTickGuards();
+		}
+
+		vehicleContext = new VehicleContext(true);
+		mainContext.addSubContext(vehicleContext);
+		dataContext = new DataCollectionContext();
+		mainContext.addSubContext(dataContext);
+
+		SnapshotUtil.restoreToCurrentContexts(snapshot);
+
+		if (GlobalVariables.MULTI_THREADING) {
+			try {
+				partitioner.first_run();
+				if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
+					getRoadContext().rebuildActiveRoadsFromState();
+				}
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+
+		dataContext.startCollecting();
+		scheduleEvents();
+		initTick = currentRepastTick - savedTick;
+
+		logger.info("FAST LOAD OK: restored saved tick " + savedTick
+				+ " without rebuilding facilities (initTick=" + initTick + ")");
 	}
 	
 	/**
@@ -909,6 +989,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		agg_logger = new AggregatedLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
+		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
+		BusSchedule.route_num = 0;
 		bus_schedule = new BusSchedule();
 		partitioner = new MetisPartition(GlobalVariables.N_Partition);
 		setWaitNextStepCommand(GlobalVariables.SYNCHRONIZED ? 0 : -1);

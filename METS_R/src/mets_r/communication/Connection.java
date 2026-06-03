@@ -105,7 +105,7 @@ public class Connection{
 				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
 				if (answer != null && session != null) {
 					this.answerSender.sendMessage(session, answer);
-					if (shouldSendResetStepAfterControl(msgType[1], answer)) {
+					if (shouldSendStepAfterControl(msgType[1], answer)) {
 						this.stepSender.sendMessage(session, ContextCreator.getCurrentTick());
 					}
 				} else if (session == null) {
@@ -155,8 +155,9 @@ public class Connection{
 	    }
 	}
 
-	private boolean shouldSendResetStepAfterControl(String controlType, String answer) {
-		if (!GlobalVariables.SYNCHRONIZED || !"reset".equals(controlType)) {
+	private boolean shouldSendStepAfterControl(String controlType, String answer) {
+		if (!GlobalVariables.SYNCHRONIZED
+				|| (!"reset".equals(controlType) && !"load".equals(controlType))) {
 			return false;
 		}
 		try {

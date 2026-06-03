@@ -20,6 +20,7 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.SnapshotUtil;
 import mets_r.communication.MessageClass.BusIDReqID;
 import mets_r.communication.MessageClass.BusIDRouteNameStopIndex;
 import mets_r.communication.MessageClass.BusIDRouteNameZoneRoadStopIndex;
@@ -267,20 +268,22 @@ public class ControlMessageHandler extends MessageHandler {
 	 * replacing the current run. Uses the deferred variant of load for
 	 * the same on-deck-queue rationale as {@link #resetSim}.
 	 *
-	 * <p>Input DATA: {@code {"path": "<zip file path>"}}.
+	 * <p>Input DATA: {@code {"path": "<zip file path>", "reloadNetwork": false}}.
 	 */
 	private HashMap<String, Object> loadSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
-			jsonAns.put("WARN", "No DATA field found. Expected: {\"path\": \"<zip file path>\"}");
+			jsonAns.put("WARN", "No DATA field found. Expected: {\"path\": \"<zip file path>\", \"reloadNetwork\": false}");
 			jsonAns.put("CODE", "KO");
 		} else {
 			try {
 				Gson gson = new Gson();
-				HashMap<String, String> data = gson.fromJson(
+				HashMap<String, Object> data = gson.fromJson(
 						jsonMsg.get("DATA").toString(),
-						new com.google.gson.reflect.TypeToken<HashMap<String, String>>() {}.getType());
-				String zipPath = data.get("path");
+						new com.google.gson.reflect.TypeToken<HashMap<String, Object>>() {}.getType());
+				String zipPath = data.get("path") == null ? null : data.get("path").toString();
+				boolean reloadNetwork = optionalBoolean(data, false,
+						"reloadNetwork", "reload_network", "rebuildNetwork", "rebuild_network");
 				if (zipPath == null || zipPath.isEmpty()) {
 					jsonAns.put("WARN", "Missing 'path' in DATA");
 					jsonAns.put("CODE", "KO");
@@ -290,9 +293,11 @@ public class ControlMessageHandler extends MessageHandler {
 					// rescheduled into the main queue) before rebuildForLoad
 					// removes them. Same on-deck-queue rationale as reset.
 					jsonAns.put("path", zipPath);
-					if (ContextCreator.deferredLoad(zipPath)) {
+					jsonAns.put("reloadNetwork", reloadNetwork);
+					if (ContextCreator.deferredLoad(zipPath, reloadNetwork)) {
 						jsonAns.put("CODE", "OK");
 						jsonAns.put("tick", ContextCreator.getCurrentTick());
+						jsonAns.put("fastLoad", SnapshotUtil.wasLastLoadFastRestore());
 					} else {
 						jsonAns.put("WARN", "Load failed; check simulator logs for the underlying exception.");
 						jsonAns.put("CODE", "KO");
@@ -304,6 +309,32 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+
+	private boolean optionalBoolean(Map<String, Object> data, boolean defaultValue, String... keys) {
+		for (String key : keys) {
+			if (data.containsKey(key)) {
+				return parseBoolean(data.get(key), defaultValue);
+			}
+		}
+		return defaultValue;
+	}
+
+	private boolean parseBoolean(Object value, boolean defaultValue) {
+		if (value == null) {
+			return defaultValue;
+		}
+		if (value instanceof Boolean) {
+			return (Boolean) value;
+		}
+		if (value instanceof Number) {
+			return ((Number) value).intValue() != 0;
+		}
+		String s = value.toString().trim();
+		if (s.isEmpty()) {
+			return defaultValue;
+		}
+		return "true".equalsIgnoreCase(s) || "yes".equalsIgnoreCase(s) || "1".equals(s);
 	}
 	
 	// =============================================================

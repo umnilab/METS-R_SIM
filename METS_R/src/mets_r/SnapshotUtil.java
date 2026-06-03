@@ -23,6 +23,11 @@ import mets_r.mobility.*;
 public class SnapshotUtil {
 
 	private static final Gson gson = new GsonBuilder().serializeSpecialFloatingPointValues().create();
+	private static boolean lastLoadFastRestore = false;
+
+	public static boolean wasLastLoadFastRestore() {
+		return lastLoadFastRestore;
+	}
 
 	public static class SimulationSnapshot {
 		HashMap<String, Object> globalState;
@@ -452,6 +457,20 @@ public class SnapshotUtil {
 				&& sameIDs(snapshot.signalSnapshots, ContextCreator.getSignalContext().getIDList());
 	}
 
+	private static boolean canRestoreToCurrentFacilities(SimulationSnapshot snapshot) {
+		try {
+			return ContextCreator.getRoadContext() != null
+					&& ContextCreator.getLaneContext() != null
+					&& ContextCreator.getZoneContext() != null
+					&& ContextCreator.getChargingStationContext() != null
+					&& ContextCreator.getSignalContext() != null
+					&& matchesCurrentFacilityMembership(snapshot);
+		} catch (Exception e) {
+			ContextCreator.logger.warn("Fast load facility check failed; will reload network: " + e.getMessage());
+			return false;
+		}
+	}
+
 	private static boolean sameIDs(ArrayList<HashMap<String, Object>> snapshots, List<Integer> currentIDs) {
 		if (snapshots == null || currentIDs == null || snapshots.size() != currentIDs.size()) {
 			return false;
@@ -772,6 +791,10 @@ public class SnapshotUtil {
 	//                     Top-level LOAD                                  //
 	// ------------------------------------------------------------------ //
 	public static void loadFromZip(String zipPath) throws IOException {
+		loadFromZip(zipPath, false);
+	}
+
+	public static void loadFromZip(String zipPath, boolean reloadNetwork) throws IOException {
 		ContextCreator.logger.info("Loading simulation state from: " + zipPath);
 
 		// Read all entries from the zip
@@ -838,6 +861,16 @@ public class SnapshotUtil {
 						new TypeToken<ArrayList<HashMap<String, Object>>>() {}.getType())
 				: new ArrayList<HashMap<String, Object>>();
 
+		SimulationSnapshot snapshot = new SimulationSnapshot();
+		snapshot.globalState = globalState;
+		snapshot.vehicleSnapshots = vehicleSnapshots;
+		snapshot.zoneSnapshots = zoneSnapshots;
+		snapshot.chargingStationSnapshots = csSnapshots;
+		snapshot.signalSnapshots = signalSnapshots;
+		snapshot.roadSnapshots = roadSnapshots;
+		snapshot.laneSnapshots = laneSnapshots;
+		lastLoadFastRestore = false;
+
 		// 3. Restore global state
 		int savedTick = toInt(globalState.get("currentTick"));
 		int savedAgentID = toInt(globalState.get("agentID"));
@@ -849,6 +882,25 @@ public class SnapshotUtil {
 		BSMDataStream.setRandom(deserializeRandom((String) globalState.get("bsmRandom")));
 		
 //		ContextCreator.logger.info("Loaded global states");
+
+		if (!reloadNetwork && canRestoreToCurrentFacilities(snapshot)) {
+			ContextCreator.restoreForLoadWithoutNetworkRebuild(snapshot, savedTick);
+			lastLoadFastRestore = true;
+			ContextCreator.logger.info("Simulation state fast-loaded successfully from: " + zipPath);
+			return;
+		}
+		if (!reloadNetwork) {
+			ContextCreator.logger.warn("Fast load requested but saved facilities do not match current contexts; "
+					+ "falling back to full network reload.");
+		}
+
+		boolean useSharedRestorePath = !Boolean.getBoolean("metsr.snapshot.legacyLoadRestore");
+		if (useSharedRestorePath) {
+			ContextCreator.rebuildForLoad(savedInitTick, savedTick);
+			restoreToCurrentContexts(snapshot);
+			ContextCreator.logger.info("Simulation state loaded successfully from: " + zipPath);
+			return;
+		}
 
 		// 4. Rebuild the road network and zone/charging station from data.properties
 		// (similar to reset, but we'll restore dynamic state afterwards)
