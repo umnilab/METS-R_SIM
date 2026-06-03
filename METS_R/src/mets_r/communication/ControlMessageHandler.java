@@ -4848,6 +4848,7 @@ public class ControlMessageHandler extends MessageHandler {
 					ElectricTaxi v = new ElectricTaxi();
 					ContextCreator.getVehicleContext().add(v);
 					v.initializePlan(req.zoneID, zone.getClosestRoad(false), (int) ContextCreator.getCurrentTick());
+					v.getParked(zone);
 					v.setCurrentZone(req.zoneID);
 					ContextCreator.getVehicleContext().registerTaxi(v);
 					ContextCreator.getVehicleContext().addAvailableTaxi(v, req.zoneID);
@@ -4960,13 +4961,13 @@ public class ControlMessageHandler extends MessageHandler {
 	 *   <li>{@code chargerType} &mdash; {@code ChargingStation.L2 / L3 /
 	 *       BUS}.</li>
 	 *   <li>{@code csID} &mdash; {@code 0} for auto-select
-	 *       (nearest/cheapest with fallback), or a negative station ID for
+	 *       (nearest/cheapest with fallback), or a nonzero station ID for
 	 *       a specific station.</li>
 	 * </ul>
 	 *
-	 * <p>For parking taxis the vehicle is removed from the available-taxi
-	 * pool first and the return destination is set to its current zone so
-	 * it comes back after charging.
+	 * <p>For parking taxis the return destination is set to its current
+	 * zone, and the vehicle is removed from the available-taxi pool only
+	 * after a charging dispatch is successfully prepared.
 	 */
 	private ChargingStation selectChargingStationForControl(ElectricVehicle veh, int chargerType, int csID) {
 		if (csID != 0) {
@@ -5004,34 +5005,59 @@ public class ControlMessageHandler extends MessageHandler {
 		if (veh.getRoad() != null && veh.getRoad().canBeOrigin()) {
 			return veh.getRoad();
 		}
+		Road fallbackDepartureRoad = null;
 		if (veh instanceof ElectricTaxi) {
 			int parkingRoadID = ((ElectricTaxi) veh).getCurrentParkingRoad();
 			Road parkingRoad = parkingRoadID >= 0 ? ContextCreator.getRoadContext().get(parkingRoadID) : null;
-			if (parkingRoad != null && parkingRoad.canBeOrigin()) {
+			if (isUsableDepartureRoad(parkingRoad)) {
 				return parkingRoad;
 			}
+			fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, parkingRoad);
 		}
 		Road originRoad = veh.getOriginRoad() >= 0 ? ContextCreator.getRoadContext().get(veh.getOriginRoad()) : null;
-		if (originRoad != null && originRoad.canBeOrigin()) {
+		if (isUsableDepartureRoad(originRoad)) {
 			return originRoad;
 		}
+		fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, originRoad);
 		Road destRoad = veh.getDestRoad() >= 0 ? ContextCreator.getRoadContext().get(veh.getDestRoad()) : null;
-		if (destRoad != null && destRoad.canBeOrigin()) {
+		if (isUsableDepartureRoad(destRoad)) {
 			return destRoad;
 		}
+		fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, destRoad);
 		Road lastDeparturableRoad = veh.getLastDeparturableRoad() >= 0
 				? ContextCreator.getRoadContext().get(veh.getLastDeparturableRoad()) : null;
-		if (lastDeparturableRoad != null && lastDeparturableRoad.canBeOrigin()) {
+		if (isUsableDepartureRoad(lastDeparturableRoad)) {
 			return lastDeparturableRoad;
 		}
+		fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, lastDeparturableRoad);
 		if (parkingZoneObj != null && parkingZoneObj.getClosestRoad(false) != null) {
 			Road zoneDepartureRoad = ContextCreator.getRoadContext().get(parkingZoneObj.getClosestRoad(false));
-			if (zoneDepartureRoad != null && zoneDepartureRoad.canBeOrigin()) {
+			if (isUsableDepartureRoad(zoneDepartureRoad)) {
 				return zoneDepartureRoad;
+			}
+			fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, zoneDepartureRoad);
+			for (Integer roadID : parkingZoneObj.getNeighboringLinks(false)) {
+				Road neighboringRoad = roadID == null ? null : ContextCreator.getRoadContext().get(roadID);
+				if (isUsableDepartureRoad(neighboringRoad)) {
+					return neighboringRoad;
+				}
+				fallbackDepartureRoad = firstDepartureFallback(fallbackDepartureRoad, neighboringRoad);
 			}
 		}
 		Road nearbyRoad = ContextCreator.getCityContext().findRoadAtCoordinates(veh.getCurrentCoord(), false);
-		return nearbyRoad != null && nearbyRoad.canBeOrigin() ? nearbyRoad : null;
+		if (isUsableDepartureRoad(nearbyRoad)) {
+			return nearbyRoad;
+		}
+		return firstDepartureFallback(fallbackDepartureRoad, nearbyRoad);
+	}
+
+	private boolean isUsableDepartureRoad(Road road) {
+		return road != null && road.canBeOrigin() && road.firstLane() != null;
+	}
+
+	private Road firstDepartureFallback(Road currentFallback, Road road) {
+		if (currentFallback != null) return currentFallback;
+		return isUsableDepartureRoad(road) ? road : null;
 	}
 
 	private int resolveChargingAnchorZone(ElectricVehicle veh, int parkingZone) {
@@ -5077,6 +5103,15 @@ public class ControlMessageHandler extends MessageHandler {
 				road.removeVehicleFromEnteringQueue(veh);
 			}
 		}
+	}
+
+	private void removeTaxiFromIdlePools(ElectricTaxi taxi, boolean releaseParking, Zone parkingZoneObj) {
+		if (taxi == null) return;
+		if (releaseParking) {
+			taxi.releaseParkingSpot(parkingZoneObj);
+		}
+		ContextCreator.getVehicleContext().removeAvailableTaxiFromAllZones(taxi);
+		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(taxi);
 	}
 
 	private boolean dispatchVehicleToCharging(ElectricVehicle veh, ChargingStation cs,
@@ -5146,8 +5181,9 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				// For parking taxis: defer pool cleanup until a charging target is known.
-				boolean isTaxiParking = !req.vehType && veh.getState() == Vehicle.PARKING;
+				// For idle taxis: defer pool cleanup until a charging dispatch succeeds.
+				boolean isPublicTaxi = !req.vehType && veh instanceof ElectricTaxi;
+				boolean isTaxiParking = isPublicTaxi && veh.getState() == Vehicle.PARKING;
 				int parkingZone = -1;
 				Zone parkingZoneObj = null;
 				if (isTaxiParking) {
@@ -5157,7 +5193,7 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 
 				if (req.csID != 0) {
-					// Specific charging station requested — replicate goCharging logic manually
+					// Specific charging station requested - replicate goCharging logic manually
 					ChargingStation cs = selectChargingStationForControl(veh, req.chargerType, req.csID);
 					if (cs == null) {
 						ContextCreator.logger.warn("goCharging: charging station " + req.csID
@@ -5212,8 +5248,9 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 					if (isTaxiParking) {
 						ElectricTaxi taxi = (ElectricTaxi) veh;
-						taxi.releaseParkingSpot(parkingZoneObj);
-						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
+						removeTaxiFromIdlePools(taxi, true, parkingZoneObj);
+					} else if (isPublicTaxi) {
+						removeTaxiFromIdlePools((ElectricTaxi) veh, false, parkingZoneObj);
 					}
 					ContextCreator.logger.debug("goCharging: vehicle " + req.vehID + " dispatched to CS " + cs.getID());
 				} else {
@@ -5251,8 +5288,7 @@ public class ControlMessageHandler extends MessageHandler {
 							jsonData.add(record);
 							continue;
 						}
-						taxi.releaseParkingSpot(parkingZoneObj);
-						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
+						removeTaxiFromIdlePools(taxi, true, parkingZoneObj);
 					} else {
 						ChargingStation cs = selectChargingStationForControl(veh, req.chargerType, 0);
 						if (cs == null) {
@@ -5283,6 +5319,9 @@ public class ControlMessageHandler extends MessageHandler {
 							record.put("STATUS", "KO");
 							jsonData.add(record);
 							continue;
+						}
+						if (isPublicTaxi) {
+							removeTaxiFromIdlePools((ElectricTaxi) veh, false, parkingZoneObj);
 						}
 					}
 				}

@@ -347,7 +347,7 @@ public class Vehicle {
 	}
 
 	/** 
-	 * Vehicle enters the road, success when the road has enough space in its rightmost lane
+	 * Vehicle enters the road, success when any lane on the road has enough space
 	 * @param The road that the vehicle enter
 	 * @return Whether the road successfully enter the road 
 	 */

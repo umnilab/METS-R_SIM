@@ -5,8 +5,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.GeometryFactory;
@@ -30,11 +30,13 @@ import repast.simphony.space.gis.ShapefileLoader;
  **/
 
 public class RoadContext extends FacilityContext<Road> {
-	private Set<Integer> activeRoadIDs;
+	private ConcurrentHashMap<Integer, Long> activeRoadIDs;
+	private AtomicLong activeRoadMarkVersion;
 	
 	public RoadContext() {
 		super("RoadContext");
-		this.activeRoadIDs = ConcurrentHashMap.newKeySet();
+		this.activeRoadIDs = new ConcurrentHashMap<Integer, Long>();
+		this.activeRoadMarkVersion = new AtomicLong(0);
 		ContextCreator.logger.info("RoadContext creation");
 		/*
 		 * GIS projection for spatial information about Roads. This is used to then
@@ -128,12 +130,12 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	public void markRoadActive(int roadID) {
-		this.activeRoadIDs.add(roadID);
+		this.activeRoadIDs.put(roadID, this.activeRoadMarkVersion.incrementAndGet());
 	}
 
 	public List<Road> getActiveRoadsSnapshot() {
 		ArrayList<Road> activeRoads = new ArrayList<Road>(this.activeRoadIDs.size());
-		for (Integer roadID : this.activeRoadIDs) {
+		for (Integer roadID : this.activeRoadIDs.keySet()) {
 			Road road = this.get(roadID);
 			if (road != null) {
 				activeRoads.add(road);
@@ -153,9 +155,12 @@ public class RoadContext extends FacilityContext<Road> {
 				continue;
 			}
 			if (road.hasActiveVehicles()) {
-				this.activeRoadIDs.add(road.getID());
+				markRoadActive(road);
 			} else {
-				this.activeRoadIDs.remove(road.getID());
+				Long activeMark = this.activeRoadIDs.get(road.getID());
+				if (activeMark != null && !road.hasActiveVehicles()) {
+					this.activeRoadIDs.remove(road.getID(), activeMark);
+				}
 			}
 		}
 	}
@@ -164,13 +169,17 @@ public class RoadContext extends FacilityContext<Road> {
 		this.activeRoadIDs.clear();
 		for (Road road : this.getAll()) {
 			if (road.hasActiveVehicles()) {
-				this.activeRoadIDs.add(road.getID());
+				markRoadActive(road);
 			}
 		}
 	}
 
 	public int getActiveRoadCount() {
 		return this.activeRoadIDs.size();
+	}
+
+	public boolean isRoadActive(int roadID) {
+		return this.activeRoadIDs.containsKey(roadID);
 	}
 
 	@Override

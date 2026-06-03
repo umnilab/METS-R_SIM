@@ -182,9 +182,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bearing", vehicle.getBearing());
 					record2.put("acc", vehicle.currentAcc());
 					record2.put("speed", vehicle.currentSpeed());
-					// if vehicle is on road
+					addVehicleRoadFields(record2, vehicle);
 					if(vehicle.isOnRoad()) {
-						record2.put("road", vehicle.getRoad().getOrigID());
 						if(vehicle.isOnLane()) {
 							record2.put("lane", vehicle.getLane().getIndex());
 							record2.put("dist", vehicle.getDistanceToNextJunction());
@@ -358,6 +357,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("dropoffPassengers", taxi.getDropoffPassengers());
 					record2.put("toBoardReqIDs", requestIDs(taxi.getToBoardRequests()));
 					record2.put("onBoardReqIDs", requestIDs(taxi.getOnBoardRequests()));
+					addVehicleRoadFields(record2, taxi);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -371,6 +371,44 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
+		record.put("onRoad", vehicle.isOnRoad());
+		record.put("originRoad", vehicle.getOriginRoad());
+		record.put("destRoad", vehicle.getDestRoad());
+		record.put("currentParkingRoad", vehicle.getCurrentParkingRoad());
+		if (vehicle.isOnRoad()) {
+			Road road = vehicle.getRoad();
+			if (road != null) {
+				record.put("road", road.getOrigID());
+				record.put("roadID", road.getID());
+				record.put("roadControlType", road.getControlType());
+				record.put("roadActive", ContextCreator.getRoadContext().isRoadActive(road.getID()));
+			}
+			return;
+		}
+
+		Road queuedRoad = findEnteringQueueRoad(vehicle);
+		if (queuedRoad != null) {
+			record.put("queuedRoad", queuedRoad.getOrigID());
+			record.put("queuedRoadID", queuedRoad.getID());
+			record.put("queuedRoadControlType", queuedRoad.getControlType());
+			record.put("queuedRoadActive", ContextCreator.getRoadContext().isRoadActive(queuedRoad.getID()));
+		}
+	}
+
+	private Road findEnteringQueueRoad(Vehicle vehicle) {
+		if (vehicle == null || vehicle.isOnRoad()) return null;
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			if (road == null) continue;
+			for (Vehicle queuedVehicle : road.getEnteringVehicleQueueSnapshot()) {
+				if (queuedVehicle == vehicle) {
+					return road;
+				}
+			}
+		}
+		return null;
 	}
 	
 	// =============================================================
