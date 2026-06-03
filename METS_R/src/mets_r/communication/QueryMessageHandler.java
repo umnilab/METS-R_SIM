@@ -1004,7 +1004,7 @@ public class QueryMessageHandler extends MessageHandler {
 	 *
 	 * <p>Output DATA: list of {@code {ID, l2_charger, dcfc_charger,
 	 * l2_price, dcfc_price, bus_charger, num_available_l2,
-	 * num_available_dcfc, x, y, z}} records.
+	 * num_available_dcfc, departureRoad, arrivalRoad, x, y, z}} records.
 	 */
 	public HashMap<String, Object> getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -1030,6 +1030,8 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bus_charger", cs.numCharger(ChargingStation.BUS));
 					record2.put("num_available_l2", cs.capacity(ChargingStation.L2));
 					record2.put("num_available_dcfc", cs.capacity(ChargingStation.L3));
+					record2.put("departureRoad", cs.getClosestRoad(false));
+					record2.put("arrivalRoad", cs.getClosestRoad(true));
 					Coordinate coord = cs.getCoord();
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
