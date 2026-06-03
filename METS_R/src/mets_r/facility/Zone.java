@@ -376,7 +376,7 @@ public class Zone {
 	
 	// Generate passenger
 	protected void generatePassenger() {
-		this.publicTripTimeIndex = (ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL) % GlobalVariables.HOUR_OF_DEMAND;
+		this.publicTripTimeIndex = this.currentPublicTripTimeIndex();
 		if (this.lastDemandUpdateHour != this.publicTripTimeIndex) {
 			this.futureDemand = 0.0;
 		}
@@ -937,7 +937,15 @@ public class Zone {
 	// are usually associate with Zones
 	// Assume the maximum waiting time for taxi is 15 minutes (we treated as the constraints: service quality demand)
     protected int generateWaitingTimeForTaxi() {
-		return (int) (ContextCreator.travel_demand.getWaitingThreshold(this.publicTripTimeIndex) / GlobalVariables.SIMULATION_STEP_SIZE);
+		return (int) (ContextCreator.travel_demand.getWaitingThreshold(this.currentPublicTripTimeIndex()) / GlobalVariables.SIMULATION_STEP_SIZE);
+	}
+
+	private int currentPublicTripTimeIndex() {
+		if (GlobalVariables.HOUR_OF_DEMAND <= 0) {
+			return 0;
+		}
+		return (ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL)
+				% GlobalVariables.HOUR_OF_DEMAND;
 	}
     
     // Generate passenger waiting time for bus

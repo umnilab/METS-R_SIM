@@ -1346,13 +1346,18 @@ public class CityContext extends DefaultContext<Object> {
 
 		// 3. Process the sorted list
 		for (ChargingStation cs : unorderedChargingStations) {
-			if (cs.numCharger(chargerType) > 0) {
+			if (isUsableChargingStation(cs, chargerType, true)) {
 				double thisPrice = cs.getPrice(chargerType);
-				if((thisPrice < minPrice) && (cs.capacity(chargerType) > 0)) {
+				if(cheapestChargingStation == null || thisPrice < minPrice
+						|| (thisPrice == minPrice && cs.getID() < cheapestChargingStation.getID())) {
 					minPrice = thisPrice;
 					cheapestChargingStation = cs;
 				}
 			}
+		}
+		if (cheapestChargingStation == null) {
+			cheapestChargingStation = findCheapestChargingStationIn(
+					ContextCreator.getChargingStationContext().getAll(), chargerType, true);
 		}
 		return cheapestChargingStation;
 	}
@@ -1383,37 +1388,24 @@ public class CityContext extends DefaultContext<Object> {
 		Point point = geomFac.createPoint(coord);
 		double searchBuffer = GlobalVariables.SEARCHING_BUFFER;
 		Geometry buffer = point.buffer(searchBuffer);
-		double minDist = Double.MAX_VALUE;
 		ChargingStation nearestChargingStation = null;
 		int num_tried = 0;
 		while (nearestChargingStation == null && num_tried < 5) {
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class)) {
-				boolean hasCharger = cs.numCharger(chargerType) > 0;
-				if (hasCharger && (cs.capacity(chargerType) > 0)) {
-					double thisDist = this.getDistance(coord, cs.getCoord());
-					if(thisDist < minDist || (thisDist == minDist && cs.getID() < nearestChargingStation.getID())) {
-						minDist = thisDist;
-						nearestChargingStation = cs;
-					}
-				}
-			}
+			nearestChargingStation = findNearestChargingStationIn(
+					csGeography.getObjectsWithin(buffer.getEnvelopeInternal(), ChargingStation.class),
+					coord, chargerType, true);
 			num_tried += 1;
 			searchBuffer *= 2;
 			buffer = point.buffer(searchBuffer);
 		}
 		
+		if (nearestChargingStation == null) {
+			nearestChargingStation = findNearestChargingStationIn(
+					ContextCreator.getChargingStationContext().getAll(), coord, chargerType, true);
+		}
 		if (nearestChargingStation == null) { // Cannot find instant available charger, go the closest one and wait there
-			for (ChargingStation cs : csGeography.getObjectsWithin(buffer.getEnvelopeInternal(),
-					ChargingStation.class)) {
-				boolean hasCharger = cs.numCharger(chargerType) > 0;
-				if (hasCharger) {
-					double thisDist = this.getDistance(coord, cs.getCoord());
-					if(thisDist < minDist || (thisDist == minDist && cs.getID() < nearestChargingStation.getID())) {
-						minDist = thisDist;
-						nearestChargingStation = cs;
-					}
-				}
-			}
+			nearestChargingStation = findNearestChargingStationIn(
+					ContextCreator.getChargingStationContext().getAll(), coord, chargerType, false);
 		}
 		if (nearestChargingStation == null) {
 			ContextCreator.logger.error(
@@ -1421,6 +1413,59 @@ public class CityContext extends DefaultContext<Object> {
 							+ coord.toString());
 		}
 		return nearestChargingStation;
+	}
+
+	private ChargingStation findCheapestChargingStationIn(Iterable<ChargingStation> chargingStations,
+			int chargerType, boolean requireCapacity) {
+		List<ChargingStation> orderedChargingStations = sortedChargingStations(chargingStations);
+		ChargingStation cheapestChargingStation = null;
+		double minPrice = Double.MAX_VALUE;
+		for (ChargingStation cs : orderedChargingStations) {
+			if (!isUsableChargingStation(cs, chargerType, requireCapacity)) continue;
+			double thisPrice = cs.getPrice(chargerType);
+			if (cheapestChargingStation == null || thisPrice < minPrice
+					|| (thisPrice == minPrice && cs.getID() < cheapestChargingStation.getID())) {
+				minPrice = thisPrice;
+				cheapestChargingStation = cs;
+			}
+		}
+		return cheapestChargingStation;
+	}
+
+	private ChargingStation findNearestChargingStationIn(Iterable<ChargingStation> chargingStations,
+			Coordinate coord, int chargerType, boolean requireCapacity) {
+		List<ChargingStation> orderedChargingStations = sortedChargingStations(chargingStations);
+		ChargingStation nearestChargingStation = null;
+		double minDist = Double.MAX_VALUE;
+		for (ChargingStation cs : orderedChargingStations) {
+			if (!isUsableChargingStation(cs, chargerType, requireCapacity)) continue;
+			double thisDist = this.getDistance(coord, cs.getCoord());
+			if (Double.isNaN(thisDist) || Double.isInfinite(thisDist)) continue;
+			if (nearestChargingStation == null || thisDist < minDist
+					|| (thisDist == minDist && cs.getID() < nearestChargingStation.getID())) {
+				minDist = thisDist;
+				nearestChargingStation = cs;
+			}
+		}
+		return nearestChargingStation;
+	}
+
+	private List<ChargingStation> sortedChargingStations(Iterable<ChargingStation> chargingStations) {
+		List<ChargingStation> orderedChargingStations = new ArrayList<ChargingStation>();
+		if (chargingStations == null) return orderedChargingStations;
+		for (ChargingStation cs : chargingStations) {
+			if (cs != null) {
+				orderedChargingStations.add(cs);
+			}
+		}
+		orderedChargingStations.sort((a, b) -> Integer.compare(a.getID(), b.getID()));
+		return orderedChargingStations;
+	}
+
+	private boolean isUsableChargingStation(ChargingStation cs, int chargerType, boolean requireCapacity) {
+		if (cs == null || cs.getCoord() == null || cs.getClosestRoad(true) == null) return false;
+		if (cs.numCharger(chargerType) <= 0) return false;
+		return !requireCapacity || cs.capacity(chargerType) > 0;
 	}
 	
 	// Returns the closest road from the currentLocation 

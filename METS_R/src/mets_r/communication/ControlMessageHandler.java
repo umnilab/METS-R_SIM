@@ -5005,14 +5005,14 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				// For parking taxis: clean up pool membership before rerouting
+				// For parking taxis: defer pool cleanup until a charging target is known.
 				boolean isTaxiParking = !req.vehType && veh.getState() == Vehicle.PARKING;
+				int parkingZone = -1;
+				Zone parkingZoneObj = null;
 				if (isTaxiParking) {
 					ElectricTaxi taxi = (ElectricTaxi) veh;
-					int parkingZone = taxi.getCurrentZone();
-					Zone z = ContextCreator.getZoneContext().get(parkingZone);
-					taxi.releaseParkingSpot(z);
-					ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
+					parkingZone = taxi.getCurrentZone();
+					parkingZoneObj = ContextCreator.getZoneContext().get(parkingZone);
 				}
 
 				if (req.csID != 0) {
@@ -5034,8 +5034,8 @@ public class ControlMessageHandler extends MessageHandler {
 					int returnZoneID;
 					int returnRoadID;
 					if (isTaxiParking) {
-						returnZoneID = ((ElectricTaxi) veh).getCurrentZone();
-						Zone rz = ContextCreator.getZoneContext().get(returnZoneID);
+						returnZoneID = parkingZone;
+						Zone rz = parkingZoneObj;
 						returnRoadID = (rz != null && rz.getClosestRoad(true) != null)
 								? rz.getClosestRoad(true)
 								: veh.getDestRoad();
@@ -5052,6 +5052,11 @@ public class ControlMessageHandler extends MessageHandler {
 						continue;
 					}
 
+					if (isTaxiParking) {
+						ElectricTaxi taxi = (ElectricTaxi) veh;
+						taxi.releaseParkingSpot(parkingZoneObj);
+						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
+					}
 					veh.setOnChargingRoute(true);
 					veh.setState(Vehicle.CHARGING_TRIP);
 					veh.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
@@ -5064,8 +5069,8 @@ public class ControlMessageHandler extends MessageHandler {
 					if (isTaxiParking) {
 						// For parked taxis, ensure the return destination is the current zone
 						ElectricTaxi taxi = (ElectricTaxi) veh;
-						int returnZoneID = taxi.getCurrentZone();
-						Zone rz = ContextCreator.getZoneContext().get(returnZoneID);
+						int returnZoneID = parkingZone;
+						Zone rz = parkingZoneObj;
 						int returnRoadID = (rz != null && rz.getClosestRoad(true) != null)
 								? rz.getClosestRoad(true)
 								: taxi.getDestRoad();
@@ -5081,6 +5086,14 @@ public class ControlMessageHandler extends MessageHandler {
 							jsonData.add(record);
 							continue;
 						}
+						if (returnZoneID < 0) {
+							ContextCreator.logger.warn("goCharging: vehicle " + req.vehID + " has no valid return destination");
+							record.put("STATUS", "KO");
+							jsonData.add(record);
+							continue;
+						}
+						taxi.releaseParkingSpot(parkingZoneObj);
+						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
 						taxi.setOnChargingRoute(true);
 						taxi.setState(Vehicle.CHARGING_TRIP);
 						taxi.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());

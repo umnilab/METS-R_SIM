@@ -378,7 +378,7 @@ public class TravelDemand {
 	}
 	
 	public int getWaitingThreshold(int hour) {
-		if (waitingThreshold.size() > hour) {
+		if (hour >= 0 && waitingThreshold.size() > hour) {
 			return waitingThreshold.get(hour);
 		}
 		return 600;
