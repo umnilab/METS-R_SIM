@@ -73,6 +73,7 @@ public class SnapshotUtil {
 		m.put("destRoad", r.getDestRoad());
 		m.put("numPeople", r.getNumPeople());
 		m.put("maxWaitingTime", r.getMaxWaitingTime());
+		m.put("maxWaitingTimeExplicit", r.hasExplicitMaxWaitingTime());
 		m.put("currentWaitingTime", r.getCurrentWaitingTime());
 		m.put("willingToShare", r.isShareable());
 		m.put("busRouteID", r.getBusRoute());
@@ -945,6 +946,7 @@ public class SnapshotUtil {
 			csStateMap.put(toInt(css.get("id")), css);
 		}
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
+			cs.clearRuntimeState();
 			HashMap<String, Object> css = csStateMap.get(cs.getID());
 			if (css == null) continue;
 			cs.setPrice(ChargingStation.L2, toDouble(css.get("priceL2")));
@@ -1143,6 +1145,7 @@ public class SnapshotUtil {
 			restoreChargingList(cs.getChargingL2(), (List<?>) css.get("chargingL2"), restoredVehicleMap, false);
 			restoreChargingList(cs.getChargingL3(), (List<?>) css.get("chargingL3"), restoredVehicleMap, false);
 			restoreChargingBusList(cs.getChargingBus(), (List<?>) css.get("chargingBus"), restoredVehicleMap);
+			cs.updateCapacity();
 		}
 
 		setAgentIDCounter(savedAgentID);
@@ -1426,7 +1429,9 @@ public class SnapshotUtil {
 	// ------------------------------------------------------------------ //
 
 	private static void restoreRequestQueue(Queue<Request> queue, List<?> data) {
-		if (data == null || queue == null) return;
+		if (queue == null) return;
+		queue.clear();
+		if (data == null) return;
 		for (Object obj : data) {
 			Map<?, ?> rm = (Map<?, ?>) obj;
 			Request r = new Request(
@@ -1436,7 +1441,12 @@ public class SnapshotUtil {
 					toInt(rm.get("destRoad")),
 					toInt(rm.get("numPeople")));
 			r.setID(toInt(rm.get("id")));
-			r.setMaxWaitingTime(toInt(rm.get("maxWaitingTime")));
+			int maxWaitingTime = toInt(rm.get("maxWaitingTime"));
+			if (rm.containsKey("maxWaitingTimeExplicit") && toBool(rm.get("maxWaitingTimeExplicit"))) {
+				r.setMaxWaitingTime(maxWaitingTime);
+			} else {
+				r.setGeneratedMaxWaitingTime(maxWaitingTime);
+			}
 			r.setCurrentWaitingTime(toInt(rm.get("currentWaitingTime")));
 			r.setWillingToShare(toBool(rm.get("willingToShare")));
 			r.setBusRoute(toInt(rm.get("busRouteID")));
@@ -1464,6 +1474,8 @@ public class SnapshotUtil {
 
 	private static void restoreChargingQueue(LinkedList<ElectricVehicle> queue, List<?> idList,
 			HashMap<Integer, Vehicle> vehicleMap, boolean dummy) {
+		if (queue == null) return;
+		queue.clear();
 		if (idList == null) return;
 		for (Object idObj : idList) {
 			int vid = toInt(idObj);
@@ -1476,6 +1488,8 @@ public class SnapshotUtil {
 
 	private static void restoreChargingBusQueue(LinkedList<ElectricBus> queue, List<?> idList,
 			HashMap<Integer, Vehicle> vehicleMap) {
+		if (queue == null) return;
+		queue.clear();
 		if (idList == null) return;
 		for (Object idObj : idList) {
 			int vid = toInt(idObj);
@@ -1488,6 +1502,8 @@ public class SnapshotUtil {
 
 	private static void restoreChargingList(ArrayList<ElectricVehicle> list, List<?> idList,
 			HashMap<Integer, Vehicle> vehicleMap, boolean dummy) {
+		if (list == null) return;
+		list.clear();
 		if (idList == null) return;
 		for (Object idObj : idList) {
 			int vid = toInt(idObj);
@@ -1500,6 +1516,8 @@ public class SnapshotUtil {
 
 	private static void restoreChargingBusList(ArrayList<ElectricBus> list, List<?> idList,
 			HashMap<Integer, Vehicle> vehicleMap) {
+		if (list == null) return;
+		list.clear();
 		if (idList == null) return;
 		for (Object idObj : idList) {
 			int vid = toInt(idObj);

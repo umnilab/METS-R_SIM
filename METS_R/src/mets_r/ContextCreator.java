@@ -1,6 +1,5 @@
 package mets_r;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -649,11 +648,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 *
 	 * Thread safety: must be called from the connection (control) thread.
 	 */
-	public static void deferredLoad(String zipPath) {
+	public static boolean deferredLoad(String zipPath) {
 		waitForScheduleQuiescence("deferredLoad");
 		// Schedule queue is now quiescent; rebuildForLoad() will remove
 		// every tracked action cleanly.
-		load(zipPath);
+		return load(zipPath);
 	}
 
 	// The reset function
@@ -845,22 +844,26 @@ public class ContextCreator implements ContextBuilder<Object> {
 	}
 	
 	// The save function: captures all dynamic state into a zip archive
-	public static void save(String zipPath) {
+	public static boolean save(String zipPath) {
 		try {
 			SnapshotUtil.saveToZip(zipPath);
-		} catch (IOException e) {
+			return true;
+		} catch (Exception e) {
 			logger.error("Failed to save simulation state: " + e.getMessage());
 			e.printStackTrace();
+			return false;
 		}
 	}
 	
 	// The load function: restores simulation from a zip archive
-	public static void load(String zipPath) {
+	public static boolean load(String zipPath) {
 		try {
 			SnapshotUtil.loadFromZip(zipPath);
-		} catch (IOException e) {
+			return true;
+		} catch (Exception e) {
 			logger.error("Failed to load simulation state: " + e.getMessage());
 			e.printStackTrace();
+			return false;
 		}
 	}
 	

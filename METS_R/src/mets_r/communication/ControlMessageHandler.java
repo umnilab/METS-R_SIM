@@ -246,9 +246,13 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonAns.put("WARN", "Missing 'path' in DATA");
 					jsonAns.put("CODE", "KO");
 				} else {
-					ContextCreator.save(zipPath);
-					jsonAns.put("CODE", "OK");
 					jsonAns.put("path", zipPath);
+					if (ContextCreator.save(zipPath)) {
+						jsonAns.put("CODE", "OK");
+					} else {
+						jsonAns.put("WARN", "Save failed; check simulator logs for the underlying exception.");
+						jsonAns.put("CODE", "KO");
+					}
 				}
 			} catch (Exception e) {
 				ContextCreator.logger.error("Error saving simulation: " + e.toString());
@@ -285,10 +289,14 @@ public class ControlMessageHandler extends MessageHandler {
 					// completed the current tick (every recurring action
 					// rescheduled into the main queue) before rebuildForLoad
 					// removes them. Same on-deck-queue rationale as reset.
-					ContextCreator.deferredLoad(zipPath);
-					jsonAns.put("CODE", "OK");
 					jsonAns.put("path", zipPath);
-					jsonAns.put("tick", ContextCreator.getCurrentTick());
+					if (ContextCreator.deferredLoad(zipPath)) {
+						jsonAns.put("CODE", "OK");
+						jsonAns.put("tick", ContextCreator.getCurrentTick());
+					} else {
+						jsonAns.put("WARN", "Load failed; check simulator logs for the underlying exception.");
+						jsonAns.put("CODE", "KO");
+					}
 				}
 			} catch (Exception e) {
 				ContextCreator.logger.error("Error loading simulation: " + e.toString());
