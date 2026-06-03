@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -742,6 +743,25 @@ public class Road {
 		if (temporalList.size() > 1) {
 			this.departureVehMap.get(departureTime).remove(v);
 		} else {
+			this.departureVehMap.remove(departureTime);
+		}
+	}
+
+	public synchronized void removeVehicleFromEnteringQueue(Vehicle v) {
+		if (v == null) return;
+		while (this.toAddDepartureVeh.remove(v)) {
+			// Remove all stale pending entries for this vehicle.
+		}
+		ArrayList<Integer> emptyDepartureTimes = new ArrayList<Integer>();
+		for (Map.Entry<Integer, ArrayList<Vehicle>> entry : this.departureVehMap.entrySet()) {
+			while (entry.getValue().remove(v)) {
+				// Remove all stale scheduled entries for this vehicle.
+			}
+			if (entry.getValue().isEmpty()) {
+				emptyDepartureTimes.add(entry.getKey());
+			}
+		}
+		for (Integer departureTime : emptyDepartureTimes) {
 			this.departureVehMap.remove(departureTime);
 		}
 	}

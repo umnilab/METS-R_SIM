@@ -4968,6 +4968,147 @@ public class ControlMessageHandler extends MessageHandler {
 	 * pool first and the return destination is set to its current zone so
 	 * it comes back after charging.
 	 */
+	private ChargingStation selectChargingStationForControl(ElectricVehicle veh, int chargerType, int csID) {
+		if (csID != 0) {
+			ChargingStation cs = ContextCreator.getChargingStationContext().get(csID);
+			if (cs == null || cs.getClosestRoad(true) == null) {
+				return null;
+			}
+			Road arrivalRoad = ContextCreator.getRoadContext().get(cs.getClosestRoad(true));
+			return arrivalRoad != null && arrivalRoad.canBeDest() ? cs : null;
+		}
+
+		ChargingStation cs;
+		if (veh instanceof ElectricTaxi || veh instanceof ElectricBus) {
+			cs = ContextCreator.getCityContext().findNearestChargingStation(veh.getCurrentCoord(), chargerType);
+			if (cs == null && chargerType == ChargingStation.L3) {
+				cs = ContextCreator.getCityContext().findNearestChargingStation(veh.getCurrentCoord(), ChargingStation.L2);
+			}
+			return cs;
+		}
+
+		cs = ContextCreator.getCityContext().findCheapestChargingStation(veh.getCurrentCoord(), chargerType);
+		if (cs == null) {
+			cs = ContextCreator.getCityContext().findNearestChargingStation(veh.getCurrentCoord(), chargerType);
+		}
+		if (cs == null && chargerType == ChargingStation.L3) {
+			cs = ContextCreator.getCityContext().findCheapestChargingStation(veh.getCurrentCoord(), ChargingStation.L2);
+			if (cs == null) {
+				cs = ContextCreator.getCityContext().findNearestChargingStation(veh.getCurrentCoord(), ChargingStation.L2);
+			}
+		}
+		return cs;
+	}
+
+	private Road resolveChargingDepartureRoad(ElectricVehicle veh, Zone parkingZoneObj) {
+		if (veh.getRoad() != null && veh.getRoad().canBeOrigin()) {
+			return veh.getRoad();
+		}
+		if (veh instanceof ElectricTaxi) {
+			int parkingRoadID = ((ElectricTaxi) veh).getCurrentParkingRoad();
+			Road parkingRoad = parkingRoadID >= 0 ? ContextCreator.getRoadContext().get(parkingRoadID) : null;
+			if (parkingRoad != null && parkingRoad.canBeOrigin()) {
+				return parkingRoad;
+			}
+		}
+		Road originRoad = veh.getOriginRoad() >= 0 ? ContextCreator.getRoadContext().get(veh.getOriginRoad()) : null;
+		if (originRoad != null && originRoad.canBeOrigin()) {
+			return originRoad;
+		}
+		Road destRoad = veh.getDestRoad() >= 0 ? ContextCreator.getRoadContext().get(veh.getDestRoad()) : null;
+		if (destRoad != null && destRoad.canBeOrigin()) {
+			return destRoad;
+		}
+		Road lastDeparturableRoad = veh.getLastDeparturableRoad() >= 0
+				? ContextCreator.getRoadContext().get(veh.getLastDeparturableRoad()) : null;
+		if (lastDeparturableRoad != null && lastDeparturableRoad.canBeOrigin()) {
+			return lastDeparturableRoad;
+		}
+		if (parkingZoneObj != null && parkingZoneObj.getClosestRoad(false) != null) {
+			Road zoneDepartureRoad = ContextCreator.getRoadContext().get(parkingZoneObj.getClosestRoad(false));
+			if (zoneDepartureRoad != null && zoneDepartureRoad.canBeOrigin()) {
+				return zoneDepartureRoad;
+			}
+		}
+		Road nearbyRoad = ContextCreator.getCityContext().findRoadAtCoordinates(veh.getCurrentCoord(), false);
+		return nearbyRoad != null && nearbyRoad.canBeOrigin() ? nearbyRoad : null;
+	}
+
+	private int resolveChargingAnchorZone(ElectricVehicle veh, int parkingZone) {
+		if (parkingZone >= 0) return parkingZone;
+		if (veh.getOriginID() >= 0) return veh.getOriginID();
+		if (veh.getDestID() >= 0) return veh.getDestID();
+		Road road = veh.getRoad();
+		if (road != null) {
+			int zoneID = road.getNeighboringZone(false);
+			if (ContextCreator.getZoneContext().get(zoneID) != null) return zoneID;
+			zoneID = road.getNeighboringZone(true);
+			if (ContextCreator.getZoneContext().get(zoneID) != null) return zoneID;
+		}
+		return -1;
+	}
+
+	private boolean ensureChargingPlanAnchor(ElectricVehicle veh, int anchorZoneID, Road departureRoad) {
+		if (departureRoad == null || anchorZoneID < 0) return false;
+		if (veh.isOnRoad()) {
+			if (veh.getPlan().isEmpty()) {
+				veh.setOriginID(anchorZoneID);
+				veh.setDestID(anchorZoneID);
+				veh.setOriginRoad(departureRoad);
+				veh.setDestRoad(departureRoad);
+				veh.addPlan(anchorZoneID, departureRoad.getID(), ContextCreator.getCurrentTick());
+			}
+			return true;
+		}
+
+		veh.getPlan().clear();
+		veh.setOriginID(anchorZoneID);
+		veh.setDestID(anchorZoneID);
+		veh.setOriginRoad(departureRoad);
+		veh.setDestRoad(departureRoad);
+		veh.setCurrentCoord(departureRoad.getStartCoord());
+		veh.addPlan(anchorZoneID, departureRoad.getID(), ContextCreator.getCurrentTick());
+		return true;
+	}
+
+	private void removeVehicleFromEnteringQueues(Vehicle veh) {
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			if (road != null) {
+				road.removeVehicleFromEnteringQueue(veh);
+			}
+		}
+	}
+
+	private boolean dispatchVehicleToCharging(ElectricVehicle veh, ChargingStation cs,
+			int returnZoneID, int returnRoadID, Zone parkingZoneObj, int parkingZone) {
+		if (cs == null || cs.getClosestRoad(true) == null || returnZoneID < 0 || returnRoadID < 0) {
+			return false;
+		}
+		Road chargingArrivalRoad = ContextCreator.getRoadContext().get(cs.getClosestRoad(true));
+		Road returnRoad = ContextCreator.getRoadContext().get(returnRoadID);
+		if (chargingArrivalRoad == null || !chargingArrivalRoad.canBeDest()
+				|| returnRoad == null || !returnRoad.canBeDest()) {
+			return false;
+		}
+
+		Road departureRoad = resolveChargingDepartureRoad(veh, parkingZoneObj);
+		int anchorZoneID = resolveChargingAnchorZone(veh, parkingZone);
+		if (!ensureChargingPlanAnchor(veh, anchorZoneID, departureRoad)) {
+			return false;
+		}
+
+		removeVehicleFromEnteringQueues(veh);
+		veh.setOnChargingRoute(true);
+		veh.setState(Vehicle.CHARGING_TRIP);
+		List<Plan> plans = veh.getPlan();
+		int chargeInsertIndex = Math.min(1, plans.size());
+		plans.add(chargeInsertIndex, new Plan(cs.getID(), chargingArrivalRoad.getID(), ContextCreator.getNextTick()));
+		plans.add(chargeInsertIndex + 1, new Plan(returnZoneID, returnRoadID, ContextCreator.getNextTick()));
+		veh.setNextPlan();
+		veh.departure(departureRoad);
+		return true;
+	}
+
 	private HashMap<String, Object> goCharging(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
@@ -5017,15 +5158,10 @@ public class ControlMessageHandler extends MessageHandler {
 
 				if (req.csID != 0) {
 					// Specific charging station requested — replicate goCharging logic manually
-					ChargingStation cs = ContextCreator.getChargingStationContext().get(req.csID);
+					ChargingStation cs = selectChargingStationForControl(veh, req.chargerType, req.csID);
 					if (cs == null) {
-						ContextCreator.logger.warn("goCharging: charging station " + req.csID + " not found");
-						record.put("STATUS", "KO");
-						jsonData.add(record);
-						continue;
-					}
-					if (cs.getClosestRoad(true) == null) {
-						ContextCreator.logger.warn("goCharging: charging station " + req.csID + " has no arrival road");
+						ContextCreator.logger.warn("goCharging: charging station " + req.csID
+								+ " not found or has no usable arrival road");
 						record.put("STATUS", "KO");
 						jsonData.add(record);
 						continue;
@@ -5044,7 +5180,22 @@ public class ControlMessageHandler extends MessageHandler {
 						returnRoadID = veh.getDestRoad();
 					}
 
-					if (returnZoneID < 0) {
+					if (returnZoneID < 0 || returnRoadID < 0) {
+						Road anchorRoad = resolveChargingDepartureRoad(veh, parkingZoneObj);
+						int anchorZoneID = resolveChargingAnchorZone(veh, parkingZone);
+						Zone anchorZone = ContextCreator.getZoneContext().get(anchorZoneID);
+						if (returnZoneID < 0) {
+							returnZoneID = anchorZoneID;
+						}
+						if (returnRoadID < 0 && anchorZone != null && anchorZone.getClosestRoad(true) != null) {
+							returnRoadID = anchorZone.getClosestRoad(true);
+						}
+						if (returnRoadID < 0 && anchorRoad != null && anchorRoad.canBeDest()) {
+							returnRoadID = anchorRoad.getID();
+						}
+					}
+
+					if (returnZoneID < 0 || returnRoadID < 0) {
 						// Vehicle was already heading to a charging station; refuse
 						ContextCreator.logger.warn("goCharging: vehicle " + req.vehID + " has no valid return destination");
 						record.put("STATUS", "KO");
@@ -5052,20 +5203,21 @@ public class ControlMessageHandler extends MessageHandler {
 						continue;
 					}
 
+					if (!dispatchVehicleToCharging(veh, cs, returnZoneID, returnRoadID, parkingZoneObj, parkingZone)) {
+						ContextCreator.logger.warn("goCharging: vehicle " + req.vehID
+								+ " has no valid departure or return road for charging dispatch");
+						record.put("STATUS", "KO");
+						jsonData.add(record);
+						continue;
+					}
 					if (isTaxiParking) {
 						ElectricTaxi taxi = (ElectricTaxi) veh;
 						taxi.releaseParkingSpot(parkingZoneObj);
 						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
 					}
-					veh.setOnChargingRoute(true);
-					veh.setState(Vehicle.CHARGING_TRIP);
-					veh.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
-					veh.setNextPlan();
-					veh.addPlan(returnZoneID, returnRoadID, ContextCreator.getNextTick());
-					veh.departure();
 					ContextCreator.logger.debug("goCharging: vehicle " + req.vehID + " dispatched to CS " + cs.getID());
 				} else {
-					// Auto-select: delegate to the vehicle's own goCharging logic
+					// Auto-select: dispatch through the control path so charging interrupts queued plans.
 					if (isTaxiParking) {
 						// For parked taxis, ensure the return destination is the current zone
 						ElectricTaxi taxi = (ElectricTaxi) veh;
@@ -5092,16 +5244,46 @@ public class ControlMessageHandler extends MessageHandler {
 							jsonData.add(record);
 							continue;
 						}
+						if (!dispatchVehicleToCharging(taxi, cs, returnZoneID, returnRoadID, parkingZoneObj, parkingZone)) {
+							ContextCreator.logger.warn("goCharging: vehicle " + req.vehID
+									+ " has no valid departure or return road for charging dispatch");
+							record.put("STATUS", "KO");
+							jsonData.add(record);
+							continue;
+						}
 						taxi.releaseParkingSpot(parkingZoneObj);
 						ContextCreator.getVehicleContext().removeAvailableTaxi(taxi, parkingZone);
-						taxi.setOnChargingRoute(true);
-						taxi.setState(Vehicle.CHARGING_TRIP);
-						taxi.addPlan(cs.getID(), cs.getClosestRoad(true), ContextCreator.getNextTick());
-						taxi.setNextPlan();
-						taxi.addPlan(returnZoneID, returnRoadID, ContextCreator.getNextTick());
-						taxi.departure();
 					} else {
-						veh.goCharging(req.chargerType);
+						ChargingStation cs = selectChargingStationForControl(veh, req.chargerType, 0);
+						if (cs == null) {
+							ContextCreator.logger.warn("goCharging: no suitable station found for vehicle " + req.vehID);
+							record.put("STATUS", "KO");
+							jsonData.add(record);
+							continue;
+						}
+						int returnZoneID = veh.getDestID();
+						int returnRoadID = veh.getDestRoad();
+						if (returnZoneID < 0 || returnRoadID < 0) {
+							Road anchorRoad = resolveChargingDepartureRoad(veh, parkingZoneObj);
+							int anchorZoneID = resolveChargingAnchorZone(veh, parkingZone);
+							Zone anchorZone = ContextCreator.getZoneContext().get(anchorZoneID);
+							if (returnZoneID < 0) {
+								returnZoneID = anchorZoneID;
+							}
+							if (returnRoadID < 0 && anchorZone != null && anchorZone.getClosestRoad(true) != null) {
+								returnRoadID = anchorZone.getClosestRoad(true);
+							}
+							if (returnRoadID < 0 && anchorRoad != null && anchorRoad.canBeDest()) {
+								returnRoadID = anchorRoad.getID();
+							}
+						}
+						if (!dispatchVehicleToCharging(veh, cs, returnZoneID, returnRoadID, parkingZoneObj, parkingZone)) {
+							ContextCreator.logger.warn("goCharging: vehicle " + req.vehID
+									+ " has no valid departure or return road for charging dispatch");
+							record.put("STATUS", "KO");
+							jsonData.add(record);
+							continue;
+						}
 					}
 				}
 
