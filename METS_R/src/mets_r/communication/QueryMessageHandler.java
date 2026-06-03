@@ -1004,7 +1004,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 *
 	 * <p>Output DATA: list of {@code {ID, l2_charger, dcfc_charger,
 	 * l2_price, dcfc_price, bus_charger, num_available_l2,
-	 * num_available_dcfc, departureRoad, arrivalRoad, x, y, z}} records.
+	 * num_available_dcfc, departureRoad, arrivalRoad, pending_ev,
+	 * queue_l2, queue_dcfc, charging_l2, charging_dcfc, x, y, z}} records.
 	 */
 	public HashMap<String, Object> getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -1032,6 +1033,14 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("num_available_dcfc", cs.capacity(ChargingStation.L3));
 					record2.put("departureRoad", cs.getClosestRoad(false));
 					record2.put("arrivalRoad", cs.getClosestRoad(true));
+					record2.put("pending_ev", cs.getPendingEVCount());
+					record2.put("pending_bus", cs.getPendingBusCount());
+					record2.put("queue_l2", cs.getQueuedL2Count());
+					record2.put("queue_dcfc", cs.getQueuedL3Count());
+					record2.put("queue_bus", cs.getQueuedBusCount());
+					record2.put("charging_l2", cs.getChargingL2Count());
+					record2.put("charging_dcfc", cs.getChargingL3Count());
+					record2.put("charging_bus", cs.getChargingBusCount());
 					Coordinate coord = cs.getCoord();
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);

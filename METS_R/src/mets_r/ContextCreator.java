@@ -432,9 +432,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * In single-threaded mode every zone must have its own scheduled actions, so
 	 * we add them here starting at the next zone-refresh-aligned tick.
 	 * In multi-threaded mode paraZoneStep() already calls stepPart1 on every
-	 * object returned by getAll(), so no extra scheduling is needed for part1.
-	 * stepPart2 is driven by the partitioner; the new zone will be included in
-	 * the partition lists after the next check_run() interval.
+	 * object returned by getAll(), and the new zone is inserted into the live
+	 * stepPart2 partition list immediately.
 	 */
 	public static void scheduleNewZone(Zone z) {
 		if (!GlobalVariables.MULTI_THREADING) {
@@ -445,9 +444,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 					startTick, GlobalVariables.SIMULATION_ZONE_REFRESH_INTERVAL, 2);
 			scheduledActions.add(schedule.schedule(params, z, "stepPart1"));
 			scheduledActions.add(schedule.schedule(params, z, "stepPart2"));
+		} else if (partitioner != null) {
+			partitioner.addZone(z);
 		}
 		// Multi-threading: stepPart1 covered by getAll() in paraZoneStep;
-		// stepPart2 covered by partitioner at next check_run.
+		// stepPart2 is added to the live partition list above.
 	}
 
 	/**
@@ -456,8 +457,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 *
 	 * In single-threaded mode every station must have its own scheduled actions.
 	 * In multi-threaded mode paraChargingStationStep() calls stepPart2 serially on
-	 * getAll(), so that part is already covered. stepPart1 (via partitions) will
-	 * include the new station after the next check_run() interval.
+	 * getAll(), and the new station is inserted into the live stepPart1 partition
+	 * list immediately.
 	 */
 	public static void scheduleNewChargingStation(ChargingStation cs) {
 		if (!GlobalVariables.MULTI_THREADING) {
@@ -468,9 +469,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 					startTick, GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL, 1);
 			scheduledActions.add(schedule.schedule(params, cs, "stepPart1"));
 			scheduledActions.add(schedule.schedule(params, cs, "stepPart2"));
+		} else if (partitioner != null) {
+			partitioner.addChargingStation(cs);
 		}
 		// Multi-threading: stepPart2 covered by getAll() in paraChargingStationStep;
-		// stepPart1 via partition will include cs at next check_run.
+		// stepPart1 is added to the live partition list above.
 	}
 
 	// Schedule the event for signal updates (multi-thread)

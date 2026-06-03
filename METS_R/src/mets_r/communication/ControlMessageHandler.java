@@ -3553,6 +3553,10 @@ public class ControlMessageHandler extends MessageHandler {
 			// refreshRoadZoneAssignment re-maps all roads (which defaulted to zone 0)
 			// to the nearest real zone via spatial search.
 			if (metaZonePresent && !jsonData.isEmpty()) {
+				Zone metaZone = zoneContext.get(0);
+				if (GlobalVariables.MULTI_THREADING && ContextCreator.partitioner != null) {
+					ContextCreator.partitioner.removeZone(metaZone);
+				}
 				zoneContext.remove(0);
 				ContextCreator.getVehicleContext().removeZoneMaps(0);
 				ContextCreator.getCityContext().refreshRoadZoneAssignment();
@@ -3976,6 +3980,9 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 
 				ContextCreator.getZoneContext().HUB_INDEXES.remove(Integer.valueOf(zoneID));
+				if (GlobalVariables.MULTI_THREADING && ContextCreator.partitioner != null) {
+					ContextCreator.partitioner.removeZone(zone);
+				}
 				ContextCreator.getZoneContext().remove(zoneID);
 				ContextCreator.getVehicleContext().removeZoneMaps(zoneID);
 
@@ -4095,6 +4102,9 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
+				if (GlobalVariables.MULTI_THREADING && ContextCreator.partitioner != null) {
+					ContextCreator.partitioner.removeChargingStation(cs);
+				}
 				ContextCreator.getChargingStationContext().remove(chargerID);
 				record.put("STATUS", "OK");
 				jsonData.add(record);

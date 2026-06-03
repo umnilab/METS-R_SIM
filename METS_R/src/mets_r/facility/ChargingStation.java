@@ -517,6 +517,14 @@ public class ChargingStation {
 	public ArrayList<ElectricVehicle> getChargingL2() { return this.chargingVehicleL2; }
 	public ArrayList<ElectricVehicle> getChargingL3() { return this.chargingVehicleL3; }
 	public ArrayList<ElectricBus> getChargingBus() { return this.chargingBus; }
+	public int getPendingEVCount() { return this.toAddChargingEV.size(); }
+	public int getPendingBusCount() { return this.toAddChargingBus.size(); }
+	public int getQueuedL2Count() { return this.queueChargingL2.size(); }
+	public int getQueuedL3Count() { return this.queueChargingL3.size(); }
+	public int getQueuedBusCount() { return this.queueChargingBus.size(); }
+	public int getChargingL2Count() { return this.chargingVehicleL2.size(); }
+	public int getChargingL3Count() { return this.chargingVehicleL3.size(); }
+	public int getChargingBusCount() { return this.chargingBus.size(); }
 	public double getPriceL2() { return this.priceL2; }
 	public double getPriceL3() { return this.priceL3; }
 }

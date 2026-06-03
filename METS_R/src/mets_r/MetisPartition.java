@@ -42,12 +42,82 @@ public class MetisPartition {
 		return this.partitionedBwRoads;
 	}
 
-	public ArrayList<ArrayList<Zone>> getpartitionedZones() {
-		return this.partitionedZones;
+	public synchronized ArrayList<ArrayList<Zone>> getpartitionedZones() {
+		ArrayList<ArrayList<Zone>> snapshot = new ArrayList<ArrayList<Zone>>();
+		for (ArrayList<Zone> partition : this.partitionedZones) {
+			snapshot.add(new ArrayList<Zone>(partition));
+		}
+		return snapshot;
 	}
 
-	public ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations() {
-		return this.partitionedChargingStation;
+	public synchronized void addZone(Zone zone) {
+		if (zone == null) return;
+		if (this.partitionedZones == null || this.partitionedZones.isEmpty()) {
+			this.partitionedZones = newZonePartitions();
+		}
+		for (ArrayList<Zone> partition : this.partitionedZones) {
+			if (partition.contains(zone)) {
+				return;
+			}
+		}
+		int bestPartition = 0;
+		int bestLoad = Integer.MAX_VALUE;
+		for (int i = 0; i < this.partitionedZones.size(); i++) {
+			int load = this.partitionedZones.get(i).size();
+			if (load < bestLoad) {
+				bestPartition = i;
+				bestLoad = load;
+			}
+		}
+		this.partitionedZones.get(bestPartition).add(zone);
+		this.backgroundLoads = computeBackgroundLoads();
+	}
+
+	public synchronized void removeZone(Zone zone) {
+		if (zone == null || this.partitionedZones == null) return;
+		for (ArrayList<Zone> partition : this.partitionedZones) {
+			partition.remove(zone);
+		}
+		this.backgroundLoads = computeBackgroundLoads();
+	}
+
+	public synchronized ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations() {
+		ArrayList<ArrayList<ChargingStation>> snapshot = new ArrayList<ArrayList<ChargingStation>>();
+		for (ArrayList<ChargingStation> partition : this.partitionedChargingStation) {
+			snapshot.add(new ArrayList<ChargingStation>(partition));
+		}
+		return snapshot;
+	}
+
+	public synchronized void addChargingStation(ChargingStation chargingStation) {
+		if (chargingStation == null) return;
+		if (this.partitionedChargingStation == null || this.partitionedChargingStation.isEmpty()) {
+			this.partitionedChargingStation = newChargingStationPartitions();
+		}
+		for (ArrayList<ChargingStation> partition : this.partitionedChargingStation) {
+			if (partition.contains(chargingStation)) {
+				return;
+			}
+		}
+		int bestPartition = 0;
+		int bestLoad = Integer.MAX_VALUE;
+		for (int i = 0; i < this.partitionedChargingStation.size(); i++) {
+			int load = this.partitionedChargingStation.get(i).size();
+			if (load < bestLoad) {
+				bestPartition = i;
+				bestLoad = load;
+			}
+		}
+		this.partitionedChargingStation.get(bestPartition).add(chargingStation);
+		this.backgroundLoads = computeBackgroundLoads();
+	}
+
+	public synchronized void removeChargingStation(ChargingStation chargingStation) {
+		if (chargingStation == null || this.partitionedChargingStation == null) return;
+		for (ArrayList<ChargingStation> partition : this.partitionedChargingStation) {
+			partition.remove(chargingStation);
+		}
+		this.backgroundLoads = computeBackgroundLoads();
 	}
 
 	public ArrayList<ArrayList<Signal>> getpartitionedSignals() {
