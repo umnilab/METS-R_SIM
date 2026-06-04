@@ -34,6 +34,8 @@ import mets_r.routing.RouteContext;
 import mets_r.communication.MessageClass.*;
 
 public class QueryMessageHandler extends MessageHandler {
+	private static final double MILE_IN_METERS = 1609.344;
+	private static final double DEFAULT_ALMOST_FINISHED_TAXI_MILES = 5.0;
 	private Random rand_route = new Random(GlobalVariables.RandomGenerator.nextInt());
 	
 	public QueryMessageHandler() {
@@ -95,12 +97,14 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("pendingRequests", this::getPendingRequests);
         messageHandlers.put("request", this::getRequest);
         messageHandlers.put("availableTaxis", this::getAvailableTaxis);
+        messageHandlers.put("almostFinishedTaxis", this::getAlmostFinishedTaxis);
         messageHandlers.put("pickupTaxiInfo", this::getPickupTaxiInfo);
         messageHandlers.put("occupiedTaxiInfo", this::getOccupiedTaxiInfo);
         // Backward-compat aliases for earlier names
         messageHandlers.put("queryPendingRequests", this::getPendingRequests);
         messageHandlers.put("queryRequest", this::getRequest);
         messageHandlers.put("queryAvailableTaxis", this::getAvailableTaxis);
+        messageHandlers.put("queryAlmostFinishedTaxis", this::getAlmostFinishedTaxis);
         messageHandlers.put("queryPickupTaxiInfo", this::getPickupTaxiInfo);
         messageHandlers.put("queryOccupiedTaxiInfo", this::getOccupiedTaxiInfo);
     }
@@ -322,7 +326,9 @@ public class QueryMessageHandler extends MessageHandler {
 	 *
 	 * <p>Output DATA: list of {@code {ID, state, x, y, z, origin, dest,
 	 * pass_num, matchedRequests, matchedPassengers, pickupRequests,
-	 * pickupPassengers, dropoffRequests, dropoffPassengers}} records.
+	 * pickupPassengers, dropoffRequests, dropoffPassengers}} records. Active
+	 * trip states also include {@code remainingDistance} in meters and
+	 * {@code remainingDistanceMiles}.
 	 */
 	public HashMap<String, Object> getTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -357,6 +363,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("dropoffPassengers", taxi.getDropoffPassengers());
 					record2.put("toBoardReqIDs", requestIDs(taxi.getToBoardRequests()));
 					record2.put("onBoardReqIDs", requestIDs(taxi.getOnBoardRequests()));
+					addRemainingDistanceFields(record2, taxi);
 					addVehicleRoadFields(record2, taxi);
 					jsonData.add(record2);
 				}
@@ -371,6 +378,25 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private void addRemainingDistanceFields(HashMap<String, Object> record, Vehicle vehicle) {
+		if (!shouldReportRemainingDistance(vehicle)) return;
+		double remainingDistance = remainingDistance(vehicle);
+		record.put("remainingDistance", remainingDistance);
+		record.put("remainingDistanceMiles", remainingDistance / MILE_IN_METERS);
+	}
+
+	private boolean shouldReportRemainingDistance(Vehicle vehicle) {
+		if (vehicle == null) return false;
+		int state = vehicle.getState();
+		return state != Vehicle.PARKING
+				&& state != Vehicle.CRUISING_TRIP
+				&& state != Vehicle.NONE_OF_THE_ABOVE;
+	}
+
+	private double remainingDistance(Vehicle vehicle) {
+		return vehicle == null ? Double.POSITIVE_INFINITY : Math.max(0.0, vehicle.getDistToTravel());
 	}
 
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
@@ -1633,6 +1659,16 @@ public class QueryMessageHandler extends MessageHandler {
 			return null;
 		}
 	}
+
+	private Double parseDouble(Object value) {
+		if (value == null) return null;
+		if (value instanceof Number) return Double.valueOf(((Number) value).doubleValue());
+		try {
+			return Double.valueOf(String.valueOf(value).trim());
+		} catch (NumberFormatException e) {
+			return null;
+		}
+	}
 	
 	/**
 	 * Query taxis that are currently in the available pool (parked or
@@ -1702,6 +1738,143 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("CODE", "KO");
 			return jsonObj;
 		}
+	}
+
+	/**
+	 * Exhaustively query occupied taxis that are expected to become available
+	 * soon.
+	 *
+	 * <p>A taxi is included when it is on an occupied trip, has exactly one
+	 * onboard request, has no queued pickup, and its remaining trip distance from
+	 * {@code Vehicle.getDistToTravel()} is less than the requested distance
+	 * threshold. A bare {@code DATA} number is interpreted as miles; an object can
+	 * use {@code distanceThresholdMiles}/{@code thresholdMiles} or
+	 * {@code distanceThresholdMeters}/{@code thresholdMeters}. If omitted, the
+	 * default is 5 miles.
+	 */
+	public HashMap<String, Object> getAlmostFinishedTaxis(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			double thresholdMeters = DEFAULT_ALMOST_FINISHED_TAXI_MILES * MILE_IN_METERS;
+			Integer zoneFilter = null;
+			if (jsonMsg.containsKey("DATA")) {
+				Object data = jsonMsg.get("DATA");
+				if (data instanceof Map<?, ?>) {
+					Map<?, ?> params = (Map<?, ?>) data;
+					Object metersValue = firstParamValue(params, "distanceThresholdMeters", "thresholdMeters");
+					Object milesValue = firstParamValue(params, "distanceThresholdMiles", "thresholdMiles",
+							"distanceThreshold", "threshold");
+					if (metersValue != null) {
+						Double parsed = parseDouble(metersValue);
+						if (parsed == null) {
+							jsonObj.put("WARN", "distance threshold in meters must be numeric");
+							jsonObj.put("CODE", "KO");
+							return jsonObj;
+						}
+						thresholdMeters = parsed.doubleValue();
+					} else if (milesValue != null) {
+						Double parsed = parseDouble(milesValue);
+						if (parsed == null) {
+							jsonObj.put("WARN", "distance threshold in miles must be numeric");
+							jsonObj.put("CODE", "KO");
+							return jsonObj;
+						}
+						thresholdMeters = parsed.doubleValue() * MILE_IN_METERS;
+					}
+
+					Object zoneValue = firstParamValue(params, "zoneID", "zone", "destZone");
+					if (zoneValue != null) {
+						zoneFilter = parseInteger(zoneValue);
+						if (zoneFilter == null) {
+							jsonObj.put("WARN", "zoneID must be an integer");
+							jsonObj.put("CODE", "KO");
+							return jsonObj;
+						}
+						if (ContextCreator.getZoneContext().get(zoneFilter.intValue()) == null) {
+							jsonObj.put("WARN", "Zone " + zoneFilter + " not found");
+							jsonObj.put("CODE", "KO");
+							return jsonObj;
+						}
+					}
+				} else {
+					Double parsed = parseDouble(data);
+					if (parsed == null) {
+						jsonObj.put("WARN", "DATA must be a distance threshold in miles or an object");
+						jsonObj.put("CODE", "KO");
+						return jsonObj;
+					}
+					thresholdMeters = parsed.doubleValue() * MILE_IN_METERS;
+				}
+			}
+			if (thresholdMeters < 0 || Double.isNaN(thresholdMeters) || Double.isInfinite(thresholdMeters)) {
+				jsonObj.put("WARN", "distance threshold must be a finite non-negative number");
+				jsonObj.put("CODE", "KO");
+				return jsonObj;
+			}
+
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (ElectricTaxi t : ContextCreator.getVehicleContext().getTaxis()) {
+				if (!isAlmostFinishedTaxi(t, thresholdMeters)) {
+					continue;
+				}
+				Request lastRequest = t.getOnBoardRequests().peek();
+				int zoneID = lastRequest == null ? t.getDestID() : lastRequest.getDestZone();
+				if (zoneFilter != null && zoneID != zoneFilter.intValue()) {
+					continue;
+				}
+				if (ContextCreator.getZoneContext().get(zoneID) == null) {
+					continue;
+				}
+				HashMap<String, Object> rec = new HashMap<String, Object>();
+				rec.put("ID", t.getID());
+				rec.put("zoneID", zoneID);
+				rec.put("state", t.getState());
+				rec.put("destZone", t.getDestID());
+				rec.put("destRoad", t.getDestRoad());
+				addRemainingDistanceFields(rec, t);
+				if (lastRequest != null) {
+					rec.put("reqID", lastRequest.getID());
+					rec.put("originZone", lastRequest.getOriginZone());
+					rec.put("requestDestZone", lastRequest.getDestZone());
+					rec.put("numPeople", lastRequest.getNumPeople());
+				}
+				Coordinate c = t.getCurrentCoord();
+				if (c != null) {
+					rec.put("x", c.x);
+					rec.put("y", c.y);
+					rec.put("z", c.z);
+				}
+				rec.put("battery", t.getBatteryLevel());
+				rec.put("passNum", t.getPassNum());
+				jsonData.add(rec);
+			}
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("distanceThreshold", thresholdMeters);
+			jsonObj.put("distanceThresholdMiles", thresholdMeters / MILE_IN_METERS);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getAlmostFinishedTaxis: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	private boolean isAlmostFinishedTaxi(ElectricTaxi taxi, double thresholdMeters) {
+		if (taxi == null || taxi.getState() != Vehicle.OCCUPIED_TRIP) return false;
+		if (!taxi.getToBoardRequests().isEmpty() || taxi.getOnBoardRequests().size() != 1) return false;
+		double remainingDistance = taxi.getDistToTravel();
+		return remainingDistance >= 0 && remainingDistance < thresholdMeters;
+	}
+
+	private Object firstParamValue(Map<?, ?> params, String... names) {
+		for (String name : names) {
+			if (params.containsKey(name)) {
+				return params.get(name);
+			}
+		}
+		return null;
 	}
 	
 	private HashMap<String, Object> findRequestInfo(int reqID) {

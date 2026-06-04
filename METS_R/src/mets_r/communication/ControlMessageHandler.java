@@ -199,6 +199,8 @@ public class ControlMessageHandler extends MessageHandler {
 			// successive resets.
 			ContextCreator.deferredReset();
 			jsonAns.put("CODE", "OK");
+			jsonAns.put("tick", ContextCreator.getCurrentTick());
+			jsonAns.put("TICK", ContextCreator.getCurrentTick());
 		}
 		catch (Exception e) {
 			ContextCreator.logger.error("Error processing control" + e.toString());
@@ -297,6 +299,7 @@ public class ControlMessageHandler extends MessageHandler {
 					if (ContextCreator.deferredLoad(zipPath, reloadNetwork)) {
 						jsonAns.put("CODE", "OK");
 						jsonAns.put("tick", ContextCreator.getCurrentTick());
+						jsonAns.put("TICK", ContextCreator.getCurrentTick());
 						jsonAns.put("fastLoad", SnapshotUtil.wasLastLoadFastRestore());
 					} else {
 						jsonAns.put("WARN", "Load failed; check simulator logs for the underlying exception.");
@@ -1323,6 +1326,10 @@ public class ControlMessageHandler extends MessageHandler {
 					record.put("removedDropoffTrip", matchedTaxi.removedDropoffTrip);
 					record.put("currentTripRemoved", matchedTaxi.currentTripRemoved);
 					record.put("startedNextTrip", matchedTaxi.startedNextTrip);
+					record.put("availableAfterCancellation", matchedTaxi.availableAfterCancellation);
+					if (matchedTaxi.availableZone >= 0) {
+						record.put("availableZone", matchedTaxi.availableZone);
+					}
 					record.put("originZone", matchedTaxi.request.getOriginZone());
 					record.put("destZone", matchedTaxi.request.getDestZone());
 					if (matchedTaxi.warn != null) {
@@ -2128,6 +2135,8 @@ public class ControlMessageHandler extends MessageHandler {
 		boolean removedDropoffTrip;
 		boolean currentTripRemoved;
 		boolean startedNextTrip;
+		boolean availableAfterCancellation;
+		int availableZone = -1;
 	}
 
 	private MatchedTaxiCancelResult cancelMatchedTaxiRequest(int reqID, int zoneID) {
@@ -2186,6 +2195,8 @@ public class ControlMessageHandler extends MessageHandler {
 				removeFutureSupplyForRequest(pickup.request);
 				TaxiAdvanceResult advance = advanceTaxiAfterCurrentCancellation(taxi);
 				result.startedNextTrip = advance.advanced;
+				result.availableAfterCancellation = advance.available;
+				result.availableZone = advance.availableZone;
 				if (advance.nextRequest != null) {
 					addFutureSupplyForRequest(advance.nextRequest);
 				}
@@ -2218,6 +2229,8 @@ public class ControlMessageHandler extends MessageHandler {
 	private static class TaxiAdvanceResult {
 		Request nextRequest;
 		boolean advanced;
+		boolean available;
+		int availableZone = -1;
 	}
 
 	private TaxiAdvanceResult advanceTaxiAfterCurrentCancellation(ElectricTaxi taxi) {
@@ -2246,9 +2259,47 @@ public class ControlMessageHandler extends MessageHandler {
 			if (!taxi.getPlan().isEmpty()) {
 				taxi.getPlan().remove(0);
 			}
-			taxi.setState(Vehicle.CRUISING_TRIP);
+			result.availableZone = makeTaxiAvailableAfterCancellation(taxi);
+			result.available = result.availableZone >= 0;
 		}
 		return result;
+	}
+
+	private int makeTaxiAvailableAfterCancellation(ElectricTaxi taxi) {
+		if (taxi == null) return -1;
+		int zoneID = resolveTaxiAvailabilityZone(taxi);
+		ContextCreator.getVehicleContext().removeAvailableTaxiFromAllZones(taxi);
+		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(taxi);
+		taxi.setState(Vehicle.CRUISING_TRIP);
+		if (zoneID < 0) return -1;
+		taxi.setCurrentZone(zoneID);
+		ContextCreator.getVehicleContext().addAvailableTaxi(taxi, zoneID);
+		return zoneID;
+	}
+
+	private int resolveTaxiAvailabilityZone(ElectricTaxi taxi) {
+		if (taxi == null) return -1;
+		if (ContextCreator.getZoneContext().get(taxi.getCurrentZone()) != null) {
+			return taxi.getCurrentZone();
+		}
+		Road road = taxi.getRoad();
+		if (road != null) {
+			int zoneID = road.getNeighboringZone(false);
+			if (ContextCreator.getZoneContext().get(zoneID) != null) {
+				return zoneID;
+			}
+			zoneID = road.getNeighboringZone(true);
+			if (ContextCreator.getZoneContext().get(zoneID) != null) {
+				return zoneID;
+			}
+		}
+		if (ContextCreator.getZoneContext().get(taxi.getDestID()) != null) {
+			return taxi.getDestID();
+		}
+		if (ContextCreator.getZoneContext().get(taxi.getOriginID()) != null) {
+			return taxi.getOriginID();
+		}
+		return -1;
 	}
 
 	private void ensureTaxiPlanAtIndexOne(ElectricTaxi taxi, Request request, boolean pickup) {
