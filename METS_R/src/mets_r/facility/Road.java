@@ -639,6 +639,7 @@ public class Road {
 			double restoredCurrentEnergy, double restoredTotalEnergy, int restoredCurrentFlow,
 			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType,
 			int restoredParkingCapacity, int restoredParkedNum) {
+		unregisterEnteringQueueMemberships();
 		this.lastUpdateHour = -1;
 		this.nVehicles_.set(0);
 		this.firstVehicle_ = null;
@@ -728,6 +729,7 @@ public class Road {
 	public void addVehicleToPendingQueue(Vehicle v) {
 		if (v != null) {
 			this.toAddDepartureVeh.add(v);
+			ContextCreator.getRoadContext().registerEnteringVehicle(this, v);
 			ContextCreator.getRoadContext().markRoadActive(this);
 		}
 	}
@@ -738,23 +740,29 @@ public class Road {
 	 * the same departuretime_, it will remove the vehicle match with id of v.
 	 */
 	public synchronized void removeVehicleFromNewQueue(int departureTime, Vehicle v) {
+		if (v == null) return;
 		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departureTime);
 		if (temporalList == null) return;
-		if (temporalList.size() > 1) {
-			this.departureVehMap.get(departureTime).remove(v);
-		} else {
+		boolean removed = temporalList.remove(v);
+		if (temporalList.isEmpty()) {
 			this.departureVehMap.remove(departureTime);
+		}
+		if (removed && !containsVehicleInEnteringQueue(v)) {
+			ContextCreator.getRoadContext().unregisterEnteringVehicle(this, v);
 		}
 	}
 
-	public synchronized void removeVehicleFromEnteringQueue(Vehicle v) {
-		if (v == null) return;
+	public synchronized boolean removeVehicleFromEnteringQueue(Vehicle v) {
+		if (v == null) return false;
+		boolean removed = false;
 		while (this.toAddDepartureVeh.remove(v)) {
+			removed = true;
 			// Remove all stale pending entries for this vehicle.
 		}
 		ArrayList<Integer> emptyDepartureTimes = new ArrayList<Integer>();
 		for (Map.Entry<Integer, ArrayList<Vehicle>> entry : this.departureVehMap.entrySet()) {
 			while (entry.getValue().remove(v)) {
+				removed = true;
 				// Remove all stale scheduled entries for this vehicle.
 			}
 			if (entry.getValue().isEmpty()) {
@@ -763,6 +771,25 @@ public class Road {
 		}
 		for (Integer departureTime : emptyDepartureTimes) {
 			this.departureVehMap.remove(departureTime);
+		}
+		if (removed || !containsVehicleInEnteringQueue(v)) {
+			ContextCreator.getRoadContext().unregisterEnteringVehicle(this, v);
+		}
+		return removed;
+	}
+
+	private boolean containsVehicleInEnteringQueue(Vehicle v) {
+		if (v == null) return false;
+		if (this.toAddDepartureVeh.contains(v)) return true;
+		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
+			if (queue != null && queue.contains(v)) return true;
+		}
+		return false;
+	}
+
+	private void unregisterEnteringQueueMemberships() {
+		for (Vehicle v : getEnteringVehicleQueueSnapshot()) {
+			ContextCreator.getRoadContext().unregisterEnteringVehicle(this, v);
 		}
 	}
 
@@ -793,6 +820,7 @@ public class Road {
 	}
 
 	public synchronized void restoreEnteringVehicleQueue(List<Vehicle> vehicles) {
+		unregisterEnteringQueueMemberships();
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
 		if (vehicles == null) return;
@@ -805,6 +833,7 @@ public class Road {
 				this.departureVehMap.put(departureTime, queue);
 			}
 			queue.add(v);
+			ContextCreator.getRoadContext().registerEnteringVehicle(this, v);
 		}
 	}
 

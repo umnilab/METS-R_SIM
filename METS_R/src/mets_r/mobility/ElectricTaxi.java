@@ -409,7 +409,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		return GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS;
 	}
 
-	private void becomeAvailableForExternalControl(Zone z) {
+	public void becomeAvailableForExternalControl(Zone z) {
 		if (z == null) {
 			return;
 		}
@@ -489,16 +489,21 @@ public class ElectricTaxi extends ElectricVehicle {
 	}
 
 	private int resolveIdleRoadID(Zone z) {
-		int idleRoadID = this.getDestRoad();
-		if (idleRoadID >= 0) {
-			return idleRoadID;
+		if (this.getRoad() != null) {
+			return this.getRoad().getID();
+		}
+		if (this.getCurrentParkingRoad() >= 0) {
+			return this.getCurrentParkingRoad();
 		}
 		Integer arrivalRoad = z.getClosestRoad(true);
 		if (arrivalRoad != null) {
 			return arrivalRoad;
 		}
 		Integer departureRoad = z.getClosestRoad(false);
-		return departureRoad == null ? -1 : departureRoad;
+		if (departureRoad != null) {
+			return departureRoad;
+		}
+		return this.getDestRoad();
 	}
 
 	private void insertToBoardRequest(Request request, int index) {

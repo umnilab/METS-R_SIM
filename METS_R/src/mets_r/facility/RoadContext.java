@@ -14,6 +14,7 @@ import com.vividsolutions.jts.geom.GeometryFactory;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
+import mets_r.mobility.Vehicle;
 
 import java.io.BufferedReader;
 import java.io.FileNotFoundException;
@@ -31,11 +32,13 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class RoadContext extends FacilityContext<Road> {
 	private ConcurrentHashMap<Integer, Long> activeRoadIDs;
+	private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>> enteringVehicleRoadIDs;
 	private AtomicLong activeRoadMarkVersion;
 	
 	public RoadContext() {
 		super("RoadContext");
 		this.activeRoadIDs = new ConcurrentHashMap<Integer, Long>();
+		this.enteringVehicleRoadIDs = new ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>>();
 		this.activeRoadMarkVersion = new AtomicLong(0);
 		ContextCreator.logger.info("RoadContext creation");
 		/*
@@ -133,6 +136,88 @@ public class RoadContext extends FacilityContext<Road> {
 		this.activeRoadIDs.put(roadID, this.activeRoadMarkVersion.incrementAndGet());
 	}
 
+	public void registerEnteringVehicle(Road road, Vehicle vehicle) {
+		if (road == null || vehicle == null) return;
+		ConcurrentHashMap<Integer, Boolean> roadIDs = this.enteringVehicleRoadIDs.get(vehicle.getID());
+		if (roadIDs == null) {
+			ConcurrentHashMap<Integer, Boolean> newRoadIDs = new ConcurrentHashMap<Integer, Boolean>();
+			roadIDs = this.enteringVehicleRoadIDs.putIfAbsent(vehicle.getID(), newRoadIDs);
+			if (roadIDs == null) {
+				roadIDs = newRoadIDs;
+			}
+		}
+		roadIDs.put(road.getID(), Boolean.TRUE);
+	}
+
+	public void unregisterEnteringVehicle(Road road, Vehicle vehicle) {
+		if (road == null || vehicle == null) return;
+		ConcurrentHashMap<Integer, Boolean> roadIDs = this.enteringVehicleRoadIDs.get(vehicle.getID());
+		if (roadIDs == null) return;
+		roadIDs.remove(road.getID());
+		if (roadIDs.isEmpty()) {
+			this.enteringVehicleRoadIDs.remove(vehicle.getID(), roadIDs);
+		}
+	}
+
+	public void removeVehicleFromEnteringQueues(Vehicle vehicle) {
+		if (vehicle == null) return;
+		ConcurrentHashMap<Integer, Boolean> roadIDMap = this.enteringVehicleRoadIDs.get(vehicle.getID());
+		if (roadIDMap != null && !roadIDMap.isEmpty()) {
+			ArrayList<Integer> roadIDs = new ArrayList<Integer>(roadIDMap.keySet());
+			for (Integer roadID : roadIDs) {
+				Road road = roadID == null ? null : this.get(roadID);
+				if (road != null) {
+					road.removeVehicleFromEnteringQueue(vehicle);
+				} else {
+					roadIDMap.remove(roadID);
+				}
+			}
+			if (roadIDMap.isEmpty()) {
+				this.enteringVehicleRoadIDs.remove(vehicle.getID(), roadIDMap);
+			}
+			return;
+		}
+
+		// Fallback for queues restored or created before the membership index existed.
+		boolean removed = false;
+		ArrayList<Road> fallbackRoads = getLikelyEnteringQueueRoads(vehicle);
+		for (Road road : fallbackRoads) {
+			if (road != null) {
+				removed = road.removeVehicleFromEnteringQueue(vehicle) || removed;
+			}
+		}
+		if (removed) return;
+		for (Road road : getActiveRoadsSnapshot()) {
+			if (road != null && !fallbackRoads.contains(road)) {
+				road.removeVehicleFromEnteringQueue(vehicle);
+			}
+		}
+	}
+
+	private ArrayList<Road> getLikelyEnteringQueueRoads(Vehicle vehicle) {
+		ArrayList<Road> roads = new ArrayList<Road>();
+		addEnteringQueueCandidate(roads, vehicle.getRoad());
+		addEnteringQueueCandidate(roads, vehicle.getOriginRoad());
+		addEnteringQueueCandidate(roads, vehicle.getLastDeparturableRoad());
+		if (roads.isEmpty()) {
+			for (Road road : getActiveRoadsSnapshot()) {
+				addEnteringQueueCandidate(roads, road);
+			}
+		}
+		return roads;
+	}
+
+	private void addEnteringQueueCandidate(ArrayList<Road> roads, int roadID) {
+		if (roadID >= 0) {
+			addEnteringQueueCandidate(roads, this.get(roadID));
+		}
+	}
+
+	private void addEnteringQueueCandidate(ArrayList<Road> roads, Road road) {
+		if (road == null || roads.contains(road)) return;
+		roads.add(road);
+	}
+
 	public List<Road> getActiveRoadsSnapshot() {
 		ArrayList<Road> activeRoads = new ArrayList<Road>(this.activeRoadIDs.size());
 		for (Integer roadID : this.activeRoadIDs.keySet()) {
@@ -167,9 +252,13 @@ public class RoadContext extends FacilityContext<Road> {
 
 	public void rebuildActiveRoadsFromState() {
 		this.activeRoadIDs.clear();
+		this.enteringVehicleRoadIDs.clear();
 		for (Road road : this.getAll()) {
 			if (road.hasActiveVehicles()) {
 				markRoadActive(road);
+			}
+			for (Vehicle vehicle : road.getEnteringVehicleQueueSnapshot()) {
+				registerEnteringVehicle(road, vehicle);
 			}
 		}
 	}
@@ -185,6 +274,9 @@ public class RoadContext extends FacilityContext<Road> {
 	@Override
 	public void remove(int ID) {
 		this.activeRoadIDs.remove(ID);
+		for (ConcurrentHashMap<Integer, Boolean> roadIDs : this.enteringVehicleRoadIDs.values()) {
+			roadIDs.remove(ID);
+		}
 		super.remove(ID);
 	}
 }

@@ -121,7 +121,10 @@ public class MessageClass{
 	    boolean vehType;
 	    String roadID;
 	    int laneID;
-	    double dist;
+	    Double dist;
+	    Double x;
+	    Double y;
+	    boolean transformCoord;
 
 	    // Constructor
 	    public VehIDVehTypeRoadLaneDist(int vehID, boolean vehType, String roadID, int laneID, double dist) {
@@ -130,6 +133,17 @@ public class MessageClass{
 	        this.roadID = roadID;
 	        this.laneID = laneID;
 	        this.dist = dist;
+	    }
+
+	    public VehIDVehTypeRoadLaneDist(int vehID, boolean vehType, String roadID, int laneID,
+		    double x, double y, boolean transformCoord) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.roadID = roadID;
+	        this.laneID = laneID;
+	        this.x = x;
+	        this.y = y;
+	        this.transformCoord = transformCoord;
 	    }
 	}
 	

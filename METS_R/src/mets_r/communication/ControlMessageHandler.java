@@ -711,8 +711,10 @@ public class ControlMessageHandler extends MessageHandler {
      * lane/road and re-inserted at the target position.
      *
      * <p>Input DATA: list of {@code {vehID, vehType, roadID, laneID, dist}}
-     * where {@code vehType=true} selects a private vehicle and
-     * {@code vehType=false} selects a public one.
+     * or {@code {vehID, vehType, roadID, laneID, x, y, transformCoord}} where
+     * {@code vehType=true} selects a private vehicle and {@code vehType=false}
+     * selects a public one. When {@code x} and {@code y} are provided, they are
+     * projected onto the target lane to compute the distance to downstream.
      */
     private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg){
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -755,6 +757,8 @@ public class ControlMessageHandler extends MessageHandler {
 		                	else{
 		                		try {
 									Lane lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
+									double teleportDistance = traceReplayTeleportDistance(vehIDVehTypeRoadLaneDist, lane);
+									removeVehicleFromEnteringQueues(veh);
 									// Update its location in the target link and target lane
 									if (veh.getRoad() == road) {
 										veh.removeFromCurrentLane(); // Just remove the vehicle from the current lane
@@ -764,7 +768,7 @@ public class ControlMessageHandler extends MessageHandler {
 										veh.removeFromCurrentRoad();
 									}
 									
-									road.teleportVehicle(veh, lane, vehIDVehTypeRoadLaneDist.dist);
+									road.teleportVehicle(veh, lane, teleportDistance);
 									HashMap<String, Object> record2 = new HashMap<String, Object>();
 									record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
 									record2.put("STATUS", "OK");
@@ -794,6 +798,59 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		return jsonAns;
     }
+
+	private double traceReplayTeleportDistance(VehIDVehTypeRoadLaneDist request, Lane lane)
+			throws TransformException {
+		if (request.x != null && request.y != null) {
+			Coordinate coord = new Coordinate(request.x, request.y);
+			if (request.transformCoord) {
+				JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+			}
+			return laneDistanceFromCoordinate(lane, coord);
+		}
+		if (request.dist != null) {
+			return request.dist.doubleValue();
+		}
+		throw new IllegalArgumentException("teleportTraceReplayVeh requires either dist or x/y");
+	}
+
+	private double laneDistanceFromCoordinate(Lane lane, Coordinate coord) {
+		ArrayList<Coordinate> coords = lane.getCoords();
+		if (coords == null || coords.size() < 2) {
+			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID()
+					+ " because it has fewer than two coordinates");
+		}
+
+		double downstreamDistance = 0.0;
+		double bestDistance = Double.NaN;
+		double minProjectionError = Double.MAX_VALUE;
+		for (int i = coords.size() - 1; i > 0; i--) {
+			Coordinate downstream = coords.get(i);
+			Coordinate upstream = coords.get(i - 1);
+			double dx = downstream.x - upstream.x;
+			double dy = downstream.y - upstream.y;
+			double lenSq = dx * dx + dy * dy;
+			double segmentLen = ContextCreator.getCityContext().getDistance(downstream, upstream);
+			if (lenSq > 0) {
+				double apx = coord.x - upstream.x;
+				double apy = coord.y - upstream.y;
+				double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
+				double closestX = upstream.x + param * dx;
+				double closestY = upstream.y + param * dy;
+				double projectionError = Math.hypot(coord.x - closestX, coord.y - closestY);
+				if (projectionError < minProjectionError) {
+					minProjectionError = projectionError;
+					bestDistance = downstreamDistance + (1.0 - param) * segmentLen;
+				}
+			}
+			downstreamDistance += segmentLen;
+		}
+
+		if (Double.isNaN(bestDistance)) {
+			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID());
+		}
+		return Math.max(0.0, Math.min(lane.getLength(), bestDistance));
+	}
     
 	/**
 	 * Teleport a co-simulation vehicle to an absolute (x, y, z) world
@@ -846,6 +903,7 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 					}
 					
+					removeVehicleFromEnteringQueues(veh);
 					veh.setCurrentCoord(new Coordinate(x, y, z));
 					veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
 					veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
@@ -1488,6 +1546,7 @@ public class ControlMessageHandler extends MessageHandler {
 					destZone.addFutureSupply();
 					ArrayList<Request> plist = new ArrayList<Request>();
 					plist.add(p);
+					removeVehicleFromEnteringQueues(veh);
 					veh.servePassenger(plist);
 				} else {
 					veh.queuePassengerAfterCurrentTrip(p);
@@ -1517,7 +1576,9 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private boolean shouldStartDispatchImmediately(int taxiState) {
-		return taxiState == Vehicle.PARKING || taxiState == Vehicle.NONE_OF_THE_ABOVE;
+		return taxiState == Vehicle.PARKING
+				|| taxiState == Vehicle.CRUISING_TRIP
+				|| taxiState == Vehicle.NONE_OF_THE_ABOVE;
 	}
 
 	private void removeTaxiFromDispatchPools(ElectricTaxi taxi) {
@@ -2203,6 +2264,12 @@ public class ControlMessageHandler extends MessageHandler {
 			} else {
 				result.removedPickupTrip = removePlanForRequest(taxi, pickup.request, true, pickup.index);
 			}
+		} else {
+			result.removedPickupTrip = removePlanForRequest(taxi, pickup.request, true, pickup.index);
+			if (!taxi.hasPassengerAssignments() && isIdleTaxiState(taxi)) {
+				result.availableZone = makeTaxiAvailableAfterCancellation(taxi);
+				result.availableAfterCancellation = result.availableZone >= 0;
+			}
 		}
 		return result;
 	}
@@ -2268,20 +2335,16 @@ public class ControlMessageHandler extends MessageHandler {
 	private int makeTaxiAvailableAfterCancellation(ElectricTaxi taxi) {
 		if (taxi == null) return -1;
 		int zoneID = resolveTaxiAvailabilityZone(taxi);
-		ContextCreator.getVehicleContext().removeAvailableTaxiFromAllZones(taxi);
-		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(taxi);
-		taxi.setState(Vehicle.CRUISING_TRIP);
 		if (zoneID < 0) return -1;
-		taxi.setCurrentZone(zoneID);
-		ContextCreator.getVehicleContext().addAvailableTaxi(taxi, zoneID);
+		Zone zone = ContextCreator.getZoneContext().get(zoneID);
+		if (zone == null) return -1;
+		removeVehicleFromEnteringQueues(taxi);
+		taxi.becomeAvailableForExternalControl(zone);
 		return zoneID;
 	}
 
 	private int resolveTaxiAvailabilityZone(ElectricTaxi taxi) {
 		if (taxi == null) return -1;
-		if (ContextCreator.getZoneContext().get(taxi.getCurrentZone()) != null) {
-			return taxi.getCurrentZone();
-		}
 		Road road = taxi.getRoad();
 		if (road != null) {
 			int zoneID = road.getNeighboringZone(false);
@@ -2293,6 +2356,9 @@ public class ControlMessageHandler extends MessageHandler {
 				return zoneID;
 			}
 		}
+		if (ContextCreator.getZoneContext().get(taxi.getCurrentZone()) != null) {
+			return taxi.getCurrentZone();
+		}
 		if (ContextCreator.getZoneContext().get(taxi.getDestID()) != null) {
 			return taxi.getDestID();
 		}
@@ -2300,6 +2366,14 @@ public class ControlMessageHandler extends MessageHandler {
 			return taxi.getOriginID();
 		}
 		return -1;
+	}
+
+	private boolean isIdleTaxiState(ElectricTaxi taxi) {
+		if (taxi == null || taxi.isOnChargingRoute()) return false;
+		int state = taxi.getState();
+		return state == Vehicle.PARKING
+				|| state == Vehicle.CRUISING_TRIP
+				|| state == Vehicle.NONE_OF_THE_ABOVE;
 	}
 
 	private void ensureTaxiPlanAtIndexOne(ElectricTaxi taxi, Request request, boolean pickup) {
@@ -5295,11 +5369,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private void removeVehicleFromEnteringQueues(Vehicle veh) {
-		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if (road != null) {
-				road.removeVehicleFromEnteringQueue(veh);
-			}
-		}
+		ContextCreator.getRoadContext().removeVehicleFromEnteringQueues(veh);
 	}
 
 	private void removeTaxiFromIdlePools(ElectricTaxi taxi, boolean releaseParking, Zone parkingZoneObj) {
