@@ -57,6 +57,8 @@ public class VehicleRouting {
 						oneRoadPath_.add(ContextCreator.getRoadContext().get(roadID));
 					}
 				}
+				// Add the destination road
+				oneRoadPath_.add(destRoad);
 				// Add the whole path into roadPaths
 				roadPath_.add(oneRoadPath_);
 			}
