@@ -407,8 +407,7 @@ public class QueryMessageHandler extends MessageHandler {
 		if (vehicle.isOnRoad()) {
 			Road road = vehicle.getRoad();
 			if (road != null) {
-				record.put("road", road.getOrigID());
-				record.put("roadID", road.getID());
+				record.put("roadID", road.getOrigID());
 				record.put("roadControlType", road.getControlType());
 				record.put("roadActive", ContextCreator.getRoadContext().isRoadActive(road.getID()));
 			}
@@ -417,8 +416,7 @@ public class QueryMessageHandler extends MessageHandler {
 
 		Road queuedRoad = findEnteringQueueRoad(vehicle);
 		if (queuedRoad != null) {
-			record.put("queuedRoad", queuedRoad.getOrigID());
-			record.put("queuedRoadID", queuedRoad.getID());
+			record.put("queuedRoadID", queuedRoad.getOrigID());
 			record.put("queuedRoadControlType", queuedRoad.getControlType());
 			record.put("queuedRoadActive", ContextCreator.getRoadContext().isRoadActive(queuedRoad.getID()));
 		}
@@ -582,7 +580,6 @@ public class QueryMessageHandler extends MessageHandler {
 			queue.add(vehicleRecord);
 		}
 		record.put("ID", road.getOrigID());
-		record.put("internalID", road.getID());
 		record.put("controlType", road.getControlType());
 		record.put("enteringVehicleIDs", ids);
 		record.put("queue", queue);
