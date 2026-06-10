@@ -401,8 +401,8 @@ public class QueryMessageHandler extends MessageHandler {
 
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
-		record.put("originRoad", vehicle.getOriginRoad());
-		record.put("destRoad", vehicle.getDestRoad());
+		record.put("originRoad", ContextCreator.getRoadContext().get(vehicle.getOriginRoad()).getOrigID());
+		record.put("destRoad", ContextCreator.getRoadContext().get(vehicle.getDestRoad()).getOrigID());
 		record.put("currentParkingRoad", vehicle.getCurrentParkingRoad());
 		if (vehicle.isOnRoad()) {
 			Road road = vehicle.getRoad();
@@ -1566,8 +1566,8 @@ public class QueryMessageHandler extends MessageHandler {
 		rec.put("ID", r.getID());
 		rec.put("origin", r.getOriginZone());
 		rec.put("destination", r.getDestZone());
-		rec.put("originRoad", r.getOriginRoad());
-		rec.put("destRoad", r.getDestRoad());
+		rec.put("originRoad", ContextCreator.getRoadContext().get(r.getOriginRoad()).getOrigID());
+		rec.put("destRoad", ContextCreator.getRoadContext().get(r.getDestRoad()).getOrigID());
 		rec.put("numPeople", r.getNumPeople());
 		rec.put("generationTime", r.generationTime);
 		rec.put("matchedTime", r.matchedTime);
