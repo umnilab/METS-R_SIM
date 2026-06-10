@@ -454,8 +454,7 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
-			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getOrigIDList());
 			return jsonObj;
 		}
 		try {
