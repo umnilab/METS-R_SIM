@@ -22,6 +22,7 @@ import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Junction;
+import mets_r.facility.Lane;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
 import mets_r.facility.Signal;
@@ -188,8 +189,9 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("speed", vehicle.currentSpeed());
 					addVehicleRoadFields(record2, vehicle);
 					if(vehicle.isOnRoad()) {
-						if(vehicle.isOnLane()) {
-							record2.put("lane", vehicle.getLane().getIndex());
+						Lane lane = vehicle.getLane();
+						if(vehicle.isOnLane() && lane != null) {
+							record2.put("lane", lane.getIndex());
 							record2.put("dist", vehicle.getDistanceToNextJunction());
 						}
 					}
@@ -401,8 +403,8 @@ public class QueryMessageHandler extends MessageHandler {
 
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
-		record.put("originRoad", ContextCreator.getRoadContext().get(vehicle.getOriginRoad()).getOrigID());
-		record.put("destRoad", ContextCreator.getRoadContext().get(vehicle.getDestRoad()).getOrigID());
+		record.put("originRoad", roadOrigIDOrNull(vehicle.getOriginRoad()));
+		record.put("destRoad", roadOrigIDOrNull(vehicle.getDestRoad()));
 		record.put("currentParkingRoad", vehicle.getCurrentParkingRoad());
 		if (vehicle.isOnRoad()) {
 			Road road = vehicle.getRoad();
@@ -420,6 +422,13 @@ public class QueryMessageHandler extends MessageHandler {
 			record.put("queuedRoadControlType", queuedRoad.getControlType());
 			record.put("queuedRoadActive", ContextCreator.getRoadContext().isRoadActive(queuedRoad.getID()));
 		}
+	}
+
+	private String roadOrigIDOrNull(int roadID) {
+		if (roadID < 0) return null;
+		if (ContextCreator.getRoadContext() == null) return null;
+		Road road = ContextCreator.getRoadContext().get(roadID);
+		return road == null ? null : road.getOrigID();
 	}
 
 	private Road findEnteringQueueRoad(Vehicle vehicle) {

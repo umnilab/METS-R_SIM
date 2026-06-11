@@ -1081,48 +1081,69 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Update route based on list of road, return false if the route start and end links are inconsistent 
+	 * Update route based on list of roads. The route must start from the
+	 * vehicle's current road; its terminal road becomes the current trip
+	 * destination so trace-replay callers can replace the remaining route.
 	 */
 	public boolean updateRoute(List<Road> newPath) {
 		if (newPath == null || newPath.isEmpty()) {
 			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID() + " because the route is empty.");
 			return false;
 		}
-		if (this.road == null || this.destRoad_ == null) {
+		if (this.road == null) {
 			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
-					+ " because current road or destination road is null.");
+					+ " because current road is null.");
 			return false;
 		}
-		if(this.road == newPath.get(0) && this.destRoad_ == newPath.get(newPath.size() - 1)){
-			double dtt = 0;
-			for(Road r: newPath) {
-				if (r == null) {
-					ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
-							+ " because the route contains a null road.");
-					return false;
+		double dtt = 0;
+		for(Road r: newPath) {
+			if (r == null) {
+				ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
+						+ " because the route contains a null road.");
+				return false;
+			}
+			dtt += r.getLength();
+		}
+		if(this.road != newPath.get(0)) {
+			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
+					+ " because route starts from " + roadLabel(newPath.get(0))
+					+ " but current road is " + roadLabel(this.road) + ".");
+			return false;
+		}
+		Road terminalRoad = newPath.get(newPath.size() - 1);
+		if (this.destRoad_ != terminalRoad) {
+			ContextCreator.logger.info("updateRoute: vehicle " + this.getID()
+					+ " destination road changed from " + roadLabel(this.destRoad_)
+					+ " to " + roadLabel(terminalRoad) + ".");
+			this.destRoad_ = terminalRoad;
+			int terminalZone = terminalRoad.getNeighboringZone(true);
+			if (terminalZone >= 0 && ContextCreator.getZoneContext().get(terminalZone) != null) {
+				this.destinationID = terminalZone;
+				if (!this.activityPlan.isEmpty()) {
+					double departureTime = this.activityPlan.get(0).getDepartureTime();
+					this.activityPlan.set(0, new Plan(terminalZone, terminalRoad.getID(), departureTime));
 				}
-				dtt += r.getLength();
+			} else {
+				ContextCreator.logger.warn("updateRoute: terminal road " + roadLabel(terminalRoad)
+						+ " has no valid arrival zone; destination zone remains " + this.destinationID + ".");
 			}
-			// Vehicle departured
-			this.atOrigin = false;
-			this.clearShadowImpact();
-			this.roadPath = newPath;
-			if (newPath.size() < 2) {
-				// Intentional same-road / one-road route: arrive immediately instead of rerouting forever.
-				this.distToTravel_ = this.distance_;
-				this.nextRoad_ = null;
-				this.setShadowImpact();
-				return true;
-			}
-			this.distToTravel_ = dtt;
-			this.nextRoad_ = newPath.get(1);
+		}
+		// Vehicle departured
+		this.atOrigin = false;
+		this.clearShadowImpact();
+		this.roadPath = newPath;
+		if (newPath.size() < 2) {
+			// Intentional same-road / one-road route: arrive immediately instead of rerouting forever.
+			this.distToTravel_ = this.distance_;
+			this.nextRoad_ = null;
 			this.setShadowImpact();
-			this.assignNextLane();
 			return true;
 		}
-		else {
-			return false;
-		}
+		this.distToTravel_ = dtt;
+		this.nextRoad_ = newPath.get(1);
+		this.setShadowImpact();
+		this.assignNextLane();
+		return true;
 	}
 	
 	/**
