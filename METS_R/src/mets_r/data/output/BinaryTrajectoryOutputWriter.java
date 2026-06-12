@@ -41,7 +41,7 @@ import mets_r.mobility.Vehicle;
  */
 public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private static final String FORMAT_NAME = "metsr-trajectory-binary";
-	private static final int FORMAT_VERSION = 7;
+	private static final int FORMAT_VERSION = 8;
 	private static final String CHUNK_MAGIC = "MRTB";
 
 	private boolean append;
@@ -381,7 +381,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.initializeBusRouteDictionary();
 		manifest.put("busRouteDictionary", this.busRouteDictionary);
 		manifest.put("vehicleTypes", BinaryTrajectoryOutputWriter.createVehicleTypes());
-		manifest.put("frameGroups", schema("ev_private", "ev_occupied", "ev_relocation",
+		manifest.put("frameGroups", schema("vehicle", "ev_private", "ev_occupied", "ev_relocation",
 				"ev_charging", "bus", "link", "zone", "chargingStation"));
 		manifest.put("sparseFrameGroups", schema("zone", "chargingStation"));
 		manifest.put("sparseFrameGroupMode", "initialFullFrameThenChangedRecordsAndRemovedIds");
@@ -422,6 +422,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.currentChunkFirstTick = tick.getTickNumber();
 		}
 
+		ArrayList<VehicleSnapshot> vehicles = this.getVehicleRecords(tick);
 		ArrayList<EVSnapshot> privateEvs = this.getPrivateEVRecords(tick);
 		ArrayList<ETaxiSnapshot> occupiedTaxis = this.getETaxiRecords(tick, Vehicle.OCCUPIED_TRIP);
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
@@ -448,6 +449,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.writeFloat(summary.eTaxiEnergy);
 		this.writer.writeFloat(summary.eBusEnergy);
 
+		this.writeVehicleGroup(vehicles);
 		this.writePrivateEVGroup(privateEvs);
 		this.writeETaxiGroup(occupiedTaxis);
 		this.writeETaxiGroup(relocationTaxis);
@@ -458,7 +460,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writeChargingStationGroup(chargingStations);
 		this.writer.flush();
 
-		int vehicleRecords = privateEvs.size() + occupiedTaxis.size() + relocationTaxis.size()
+		int vehicleRecords = vehicles.size() + privateEvs.size() + occupiedTaxis.size() + relocationTaxis.size()
 				+ chargingTaxis.size() + buses.size();
 		this.currentChunkLastTick = tick.getTickNumber();
 		this.currentChunkTickCount++;
@@ -551,6 +553,17 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		}
 	}
 
+	private ArrayList<VehicleSnapshot> getVehicleRecords(TickSnapshot tick) {
+		ArrayList<VehicleSnapshot> records = new ArrayList<VehicleSnapshot>();
+		for (Integer id : sortedIds(tick.getVehicleList())) {
+			VehicleSnapshot snapshot = tick.getVehicleSnapshot(id);
+			if (snapshot != null) {
+				records.add(snapshot);
+			}
+		}
+		return records;
+	}
+
 	private ArrayList<EVSnapshot> getPrivateEVRecords(TickSnapshot tick) {
 		ArrayList<EVSnapshot> records = new ArrayList<EVSnapshot>();
 		for (Integer id : sortedIds(tick.getPrivateEVList())) {
@@ -637,6 +650,25 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		}
 		this.previousChargingStationRecords = currentRecords;
 		return changedGroup;
+	}
+
+	private void writeVehicleGroup(ArrayList<VehicleSnapshot> records) throws IOException {
+		this.writer.writeInt(records.size());
+		for (VehicleSnapshot vehicle : records) {
+			this.writer.writeInt(vehicle.getId());
+			this.writer.writeInt(scaledX(vehicle.getPrevX()));
+			this.writer.writeInt(scaledY(vehicle.getPrevY()));
+			this.writer.writeInt(scaledX(vehicle.getX()));
+			this.writer.writeInt(scaledY(vehicle.getY()));
+			this.writer.writeFloat((float) vehicle.getBearing());
+			this.writer.writeFloat((float) vehicle.getSpeed());
+			this.writer.writeInt(scaledX(vehicle.getOriginX()));
+			this.writer.writeInt(scaledY(vehicle.getOriginY()));
+			this.writer.writeInt(scaledX(vehicle.getDestX()));
+			this.writer.writeInt(scaledY(vehicle.getDestY()));
+			this.writer.writeInt(vehicle.getvehicleClass());
+			this.writer.writeInt(vehicle.getRoadID());
+		}
 	}
 
 	private void writePrivateEVGroup(ArrayList<EVSnapshot> records) throws IOException {
@@ -852,6 +884,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private static HashMap<String, Object> createVehicleTypes() {
 		HashMap<String, Object> vehicleTypes = new HashMap<String, Object>();
+		vehicleTypes.put("vehicle", 0);
 		vehicleTypes.put("ev_private", 1);
 		vehicleTypes.put("ev_occupied", 2);
 		vehicleTypes.put("ev_relocation", 3);
@@ -870,6 +903,10 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				"dropoffRequests:int32", "dropoffPassengers:int32", "leftRequests:int32",
 				"leftPassengers:int32", "energy:float32", "numVeh:int32", "meanSpeed:float32",
 				"energyPrivateEV:float32", "energyETaxi:float32", "energyEBus:float32"));
+		schemas.put("vehicle", schema("id:int32", "x0:int32", "y0:int32", "x1:int32",
+				"y1:int32", "bearing:float32", "speed:float32", "originX:int32",
+				"originY:int32", "destX:int32", "destY:int32", "vehicleClass:int32",
+				"roadId:int32"));
 		schemas.put("ev_private", schema("id:int32", "x0:int32", "y0:int32", "x1:int32",
 				"y1:int32", "bearing:float32", "speed:float32", "originId:int32",
 				"destId:int32", "battery:float32", "energy:float32", "roadId:int32",

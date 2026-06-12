@@ -907,6 +907,7 @@ public class ControlMessageHandler extends MessageHandler {
 					veh.setCurrentCoord(new Coordinate(x, y, z));
 					veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
 					veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
+					recordCoSimTeleportSnapshot(veh);
 
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
@@ -929,6 +930,18 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+
+	private void recordCoSimTeleportSnapshot(Vehicle veh) {
+		if (!GlobalVariables.ENABLE_DATA_COLLECTION || ContextCreator.dataCollector == null) {
+			return;
+		}
+		try {
+			ContextCreator.dataCollector.recordSnapshotIfTickActive(veh, veh.getCurrentCoord());
+		} catch (Throwable t) {
+			ContextCreator.logger.debug("Failed to record CoSim teleport snapshot for vehicle "
+					+ veh.getID() + ": " + t.getMessage());
+		}
 	}
 	
 	/**

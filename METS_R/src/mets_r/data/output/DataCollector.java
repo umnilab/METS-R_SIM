@@ -361,6 +361,14 @@ public class DataCollector {
 		}
 	}
 
+	public boolean recordSnapshotIfTickActive(Vehicle vehicle, Coordinate coordinate) throws Throwable {
+		if (this.currentSnapshot == null) {
+			return false;
+		}
+		this.recordSnapshot(vehicle, coordinate);
+		return true;
+	}
+
 	/**
 	 * HG: Records starting and ending of events
 	 * 

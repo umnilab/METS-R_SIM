@@ -602,6 +602,7 @@ public class JsonOutputWriter implements DataConsumer {
 		// check the tick snapshot exists
 		if (tick == null) {
 			HashMap<String, Object> tickArray = new HashMap<String, Object>();
+			tickArray.put("vehicle", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_private", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_occupied", new ArrayList<ArrayList<Float>>());
 			tickArray.put("ev_relocation", new ArrayList<ArrayList<Float>>());
@@ -633,6 +634,23 @@ public class JsonOutputWriter implements DataConsumer {
 		leftPassengers = tick.getLeftPassengers();
 
 		// Get the list of of vehicles stored in the tick snapshot
+		Collection<Integer> vehicleIDs = tick.getVehicleList();
+		ArrayList<ArrayList<Object>> vehicleArrayArray = new ArrayList<ArrayList<Object>>();
+		if (!(vehicleIDs == null || vehicleIDs.isEmpty())) {
+			for (Integer id : vehicleIDs) {
+				VehicleSnapshot vehicle = tick.getVehicleSnapshot(id);
+				if (vehicle == null) {
+					continue;
+				}
+
+				ArrayList<Object> vehicleArray = JsonOutputWriter.createVehicleLine(vehicle);
+				if (vehicleArray == null) {
+					continue;
+				}
+				vehicleArrayArray.add(vehicleArray);
+			}
+		}
+
 		Collection<Integer> evIDs = tick.getPrivateEVList();
 		ArrayList<ArrayList<Object>> privateArrayArray = new ArrayList<ArrayList<Object>>();
 		if (!(evIDs == null || evIDs.isEmpty())) {
@@ -751,6 +769,7 @@ public class JsonOutputWriter implements DataConsumer {
 
 		HashMap<String, Object> tickArray = new HashMap<String, Object>();
 
+		tickArray.put("vehicle", vehicleArrayArray);
 		tickArray.put("ev_occupied", occupiedArrayArray);
 		tickArray.put("ev_relocation", relocationArrayArray);
 		tickArray.put("ev_charging", chargingArrayArray);
