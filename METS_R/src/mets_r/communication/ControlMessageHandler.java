@@ -1040,11 +1040,18 @@ public class ControlMessageHandler extends MessageHandler {
 							// even when the current stored road and nextRoad are not adjacent (co-sim drift).
 							veh.rerouteWithSpecifiedNextRoad(r);
 
-							boolean entered = veh.changeRoad();
+							boolean entered = false;
+							if (vehicleRoadMatches(veh.getNextRoad(), r)) {
+								entered = veh.changeRoad();
+							} else {
+								ContextCreator.logger.warn("enterNextRoad: requested road " + r.getOrigID()
+										+ " is not vehicle " + vehIDVehTypeRoad.vehID
+										+ "'s immediate next road after reroute; forcing requested road.");
+							}
 							if (!entered) {
 								// changeRoad() failed (e.g. space/gap check); force the transition
 								// because the external co-sim simulator is authoritative about road entry.
-								Lane targetLane = veh.getNextLane();
+								Lane targetLane = requestedRoadEntryLane(veh, r);
 								if (targetLane != null) {
 									veh.executeRoadTransition(targetLane, r);
 									entered = true;
@@ -1053,6 +1060,18 @@ public class ControlMessageHandler extends MessageHandler {
 											+ vehIDVehTypeRoad.vehID + " to road " + vehIDVehTypeRoad.roadID
 											+ " — nextLane is null");
 								}
+							}
+
+							if (entered && !vehicleRoadMatches(veh.getRoad(), r)) {
+								ContextCreator.logger.warn("enterNextRoad: vehicle " + vehIDVehTypeRoad.vehID
+										+ " entered road " + roadOrigID(veh.getRoad())
+										+ " instead of requested road " + r.getOrigID()
+										+ "; correcting to requested road.");
+								entered = forceVehicleIntoRequestedRoad(veh, r, vehIDVehTypeRoad.vehID);
+							}
+
+							if (!entered) {
+								entered = forceVehicleIntoRequestedRoad(veh, r, vehIDVehTypeRoad.vehID);
 							}
 
 							if (entered) {
@@ -1089,6 +1108,65 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+
+	private boolean forceVehicleIntoRequestedRoad(Vehicle veh, Road requestedRoad, int requestedVehID) {
+		Lane targetLane = requestedRoadEntryLane(veh, requestedRoad);
+		if (targetLane == null) {
+			ContextCreator.logger.warn("enterNextRoad: could not force transition for vehicle "
+					+ requestedVehID + " to road " + roadOrigID(requestedRoad)
+					+ " because the requested road has no usable lane.");
+			return false;
+		}
+
+		veh.executeRoadTransition(targetLane, requestedRoad);
+		if (!vehicleRoadMatches(veh.getRoad(), requestedRoad)) {
+			ContextCreator.logger.warn("enterNextRoad: forced transition for vehicle " + requestedVehID
+					+ " still ended on road " + roadOrigID(veh.getRoad())
+					+ " instead of requested road " + roadOrigID(requestedRoad) + ".");
+			return false;
+		}
+		return true;
+	}
+
+	private Lane requestedRoadEntryLane(Vehicle veh, Road requestedRoad) {
+		if (veh == null || requestedRoad == null || requestedRoad.getNumberOfLanes() <= 0) {
+			return null;
+		}
+
+		Lane assignedLane = veh.getNextLane();
+		if (assignedLane != null && assignedLane.getRoad() == requestedRoad) {
+			return assignedLane;
+		}
+
+		Lane currentLane = veh.getLane();
+		if (currentLane != null) {
+			for (int downstreamLaneID : currentLane.getDownStreamLanes()) {
+				Lane downstreamLane = ContextCreator.getLaneContext().get(downstreamLaneID);
+				if (downstreamLane != null && downstreamLane.getRoad() == requestedRoad) {
+					return downstreamLane;
+				}
+			}
+		}
+
+		Road currentRoad = veh.getRoad();
+		if (currentRoad != null) {
+			for (Lane requestedLane : requestedRoad.getLanes()) {
+				if (requestedLane != null && requestedLane.getUpStreamLaneInRoad(currentRoad) != null) {
+					return requestedLane;
+				}
+			}
+		}
+
+		return requestedRoad.getLane(0);
+	}
+
+	private boolean vehicleRoadMatches(Road actualRoad, Road requestedRoad) {
+		return actualRoad != null && requestedRoad != null && actualRoad.getID() == requestedRoad.getID();
+	}
+
+	private String roadOrigID(Road road) {
+		return road == null ? "null" : road.getOrigID();
 	}
 	
 //	// Find the closest lane end coords in coSim Road, teleport the vehicle to the lane in METS-R SIM
