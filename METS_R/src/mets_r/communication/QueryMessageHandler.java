@@ -29,6 +29,7 @@ import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
+import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
 import mets_r.routing.RouteContext;
@@ -129,6 +130,7 @@ public class QueryMessageHandler extends MessageHandler {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("CODE", "OK");
 		jsonObj.putAll(ContextCreator.getStepStatus());
+		addFrameSummaryFields(jsonObj);
 		return jsonObj;
 	}
 	
@@ -171,15 +173,10 @@ public class QueryMessageHandler extends MessageHandler {
 				}
 				if(vehicle != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					Coordinate coord;
-					if(record.transformCoord) {
-						coord= vehicle.getCurrentCoord(SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-					}
-					else {
-						coord= vehicle.getCurrentCoord();
-					}			
-					record2.put("ID", vehicle.getID());
+					Coordinate coord = coordinateForQuery(vehicle.getCurrentCoord(), record.transformCoord);
+    				record2.put("ID", vehicle.getID());
 					record2.put("v_type", vehicle.getVehicleClass());
+					record2.put("vehicleClass", vehicle.getVehicleClass());
 					record2.put("state", vehicle.getState());
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
@@ -187,7 +184,11 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("bearing", vehicle.getBearing());
 					record2.put("acc", vehicle.currentAcc());
 					record2.put("speed", vehicle.currentSpeed());
+					addVehicleCoordinateFields(record2, vehicle, record.transformCoord);
 					addVehicleRoadFields(record2, vehicle);
+					if (record.vehType && vehicle instanceof ElectricVehicle) {
+						addPrivateEVFields(record2, (ElectricVehicle) vehicle);
+					}
 					if(vehicle.isOnRoad()) {
 						Lane lane = vehicle.getLane();
 						if(vehicle.isOnLane() && lane != null) {
@@ -292,9 +293,20 @@ public class QueryMessageHandler extends MessageHandler {
 					int routeID = bus.getRouteID();
 					String routeName = ContextCreator.bus_schedule.getRouteName(routeID);
 					record2.put("route", routeName == null ? -1 : routeName);
+					record2.put("routeId", routeID);
 					record2.put("stopZones", bus.getBusStops());
+					record2.put("stopZoneCount", bus.getBusStops().size());
 					record2.put("current_stop",bus.getCurrentStop());
 					record2.put("pass_num", bus.getPassNum());
+					Coordinate currCoord = bus.getCurrentCoord();
+					record2.put("x", currCoord.x);
+					record2.put("y", currCoord.y);
+					record2.put("z", currCoord.z);
+					addVehicleCoordinateFields(record2, bus, false);
+					record2.put("bearing", bus.getBearing());
+					record2.put("speed", bus.currentSpeed());
+					record2.put("battery", bus.getBatteryLevel());
+					record2.put("energy", bus.getTotalConsume());
 					record2.put("matchedRequests", bus.getMatchedRequests());
 					record2.put("matchedPassengers", bus.getMatchedPassengers());
 					record2.put("pickupRequests", bus.getPickupRequests());
@@ -302,6 +314,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("dropoffRequests", bus.getDropoffRequests());
 					record2.put("dropoffPassengers", bus.getDropoffPassengers());
 					record2.put("battery_state", bus.getBatteryLevel());
+					addVehicleRoadFields(record2, bus);
 					jsonData.add(record2);
 				}
 				else {
@@ -356,6 +369,13 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("z", currCoord.z);
 					record2.put("origin", taxi.getOriginID());
 					record2.put("dest", taxi.getDestID());
+					record2.put("originId", taxi.getOriginID());
+					record2.put("destId", taxi.getDestID());
+					addVehicleCoordinateFields(record2, taxi, false);
+					record2.put("bearing", taxi.getBearing());
+					record2.put("speed", taxi.currentSpeed());
+					record2.put("battery", taxi.getBatteryLevel());
+					record2.put("energy", taxi.getTotalConsume());
 					record2.put("pass_num", taxi.getPassNum());
 					record2.put("matchedRequests", taxi.getMatchedRequests());
 					record2.put("matchedPassengers", taxi.getMatchedPassengers());
@@ -410,6 +430,7 @@ public class QueryMessageHandler extends MessageHandler {
 			Road road = vehicle.getRoad();
 			if (road != null) {
 				record.put("roadID", road.getOrigID());
+				record.put("innerRoadID", road.getID());
 				record.put("roadControlType", road.getControlType());
 				record.put("roadActive", ContextCreator.getRoadContext().isRoadActive(road.getID()));
 			}
@@ -444,6 +465,134 @@ public class QueryMessageHandler extends MessageHandler {
 		return null;
 	}
 	
+
+    private void addFrameSummaryFields(HashMap<String, Object> record) {
+        int matchedRequests = 0;
+        int matchedPassengers = 0;
+        int pickupRequests = 0;
+        int pickupPassengers = 0;
+        int dropoffRequests = 0;
+        int dropoffPassengers = 0;
+        int leftRequests = 0;
+        int leftPassengers = 0;
+        if (ContextCreator.getZoneContext() != null) {
+        for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+            matchedRequests += zone.taxiPickupRequest + zone.busPickupRequest;
+            matchedPassengers += zone.taxiPickupPassengers + zone.busPickupPassengers;
+            pickupRequests += zone.taxiPickedUpRequest + zone.busPickedUpRequest;
+            pickupPassengers += zone.taxiPickedUpPassengers + zone.busPickedUpPassengers;
+            dropoffRequests += zone.taxiServedRequest + zone.busServedRequest;
+            dropoffPassengers += zone.taxiServedPassengers + zone.busServedPassengers;
+            leftRequests += zone.numberOfLeavedTaxiRequest + zone.numberOfLeavedBusRequest;
+            leftPassengers += zone.numberOfLeavedTaxiPassengers + zone.numberOfLeavedBusPassengers;
+        }
+        }
+
+        LiveFrameSummary live = liveFrameSummary();
+        record.put("matchedRequests", matchedRequests);
+        record.put("matchedPassengers", matchedPassengers);
+        record.put("pickupRequests", pickupRequests);
+        record.put("pickupPassengers", pickupPassengers);
+        record.put("dropoffRequests", dropoffRequests);
+        record.put("dropoffPassengers", dropoffPassengers);
+        record.put("leftRequests", leftRequests);
+        record.put("leftPassengers", leftPassengers);
+        record.put("energy", live.privateEVEnergy + live.eTaxiEnergy + live.eBusEnergy);
+        record.put("numVeh", live.numVeh);
+        record.put("meanSpeed", live.speedCount == 0 ? 0.0 : live.speedSum / live.speedCount);
+        record.put("energyPrivateEV", live.privateEVEnergy);
+        record.put("energyETaxi", live.eTaxiEnergy);
+        record.put("energyEBus", live.eBusEnergy);
+    }
+
+    private LiveFrameSummary liveFrameSummary() {
+        LiveFrameSummary summary = new LiveFrameSummary();
+        summary.numVeh = liveRoadVehicleCount();
+        if (ContextCreator.getVehicleContext() == null) return summary;
+        for (ElectricVehicle vehicle : ContextCreator.getVehicleContext().getPrivateEVs()) {
+            if (vehicle == null) continue;
+            summary.privateEVEnergy += vehicle.getTotalConsume();
+            accumulateSpeed(summary, vehicle);
+        }
+        for (Vehicle vehicle : ContextCreator.getVehicleContext().getPrivateGVs()) {
+            accumulateSpeed(summary, vehicle);
+        }
+        for (ElectricTaxi taxi : ContextCreator.getVehicleContext().getTaxis()) {
+            if (taxi == null) continue;
+            summary.eTaxiEnergy += taxi.getTotalConsume();
+            accumulateSpeed(summary, taxi);
+        }
+        for (ElectricBus bus : ContextCreator.getVehicleContext().getBuses()) {
+            if (bus == null) continue;
+            summary.eBusEnergy += bus.getTotalConsume();
+            accumulateSpeed(summary, bus);
+        }
+        return summary;
+    }
+
+    private int liveRoadVehicleCount() {
+        int count = 0;
+        if (ContextCreator.getRoadContext() == null) return count;
+        for (Road road : ContextCreator.getRoadContext().getAll()) {
+            if (road != null) count += road.getVehicleNum();
+        }
+        return count;
+    }
+
+    private void accumulateSpeed(LiveFrameSummary summary, Vehicle vehicle) {
+        if (vehicle == null || !vehicle.isOnRoad()) return;
+        summary.speedSum += vehicle.currentSpeed();
+        summary.speedCount++;
+    }
+
+    private void addVehicleCoordinateFields(HashMap<String, Object> record, Vehicle vehicle,
+            boolean transformCoord) {
+        Coordinate prevCoord = coordinateForQuery(vehicle.getpreviousEpochCoord(), transformCoord);
+        Coordinate originCoord = coordinateForQuery(vehicle.getOriginCoord(), transformCoord);
+        Coordinate destCoord = coordinateForQuery(vehicle.getDestCoord(), transformCoord);
+        putXY(record, "prev", prevCoord);
+        putXY(record, "origin", originCoord);
+        putXY(record, "dest", destCoord);
+    }
+
+    private void addPrivateEVFields(HashMap<String, Object> record, ElectricVehicle vehicle) {
+        record.put("originId", vehicle.getOriginID());
+        record.put("destId", vehicle.getDestID());
+        record.put("battery", vehicle.getBatteryLevel());
+        record.put("energy", vehicle.getTotalConsume());
+        record.put("tripNumber", vehicle.getNumTrips());
+    }
+
+    private Coordinate coordinateForQuery(Coordinate coord, boolean transformCoord) {
+        if (coord == null) return null;
+        Coordinate copy = new Coordinate();
+        copy.x = coord.x;
+        copy.y = coord.y;
+        copy.z = coord.z;
+        if (!transformCoord) return copy;
+        try {
+            JTS.transform(copy, copy, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform.inverse());
+        } catch (TransformException e) {
+            ContextCreator.logger.error("Coordinates transformation failed, input x: " + coord.x + " y:" + coord.y);
+        }
+        return copy;
+    }
+
+    private void putXY(HashMap<String, Object> record, String prefix, Coordinate coord) {
+        if (coord == null) return;
+        record.put(prefix + "X", coord.x);
+        record.put(prefix + "Y", coord.y);
+    }
+
+    private static class LiveFrameSummary {
+        double privateEVEnergy = 0.0;
+        double eTaxiEnergy = 0.0;
+        double eBusEnergy = 0.0;
+        int numVeh = 0;
+        double speedSum = 0.0;
+        int speedCount = 0;
+    }
+
 	// =============================================================
 	// ROADS & GEOMETRY
 	// =============================================================
@@ -477,14 +626,21 @@ public class QueryMessageHandler extends MessageHandler {
 				if (road != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", road.getOrigID());
+					record2.put("innerRoadID", road.getID());
 					record2.put("r_type", road.getRoadType());
 					record2.put("num_veh", road.getVehicleNum());
+					record2.put("nVehicles", road.getVehicleNum());
+					record2.put("speed", road.calcSpeed());
 					record2.put("speed_limit", road.getSpeedLimit());
 					record2.put("avg_travel_time", road.getTravelTime());
 					record2.put("length", road.getLength());
 					record2.put("energy_consumed", road.getTotalEnergy());
+					record2.put("flow", road.getTotalFlow());
+					record2.put("energy", road.getTotalEnergy());
 					record2.put("parking_capacity", road.getParkingCapacity());
+					record2.put("parkingCapacity", road.getParkingCapacity());
 					record2.put("parked_num", road.getParkedNum());
+					record2.put("parkedNum", road.getParkedNum());
 					record2.put("down_stream_road", road.getDownStreamRoadOrigIDs());
 					jsonData.add(record2);
 				}
@@ -802,18 +958,32 @@ public class QueryMessageHandler extends MessageHandler {
 				if (zone != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", zone.getID());
+					record2.put("id", zone.getID());
 					record2.put("z_type", zone.getZoneType());
+					record2.put("zoneType", zone.getZoneType());
+					record2.put("capacity", zone.getCapacity());
 					record2.put("taxi_demand", zone.getTaxiRequestNum());
+					record2.put("taxiRequest", zone.getTaxiRequestNum());
 					record2.put("bus_demand", zone.getBusRequestNum());
+					record2.put("busRequest", zone.getBusRequestNum());
 					record2.put("veh_stock", zone.getVehicleStock());
+					record2.put("vehicleStock", zone.getVehicleStock());
 					Coordinate coord = zone.getCoord();
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
 					record2.put("z", coord.z);
+					record2.put("generatedTaxi", zone.numberOfGeneratedTaxiRequest);
+					record2.put("generatedBus", zone.numberOfGeneratedBusRequest);
+					record2.put("generatedPrivateEV", zone.numberOfGeneratedPrivateEVTrip);
+					record2.put("generatedPrivateGV", zone.numberOfGeneratedPrivateGVTrip);
+					record2.put("arrivedPrivateEV", zone.arrivedPrivateEVTrip);
+					record2.put("arrivedPrivateGV", zone.arrivedPrivateGVTrip);
 					record2.put("matchedTaxiRequests", zone.taxiPickupRequest);
 					record2.put("matchedTaxiPassengers", zone.taxiPickupPassengers);
 					record2.put("matchedBusRequests", zone.busPickupRequest);
 					record2.put("matchedBusPassengers", zone.busPickupPassengers);
+					record2.put("taxiMatchedRequests", zone.taxiPickupRequest);
+					record2.put("busMatchedRequests", zone.busPickupRequest);
 					record2.put("pickupTaxiRequests", zone.taxiPickedUpRequest);
 					record2.put("pickupTaxiPassengers", zone.taxiPickedUpPassengers);
 					record2.put("pickupBusRequests", zone.busPickedUpRequest);
@@ -822,10 +992,23 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("dropoffTaxiPassengers", zone.taxiServedPassengers);
 					record2.put("dropoffBusRequests", zone.busServedRequest);
 					record2.put("dropoffBusPassengers", zone.busServedPassengers);
+					record2.put("taxiDropoffRequests", zone.taxiServedRequest);
+					record2.put("busDropoffRequests", zone.busServedRequest);
 					record2.put("leftTaxiRequests", zone.numberOfLeavedTaxiRequest);
 					record2.put("leftTaxiPassengers", zone.numberOfLeavedTaxiPassengers);
 					record2.put("leftBusRequests", zone.numberOfLeavedBusRequest);
 					record2.put("leftBusPassengers", zone.numberOfLeavedBusPassengers);
+					record2.put("relocatedVehicles", zone.numberOfRelocatedVehicles);
+					record2.put("futureSupply", zone.getFutureSupply());
+					record2.put("futureDemand", zone.getFutureDemand());
+					record2.put("vehicleSurplus", zone.getVehicleSurplus());
+					record2.put("vehicleDeficiency", zone.getVehicleDeficiency());
+					record2.put("taxiDropoffWait", zone.taxiServedPassWaitingTime);
+					record2.put("busDropoffWait", zone.busServedPassWaitingTime);
+					record2.put("taxiLeftWait", zone.taxiLeavedPassWaitingTime);
+					record2.put("busLeftWait", zone.busLeavedPassWaitingTime);
+					record2.put("taxiParkingTime", zone.taxiParkingTime);
+					record2.put("taxiCruisingTime", zone.taxiCruisingTime);
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -1055,23 +1238,43 @@ public class QueryMessageHandler extends MessageHandler {
 				if (cs != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", cs.getID());
+					record2.put("id", cs.getID());
 					record2.put("l2_charger", cs.numCharger(ChargingStation.L2));
+					record2.put("numL2", cs.numCharger(ChargingStation.L2));
 					record2.put("dcfc_charger", cs.numCharger(ChargingStation.L3));
+					record2.put("numL3", cs.numCharger(ChargingStation.L3));
 					record2.put("l2_price", cs.getPrice(ChargingStation.L2));
+					record2.put("priceL2", cs.getPriceL2());
 					record2.put("dcfc_price", cs.getPrice(ChargingStation.L3));
+					record2.put("priceL3", cs.getPriceL3());
 					record2.put("bus_charger", cs.numCharger(ChargingStation.BUS));
+					record2.put("numBus", cs.numBusCharger());
 					record2.put("num_available_l2", cs.capacity(ChargingStation.L2));
+					record2.put("freeL2", cs.capacity(ChargingStation.L2));
 					record2.put("num_available_dcfc", cs.capacity(ChargingStation.L3));
+					record2.put("freeL3", cs.capacity(ChargingStation.L3));
+					record2.put("freeBus", cs.capacityBus());
 					record2.put("departureRoad", cs.getClosestRoad(false));
 					record2.put("arrivalRoad", cs.getClosestRoad(true));
 					record2.put("pending_ev", cs.getPendingEVCount());
 					record2.put("pending_bus", cs.getPendingBusCount());
 					record2.put("queue_l2", cs.getQueuedL2Count());
+					record2.put("queueL2", cs.getQueueL2().size());
 					record2.put("queue_dcfc", cs.getQueuedL3Count());
+					record2.put("queueL3", cs.getQueueL3().size());
 					record2.put("queue_bus", cs.getQueuedBusCount());
+					record2.put("queueBus", cs.getQueueBus().size());
 					record2.put("charging_l2", cs.getChargingL2Count());
+					record2.put("chargingL2", cs.getChargingL2().size());
 					record2.put("charging_dcfc", cs.getChargingL3Count());
+					record2.put("chargingL3", cs.getChargingL3().size());
 					record2.put("charging_bus", cs.getChargingBusCount());
+					record2.put("chargingBus", cs.getChargingBus().size());
+					record2.put("chargedCar", cs.numChargedCar.get());
+					record2.put("chargedBus", cs.numChargedBus.get());
+					record2.put("waitingTimeL2", cs.waitingTimeL2());
+					record2.put("waitingTimeL3", cs.waitingTimeL3());
+					record2.put("active", cs.hasChargingVehicles() ? 1 : 0);
 					Coordinate coord = cs.getCoord();
 					record2.put("x", coord.x);
 					record2.put("y", coord.y);
@@ -1425,6 +1628,7 @@ public class QueryMessageHandler extends MessageHandler {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("routeName", routeName);
 					record2.put("routeID", rID);
+					record2.put("routeId", rID);
 					record2.put("stopZones", ContextCreator.bus_schedule.getStopZones(rID));
 					record2.put("stopRoads", ContextCreator.bus_schedule.getStopRoadNames(rID));
 					jsonData.add(record2);
