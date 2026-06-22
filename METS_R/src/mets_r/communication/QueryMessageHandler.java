@@ -39,6 +39,9 @@ public class QueryMessageHandler extends MessageHandler {
 	private static final double MILE_IN_METERS = 1609.344;
 	private static final double DEFAULT_ALMOST_FINISHED_TAXI_MILES = 5.0;
 	private Random rand_route = new Random(GlobalVariables.RandomGenerator.nextInt());
+	private HashMap<String, Integer> roadIndexByOrigIDCache = null;
+	private int roadIndexCacheRoadCount = -1;
+	private Object roadIndexCacheRoadContext = null;
 	
 	public QueryMessageHandler() {
 		messageHandlers.put("tick", this::getTick);
@@ -47,6 +50,8 @@ public class QueryMessageHandler extends MessageHandler {
         // Vehicles
         // =============================================================
         messageHandlers.put("vehicle", this::getVehicle);
+        messageHandlers.put("onRoadVehicles", this::getOnRoadVehicles);
+        messageHandlers.put("onRoadVehicle", this::getOnRoadVehicles);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
         messageHandlers.put("queryTaxi", this::getTaxi);
@@ -56,6 +61,8 @@ public class QueryMessageHandler extends MessageHandler {
         // Roads & geometry
         // =============================================================
         messageHandlers.put("road", this::getRoad);
+        messageHandlers.put("activeRoad", this::getActiveRoad);
+        messageHandlers.put("activeRoads", this::getActiveRoad);
         messageHandlers.put("enteringVehicleQueue", this::getEnteringVehicleQueue);
         messageHandlers.put("coSimEnteringVehicleQueue", this::getCoSimEnteringVehicleQueue);
         messageHandlers.put("cosimEnteringVehicleQueue", this::getCoSimEnteringVehicleQueue);
@@ -105,6 +112,10 @@ public class QueryMessageHandler extends MessageHandler {
         // Backward-compat aliases for earlier names
         messageHandlers.put("queryPendingRequests", this::getPendingRequests);
         messageHandlers.put("queryRequest", this::getRequest);
+        messageHandlers.put("queryOnRoadVehicles", this::getOnRoadVehicles);
+        messageHandlers.put("queryOnRoadVehicle", this::getOnRoadVehicles);
+        messageHandlers.put("queryActiveRoad", this::getActiveRoad);
+        messageHandlers.put("queryActiveRoads", this::getActiveRoad);
         messageHandlers.put("queryAvailableTaxis", this::getAvailableTaxis);
         messageHandlers.put("queryAlmostFinishedTaxis", this::getAlmostFinishedTaxis);
         messageHandlers.put("queryPickupTaxiInfo", this::getPickupTaxiInfo);
@@ -214,6 +225,128 @@ public class QueryMessageHandler extends MessageHandler {
 	    
 	}
 	
+	/**
+	 * Return active roads from the active-road index.
+	 *
+	 * <p>Output fields: {@code id_list}/{@code orig_id} contain active road
+	 * original IDs. {@code DATA} contains one compact record per active road.
+	 */
+	public HashMap<String, Object> getActiveRoad(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		ArrayList<String> activeRoadIDs = new ArrayList<String>();
+		ArrayList<Object> jsonData = new ArrayList<Object>();
+
+		try {
+			if (ContextCreator.getRoadContext() != null) {
+				for (Road road : ContextCreator.getRoadContext().getActiveRoadsSnapshot()) {
+					if (road == null) continue;
+					String roadID = road.getOrigID();
+					activeRoadIDs.add(roadID);
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					record.put("ID", roadID);
+					record.put("originID", roadID);
+					record.put("num_veh", road.getVehicleNum());
+					record.put("nVehicles", road.getVehicleNum());
+					record.put("pendingDepartureVehicles", road.getPendingDepartureVehicleNum());
+					record.put("STATUS", "OK");
+					jsonData.add(record);
+				}
+			}
+			jsonObj.put("id_list", activeRoadIDs);
+			jsonObj.put("orig_id", activeRoadIDs);
+			jsonObj.put("DATA", jsonData);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getActiveRoad: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	/**
+	 * Return IDs for vehicles currently on roads.
+	 *
+	 * <p>Without DATA, output fields mirror {@link #getVehicle}'s no-DATA ID
+	 * lists across all active roads. With DATA, input is a single original road
+	 * ID, a list of original road IDs, or records carrying
+	 * {@code roadID}/{@code ID}/{@code origID}; output DATA contains one record
+	 * per requested road with {@code private_vids} and {@code public_vids}.
+	 *
+	 * <p>The no-DATA query walks only the active-road snapshot. A road-filtered
+	 * query walks only each requested road's macro vehicle chain.
+	 */
+	public HashMap<String, Object> getOnRoadVehicles(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+
+		try {
+			if (jsonMsg.containsKey("DATA")) {
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+				for (String roadID : parseRoadIDs(jsonMsg.get("DATA"))) {
+					Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+					if (road != null) {
+						jsonData.add(onRoadVehicleRecord(road));
+					} else {
+						HashMap<String, Object> record = new HashMap<String, Object>();
+						record.put("ID", roadID);
+						record.put("STATUS", "KO");
+						jsonData.add(record);
+					}
+				}
+				jsonObj.put("DATA", jsonData);
+				jsonObj.put("CODE", "OK");
+				return jsonObj;
+			}
+
+			ArrayList<Integer> privateVehicleIDs = new ArrayList<Integer>();
+			ArrayList<Integer> publicVehicleIDs = new ArrayList<Integer>();
+			if (ContextCreator.getRoadContext() != null) {
+				for (Road road : ContextCreator.getRoadContext().getActiveRoadsSnapshot()) {
+					appendOnRoadVehicleIDs(road, privateVehicleIDs, publicVehicleIDs);
+				}
+			}
+			jsonObj.put("private_vids", privateVehicleIDs);
+			jsonObj.put("public_vids", publicVehicleIDs);
+			jsonObj.put("CODE", "OK");
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing getOnRoadVehicles: " + e.toString());
+			jsonObj.put("CODE", "KO");
+			return jsonObj;
+		}
+	}
+
+	private HashMap<String, Object> onRoadVehicleRecord(Road road) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		ArrayList<Integer> privateVehicleIDs = new ArrayList<Integer>();
+		ArrayList<Integer> publicVehicleIDs = new ArrayList<Integer>();
+		appendOnRoadVehicleIDs(road, privateVehicleIDs, publicVehicleIDs);
+		record.put("ID", road.getOrigID());
+		record.put("originID", road.getOrigID());
+		record.put("private_vids", privateVehicleIDs);
+		record.put("public_vids", publicVehicleIDs);
+		record.put("STATUS", "OK");
+		return record;
+	}
+
+	private void appendOnRoadVehicleIDs(Road road, ArrayList<Integer> privateVehicleIDs,
+			ArrayList<Integer> publicVehicleIDs) {
+		if (road == null) return;
+		Vehicle vehicle = road.firstVehicle();
+		while (vehicle != null) {
+			Vehicle nextVehicle = vehicle.macroTrailing();
+			if (vehicle.isOnRoad()) {
+				if (bridgeVehicleType(vehicle)) {
+					privateVehicleIDs.add(bridgeVehicleID(vehicle));
+				} else {
+					publicVehicleIDs.add(vehicle.getID());
+				}
+			}
+			vehicle = nextVehicle;
+		}
+	}
 	/**
 	 * Snapshot of every vehicle currently on a co-simulation road
 	 * (i.e. roads previously marked via the {@code setCoSimRoad} control
@@ -430,7 +563,7 @@ public class QueryMessageHandler extends MessageHandler {
 			Road road = vehicle.getRoad();
 			if (road != null) {
 				record.put("roadID", road.getOrigID());
-				record.put("innerRoadID", road.getID());
+				record.put("originID", road.getOrigID());
 				record.put("roadControlType", road.getControlType());
 				record.put("roadActive", ContextCreator.getRoadContext().isRoadActive(road.getID()));
 			}
@@ -617,9 +750,9 @@ public class QueryMessageHandler extends MessageHandler {
 	 * returns the {@code id_list} (internal IDs) and {@code orig_id}
 	 * (external original IDs) of all roads.
 	 *
-	 * <p>Output DATA: list of {@code {ID, r_type, num_veh, speed_limit,
-	 * avg_travel_time, length, energy_consumed, parking_capacity,
-	 * parked_num, down_stream_road}}
+	 * <p>Output DATA: list of {@code {ID, originID, roadIndex, r_type, num_veh,
+	 * speed_limit, avg_travel_time, length, energy_consumed,
+	 * parking_capacity, parked_num, down_stream_road}}
 	 * records.
 	 */
 	public HashMap<String, Object> getRoad(JSONObject jsonMsg) {
@@ -639,7 +772,8 @@ public class QueryMessageHandler extends MessageHandler {
 				if (road != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", road.getOrigID());
-					record2.put("innerRoadID", road.getID());
+					record2.put("originID", road.getOrigID());
+					record2.put("roadIndex", getVisualizationRoadIndex(road));
 					record2.put("r_type", road.getRoadType());
 					record2.put("num_veh", road.getVehicleNum());
 					record2.put("nVehicles", road.getVehicleNum());
@@ -668,6 +802,38 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private synchronized int getVisualizationRoadIndex(Road road) {
+		if (road == null || road.getOrigID() == null || ContextCreator.getRoadContext() == null) {
+			return -1;
+		}
+		int roadCount = ContextCreator.getRoadContext().getAll().size();
+		if (this.roadIndexByOrigIDCache == null || this.roadIndexCacheRoadContext != ContextCreator.getRoadContext()
+				|| this.roadIndexCacheRoadCount != roadCount
+				|| !this.roadIndexByOrigIDCache.containsKey(road.getOrigID())) {
+			rebuildVisualizationRoadIndexCache(roadCount);
+		}
+		Integer index = this.roadIndexByOrigIDCache.get(road.getOrigID());
+		return index == null ? -1 : index.intValue();
+	}
+
+	private void rebuildVisualizationRoadIndexCache(int roadCount) {
+		ArrayList<String> roadIds = new ArrayList<String>();
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			if (road == null || road.getOrigID() == null) {
+				continue;
+			}
+			roadIds.add(road.getOrigID());
+		}
+		Collections.sort(roadIds);
+		HashMap<String, Integer> roadIndexByOrigID = new HashMap<String, Integer>();
+		for (int i = 0; i < roadIds.size(); i++) {
+			roadIndexByOrigID.put(roadIds.get(i), i);
+		}
+		this.roadIndexByOrigIDCache = roadIndexByOrigID;
+		this.roadIndexCacheRoadCount = roadCount;
+		this.roadIndexCacheRoadContext = ContextCreator.getRoadContext();
 	}
 
 	/**
@@ -820,6 +986,51 @@ public class QueryMessageHandler extends MessageHandler {
 		return String.valueOf(entry);
 	}
 
+	private ArrayList<IDTransformQuery> parseIDTransformQueries(Object data, String... idKeys) {
+		ArrayList<IDTransformQuery> requests = new ArrayList<IDTransformQuery>();
+		appendIDTransformQueries(requests, data, false, idKeys);
+		return requests;
+	}
+
+	private void appendIDTransformQueries(ArrayList<IDTransformQuery> requests, Object entry,
+			boolean defaultTransformCoord, String... idKeys) {
+		if (entry instanceof Map<?, ?>) {
+			Map<?, ?> record = (Map<?, ?>) entry;
+			Boolean transform = parseBoolean(firstPresent(record, "transformCoord", "transform"));
+			boolean transformCoord = transform == null ? defaultTransformCoord : transform.booleanValue();
+			Object idValue = firstPresent(record, idKeys);
+			Object idsValue = firstPresent(record, "ids", "IDs", "id_list", "IDList", "zoneIDs",
+					"zoneIds", "stationIDs", "stationIds", "chargingStationIDs", "chargingStationIds", "chargerIDs", "chargerIds");
+			if (idValue != null) {
+				requests.add(new IDTransformQuery(parseInteger(idValue), transformCoord));
+				return;
+			}
+			if (idsValue != null) {
+				appendIDTransformQueries(requests, idsValue, transformCoord, idKeys);
+				return;
+			}
+			requests.add(new IDTransformQuery(null, transformCoord));
+			return;
+		}
+		if (entry instanceof Iterable<?>) {
+			for (Object value : (Iterable<?>) entry) {
+				appendIDTransformQueries(requests, value, defaultTransformCoord, idKeys);
+			}
+			return;
+		}
+		requests.add(new IDTransformQuery(parseInteger(entry), defaultTransformCoord));
+	}
+
+	private static class IDTransformQuery {
+		Integer id;
+		boolean transformCoord;
+
+		IDTransformQuery(Integer id, boolean transformCoord) {
+			this.id = id;
+			this.transformCoord = transformCoord;
+		}
+	}
+
 	private Object firstPresent(Map<?, ?> record, String... keys) {
 		for (String key : keys) {
 			if (record.containsKey(key)) return record.get(key);
@@ -943,8 +1154,10 @@ public class QueryMessageHandler extends MessageHandler {
 	/**
 	 * Fetch live state for one or more zones.
 	 *
-	 * <p>Input DATA (optional): list of integer zone IDs. If omitted,
-	 * returns the {@code id_list} of all zones.
+	 * <p>Input DATA (optional): list of integer zone IDs, records carrying
+	 * {@code ID}/{@code id}/{@code zoneID} plus optional
+	 * {@code transformCoord}, or an object carrying {@code ids} plus optional
+	 * {@code transformCoord}. If omitted, returns the {@code id_list} of all zones.
 	 *
 	 * <p>Output DATA: list of {@code {ID, z_type, taxi_demand, bus_demand,
 	 * veh_stock, x, y, z, leftTaxiRequests, leftTaxiPassengers,
@@ -952,7 +1165,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * are cumulative since simulation start at that zone: requests that
 	 * abandoned the taxi or bus queue after exceeding maximum wait time, and
 	 * passenger totals (sum of {@link Request#getNumPeople()} per abandoned
-	 * request).
+	 * request). With {@code transformCoord = true}, {@code x/y/z} are returned in
+	 * the same transformed coordinate frame used by vehicle queries.
 	 */
 	public HashMap<String, Object> getZone(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -961,13 +1175,12 @@ public class QueryMessageHandler extends MessageHandler {
 			return jsonObj;
 		}
 		try {
-			Gson gson = new Gson();
-			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<IDTransformQuery> requests = parseIDTransformQueries(jsonMsg.get("DATA"),
+					"zoneID", "zoneId", "zone", "ID", "id");
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
-		    for(int id: IDs) {
-		    	Zone zone = ContextCreator.getZoneContext().get(id);
+		    for(IDTransformQuery request: requests) {
+				Zone zone = request.id == null ? null : ContextCreator.getZoneContext().get(request.id.intValue());
 				if (zone != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", zone.getID());
@@ -981,10 +1194,12 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("busRequest", zone.getBusRequestNum());
 					record2.put("veh_stock", zone.getVehicleStock());
 					record2.put("vehicleStock", zone.getVehicleStock());
-					Coordinate coord = zone.getCoord();
-					record2.put("x", coord.x);
-					record2.put("y", coord.y);
-					record2.put("z", coord.z);
+					Coordinate coord = coordinateForQuery(zone.getCoord(), request.transformCoord);
+					if (coord != null) {
+						record2.put("x", coord.x);
+						record2.put("y", coord.y);
+						record2.put("z", coord.z);
+					}
 					record2.put("generatedTaxi", zone.numberOfGeneratedTaxiRequest);
 					record2.put("generatedBus", zone.numberOfGeneratedBusRequest);
 					record2.put("generatedPrivateEV", zone.numberOfGeneratedPrivateEVTrip);
@@ -1226,13 +1441,17 @@ public class QueryMessageHandler extends MessageHandler {
 	/**
 	 * Fetch live state for one or more charging stations.
 	 *
-	 * <p>Input DATA (optional): list of integer station IDs. If omitted,
-	 * returns the {@code id_list} of all stations.
+	 * <p>Input DATA (optional): list of integer station IDs, records carrying
+	 * {@code ID}/{@code id}/{@code stationID}/{@code csID} plus optional
+	 * {@code transformCoord}, or an object carrying {@code ids} plus optional
+	 * {@code transformCoord}. If omitted, returns the {@code id_list} of all stations.
 	 *
 	 * <p>Output DATA: list of {@code {ID, l2_charger, dcfc_charger,
 	 * l2_price, dcfc_price, bus_charger, num_available_l2,
 	 * num_available_dcfc, departureRoad, arrivalRoad, pending_ev,
 	 * queue_l2, queue_dcfc, charging_l2, charging_dcfc, x, y, z}} records.
+	 * With {@code transformCoord = true}, {@code x/y/z} are returned in the
+	 * same transformed coordinate frame used by vehicle queries.
 	 */
 	public HashMap<String, Object> getChargingStation(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -1241,13 +1460,12 @@ public class QueryMessageHandler extends MessageHandler {
 			return jsonObj;
 		}
 		try {
-			Gson gson = new Gson();
-			TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
-		    Collection<Integer> IDs = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<IDTransformQuery> requests = parseIDTransformQueries(jsonMsg.get("DATA"),
+					"chargingStationID", "chargingStationId", "chargerID", "chargerId", "stationID", "stationId", "station", "csID", "csId", "ID", "id");
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		    
-		    for(int id: IDs) {
-		    	ChargingStation cs = ContextCreator.getChargingStationContext().get(id);
+		    for(IDTransformQuery request: requests) {
+				ChargingStation cs = request.id == null ? null : ContextCreator.getChargingStationContext().get(request.id.intValue());
 				if (cs != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", cs.getID());
@@ -1288,10 +1506,12 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("waitingTimeL2", cs.waitingTimeL2());
 					record2.put("waitingTimeL3", cs.waitingTimeL3());
 					record2.put("active", cs.hasChargingVehicles() ? 1 : 0);
-					Coordinate coord = cs.getCoord();
-					record2.put("x", coord.x);
-					record2.put("y", coord.y);
-					record2.put("z", coord.z);
+					Coordinate coord = coordinateForQuery(cs.getCoord(), request.transformCoord);
+					if (coord != null) {
+						record2.put("x", coord.x);
+						record2.put("y", coord.y);
+						record2.put("z", coord.z);
+					}
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -1880,6 +2100,20 @@ public class QueryMessageHandler extends MessageHandler {
 		} catch (NumberFormatException e) {
 			return null;
 		}
+	}
+
+	private Boolean parseBoolean(Object value) {
+		if (value == null) return null;
+		if (value instanceof Boolean) return (Boolean) value;
+		if (value instanceof Number) return Boolean.valueOf(((Number) value).intValue() != 0);
+		String text = String.valueOf(value).trim().toLowerCase();
+		if ("true".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text)) {
+			return Boolean.TRUE;
+		}
+		if ("false".equals(text) || "0".equals(text) || "no".equals(text) || "n".equals(text)) {
+			return Boolean.FALSE;
+		}
+		return null;
 	}
 
 	private Double parseDouble(Object value) {

@@ -285,7 +285,7 @@ public class TickSnapshot {
 		double destX = vehicle.getDestCoord().x;
 		double destY = vehicle.getDestCoord().y;
 		int vehicleClass = vehicle.getVehicleClass();
-		int roadID = vehicle.getRoad().getID();
+		String roadID = vehicle.getRoad().getOrigID();
 
 		// Check if there is already a vehicleSnapshot in this tick due to visualization
 		// If so, then use the previous coordinates from the recorded snapshot 

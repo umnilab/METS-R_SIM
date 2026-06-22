@@ -667,7 +667,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.writer.writeInt(scaledX(vehicle.getDestX()));
 			this.writer.writeInt(scaledY(vehicle.getDestY()));
 			this.writer.writeInt(vehicle.getvehicleClass());
-			this.writer.writeInt(vehicle.getRoadID());
+			this.writer.writeChars(vehicle.getRoadID());
 		}
 	}
 
