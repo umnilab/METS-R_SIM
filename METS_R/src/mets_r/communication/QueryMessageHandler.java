@@ -548,8 +548,21 @@ public class QueryMessageHandler extends MessageHandler {
     private void addVehicleCoordinateFields(HashMap<String, Object> record, Vehicle vehicle,
             boolean transformCoord) {
         Coordinate prevCoord = coordinateForQuery(vehicle.getpreviousEpochCoord(), transformCoord);
-        Coordinate originCoord = coordinateForQuery(vehicle.getOriginCoord(), transformCoord);
-        Coordinate destCoord = coordinateForQuery(vehicle.getDestCoord(), transformCoord);
+        Coordinate originCoord = null;
+        Coordinate destCoord = null;
+
+        try {
+            originCoord = coordinateForQuery(vehicle.getOriginCoord(), transformCoord);
+        } catch (NullPointerException ignored) {
+            originCoord = coordinateForQuery(vehicle.getCurrentCoord(), transformCoord);
+        }
+
+        try {
+            destCoord = coordinateForQuery(vehicle.getDestCoord(), transformCoord);
+        } catch (NullPointerException ignored) {
+            destCoord = coordinateForQuery(vehicle.getCurrentCoord(), transformCoord);
+        }
+
         putXY(record, "prev", prevCoord);
         putXY(record, "origin", originCoord);
         putXY(record, "dest", destCoord);
