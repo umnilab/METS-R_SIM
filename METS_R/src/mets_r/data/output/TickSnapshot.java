@@ -285,7 +285,6 @@ public class TickSnapshot {
 		double destX = vehicle.getDestCoord().x;
 		double destY = vehicle.getDestCoord().y;
 		int vehicleClass = vehicle.getVehicleClass();
-		String roadID = vehicle.getRoad().getOrigID();
 
 		// Check if there is already a vehicleSnapshot in this tick due to visualization
 		// If so, then use the previous coordinates from the recorded snapshot 
@@ -296,7 +295,7 @@ public class TickSnapshot {
 		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
 		VehicleSnapshot snapshot = new VehicleSnapshot(id, prev_x, prev_y, x, y, bearing, speed, originalX, originalY, destX,
-				destY, vehicleClass, roadID);
+				destY, vehicleClass);
 		synchronized(this.vehicles) {
 			this.vehicles.put(id, snapshot);
 		}

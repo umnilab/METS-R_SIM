@@ -29,18 +29,16 @@ public class VehicleSnapshot {
 	final public double destX;
 	final public double destY;
 	final public int vehicleClass;
-	final public String roadID;
-
+	
 	public VehicleSnapshot(Vehicle vehicle, Coordinate coordinate) throws Throwable {
 		this(vehicle.getID(), vehicle.getpreviousEpochCoord().x, vehicle.getpreviousEpochCoord().y, coordinate.x,
 				coordinate.y, vehicle.getSnapshotBearing(vehicle.getpreviousEpochCoord().x,
 				vehicle.getpreviousEpochCoord().y, coordinate), vehicle.currentSpeed(), vehicle.getOriginCoord().x, vehicle.getOriginCoord().y,
-				vehicle.getDestCoord().x, vehicle.getDestCoord().y, vehicle.getVehicleClass(),
-				vehicle.getRoad().getOrigID());
+				vehicle.getDestCoord().x, vehicle.getDestCoord().y, vehicle.getVehicleClass());
 	}
 
 	public VehicleSnapshot(int id, double prev_x, double prev_y, double x, double y, double bearing, double speed, double originX,
-			double originY, double destX, double destY, int vehicleClass, String roadID)
+			double originY, double destX, double destY, int vehicleClass)
 			throws Throwable {
 		if (Double.isNaN(originX) || Double.isInfinite(originX)) throw new NumberFormatException("Original X-axis value is invalid.");
 		if (Double.isNaN(originY) || Double.isInfinite(originY)) throw new NumberFormatException("Original Y-axis value is invalid.");
@@ -63,7 +61,6 @@ public class VehicleSnapshot {
 		this.destX = destX;
 		this.destY = destY;
 		this.vehicleClass = vehicleClass;
-		this.roadID = roadID;
 	}
 
 	public int getId() {
@@ -112,9 +109,5 @@ public class VehicleSnapshot {
 
 	public int getvehicleClass() {
 		return this.vehicleClass;
-	}
-
-	public String getRoadID() {
-		return this.roadID;
 	}
 }
