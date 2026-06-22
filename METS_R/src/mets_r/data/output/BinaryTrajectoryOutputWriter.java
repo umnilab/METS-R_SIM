@@ -675,7 +675,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		for (EVSnapshot ev : records) {
 			this.writeEVFields(ev.getId(), ev.getPrevX(), ev.getPrevY(), ev.getX(), ev.getY(),
 					ev.getBearing(), ev.getSpeed(), ev.getOriginID(), ev.getDestID(),
-					ev.getBatteryLevel(), ev.getTotalEnergyConsumption(), ev.getRoadID());
+					ev.getBatteryLevel(), ev.getTotalEnergyConsumption());
 			this.writer.writeInt(ev.getTripNumber());
 		}
 	}
@@ -685,7 +685,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		for (ETaxiSnapshot ev : records) {
 			this.writeEVFields(ev.getId(), ev.getPrevX(), ev.getPrevY(), ev.getX(), ev.getY(),
 					ev.getBearing(), ev.getSpeed(), ev.getOriginID(), ev.getDestID(),
-					ev.getBatteryLevel(), ev.getTotalEnergyConsumption(), ev.getRoadID());
+					ev.getBatteryLevel(), ev.getTotalEnergyConsumption());
 			this.writer.writeInt(ev.getMatchedRequests());
 			this.writer.writeInt(ev.getMatchedPassengers());
 			this.writer.writeInt(ev.getPickupRequests());
@@ -708,7 +708,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 			this.writer.writeFloat((float) bus.getSpeed());
 			this.writer.writeFloat((float) bus.getBatteryLevel());
 			this.writer.writeFloat((float) bus.getTotalEnergyConsumption());
-			this.writer.writeInt(bus.getRoadID());
 			this.writer.writeInt(bus.getMatchedRequests());
 			this.writer.writeInt(bus.getMatchedPassengers());
 			this.writer.writeInt(bus.getPickupRequests());
@@ -813,7 +812,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private void writeEVFields(int id, double prevX, double prevY, double x, double y,
 			double bearing, double speed, int originID, int destID, double batteryLevel,
-			double energyConsumption, int roadID) throws IOException {
+			double energyConsumption) throws IOException {
 		this.writer.writeInt(id);
 		this.writer.writeInt(scaledX(prevX));
 		this.writer.writeInt(scaledY(prevY));
@@ -825,7 +824,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.writeInt(destID);
 		this.writer.writeFloat((float) batteryLevel);
 		this.writer.writeFloat((float) energyConsumption);
-		this.writer.writeInt(roadID);
 	}
 
 	private static ArrayList<Integer> sortedIds(Collection<Integer> ids) {
