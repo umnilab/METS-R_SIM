@@ -12,6 +12,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -438,6 +439,87 @@ public class SumoXML {
 						+ " downstream lane control points with transition angles sharper than 150 degrees.");
 			}
 		}
+
+		private Map<String, String> parseProjParameters(String proj4) {
+			Map<String, String> result = new HashMap<String, String>();
+			if(proj4 == null) {
+				return result;
+			}
+			for(String token: proj4.trim().split("\\s+")) {
+				if(token.length() == 0) {
+					continue;
+				}
+				if(token.charAt(0) == '+') {
+					token = token.substring(1);
+				}
+				int equalsIndex = token.indexOf('=');
+				if(equalsIndex < 0) {
+					result.put(token, "");
+				}
+				else {
+					result.put(token.substring(0, equalsIndex), token.substring(equalsIndex + 1));
+				}
+			}
+			return result;
+		}
+
+		private double getProjDouble(Map<String, String> projParams, String key, double defaultValue) {
+			if(!projParams.containsKey(key) || projParams.get(key).length() == 0) {
+				return defaultValue;
+			}
+			return Double.parseDouble(projParams.get(key));
+		}
+
+		private int getProjInt(Map<String, String> projParams, String key, int defaultValue) {
+			if(!projParams.containsKey(key) || projParams.get(key).length() == 0) {
+				return defaultValue;
+			}
+			return Integer.parseInt(projParams.get(key));
+		}
+
+		private MathTransform createTransverseMercatorTransform(String name, double centralMeridian,
+				double latitudeOfOrigin, double scaleFactor, double falseEasting, double falseNorthing)
+				throws FactoryException {
+			MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
+			ReferencingFactoryContainer factories = new ReferencingFactoryContainer(null);
+			GeographicCRS geoCRS = org.geotools.referencing.crs.DefaultGeographicCRS.WGS84;
+			CartesianCS cartCS = org.geotools.referencing.cs.DefaultCartesianCS.GENERIC_2D;
+			ParameterValueGroup parameters = mtFactory.getDefaultParameters("Transverse_Mercator");
+			parameters.parameter("central_meridian").setValue(centralMeridian);
+			parameters.parameter("latitude_of_origin").setValue(latitudeOfOrigin);
+			parameters.parameter("scale_factor").setValue(scaleFactor);
+			parameters.parameter("false_easting").setValue(falseEasting);
+			parameters.parameter("false_northing").setValue(falseNorthing);
+			Map<String, String> properties = Collections.singletonMap("name", name);
+			ProjectedCRS sourceCRS = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
+			CoordinateReferenceSystem targetlatlong = CRS.decode("EPSG:4326", true);
+			return CRS.findMathTransform(sourceCRS, targetlatlong, false);
+		}
+
+		private MathTransform createTransformFromProjParameters(String proj4) throws FactoryException {
+			Map<String, String> projParams = parseProjParameters(proj4);
+			String projection = projParams.get("proj");
+			if("utm".equalsIgnoreCase(projection)) {
+				int zoneNumber = getProjInt(projParams, "zone", 0);
+				if(zoneNumber == 0) {
+					throw new IllegalArgumentException("SUMO UTM projParameter is missing +zone: " + proj4);
+				}
+				double falseNorthing = projParams.containsKey("south") ? 10000000.0 : 0.0;
+				return createTransverseMercatorTransform("WGS 84 / UTM Zone " + zoneNumber,
+						zoneNumber * 6 - 183, 0.0, 0.9996, 500000.0, falseNorthing);
+			}
+			if("tmerc".equalsIgnoreCase(projection)) {
+				double centralMeridian = getProjDouble(projParams, "lon_0", 0.0);
+				double latitudeOfOrigin = getProjDouble(projParams, "lat_0", 0.0);
+				double scaleFactor = projParams.containsKey("k") ? getProjDouble(projParams, "k", 1.0)
+						: getProjDouble(projParams, "k_0", 1.0);
+				double falseEasting = getProjDouble(projParams, "x_0", 0.0);
+				double falseNorthing = getProjDouble(projParams, "y_0", 0.0);
+				return createTransverseMercatorTransform("WGS 84 / Transverse Mercator",
+						centralMeridian, latitudeOfOrigin, scaleFactor, falseEasting, falseNorthing);
+			}
+			return null;
+		}
 		
 		@Override
 		public void startDocument() {
@@ -487,28 +569,9 @@ public class SumoXML {
 				}
 				// This is for transforming the coordinate systems
 				String proj4 = attributes.getValue("projParameter");
-				if(proj4.contains("utm")) {
+				if(proj4 != null) {
 					try {
-						int zone_number = 0;
-						for(String substr: proj4.split(" ")) {
-							if(substr.contains("zone")) {
-								zone_number = Integer.parseInt(substr.substring(substr.indexOf("=")+1));
-							}
-						}
-						MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
-						ReferencingFactoryContainer factories = new ReferencingFactoryContainer(null);
-						GeographicCRS geoCRS = org.geotools.referencing.crs.DefaultGeographicCRS.WGS84;
-						CartesianCS cartCS = org.geotools.referencing.cs.DefaultCartesianCS.GENERIC_2D;
-						ParameterValueGroup parameters = mtFactory.getDefaultParameters("Transverse_Mercator");
-						parameters.parameter("central_meridian").setValue(zone_number*6-183);
-						parameters.parameter("latitude_of_origin").setValue(0.0);
-						parameters.parameter("scale_factor").setValue(0.9996);
-						parameters.parameter("false_easting").setValue(500000.0);
-						parameters.parameter("false_northing").setValue(0.0);
-						Map<String, String> properties = Collections.singletonMap("name", "WGS 84 / UTM Zone " + zone_number);
-						ProjectedCRS sourceutm = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
-					    CoordinateReferenceSystem targetlatlong = CRS.decode("EPSG:4326", true);
-					    transform = CRS.findMathTransform(sourceutm, targetlatlong, false);
+						transform = createTransformFromProjParameters(proj4);
 					}
 					catch(Exception e){
 				         throw new RuntimeException(e);
@@ -519,20 +582,8 @@ public class SumoXML {
 				if(transform == null) {
 					try {
 						ContextCreator.logger.warn("Did not find a valid projParameter in SUMO map file, used the default setting.");
-						MathTransformFactory mtFactory = ReferencingFactoryFinder.getMathTransformFactory(null);
-						ReferencingFactoryContainer factories = new ReferencingFactoryContainer(null);
-						GeographicCRS geoCRS = org.geotools.referencing.crs.DefaultGeographicCRS.WGS84;
-						CartesianCS cartCS = org.geotools.referencing.cs.DefaultCartesianCS.GENERIC_2D;
-						ParameterValueGroup parameters = mtFactory.getDefaultParameters("Transverse_Mercator");
-						parameters.parameter("central_meridian").setValue(0.0); //4.4869
-						parameters.parameter("latitude_of_origin").setValue(0.0);
-						parameters.parameter("scale_factor").setValue(1.0); //0.9996
-						parameters.parameter("false_easting").setValue(0.0); //500000.0
-						parameters.parameter("false_northing").setValue(0.0);
-						Map<String, String> properties = Collections.singletonMap("name", "WGS 84 / Default");
-						ProjectedCRS sourceutm = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
-					    CoordinateReferenceSystem targetlatlong = CRS.decode("EPSG:4326", true);
-					    transform = CRS.findMathTransform(sourceutm, targetlatlong, false);
+						transform = createTransverseMercatorTransform("WGS 84 / Default",
+								0.0, 0.0, 1.0, 0.0, 0.0);
 					} 
 					catch (FactoryException e) {
 						e.printStackTrace();
