@@ -82,6 +82,9 @@ public class Road {
 	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
 	private double travelTimeSum;
 	private int travelTimeCount;
+	private double avgEnergyConsumption;
+	private double energyConsumptionSum;
+	private int energyConsumptionCount;
 	
 	// For parallel computing - AtomicInteger for thread safety since these are
 	// modified by setShadowImpact/clearShadowImpact from parallel road step threads
@@ -116,6 +119,9 @@ public class Road {
 		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeSum = 0.0;
 		this.travelTimeCount = 0;
+		this.avgEnergyConsumption = 0.0;
+		this.energyConsumptionSum = 0.0;
+		this.energyConsumptionCount = 0;
 		this.neighboringDepartureZone = 0;
 		this.neighboringArrivalZone = 0;
 		this.distToArrivalZone = Double.MAX_VALUE;
@@ -653,6 +659,9 @@ public class Road {
 		this.travelTime = restoredTravelTime;
 		this.travelTimeSum = 0.0;
 		this.travelTimeCount = 0;
+		this.avgEnergyConsumption = 0.0;
+		this.energyConsumptionSum = 0.0;
+		this.energyConsumptionCount = 0;
 		this.nShadowVehicles.set(0);
 		this.nFutureRoutingVehicles.set(0);
 		this.currentEnergy = restoredCurrentEnergy;
@@ -857,6 +866,17 @@ public class Road {
 		else {
 			newTravelTime =  this.length / this.speedLimit_;
 		}
+
+		double newAvgEnergyConsumption;
+		if(energyConsumptionCount > 0) {
+			newAvgEnergyConsumption = energyConsumptionSum / energyConsumptionCount;
+			energyConsumptionSum = 0.0;
+			energyConsumptionCount = 0;
+		}
+		else {
+			newAvgEnergyConsumption = 0.0;
+		}
+		this.avgEnergyConsumption = newAvgEnergyConsumption;
 		
 		if(this.travelTime == newTravelTime) {
 			return false;
@@ -971,33 +991,51 @@ public class Road {
 		this.currentFlow += 1;
 		if (v.getVehicleClass() == Vehicle.EV) { // Private
 			ElectricVehicle ev = (ElectricVehicle) v;
-			this.totalEnergy += ev.getLinkConsume();
-			this.currentEnergy += ev.getLinkConsume();
+			double linkConsume = ev.getLinkConsume();
+			this.totalEnergy += linkConsume;
+			this.currentEnergy += linkConsume;
+			recordEnergyConsumptionSample(linkConsume);
 			ev.resetLinkConsume();
 		}
 		else if(v.getVehicleClass() == Vehicle.ETAXI) { // EV Taxi
 			ElectricTaxi ev = (ElectricTaxi) v;
-			this.totalEnergy += ev.getLinkConsume();
-			this.currentEnergy += ev.getLinkConsume();
+			double linkConsume = ev.getLinkConsume();
+			this.totalEnergy += linkConsume;
+			this.currentEnergy += linkConsume;
+			recordEnergyConsumptionSample(linkConsume);
 			if(ev.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 				ContextCreator.kafkaManager.produceLinkEnergy(ev.getID(), ev.getVehicleClass(), this.getID(),
-						ev.getLinkConsume());
+						linkConsume);
 			}
 			ev.resetLinkConsume();
 		} else if (v.getVehicleClass() == Vehicle.EBUS) {
 			ElectricBus bv = (ElectricBus) v;
-			this.totalEnergy += bv.getLinkConsume();
-			this.currentEnergy += bv.getLinkConsume();
+			double linkConsume = bv.getLinkConsume();
+			this.totalEnergy += linkConsume;
+			this.currentEnergy += linkConsume;
+			recordEnergyConsumptionSample(linkConsume);
 			if(bv.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
 				ContextCreator.kafkaManager.produceLinkEnergy(bv.getID(), bv.getVehicleClass(), this.getID(),
-						bv.getLinkConsume());
+						linkConsume);
 			}
 			bv.resetLinkConsume();
 		}
 	}
 
+	private void recordEnergyConsumptionSample(double linkConsume) {
+		if(Double.isNaN(linkConsume) || Double.isInfinite(linkConsume)) {
+			return;
+		}
+		this.energyConsumptionSum += linkConsume;
+		this.energyConsumptionCount += 1;
+	}
+
 	public double getTotalEnergy() {
 		return totalEnergy;
+	}
+
+	public double getAvgEnergyConsumption() {
+		return avgEnergyConsumption;
 	}
 
 	public int getTotalFlow() {
