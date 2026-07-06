@@ -164,7 +164,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * transformCoord}}. If omitted, returns {@code public_vids} and
 	 * {@code private_vids} ID lists instead of per-vehicle records.
 	 *
-	 * <p>Output DATA: list of records carrying ID, vehicle class, state,
+	 * <p>Output DATA: list of records carrying visible ID (privateVID for private vehicles),
+	 * vehicle class, state,
 	 * (x, y, z) coords, bearing, acceleration, speed, explicit
 	 * originRoadID/destRoadID and originZoneID/destZoneID fields, plus
 	 * road / lane / distance-to-next-junction if the vehicle is on a road.
@@ -195,7 +196,7 @@ public class QueryMessageHandler extends MessageHandler {
 				if(vehicle != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					Coordinate coord = coordinateForQuery(vehicle.getCurrentCoord(), record.transformCoord);
-    				record2.put("ID", vehicle.getID());
+					record2.put("ID", bridgeVehicleID(vehicle));
 					record2.put("v_type", vehicle.getVehicleClass());
 					record2.put("vehicleClass", vehicle.getVehicleClass());
 					record2.put("state", vehicle.getState());

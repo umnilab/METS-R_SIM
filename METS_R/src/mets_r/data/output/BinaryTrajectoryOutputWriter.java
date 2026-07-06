@@ -655,7 +655,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private void writeVehicleGroup(ArrayList<VehicleSnapshot> records) throws IOException {
 		this.writer.writeInt(records.size());
 		for (VehicleSnapshot vehicle : records) {
-			this.writer.writeInt(vehicle.getId());
+			this.writer.writeInt(outputVehicleID(vehicle.getId(), vehicle.getvehicleClass()));
 			this.writer.writeInt(scaledX(vehicle.getPrevX()));
 			this.writer.writeInt(scaledY(vehicle.getPrevY()));
 			this.writer.writeInt(scaledX(vehicle.getX()));
@@ -673,7 +673,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private void writePrivateEVGroup(ArrayList<EVSnapshot> records) throws IOException {
 		this.writer.writeInt(records.size());
 		for (EVSnapshot ev : records) {
-			this.writeEVFields(ev.getId(), ev.getPrevX(), ev.getPrevY(), ev.getX(), ev.getY(),
+			this.writeEVFields(outputVehicleID(ev.getId(), Vehicle.EV), ev.getPrevX(), ev.getPrevY(), ev.getX(), ev.getY(),
 					ev.getBearing(), ev.getSpeed(), ev.getOriginID(), ev.getDestID(),
 					ev.getBatteryLevel(), ev.getTotalEnergyConsumption());
 			this.writer.writeInt(ev.getTripNumber());
@@ -824,6 +824,17 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.writeInt(destID);
 		this.writer.writeFloat((float) batteryLevel);
 		this.writer.writeFloat((float) energyConsumption);
+	}
+
+	private int outputVehicleID(int agentID, int vehicleClass) {
+		if ((vehicleClass == Vehicle.EV || vehicleClass == Vehicle.GV)
+				&& ContextCreator.getVehicleContext() != null) {
+			int privateVID = ContextCreator.getVehicleContext().getPrivateVID(agentID);
+			if (privateVID >= 0) {
+				return privateVID;
+			}
+		}
+		return agentID;
 	}
 
 	private static ArrayList<Integer> sortedIds(Collection<Integer> ids) {
