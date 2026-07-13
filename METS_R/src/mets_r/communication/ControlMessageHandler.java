@@ -43,6 +43,7 @@ import mets_r.communication.MessageClass.VehIDZoneID;
 import mets_r.communication.MessageClass.VehIDZoneRoad;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
+import mets_r.communication.MessageClass.VehIDVehTypeAttack;
 import mets_r.communication.MessageClass.VehIDVehTypeRoad;
 import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeRoute;
@@ -96,6 +97,7 @@ public class ControlMessageHandler extends MessageHandler {
 		// Vehicle runtime control
 		// =============================================================
 		messageHandlers.put("controlVeh", this::controlVeh);
+		messageHandlers.put("setAttackVehicle", this::setAttackVehicle);
 		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("reachDest", this::reachDest);
 		messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
@@ -209,7 +211,7 @@ public class ControlMessageHandler extends MessageHandler {
 		
 		return jsonAns;
 	}
-	
+
 	/**
 	 * Terminate the simulation cleanly, notifying any connected external
 	 * controllers that the run is finishing before invoking
@@ -996,6 +998,53 @@ public class ControlMessageHandler extends MessageHandler {
 			    ContextCreator.logger.error("Error processing control: " + e.toString());
 			    jsonAns.put("CODE", "KO");
 			}
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Mark electric taxis as attack vehicles for trajectory visualization.
+	 * The designation lasts only for the current trip and is cleared when the
+	 * vehicle reaches its destination.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, vehType, isAttack}}.
+	 */
+	private HashMap<String, Object> setAttackVehicle(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeAttack>> collectionType =
+					new TypeToken<Collection<VehIDVehTypeAttack>>() {};
+			Collection<VehIDVehTypeAttack> requests =
+					gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+
+			for (VehIDVehTypeAttack request : requests) {
+				Vehicle vehicle = request.vehType
+						? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID)
+						: ContextCreator.getVehicleContext().getPublicVehicle(request.vehID);
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", request.vehID);
+				if (vehicle instanceof ElectricTaxi) {
+					vehicle.setAttackVehicle(request.isAttack);
+					record.put("STATUS", "OK");
+				} else {
+					record.put("STATUS", "KO");
+				}
+				jsonData.add(record);
+			}
+
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error setting attack vehicle state: " + e.toString());
+			jsonAns.put("CODE", "KO");
 		}
 		return jsonAns;
 	}

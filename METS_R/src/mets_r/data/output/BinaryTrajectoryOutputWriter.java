@@ -382,7 +382,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		manifest.put("busRouteDictionary", this.busRouteDictionary);
 		manifest.put("vehicleTypes", BinaryTrajectoryOutputWriter.createVehicleTypes());
 		manifest.put("frameGroups", schema("vehicle", "ev_private", "ev_occupied", "ev_relocation",
-				"ev_charging", "bus", "link", "zone", "chargingStation"));
+				"ev_charging", "ev_attack", "bus", "link", "zone", "chargingStation"));
 		manifest.put("sparseFrameGroups", schema("zone", "chargingStation"));
 		manifest.put("sparseFrameGroupMode", "initialFullFrameThenChangedRecordsAndRemovedIds");
 		manifest.put("schemas", BinaryTrajectoryOutputWriter.createSchemas());
@@ -427,6 +427,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		ArrayList<ETaxiSnapshot> occupiedTaxis = this.getETaxiRecords(tick, Vehicle.OCCUPIED_TRIP);
 		ArrayList<ETaxiSnapshot> relocationTaxis = this.getETaxiRecords(tick, Vehicle.INACCESSIBLE_RELOCATION_TRIP);
 		ArrayList<ETaxiSnapshot> chargingTaxis = this.getETaxiRecords(tick, Vehicle.CHARGING_TRIP);
+		ArrayList<ETaxiSnapshot> attackTaxis = this.getAttackVehicleRecords(tick);
 		ArrayList<BusSnapshot> buses = this.getBusRecords(tick);
 		FrameSummary summary = this.createFrameSummary(tick, privateEvs, occupiedTaxis,
 				relocationTaxis, chargingTaxis, buses);
@@ -454,6 +455,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writeETaxiGroup(occupiedTaxis);
 		this.writeETaxiGroup(relocationTaxis);
 		this.writeETaxiGroup(chargingTaxis);
+		this.writeETaxiGroup(attackTaxis);
 		this.writeBusGroup(buses);
 		this.writeLinkGroup(summary.links);
 		this.writeZoneGroup(zones);
@@ -461,7 +463,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.flush();
 
 		int vehicleRecords = vehicles.size() + privateEvs.size() + occupiedTaxis.size() + relocationTaxis.size()
-				+ chargingTaxis.size() + buses.size();
+				+ chargingTaxis.size() + attackTaxis.size() + buses.size();
 		this.currentChunkLastTick = tick.getTickNumber();
 		this.currentChunkTickCount++;
 		this.currentChunkVehicleCount += vehicleRecords;
@@ -579,6 +581,17 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		ArrayList<ETaxiSnapshot> records = new ArrayList<ETaxiSnapshot>();
 		for (Integer id : sortedIds(tick.getETaxiList(vehicleState))) {
 			ETaxiSnapshot snapshot = tick.getETaxiSnapshot(id, vehicleState);
+			if (snapshot != null) {
+				records.add(snapshot);
+			}
+		}
+		return records;
+	}
+
+	private ArrayList<ETaxiSnapshot> getAttackVehicleRecords(TickSnapshot tick) {
+		ArrayList<ETaxiSnapshot> records = new ArrayList<ETaxiSnapshot>();
+		for (Integer id : sortedIds(tick.getAttackVehicleList())) {
+			ETaxiSnapshot snapshot = tick.getAttackVehicleSnapshot(id);
 			if (snapshot != null) {
 				records.add(snapshot);
 			}
@@ -898,6 +911,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		vehicleTypes.put("ev_relocation", 3);
 		vehicleTypes.put("ev_charging", 4);
 		vehicleTypes.put("bus", 5);
+		vehicleTypes.put("ev_attack", 6);
 		return vehicleTypes;
 	}
 

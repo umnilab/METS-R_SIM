@@ -152,6 +152,7 @@ public class Vehicle {
 	protected int vehicleState; 
 	protected int vehicleClass; 
 	protected int vehicleSensorType;
+	private boolean attackVehicle = false;
 	
 	// For vehicle based routing
 	private List<Coordinate> coordMap;
@@ -3316,6 +3317,7 @@ public class Vehicle {
 	 *  Call when arriving the destination but not leave the network
 	 */
 	public void reachDestButNotLeave() {
+		this.attackVehicle = false;
 		this.onLane = false; // Trigger change road if next trip is scheduled
 		// Reach destination
 		this.isReachDest = true;
@@ -4310,6 +4312,14 @@ public class Vehicle {
 	
 	public void setVehicleSensorType(int sensorType) {
 		this.vehicleSensorType = sensorType;
+	}
+
+	public boolean isAttackVehicle() {
+		return this.attackVehicle;
+	}
+
+	public void setAttackVehicle(boolean attackVehicle) {
+		this.attackVehicle = attackVehicle;
 	}
 	
 	/**

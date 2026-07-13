@@ -19,6 +19,18 @@ public class MessageClass{
 	        this.vehType = vehType;
 	    }
 	}
+
+	class VehIDVehTypeAttack {
+	    int vehID;
+	    boolean vehType;
+	    boolean isAttack;
+
+	    public VehIDVehTypeAttack(int vehID, boolean vehType, boolean isAttack) {
+	        this.vehID = vehID;
+	        this.vehType = vehType;
+	        this.isAttack = isAttack;
+	    }
+	}
 	
 	class VehIDVehTypeTran {
 	    int vehID;

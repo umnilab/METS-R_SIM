@@ -39,6 +39,7 @@ public class TickSnapshot {
 	private HashMap<Integer, ETaxiSnapshot> evs_occupied;
 	private HashMap<Integer, ETaxiSnapshot> evs_relocation;
 	private HashMap<Integer, ETaxiSnapshot> evs_charging;
+	private HashMap<Integer, ETaxiSnapshot> evs_attack;
 	private HashMap<Integer, BusSnapshot> buses;
 	private boolean frameSummaryRecorded;
 	private int matchedRequests;
@@ -94,6 +95,7 @@ public class TickSnapshot {
 		this.evs_occupied = new HashMap<Integer, ETaxiSnapshot>();
 		this.evs_relocation = new HashMap<Integer, ETaxiSnapshot>();
 		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
+		this.evs_attack = new HashMap<Integer, ETaxiSnapshot>();
 		this.frameSummaryRecorded = false;
 		this.roadVehicleCount = 0;
 		this.links = new ArrayList<LinkSnapshot>();
@@ -175,6 +177,12 @@ public class TickSnapshot {
 				speedCount++;
 			}
 		}
+		synchronized (this.evs_attack) {
+			for (ETaxiSnapshot snapshot : this.evs_attack.values()) {
+				speedSum += snapshot.getSpeed();
+				speedCount++;
+			}
+		}
 		synchronized (this.buses) {
 			for (BusSnapshot snapshot : this.buses.values()) {
 				speedSum += snapshot.getSpeed();
@@ -242,6 +250,20 @@ public class TickSnapshot {
 			}
 		}
 		this.addEnergy(privateDelta, taxiDelta, 0);
+	}
+
+	private void removeETaxiSnapshot(HashMap<Integer, ETaxiSnapshot> snapshots, int id) {
+		synchronized (snapshots) {
+			ETaxiSnapshot oldSnapshot = snapshots.remove(id);
+			if (oldSnapshot != null) {
+				this.updateETaxiEnergy(oldSnapshot, null);
+			}
+		}
+	}
+
+	private ETaxiSnapshot getAnyETaxiSnapshot(int id, int vehState) {
+		ETaxiSnapshot snapshot = this.getAttackVehicleSnapshot(id);
+		return snapshot != null ? snapshot : this.getETaxiSnapshot(id, vehState);
 	}
 
 	private void updateBusEnergy(BusSnapshot oldSnapshot, BusSnapshot newSnapshot) {
@@ -379,9 +401,10 @@ public class TickSnapshot {
 		int dropoffRequests = vehicle.getDropoffRequests();
 		int dropoffPassengers = vehicle.getDropoffPassengers();
 
-		if (this.getETaxiSnapshot(id, vehicle.getState()) != null) {
-			prev_x = this.getETaxiSnapshot(id, vehicle.getState()).prev_x;
-			prev_y = this.getETaxiSnapshot(id, vehicle.getState()).prev_y;
+		ETaxiSnapshot previousSnapshot = this.getAnyETaxiSnapshot(id, vehicle.getState());
+		if (previousSnapshot != null) {
+			prev_x = previousSnapshot.prev_x;
+			prev_y = previousSnapshot.prev_y;
 		}
 		double bearing = vehicle.getSnapshotBearing(prev_x, prev_y, coordinate);
 
@@ -391,24 +414,35 @@ public class TickSnapshot {
 				pickupRequests, pickupPassengers, dropoffRequests, dropoffPassengers
 		);
 
-		if (vehState == Vehicle.OCCUPIED_TRIP) {
-			synchronized(this.evs_occupied) {
-				ETaxiSnapshot oldSnapshot = this.evs_occupied.put(id, snapshot);
+		if (vehicle.isAttackVehicle()) {
+			this.removeETaxiSnapshot(this.evs_occupied, id);
+			this.removeETaxiSnapshot(this.evs_relocation, id);
+			this.removeETaxiSnapshot(this.evs_charging, id);
+			synchronized(this.evs_attack) {
+				ETaxiSnapshot oldSnapshot = this.evs_attack.put(id, snapshot);
 				this.updateETaxiEnergy(oldSnapshot, snapshot);
 			}
+		} else {
+			this.removeETaxiSnapshot(this.evs_attack, id);
+			if (vehState == Vehicle.OCCUPIED_TRIP) {
+				synchronized(this.evs_occupied) {
+					ETaxiSnapshot oldSnapshot = this.evs_occupied.put(id, snapshot);
+					this.updateETaxiEnergy(oldSnapshot, snapshot);
+				}
 			
-		} else if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP ||
-				vehState == Vehicle.CRUISING_TRIP ||
-				vehState == Vehicle.PICKUP_TRIP ) {
-			synchronized(this.evs_relocation) {
-				ETaxiSnapshot oldSnapshot = this.evs_relocation.put(id, snapshot);
-				this.updateETaxiEnergy(oldSnapshot, snapshot);
-			}
+			} else if (vehState == Vehicle.INACCESSIBLE_RELOCATION_TRIP ||
+					vehState == Vehicle.CRUISING_TRIP ||
+					vehState == Vehicle.PICKUP_TRIP ) {
+				synchronized(this.evs_relocation) {
+					ETaxiSnapshot oldSnapshot = this.evs_relocation.put(id, snapshot);
+					this.updateETaxiEnergy(oldSnapshot, snapshot);
+				}
 			
-		} else if (vehState == Vehicle.CHARGING_TRIP) {
-			synchronized(this.evs_charging) {
-				ETaxiSnapshot oldSnapshot = this.evs_charging.put(id, snapshot);
-				this.updateETaxiEnergy(oldSnapshot, snapshot);
+			} else if (vehState == Vehicle.CHARGING_TRIP) {
+				synchronized(this.evs_charging) {
+					ETaxiSnapshot oldSnapshot = this.evs_charging.put(id, snapshot);
+					this.updateETaxiEnergy(oldSnapshot, snapshot);
+				}
 			}
 		}
 	}
@@ -515,6 +549,13 @@ public class TickSnapshot {
 
 	}
 
+	public Collection<Integer> getAttackVehicleList() {
+		if (this.evs_attack == null || this.evs_attack.isEmpty()) {
+			return null;
+		}
+		return this.evs_attack.keySet();
+	}
+
 	public Collection<Integer> getBusList() {
 		if (this.buses == null || this.buses.isEmpty()) {
 			return null;
@@ -596,6 +637,13 @@ public class TickSnapshot {
 		}
 
 		return null;
+	}
+
+	public ETaxiSnapshot getAttackVehicleSnapshot(int id) {
+		if (this.evs_attack == null || this.evs_attack.isEmpty()) {
+			return null;
+		}
+		return this.evs_attack.get(id);
 	}
 
 	public BusSnapshot getBusSnapshot(int id) {
@@ -691,7 +739,8 @@ public class TickSnapshot {
 			linksEmpty = this.links.isEmpty();
 		}
 		return (this.vehicles.isEmpty() && this.evs_occupied.isEmpty() && this.evs_relocation.isEmpty()
-				&& this.evs_charging.isEmpty() && this.evs_private.isEmpty() && this.buses.isEmpty()
+				&& this.evs_charging.isEmpty() && this.evs_attack.isEmpty()
+				&& this.evs_private.isEmpty() && this.buses.isEmpty()
 				&& linksEmpty);
 	}
 
