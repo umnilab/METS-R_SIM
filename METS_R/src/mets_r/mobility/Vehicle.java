@@ -110,7 +110,8 @@ public class Vehicle {
 	private double length; // vehicle length
 	private double distance_; // distance to downstream junction
 	private double nextDistance_; // distance to the next control point in the current lane's line segments
-	private double distToTravel_; // remaining distance to be traversed along the road, excluding the junction area, used as a rough estimation of travel distance
+	private double distToTravel_; // route-distance estimate captured at the current within-road reference point
+	private double distToTravelReferenceDistance_; // distance_ when distToTravel_ was last rebased
 	
 	private double currentSpeed_;
 	private double accRate_;
@@ -859,8 +860,16 @@ public class Vehicle {
 			return;
 		}
 		this.removeShadowCount(this.roadPath.get(0));
-		this.distToTravel_ -= this.roadPath.get(0).getLength();
+		double nextRouteDistance = this.distToTravel_ - this.distToTravelReferenceDistance_;
 		this.roadPath.remove(0);
+		double currentRoadDistance = this.currentRoadDistanceToTravel();
+		if (!this.roadPath.isEmpty()) {
+			// The route estimate used the road-level length for this newly entered
+			// road. Replace it with the vehicle's actual within-road distance.
+			nextRouteDistance += currentRoadDistance - this.roadPath.get(0).getLength();
+		}
+		this.distToTravel_ = Math.max(0.0, nextRouteDistance);
+		this.distToTravelReferenceDistance_ = currentRoadDistance;
 		if (this.road.getID() == this.getDestRoad() || this.roadPath.size() <= 1) {
 			this.nextRoad_ = null;
 		} else {
@@ -874,6 +883,24 @@ public class Vehicle {
 	 */
 	public Road getNextRoad() {
 		return this.nextRoad_;
+	}
+
+	private double currentRoadDistanceToTravel() {
+		return Math.max(0.0, this.distance_);
+	}
+
+	private double routeDistanceFromCurrentPosition(List<Road> path) {
+		double remainingDistance = this.currentRoadDistanceToTravel();
+		if (path == null) return remainingDistance;
+		for (int i = 1; i < path.size(); i++) {
+			remainingDistance += path.get(i).getLength();
+		}
+		return remainingDistance;
+	}
+
+	private void setDistToTravelEstimate(double remainingDistance) {
+		this.distToTravel_ = Math.max(0.0, remainingDistance);
+		this.distToTravelReferenceDistance_ = this.currentRoadDistanceToTravel();
 	}
 
 	/**
@@ -891,7 +918,7 @@ public class Vehicle {
 		this.atOrigin = false;
 		// Clear legacy impact
 		this.clearShadowImpact();
-		this.distToTravel_ = 0;
+		this.setDistToTravelEstimate(0.0);
 		if (this.road == null || this.destRoad_ == null) {
 			ContextCreator.logger.warn("Cannot reroute vehicle " + this.getID()
 					+ " because current road or destination road is null.");
@@ -956,17 +983,13 @@ public class Vehicle {
 		}
 		
 		this.setShadowImpact();
-		this.distToTravel_ = this.distance_;
+		this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(this.roadPath));
 		
 	    if (this.roadPath.size() < 2) { // The origin and destination road is the same so this vehicle has arrived
 			this.nextRoad_ = null;
 		} else {
 			this.nextRoad_ = roadPath.get(1);
 			this.assignNextLane();
-			this.distToTravel_ = this.distance_ - this.road.getLength();
-			for(Road r: roadPath) {
-				this.distToTravel_ += r.getLength();
-			}
 		}
 	}
 	
@@ -1050,16 +1073,12 @@ public class Vehicle {
 
 		this.roadPath.add(0, this.road); // Prepend the current road
 		this.setShadowImpact();
-		this.distToTravel_ = this.distance_;
+		this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(this.roadPath));
 		if (this.roadPath.size() < 2) {
 			this.nextRoad_ = null;
 		} else {
 			this.nextRoad_ = roadPath.get(1);
 			this.assignNextLane();
-			this.distToTravel_ = this.distance_ - this.road.getLength();
-			for (Road r : roadPath) {
-				this.distToTravel_ += r.getLength();
-			}
 		}
 	}
 	
@@ -1096,14 +1115,12 @@ public class Vehicle {
 					+ " because current road is null.");
 			return false;
 		}
-		double dtt = 0;
 		for(Road r: newPath) {
 			if (r == null) {
 				ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
 						+ " because the route contains a null road.");
 				return false;
 			}
-			dtt += r.getLength();
 		}
 		if(this.road != newPath.get(0)) {
 			ContextCreator.logger.warn("updateRoute skipped for vehicle " + this.getID()
@@ -1133,14 +1150,13 @@ public class Vehicle {
 		this.atOrigin = false;
 		this.clearShadowImpact();
 		this.roadPath = newPath;
+		this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(this.roadPath));
 		if (newPath.size() < 2) {
 			// Intentional same-road / one-road route: arrive immediately instead of rerouting forever.
-			this.distToTravel_ = this.distance_;
 			this.nextRoad_ = null;
 			this.setShadowImpact();
 			return true;
 		}
-		this.distToTravel_ = dtt;
 		this.nextRoad_ = newPath.get(1);
 		this.setShadowImpact();
 		this.assignNextLane();
@@ -4414,10 +4430,16 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Get vehicle's roungh distance to travel
+	 * Get the vehicle's estimated remaining route distance. The route-level
+	 * estimate is adjusted by the already-maintained within-road distance so the
+	 * result changes with vehicle movement without recomputing the route.
 	 */
 	public double getDistToTravel() {
-		return this.distToTravel_;
+		if (this.roadPath == null || this.roadPath.isEmpty()) {
+			return Math.max(0.0, this.distToTravel_);
+		}
+		return Math.max(0.0, this.distToTravel_ - this.distToTravelReferenceDistance_
+				+ this.currentRoadDistanceToTravel());
 	}
 	
 	/**
@@ -4549,7 +4571,10 @@ public class Vehicle {
 
 	public List<Road> getRoadPath() { return this.roadPath; }
 	public void setRoadPath(List<Road> path) { this.roadPath = path; }
-	public void setDistToTravel(double d) { this.distToTravel_ = d; }
+	public void setDistToTravel(double d) {
+		this.distToTravel_ = d;
+		this.distToTravelReferenceDistance_ = this.currentRoadDistanceToTravel();
+	}
 	public boolean isAtOrigin() { return this.atOrigin; }
 	public void setAtOrigin(boolean v) { this.atOrigin = v; }
 	public boolean isReachDest() { return this.isReachDest; }
