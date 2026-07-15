@@ -2528,6 +2528,14 @@ public class Vehicle {
 	public Coordinate getpreviousEpochCoord() {
 		return this.previousEpochCoord;
 	}
+
+	/**
+	 * Prevent visualization interpolation across a discontinuous position change by
+	 * resetting the previous snapshot coordinate to the vehicle's current location.
+	 */
+	public void syncPreviousEpochCoord() {
+		setPreviousEpochCoord(this.currentCoord_);
+	}
 	
 	/**
 	 * For visualization purpose, record the previous coordinates of the vehicle

@@ -365,6 +365,9 @@ public class Road {
 		
 		// Move veh to the x and y location
 		veh.teleportToLane(lane, dist);
+		// A trace-replay teleport is discontinuous, so visualization must not
+		// interpolate from the vehicle's pre-teleport position.
+		veh.syncPreviousEpochCoord();
 		
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
