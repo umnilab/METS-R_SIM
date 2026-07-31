@@ -2514,6 +2514,10 @@ public class Vehicle {
 	 */
 	public void recVehSnaphotForVisInterp() {
 		Coordinate currentCoord = this.getCurrentCoord();
+		if (ContextCreator.dataCollector == null) {
+			setPreviousEpochCoord(currentCoord);
+			return;
+		}
 		try {
 			ContextCreator.dataCollector.recordSnapshot(this, currentCoord);
 		} catch (Throwable t) {

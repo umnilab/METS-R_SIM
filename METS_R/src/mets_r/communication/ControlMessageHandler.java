@@ -3,11 +3,14 @@ package mets_r.communication;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
+import java.util.Set;
 
 import org.geotools.geometry.jts.JTS;
 import org.json.simple.JSONObject;
@@ -69,9 +72,15 @@ import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Plan;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
+import mets_r.mobility.VehicleContext;
 import mets_r.routing.RouteContext;
 
 public class ControlMessageHandler extends MessageHandler {
+	private static final int MAX_COMPLETED_ADVANCE_COMMANDS = 128;
+	private final Object advanceCommandLock = new Object();
+	private final LinkedHashMap<String, AdvanceCommandRecord> advanceCommands =
+			new LinkedHashMap<String, AdvanceCommandRecord>();
+	private volatile long advanceCacheEpoch = 0L;
 	
 	public ControlMessageHandler() {
 		// =============================================================
@@ -81,6 +90,7 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("reset", this::resetSim);
 		messageHandlers.put("save", this::saveSim);
 		messageHandlers.put("load", this::loadSim);
+		messageHandlers.put("advanceAndSnapshot", this::advanceAndSnapshot);
 		
 		// =============================================================
 		// Co-simulation: road handover & vehicle teleport
@@ -314,6 +324,201 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+
+	public void resetRunEpoch(long runEpoch) {
+		synchronized (this.advanceCommandLock) {
+			this.advanceCacheEpoch = runEpoch;
+			this.advanceCommands.clear();
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private HashMap<String, Object> advanceAndSnapshot(JSONObject jsonMsg) {
+		HashMap<String, Object> data;
+		try {
+			Object rawData = jsonMsg.get("DATA");
+			if (rawData instanceof Map<?, ?>) {
+				data = new HashMap<String, Object>((Map<String, Object>) rawData);
+			} else if (rawData != null) {
+				data = new Gson().fromJson(rawData.toString(),
+						new TypeToken<HashMap<String, Object>>() {}.getType());
+			} else {
+				data = new HashMap<String, Object>((Map<String, Object>) jsonMsg);
+			}
+		} catch (Exception e) {
+			return advanceError(null, "Invalid DATA payload: " + e.getMessage());
+		}
+		String[] advanceKeys = { "commandID", "startingTick", "tick", "numberOfTicks", "numTicks",
+				"taxiIDs", "fieldMask", "FIELDS", "includeDetails", "futureSupplyThresholds",
+				"eventCursor", "timeoutMs" };
+		for (String key : advanceKeys) {
+			if (!data.containsKey(key) && jsonMsg.containsKey(key)) data.put(key, jsonMsg.get(key));
+		}
+
+		String commandID = data.get("commandID") == null ? null : String.valueOf(data.get("commandID"));
+		if (commandID == null || commandID.trim().isEmpty()) {
+			return advanceError(null, "commandID is required");
+		}
+		if (!GlobalVariables.SYNCHRONIZED) {
+			return advanceError(commandID, "advanceAndSnapshot requires SYNCHRONIZED=true");
+		}
+
+		int startingTick = intValue(data.get("startingTick"), intValue(data.get("tick"), ContextCreator.getCurrentTick()));
+		int numberOfTicks = Math.max(1, intValue(data.get("numberOfTicks"), intValue(data.get("numTicks"), 1)));
+		long eventCursor = Math.max(0L, longValue(data.get("eventCursor"), 0L));
+		long timeoutMs = Math.max(1000L, longValue(data.get("timeoutMs"), Math.max(120000L, numberOfTicks * 10000L)));
+		Object requestedFields = data.get("fieldMask") != null ? data.get("fieldMask") : data.get("FIELDS");
+		String fingerprint = String.valueOf(startingTick) + '|' + numberOfTicks + '|'
+				+ String.valueOf(data.get("taxiIDs")) + '|' + String.valueOf(requestedFields)
+				+ '|' + String.valueOf(data.get("includeDetails"))
+				+ '|' + String.valueOf(data.get("futureSupplyThresholds")) + '|' + eventCursor;
+
+		synchronized (this.advanceCommandLock) {
+			long epoch = ContextCreator.getRunEpoch();
+			if (this.advanceCacheEpoch != epoch) resetRunEpoch(epoch);
+			AdvanceCommandRecord command = this.advanceCommands.get(commandID);
+			if (command != null && !command.fingerprint.equals(fingerprint)) {
+				return advanceError(commandID, "commandID was already used with a different payload");
+			}
+			if (command != null && command.response != null) {
+				HashMap<String, Object> replay = new HashMap<String, Object>(command.response);
+				replay.put("replayed", true);
+				return replay;
+			}
+
+			if (command == null) {
+				ContextCreator.StepCommandResult accepted = ContextCreator.setNextStepCommand(startingTick, numberOfTicks);
+				if (!accepted.accepted) {
+					HashMap<String, Object> error = advanceError(commandID, "starting tick does not match current tick");
+					error.put("currentTick", accepted.currentTick);
+					return error;
+				}
+				command = new AdvanceCommandRecord(fingerprint, startingTick, accepted.targetTick);
+				this.advanceCommands.put(commandID, command);
+			}
+
+			if (!ContextCreator.awaitStepTarget(command.targetTick, timeoutMs)) {
+				HashMap<String, Object> timeout = advanceError(commandID, "timed out waiting for final quiescent tick");
+				timeout.put("targetTick", command.targetTick);
+				timeout.put("currentTick", ContextCreator.getCurrentTick());
+				return timeout;
+			}
+
+			HashMap<String, Object> response = buildAdvanceSnapshot(commandID, command, data, eventCursor);
+			command.response = response;
+			trimCompletedAdvanceCommands();
+			return new HashMap<String, Object>(response);
+		}
+	}
+
+	private HashMap<String, Object> buildAdvanceSnapshot(String commandID, AdvanceCommandRecord command,
+			Map<String, Object> data, long eventCursor) {
+		HashMap<String, Object> response = new HashMap<String, Object>();
+		response.put("CODE", "OK");
+		response.put("commandID", commandID);
+		response.put("runEpoch", ContextCreator.getRunEpoch());
+		response.put("startingTick", command.startingTick);
+		response.put("finalTick", ContextCreator.getCurrentTick());
+		response.put("advancedTicks", command.targetTick - command.startingTick);
+		response.put("replayed", false);
+
+		Set<String> fields = responseFieldMask(data);
+		ArrayList<Object> taxis = new ArrayList<Object>();
+		for (Integer taxiID : integerList(data.get("taxiIDs"))) {
+			HashMap<String, Object> taxiRecord = new HashMap<String, Object>();
+			taxiRecord.put("ID", taxiID);
+			ElectricTaxi taxi = ContextCreator.getVehicleContext().getTaxi(taxiID);
+			if (taxi == null) {
+				taxiRecord.put("STATUS", "KO");
+			} else {
+				addDispatchResponseFields(taxiRecord, taxi, fields);
+				taxiRecord.put("STATUS", "OK");
+			}
+			taxis.add(taxiRecord);
+		}
+		response.put("taxis", taxis);
+		response.put("availableTaxiSummary", ContextCreator.getVehicleContext().getAvailableTaxiCounts());
+		response.put("futureSupply", futureSupplySummary(data.get("futureSupplyThresholds")));
+
+		SimulationEventJournal.Snapshot eventSnapshot = SimulationEventJournal.snapshotAfter(eventCursor);
+		response.put("events", eventSnapshot.events);
+		response.put("nextEventCursor", eventSnapshot.nextCursor);
+		return response;
+	}
+
+	private ArrayList<Object> futureSupplySummary(Object rawThresholds) {
+		ArrayList<Object> summaries = new ArrayList<Object>();
+		for (Integer threshold : integerList(rawThresholds)) {
+			ArrayList<Integer> zoneIDs = new ArrayList<Integer>();
+			for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+				if (zone.getFutureSupply() <= threshold) zoneIDs.add(zone.getID());
+			}
+			java.util.Collections.sort(zoneIDs);
+			HashMap<String, Object> summary = new HashMap<String, Object>();
+			summary.put("threshold", threshold);
+			summary.put("count", zoneIDs.size());
+			summary.put("zoneIDsAtOrBelow", zoneIDs);
+			summaries.add(summary);
+		}
+		return summaries;
+	}
+
+	private ArrayList<Integer> integerList(Object raw) {
+		ArrayList<Integer> values = new ArrayList<Integer>();
+		if (raw instanceof Collection<?>) {
+			for (Object value : (Collection<?>) raw) {
+				Integer parsed = integerValue(value);
+				if (parsed != null) values.add(parsed);
+			}
+		}
+		return values;
+	}
+
+	private int intValue(Object value, int defaultValue) {
+		if (value == null) return defaultValue;
+		if (value instanceof Number) return ((Number) value).intValue();
+		try { return Integer.parseInt(String.valueOf(value)); }
+		catch (NumberFormatException e) { return defaultValue; }
+	}
+
+	private long longValue(Object value, long defaultValue) {
+		if (value == null) return defaultValue;
+		if (value instanceof Number) return ((Number) value).longValue();
+		try { return Long.parseLong(String.valueOf(value)); }
+		catch (NumberFormatException e) { return defaultValue; }
+	}
+
+	private HashMap<String, Object> advanceError(String commandID, String warning) {
+		HashMap<String, Object> error = new HashMap<String, Object>();
+		error.put("CODE", "KO");
+		if (commandID != null) error.put("commandID", commandID);
+		error.put("WARN", warning);
+		error.put("runEpoch", ContextCreator.getRunEpoch());
+		return error;
+	}
+
+	private void trimCompletedAdvanceCommands() {
+		while (this.advanceCommands.size() > MAX_COMPLETED_ADVANCE_COMMANDS) {
+			String removable = null;
+			for (Map.Entry<String, AdvanceCommandRecord> entry : this.advanceCommands.entrySet()) {
+				if (entry.getValue().response != null) { removable = entry.getKey(); break; }
+			}
+			if (removable == null) return;
+			this.advanceCommands.remove(removable);
+		}
+	}
+
+	private static class AdvanceCommandRecord {
+		final String fingerprint;
+		final int startingTick;
+		final int targetTick;
+		HashMap<String, Object> response;
+		AdvanceCommandRecord(String fingerprint, int startingTick, int targetTick) {
+			this.fingerprint = fingerprint;
+			this.startingTick = startingTick;
+			this.targetTick = targetTick;
+		}
 	}
 
 	private boolean optionalBoolean(Map<String, Object> data, boolean defaultValue, String... keys) {
@@ -1492,6 +1697,8 @@ public class ControlMessageHandler extends MessageHandler {
 				PendingTaxiRequestRef pendingTaxi = findAndRemovePendingTaxiRequest(reqID, zoneID);
 				if (pendingTaxi != null) {
 					recordTaxiRequestLeft(pendingTaxi);
+					SimulationEventJournal.record("cancellation", -1, pendingTaxi.request,
+							pendingTaxi.zone.getID());
 					record.put("mode", "taxi");
 					record.put("requestState", "pending");
 					record.put("action", "left");
@@ -1517,6 +1724,10 @@ public class ControlMessageHandler extends MessageHandler {
 
 				MatchedTaxiCancelResult matchedTaxi = cancelMatchedTaxiRequest(reqID, zoneID);
 				if (matchedTaxi != null) {
+					if (matchedTaxi.statusOK) {
+						SimulationEventJournal.record("cancellation", matchedTaxi.vehicleID,
+								matchedTaxi.request, matchedTaxi.request.getOriginZone());
+					}
 					record.put("mode", "taxi");
 					record.put("requestState", "matched");
 					record.put("vehicleID", matchedTaxi.vehicleID);
@@ -1597,6 +1808,7 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		try {
 			Gson gson = new Gson();
+			Set<String> responseFields = responseFieldMask(jsonMsg);
 			TypeToken<Collection<VehIDReqID>> collectionType = new TypeToken<Collection<VehIDReqID>>() {};
 			Collection<VehIDReqID> entries = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 			ArrayList<Object> jsonData = new ArrayList<Object>();
@@ -1625,7 +1837,7 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 				
-				PendingTaxiRequestRef found = findAndRemovePendingTaxiRequest(entry.reqID);
+				PendingTaxiRequestRef found = findAndRemovePendingTaxiRequest(entry.reqID, entry.originZoneID);
 				if (found == null) {
 					ContextCreator.logger.warn("dispatchTaxi: request " + entry.reqID + " not found in any pending taxi queue");
 					record.put("STATUS", "KO");
@@ -1678,6 +1890,7 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 				
 				p.matchedTime = ContextCreator.getCurrentTick();
+				SimulationEventJournal.record("match", veh.getID(), p, origZone.getID());
 				origZone.taxiPickupRequest += 1;
 				origZone.taxiPickupPassengers += p.getNumPeople();
 				origZone.taxiServedPassWaitingTime += p.getCurrentWaitingTime();
@@ -1698,6 +1911,7 @@ public class ControlMessageHandler extends MessageHandler {
 					record.put("parkingReservationReleased", true);
 				}
 				record.put("STATUS", "OK");
+				addDispatchResponseFields(record, veh, responseFields);
 				jsonData.add(record);
 			}
 			
@@ -1724,6 +1938,71 @@ public class ControlMessageHandler extends MessageHandler {
 	private void removeTaxiFromDispatchPools(ElectricTaxi taxi) {
 		ContextCreator.getVehicleContext().removeAvailableTaxiFromAllZones(taxi);
 		ContextCreator.getVehicleContext().removeRelocationTaxiFromAllZones(taxi);
+	}
+
+	private Set<String> responseFieldMask(Map<?, ?> jsonMsg) {
+		HashSet<String> fields = new HashSet<String>();
+		Object raw = jsonMsg.get("fieldMask");
+		if (raw == null) raw = jsonMsg.get("FIELDS");
+		if (raw instanceof Collection<?>) {
+			for (Object value : (Collection<?>) raw) fields.add(String.valueOf(value));
+		} else if (raw != null) {
+			for (String value : String.valueOf(raw).split(",")) fields.add(value.trim());
+		}
+		if (Boolean.TRUE.equals(jsonMsg.get("includeDetails"))) fields.add("*");
+		return fields;
+	}
+
+	private boolean wantsField(Set<String> fields, String field) {
+		return fields.contains("*") || fields.contains(field);
+	}
+
+	private void addRequestResponseFields(HashMap<String, Object> record, Request request,
+			Set<String> fields) {
+		if (wantsField(fields, "originZoneID")) record.put("originZoneID", request.getOriginZone());
+		if (wantsField(fields, "destZoneID")) record.put("destZoneID", request.getDestZone());
+		if (wantsField(fields, "originRoadID")) {
+			Road road = ContextCreator.getRoadContext().get(request.getOriginRoad());
+			record.put("originRoadID", road == null ? request.getOriginRoad() : road.getOrigID());
+		}
+		if (wantsField(fields, "destRoadID")) {
+			Road road = ContextCreator.getRoadContext().get(request.getDestRoad());
+			record.put("destRoadID", road == null ? request.getDestRoad() : road.getOrigID());
+		}
+		if (wantsField(fields, "generationTick")) record.put("generationTick", request.generationTime);
+		if (wantsField(fields, "waitingLimit")) record.put("waitingLimit", request.getMaxWaitingTime());
+	}
+
+	private void addDispatchResponseFields(HashMap<String, Object> record, ElectricTaxi taxi,
+			Set<String> fields) {
+		if (wantsField(fields, "state")) record.put("state", taxi.getState());
+		if (wantsField(fields, "coordinates")) {
+			Coordinate coordinate = taxi.getCurrentCoord();
+			if (coordinate != null) {
+				record.put("x", coordinate.x);
+				record.put("y", coordinate.y);
+				record.put("z", coordinate.z);
+			}
+		}
+		if (wantsField(fields, "currentZoneID")) record.put("currentZoneID", taxi.getCurrentZone());
+		if (wantsField(fields, "destinationZoneID")) record.put("destinationZoneID", taxi.getDestID());
+		if (wantsField(fields, "remainingDistance")) {
+			record.put("remainingDistance", Math.max(0.0, taxi.getDistToTravel()));
+		}
+		if (wantsField(fields, "requestIDs")) {
+			record.put("toBoardReqIDs", requestIDs(taxi.getToBoardRequests()));
+			record.put("onBoardReqIDs", requestIDs(taxi.getOnBoardRequests()));
+		}
+	}
+
+	private ArrayList<Integer> requestIDs(Queue<Request> requests) {
+		ArrayList<Integer> ids = new ArrayList<Integer>();
+		if (requests != null) {
+			for (Request request : requests) {
+				if (request != null) ids.add(request.getID());
+			}
+		}
+		return ids;
 	}
 
 	private boolean cancelParkingReservationForRedirect(ElectricTaxi taxi) {
@@ -2082,11 +2361,22 @@ public class ControlMessageHandler extends MessageHandler {
 	 *   - Zone.toAddRequestForTaxi (NOT yet counted; populated by
 	 *     insertTaxiPass and drained by processToAddPassengers)
 	 */
+	@SuppressWarnings("unused")
 	private PendingTaxiRequestRef findAndRemovePendingTaxiRequest(int reqID) {
 		return findAndRemovePendingTaxiRequest(reqID, null);
 	}
 
 	private PendingTaxiRequestRef findAndRemovePendingTaxiRequest(int reqID, Integer zoneID) {
+		VehicleContext.PendingTaxiRequestEntry indexed =
+				ContextCreator.getVehicleContext().getPendingTaxiRequest(reqID);
+		if (indexed != null) {
+			if (zoneID != null && indexed.zoneID != zoneID.intValue()) return null;
+			Zone indexedZone = ContextCreator.getZoneContext().get(indexed.zoneID);
+			PendingTaxiRequestRef indexedRef = indexedZone == null ? null
+					: findAndRemovePendingTaxiRequestInZone(indexedZone, reqID);
+			if (indexedRef != null) return indexedRef;
+			ContextCreator.getVehicleContext().unregisterPendingTaxiRequest(reqID);
+		}
 		if (zoneID != null) {
 			Zone z = ContextCreator.getZoneContext().get(zoneID);
 			return z == null ? null : findAndRemovePendingTaxiRequestInZone(z, reqID);
@@ -2106,6 +2396,7 @@ public class ControlMessageHandler extends MessageHandler {
 			Request r = it.next();
 			if (r.getID() == reqID) {
 				it.remove();
+				ContextCreator.getVehicleContext().unregisterPendingTaxiRequest(reqID);
 				z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
 				PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
 				ref.zone = z;
@@ -2120,6 +2411,7 @@ public class ControlMessageHandler extends MessageHandler {
 				Request r = sit.next();
 				if (r.getID() == reqID) {
 					sit.remove();
+					ContextCreator.getVehicleContext().unregisterPendingTaxiRequest(reqID);
 					z.setNRequestForTaxi(z.getTaxiRequestNum() - 1);
 					PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
 					ref.zone = z;
@@ -2135,6 +2427,7 @@ public class ControlMessageHandler extends MessageHandler {
 			Request r = tit.next();
 			if (r.getID() == reqID) {
 				tit.remove();
+				ContextCreator.getVehicleContext().unregisterPendingTaxiRequest(reqID);
 				PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
 				ref.zone = z;
 				ref.request = r;
@@ -2162,11 +2455,14 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			q.add(r);
 			z.setNRequestForTaxi(z.getTaxiRequestNum() + 1);
+			ContextCreator.getVehicleContext().registerPendingTaxiRequest(r, z.getID(), "sharable");
 		} else if ("toAdd".equals(ref.source)) {
 			z.getToAddTaxiRequestQueue().add(r);
+			ContextCreator.getVehicleContext().registerPendingTaxiRequest(r, z.getID(), "toAdd");
 		} else {
 			z.getTaxiRequestQueue().add(r);
 			z.setNRequestForTaxi(z.getTaxiRequestNum() + 1);
+			ContextCreator.getVehicleContext().registerPendingTaxiRequest(r, z.getID(), "queue");
 		}
 	}
 	
@@ -2737,6 +3033,7 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
+				Set<String> responseFields = responseFieldMask(jsonMsg);
 				TypeToken<Collection<OriginDestNumMaxW>> collectionType = new TypeToken<Collection<OriginDestNumMaxW>>() {};
 				Collection<OriginDestNumMaxW> zoneIDOrigDestNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
@@ -2752,8 +3049,9 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", zoneIDOrigDestNum.zoneID);
-			    		record2.put("reqID", p.getID());
-			    		record2.put("STATUS", "OK");
+					record2.put("reqID", p.getID());
+					addRequestResponseFields(record2, p, responseFields);
+					record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}
 					else {
@@ -2795,6 +3093,7 @@ public class ControlMessageHandler extends MessageHandler {
 		else {
 			try {
 				Gson gson = new Gson();
+				Set<String> responseFields = responseFieldMask(jsonMsg);
 				TypeToken<Collection<OrigRoadDestRoadNumMaxW>> collectionType = new TypeToken<Collection<OrigRoadDestRoadNumMaxW>>() {};
 				Collection<OrigRoadDestRoadNumMaxW> origRoadDestRoadNums = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
 				ArrayList<Object> jsonData = new ArrayList<Object>();
@@ -2811,8 +3110,9 @@ public class ControlMessageHandler extends MessageHandler {
 						
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 			    		record2.put("ID", origRoadDestRoadNum.orig);
-			    		record2.put("reqID", p.getID());
-			    		record2.put("STATUS", "OK");
+					record2.put("reqID", p.getID());
+					addRequestResponseFields(record2, p, responseFields);
+					record2.put("STATUS", "OK");
 						jsonData.add(record2);
 					}
 					else {

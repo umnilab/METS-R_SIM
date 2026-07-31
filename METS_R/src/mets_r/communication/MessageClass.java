@@ -194,10 +194,12 @@ public class MessageClass{
     class VehIDReqID{
     	int vehID;
     	int reqID;
+		Integer originZoneID;
     	
     	public VehIDReqID(int vehID, int reqID) {
     		this.vehID = vehID;
     		this.reqID = reqID;
+		this.originZoneID = null;
     	}
     }
     

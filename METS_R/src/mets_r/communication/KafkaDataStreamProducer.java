@@ -6,6 +6,7 @@ import java.util.concurrent.CompletionService;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.producer.*;
 
@@ -69,5 +70,19 @@ public class KafkaDataStreamProducer{
 			return "sent link_tt";
 		};
 		compService.submit(sender);
+	}
+
+	public void close() {
+		executorService.shutdown();
+		try {
+			if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
+				executorService.shutdownNow();
+			}
+		} catch (InterruptedException e) {
+			executorService.shutdownNow();
+			Thread.currentThread().interrupt();
+		}
+		myProducer.flush();
+		myProducer.close();
 	}
 }

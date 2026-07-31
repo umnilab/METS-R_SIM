@@ -59,6 +59,11 @@ public class GlobalVariables {
 		}
 		return config.getProperty(property);
 	}
+
+	private static boolean loadBooleanConfig(String property, boolean defaultValue) {
+		String value = loadConfig(property);
+		return value == null ? defaultValue : Boolean.valueOf(value);
+	}
 	
 	// Whether the simulation is ran in the synchronized mode
 	public static boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
@@ -232,6 +237,8 @@ public class GlobalVariables {
 			.valueOf(loadConfig("TRAJECTORY_BINARY_COORD_SCALE"));
 	
 	// Parameters for aggregated report writer
+	// Default true preserves the historical behavior for older property files.
+	public static boolean ENABLE_AGGREGATE_WRITE = loadBooleanConfig("ENABLE_AGGREGATE_WRITE", true);
 	public static String AGG_DEFAULT_PATH = loadConfig("AGG_DEFAULT_PATH");
 
 	// Parameters for handling network connections to remote programs
@@ -244,6 +251,10 @@ public class GlobalVariables {
 	// Displaying useful metrics
 	public static boolean ENABLE_METRICS_DISPLAY = Boolean.valueOf(loadConfig("ENABLE_METRICS_DISPLAY"));
 	public static int METRICS_DISPLAY_INTERVAL = Integer.valueOf(loadConfig("METRICS_DISPLAY_INTERVAL"));
+
+	// Detailed nanosecond scheduler statistics are opt-in to avoid hot-path
+	// timing and statistics allocations during normal execution.
+	public static boolean ENABLE_SCHEDULER_PROFILING = loadBooleanConfig("ENABLE_SCHEDULER_PROFILING", false);
 	
 	/* Constants */
 	// For primitive move

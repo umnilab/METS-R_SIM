@@ -175,10 +175,12 @@ public class ElectricBus extends ElectricVehicle {
 					+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
 					+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
 					+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
-			try {
-				ContextCreator.agg_logger.bus_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
+			if (ContextCreator.agg_logger != null) {
+				try {
+					ContextCreator.agg_logger.bus_logger.write(formated_msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 			super.reachDestButNotLeave(); 
 			super.leaveNetwork(); // remove the bus from the network
@@ -196,10 +198,12 @@ public class ElectricBus extends ElectricVehicle {
 						+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
 						+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
 						+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
-				try {
-					ContextCreator.agg_logger.bus_logger.write(formated_msg);
-				} catch (IOException e) {
-					e.printStackTrace();
+				if (ContextCreator.agg_logger != null) {
+					try {
+						ContextCreator.agg_logger.bus_logger.write(formated_msg);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 			}
 			this.tripConsume = 0;
@@ -219,10 +223,12 @@ public class ElectricBus extends ElectricVehicle {
 								+ unserved_pass.getNumPeople() + "," + unserved_pass.generationTime + ","
 								+ unserved_pass.matchedTime + "," + -1 + ","
 								+ -1 + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
-						try {
-							ContextCreator.agg_logger.request_logger.write(formated_msg);
-						} catch (IOException e) {
-							e.printStackTrace();
+						if (ContextCreator.agg_logger != null) {
+							try {
+								ContextCreator.agg_logger.request_logger.write(formated_msg);
+							} catch (IOException e) {
+								e.printStackTrace();
+							}
 						}
 					}
 				}
@@ -357,10 +363,12 @@ public class ElectricBus extends ElectricVehicle {
 						+ arrived_request.getNumPeople() + "," + arrived_request.generationTime + ","
 						+ arrived_request.matchedTime + "," + arrived_request.pickupTime + ","
 						+ arrived_request.arriveTIme + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
-				try {
-					ContextCreator.agg_logger.request_logger.write(formated_msg);
-				} catch (IOException e) {
-					e.printStackTrace();
+				if (ContextCreator.agg_logger != null) {
+					try {
+						ContextCreator.agg_logger.request_logger.write(formated_msg);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 			}
 		}
@@ -462,13 +470,15 @@ public class ElectricBus extends ElectricVehicle {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
 				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
-		try {
-			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.chargingWaitingTime = 0;
-			this.chargingTime = 0;
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (ContextCreator.agg_logger != null) {
+			try {
+				ContextCreator.agg_logger.charger_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
+		this.chargingWaitingTime = 0;
+		this.chargingTime = 0;
 
 		this.onChargingRoute_ = false;
 		this.setNextPlan();

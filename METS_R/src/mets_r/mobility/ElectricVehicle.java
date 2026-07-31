@@ -72,10 +72,12 @@ public class ElectricVehicle extends Vehicle {
 					+ this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + ","
 					+ this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,0,0,0,0,0,0,0\r\n";
-			try {
-				ContextCreator.agg_logger.ev_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
+			if (ContextCreator.agg_logger != null) {
+				try {
+					ContextCreator.agg_logger.ev_logger.write(formated_msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 			super.reachDestButNotLeave(); 
 			super.leaveNetwork(); // remove from the network
@@ -91,10 +93,12 @@ public class ElectricVehicle extends Vehicle {
 			        + "," + this.getOriginID() + "," + this.getDestID() + "," + this.getOriginRoad() + "," + this.getDestRoad() + "," + this.getAccummulatedDistance() + ","
 					+ this.getDepTime() + "," + this.getTripConsume() + ",-1,"
 					+ "0,0,0,0,0,0,0\r\n";
-			try {
-				ContextCreator.agg_logger.ev_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
+			if (ContextCreator.agg_logger != null) {
+				try {
+					ContextCreator.agg_logger.ev_logger.write(formated_msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 			this.tripConsume = 0;
 			this.reachDestButNotLeave();
@@ -209,7 +213,7 @@ public class ElectricVehicle extends Vehicle {
 	public void reportStatus() {
 		if(this.getVehicleSensorType() == Vehicle.CV2X || this.getVehicleSensorType() == Vehicle.DSRC ) { 			
 			// Send V2X data for CAV applications
-			if(GlobalVariables.V2X) {
+			if(ContextCreator.kafkaManager != null) {
 				ContextCreator.kafkaManager.produceBSM(this, this.getCurrentCoord(), this.getVehicleSensorType());
 			}
 		}
@@ -330,13 +334,15 @@ public class ElectricVehicle extends Vehicle {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
 				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
-		try {
-			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.chargingWaitingTime = 0;
-			this.chargingTime = 0;
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (ContextCreator.agg_logger != null) {
+			try {
+				ContextCreator.agg_logger.charger_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
+		this.chargingWaitingTime = 0;
+		this.chargingTime = 0;
 		
 		//Put vehicle back to the departure link of the charging station
 		this.onChargingRoute_ = false;

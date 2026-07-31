@@ -5,6 +5,7 @@ import java.util.Collection;
 
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
+import mets_r.facility.RoadContext;
 import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 
@@ -24,10 +25,18 @@ public class MetisPartition {
 	private ArrayList<ArrayList<ChargingStation>> partitionedChargingStation;
 	private ArrayList<ArrayList<Signal>> partitionedSignals;
 	private ArrayList<Integer> backgroundLoads;
+	private final ArrayList<ArrayList<Road>> activeRoadPartitions;
+	private final ArrayList<RoadStepLoad> activeRoadLoads;
+	private final long[] activePartitionLoads;
+	private long lastActiveRoadVersion = Long.MIN_VALUE;
+	private int lastActiveRoadRebalanceTick = Integer.MIN_VALUE;
 
 	public MetisPartition(int nparts) {
 		this.nPartition = Math.max(1, nparts);
 		this.initializeEmptyPartitions();
+		this.activeRoadPartitions = newRoadPartitions();
+		this.activeRoadLoads = new ArrayList<RoadStepLoad>();
+		this.activePartitionLoads = new long[this.nPartition];
 	}
 
 	public ArrayList<ArrayList<Road>> getPartitionedInRoads() {
@@ -36,6 +45,40 @@ public class MetisPartition {
 
 	public ArrayList<ArrayList<Road>> partitionRoadsForCurrentPartitions(Collection<Road> roads) {
 		return partitionRoadsByCurrentLoad(roads);
+	}
+
+	public synchronized ArrayList<ArrayList<Road>> getActiveRoadPartitions(RoadContext roadContext, int currentTick) {
+		long activeVersion = roadContext == null ? Long.MIN_VALUE : roadContext.getActiveRoadVersion();
+		boolean periodicRebalance = lastActiveRoadRebalanceTick == Integer.MIN_VALUE
+				|| currentTick - lastActiveRoadRebalanceTick >= GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
+		if (activeVersion == this.lastActiveRoadVersion && !periodicRebalance) {
+			return this.activeRoadPartitions;
+		}
+
+		for (ArrayList<Road> partition : this.activeRoadPartitions) {
+			partition.clear();
+		}
+		this.activeRoadLoads.clear();
+		java.util.Arrays.fill(this.activePartitionLoads, 0L);
+		if (roadContext != null) {
+			for (Road road : roadContext.getActiveRoadsSnapshot()) {
+				if (road != null) {
+					this.activeRoadLoads.add(new RoadStepLoad(road, road.getStepLoadWeight()));
+				}
+			}
+		}
+		this.activeRoadLoads.sort((a, b) -> {
+			int weightCompare = Integer.compare(b.weight, a.weight);
+			return weightCompare != 0 ? weightCompare : Integer.compare(a.road.getID(), b.road.getID());
+		});
+		for (RoadStepLoad roadLoad : this.activeRoadLoads) {
+			int partition = lightestPartition(this.activePartitionLoads);
+			this.activeRoadPartitions.get(partition).add(roadLoad.road);
+			this.activePartitionLoads[partition] += roadLoad.weight;
+		}
+		this.lastActiveRoadVersion = activeVersion;
+		this.lastActiveRoadRebalanceTick = currentTick;
+		return this.activeRoadPartitions;
 	}
 
 	public ArrayList<Road> getPartitionedBwRoads() {

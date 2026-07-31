@@ -123,11 +123,12 @@ public class NetworkEventHandler {
 					// Make the event happen
 					NetworkEventObject event = this.setEvent(e, true);
 					// Store event information in data buffer
-					try {
-						ContextCreator.dataCollector.recordEventSnapshot(e, 1);// Here 1 value denotes starting of event
-					} catch (Throwable t) {
-						// Could not log the event strating in data buffer!
-						DataCollector.printDebug("ERR" + t.getMessage());
+					if (ContextCreator.dataCollector != null) {
+						try {
+							ContextCreator.dataCollector.recordEventSnapshot(e, 1);// Here 1 value denotes starting of event
+						} catch (Throwable t) {
+							DataCollector.printDebug("ERR" + t.getMessage());
+						}
 					}
 
 					if (event != null) {
@@ -165,11 +166,12 @@ public class NetworkEventHandler {
 			for (NetworkEventObject e : terminateEvents) {
 				this.setEvent(e, false);
 				// Store event information in data buffer
-				try {
-					ContextCreator.dataCollector.recordEventSnapshot(e, 2);// Here 2 value denotes ending of event
-				} catch (Throwable t) {
-					// could not log the event ending in data buffer!
-					DataCollector.printDebug("ERR" + t.getMessage());
+				if (ContextCreator.dataCollector != null) {
+					try {
+						ContextCreator.dataCollector.recordEventSnapshot(e, 2);// Here 2 value denotes ending of event
+					} catch (Throwable t) {
+						DataCollector.printDebug("ERR" + t.getMessage());
+					}
 				}
 			}
 			this.runningQueue.remove(tickcount);

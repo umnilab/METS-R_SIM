@@ -32,6 +32,7 @@ import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
 import mets_r.mobility.Request;
 import mets_r.mobility.Vehicle;
+import mets_r.mobility.VehicleContext;
 import mets_r.routing.RouteContext;
 import mets_r.communication.MessageClass.*;
 
@@ -48,10 +49,18 @@ public class QueryMessageHandler extends MessageHandler {
 	private long routingGraphTopologyVersion = 0L;
 	private boolean routingGraphSnapshotRequired = false;
 	private static final double ROUTING_GRAPH_EPSILON = 1e-9;
+	private static final Object ROUTING_VERSION_LOCK = new Object();
+	private static Object versionedRoadContext = null;
+	private static long topologyFingerprint = 0L;
+	private static long metricFingerprint = 0L;
+	private static long globalTopologyVersion = 0L;
+	private static long globalMetricVersion = 0L;
 	
 	public QueryMessageHandler() {
 		messageHandlers.put("tick", this::getTick);
 		messageHandlers.put("stepStatus", this::getStepStatus);
+		messageHandlers.put("capabilities", this::getCapabilities);
+		messageHandlers.put("status", this::getCapabilities);
         // =============================================================
         // Vehicles
         // =============================================================
@@ -82,8 +91,10 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("multiRoutesBwCoords", this::getKRoutesBwCoords);
         messageHandlers.put("multiRoutesBwRoads", this::getKRoutesBwRoads);
         messageHandlers.put("edgeWeight", this::getEdgeWeight);
-        messageHandlers.put("routingGraphUpdates", this::getRoutingGraphUpdates);
-        messageHandlers.put("queryRoutingGraphUpdates", this::getRoutingGraphUpdates);
+		messageHandlers.put("routingGraphUpdates", this::getRoutingGraphUpdates);
+		messageHandlers.put("queryRoutingGraphUpdates", this::getRoutingGraphUpdates);
+		messageHandlers.put("routingTopology", this::getRoutingTopology);
+		messageHandlers.put("queryRoutingTopology", this::getRoutingTopology);
         
         // =============================================================
         // Zones
@@ -149,7 +160,21 @@ public class QueryMessageHandler extends MessageHandler {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("CODE", "OK");
 		jsonObj.putAll(ContextCreator.getStepStatus());
-		addFrameSummaryFields(jsonObj);
+		Map<String, Object> capabilities = ContextCreator.getCapabilities();
+		jsonObj.put("capabilities", capabilities);
+		boolean effectiveHeadless = Boolean.TRUE.equals(capabilities.get("headless"));
+		boolean includeFrameSummary = jsonMsg.containsKey("includeFrameSummary")
+				? Boolean.TRUE.equals(jsonMsg.get("includeFrameSummary")) : !effectiveHeadless;
+		if (includeFrameSummary) {
+			addFrameSummaryFields(jsonObj);
+		}
+		return jsonObj;
+	}
+
+	public HashMap<String, Object> getCapabilities(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("CODE", "OK");
+		jsonObj.putAll(ContextCreator.getCapabilities());
 		return jsonObj;
 	}
 	
@@ -824,6 +849,140 @@ public class QueryMessageHandler extends MessageHandler {
 		    ContextCreator.logger.error("Error processing query: " + e.toString());
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
+		}
+	}
+
+	public HashMap<String, Object> getRoutingTopology(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		try {
+			ArrayList<Road> roads = new ArrayList<Road>(ContextCreator.getRoadContext().getAll());
+			roads.sort((a, b) -> {
+				String aid = a == null ? "" : String.valueOf(a.getOrigID());
+				String bid = b == null ? "" : String.valueOf(b.getOrigID());
+				return aid.compareTo(bid);
+			});
+
+			long topologyHash = 1125899906842597L;
+			long metricHash = 1469598103934665603L;
+			for (Road road : roads) {
+				if (road == null) continue;
+				topologyHash = 31L * topologyHash + String.valueOf(road.getOrigID()).hashCode();
+				topologyHash = 31L * topologyHash + Double.doubleToLongBits(road.getLength());
+				for (String downstream : road.getDownStreamRoadOrigIDs()) {
+					topologyHash = 31L * topologyHash + (downstream == null ? 0 : downstream.hashCode());
+				}
+				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getTravelTime());
+				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getSpeedLimit());
+				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getAvgEnergyConsumption());
+			}
+			RoutingVersions versions = updateRoutingVersions(topologyHash, metricHash);
+
+			int offset = Math.min(nonNegativeInt(jsonMsg.get("offset"), 0), roads.size());
+			int requestedLimit = nonNegativeInt(jsonMsg.get("limit"), roads.size());
+			int end = (int) Math.min((long) roads.size(), (long) offset + requestedLimit);
+			boolean includeCenter = Boolean.TRUE.equals(jsonMsg.get("includeCenter"));
+			boolean compact = Boolean.TRUE.equals(jsonMsg.get("compact"));
+			ArrayList<Object> data = new ArrayList<Object>(Math.max(0, end - offset));
+			for (int i = offset; i < end; i++) {
+				Road road = roads.get(i);
+				if (road == null) continue;
+				ArrayList<String> downstream = road.getDownStreamRoadOrigIDs();
+				if (compact) {
+					ArrayList<Object> record = new ArrayList<Object>();
+					record.add(road.getOrigID());
+					record.add(downstream);
+					record.add(road.getLength());
+					if (includeCenter) addRoadCenter(record, road);
+					data.add(record);
+				} else {
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					record.put("roadID", road.getOrigID());
+					record.put("downstreamIDs", downstream);
+					record.put("length", road.getLength());
+					if (includeCenter) addRoadCenter(record, road);
+					data.add(record);
+				}
+			}
+			jsonObj.put("DATA", data);
+			jsonObj.put("offset", offset);
+			jsonObj.put("count", data.size());
+			jsonObj.put("total", roads.size());
+			jsonObj.put("hasMore", end < roads.size());
+			jsonObj.put("topologyVersion", versions.topologyVersion);
+			jsonObj.put("metricVersion", versions.metricVersion);
+			jsonObj.put("tick", ContextCreator.getCurrentTick());
+			jsonObj.put("compact", compact);
+			if (compact) {
+				jsonObj.put("schema", includeCenter
+						? new String[] { "roadID", "downstreamIDs", "length", "centerX", "centerY" }
+						: new String[] { "roadID", "downstreamIDs", "length" });
+			}
+			jsonObj.put("CODE", "OK");
+		} catch (Exception e) {
+			ContextCreator.logger.error("Error processing getRoutingTopology: " + e.toString());
+			jsonObj.put("CODE", "KO");
+		}
+		return jsonObj;
+	}
+
+	private int nonNegativeInt(Object value, int defaultValue) {
+		if (value == null) return Math.max(0, defaultValue);
+		try { return Math.max(0, Integer.parseInt(String.valueOf(value))); }
+		catch (NumberFormatException e) { return Math.max(0, defaultValue); }
+	}
+
+	private void addRoadCenter(ArrayList<Object> record, Road road) {
+		Coordinate center = roadCenter(road);
+		record.add(center == null ? null : center.x);
+		record.add(center == null ? null : center.y);
+	}
+
+	private void addRoadCenter(HashMap<String, Object> record, Road road) {
+		Coordinate center = roadCenter(road);
+		if (center != null) {
+			record.put("centerX", center.x);
+			record.put("centerY", center.y);
+		}
+	}
+
+	private Coordinate roadCenter(Road road) {
+		ArrayList<Coordinate> coordinates = road.getCoords();
+		if (coordinates == null || coordinates.isEmpty()) return null;
+		Coordinate first = coordinates.get(0);
+		Coordinate last = coordinates.get(coordinates.size() - 1);
+		return new Coordinate((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
+	}
+
+	private RoutingVersions updateRoutingVersions(long currentTopologyFingerprint,
+			long currentMetricFingerprint) {
+		synchronized (ROUTING_VERSION_LOCK) {
+			Object currentContext = ContextCreator.getRoadContext();
+			if (versionedRoadContext != currentContext) {
+				versionedRoadContext = currentContext;
+				topologyFingerprint = currentTopologyFingerprint;
+				metricFingerprint = currentMetricFingerprint;
+				globalTopologyVersion++;
+				globalMetricVersion++;
+			} else {
+				if (topologyFingerprint != currentTopologyFingerprint) {
+					topologyFingerprint = currentTopologyFingerprint;
+					globalTopologyVersion++;
+				}
+				if (metricFingerprint != currentMetricFingerprint) {
+					metricFingerprint = currentMetricFingerprint;
+					globalMetricVersion++;
+				}
+			}
+			return new RoutingVersions(globalTopologyVersion, globalMetricVersion);
+		}
+	}
+
+	private static class RoutingVersions {
+		final long topologyVersion;
+		final long metricVersion;
+		RoutingVersions(long topologyVersion, long metricVersion) {
+			this.topologyVersion = topologyVersion;
+			this.metricVersion = metricVersion;
 		}
 	}
 	/**
@@ -2582,6 +2741,14 @@ public class QueryMessageHandler extends MessageHandler {
 	}
 	
 	private HashMap<String, Object> findRequestInfo(int reqID) {
+		VehicleContext.PendingTaxiRequestEntry indexed =
+				ContextCreator.getVehicleContext().getPendingTaxiRequest(reqID);
+		if (indexed != null) {
+			String status = "pending_taxi";
+			if ("sharable".equals(indexed.queueKind)) status = "pending_taxi_sharable";
+			else if ("toAdd".equals(indexed.queueKind)) status = "pending_taxi_toAdd";
+			return requestSummary(indexed.request, status, indexed.zoneID);
+		}
 		// Pending in zones
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			for (Request r : z.getTaxiRequestQueue()) {

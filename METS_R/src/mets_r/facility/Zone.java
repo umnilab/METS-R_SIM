@@ -26,6 +26,7 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.communication.SimulationEventJournal;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
@@ -683,9 +684,11 @@ public class Zone {
 								}
 								passQueue.poll();
 								tmp_pass.add(p);
+								unregisterPendingTaxiRequest(p);
 								assignedPassengers += p.getNumPeople();
 								// Record served passengers
 								p.matchedTime = ContextCreator.getCurrentTick();
+								SimulationEventJournal.record("match", v.getID(), p, this.ID);
 								this.nRequestForTaxi -= 1;
 								this.taxiPickupRequest += 1;
 								this.taxiPickupPassengers += p.getNumPeople();
@@ -726,6 +729,7 @@ public class Zone {
 			if (v != null) {
 				ContextCreator.vehicleContext.removeAvailableTaxi(v, this.getID());
 				Request current_taxi_pass = this.requestInQueueForTaxi.poll();
+				unregisterPendingTaxiRequest(current_taxi_pass);
 				if(v.getState() == Vehicle.PARKING) {
 					v.releaseParkingSpot(this);
 				}
@@ -735,6 +739,7 @@ public class Zone {
 				this.taxiPickupRequest += 1;
 				this.taxiPickupPassengers += current_taxi_pass.getNumPeople();
 				current_taxi_pass.matchedTime = ContextCreator.getCurrentTick();
+				SimulationEventJournal.record("match", v.getID(), current_taxi_pass, this.ID);
 				v.servePassenger(Arrays.asList(current_taxi_pass));
 				// Update future supply of the target zone
 				ContextCreator.getZoneContext().get(current_taxi_pass.getDestZone()).addFutureSupply();
@@ -882,6 +887,8 @@ public class Zone {
 			for (int i = 0; i < curr_size; i++) {
 				if (passQueue.peek().check()) {
 					Request gone = passQueue.poll();
+					unregisterPendingTaxiRequest(gone);
+					SimulationEventJournal.record("cancellation", -1, gone, this.ID);
 					taxiLeavedPassWaitingTime += gone.getCurrentWaitingTime();
 					numberOfLeavedTaxiRequest += 1;
 					nRequestForTaxi -= 1;
@@ -900,6 +907,8 @@ public class Zone {
 		for (int i = 0; i < curr_size; i++) {
 			if (requestInQueueForTaxi.peek().check()) {
 				Request gone = requestInQueueForTaxi.poll();
+				unregisterPendingTaxiRequest(gone);
+				SimulationEventJournal.record("cancellation", -1, gone, this.ID);
 				taxiLeavedPassWaitingTime += gone.getCurrentWaitingTime();
 				numberOfLeavedTaxiRequest += 1;
 				nRequestForTaxi -= 1;
@@ -1011,6 +1020,7 @@ public class Zone {
 			new_pass.setGeneratedMaxWaitingTime(this.generateWaitingTimeForTaxi());
 		}
 		this.requestInQueueForTaxi.add(new_pass);
+		registerPendingTaxiRequest(new_pass, "queue");
 	}
 
 	protected void addSharableTaxiPass(Request new_pass, int destination) {
@@ -1022,6 +1032,7 @@ public class Zone {
 			this.sharableRequestForTaxi.put(destination, new LinkedList<Request>());
 		}
 		this.sharableRequestForTaxi.get(destination).add(new_pass);
+		registerPendingTaxiRequest(new_pass, "sharable");
 	}
 	
 	protected void addBusPass(Request new_pass) {
@@ -1062,6 +1073,19 @@ public class Zone {
 
 	public void insertTaxiPass(Request new_pass) {
 		this.toAddRequestForTaxi.add(new_pass);
+		registerPendingTaxiRequest(new_pass, "toAdd");
+	}
+
+	private void registerPendingTaxiRequest(Request request, String queueKind) {
+		if (ContextCreator.vehicleContext != null) {
+			ContextCreator.vehicleContext.registerPendingTaxiRequest(request, this.ID, queueKind);
+		}
+	}
+
+	private void unregisterPendingTaxiRequest(Request request) {
+		if (request != null && ContextCreator.vehicleContext != null) {
+			ContextCreator.vehicleContext.unregisterPendingTaxiRequest(request.getID());
+		}
 	}
 	
 	public void insertBusPass(Request new_pass) {
@@ -1077,6 +1101,11 @@ public class Zone {
 	}
 
 	public void clearRuntimeState() {
+		for (Request request : this.requestInQueueForTaxi) unregisterPendingTaxiRequest(request);
+		for (Queue<Request> requests : this.sharableRequestForTaxi.values()) {
+			for (Request request : requests) unregisterPendingTaxiRequest(request);
+		}
+		for (Request request : this.toAddRequestForTaxi) unregisterPendingTaxiRequest(request);
 		this.nRequestForTaxi = 0;
 		this.nRequestForBus = 0;
 		this.parkingVehicleStock.set(0);

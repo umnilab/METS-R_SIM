@@ -629,6 +629,7 @@ public class SnapshotUtil {
 
 		HashMap<Integer, Vehicle> restoredVehicleMap = restoreVehicles(snapshot.vehicleSnapshots);
 		restoreRoadEnteringQueues(snapshot.roadSnapshots, restoredVehicleMap);
+		ContextCreator.getVehicleContext().rebuildPendingTaxiRequestIndex();
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
 			HashMap<String, Object> css = csStateMap.get(cs.getID());

@@ -7,6 +7,8 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -23,8 +25,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	// For taxi/ride-hailing operation
 	private Map<Integer, TreeSet<ElectricTaxi>> availableTaxiMap;
 	private Map<Integer, TreeSet<ElectricTaxi>> relocationTaxiMap;
+	private Map<Integer, Integer> availableTaxiZoneByID;
+	private Map<Integer, Integer> relocationTaxiZoneByID;
 	private Map<Integer, Vehicle> pickupTaxiRequestMap;
 	private Map<Integer, Vehicle> occupiedTaxiRequestMap;
+	private Map<Integer, PendingTaxiRequestEntry> pendingTaxiRequestMap;
 	
 	// For data collection
 	private Map<Integer, ElectricTaxi> taxiMap; 
@@ -64,8 +69,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private void initMaps() {
 		this.availableTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
 		this.relocationTaxiMap = new HashMap<Integer, TreeSet<ElectricTaxi>>();
+		this.availableTaxiZoneByID = new HashMap<Integer, Integer>();
+		this.relocationTaxiZoneByID = new HashMap<Integer, Integer>();
 		this.pickupTaxiRequestMap = new HashMap<Integer, Vehicle>();
 		this.occupiedTaxiRequestMap = new HashMap<Integer, Vehicle>();
+		this.pendingTaxiRequestMap = new HashMap<Integer, PendingTaxiRequestEntry>();
 		this.taxiMap = new HashMap<Integer, ElectricTaxi>();
 		this.busMap = new HashMap<Integer, ElectricBus>();
 		this.privateEVMap = new HashMap<Integer, ElectricVehicle>();
@@ -139,6 +147,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 				}
 			}
 		}
+		rebuildTaxiPoolIndexes();
 
 	    if(num_total > 0) {
 	    	ContextCreator.logger.info("There are still vehicles to generate, but no space for them, to generate number " + num_total);
@@ -251,57 +260,141 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		
 		return new ArrayList<>(set);
 	}
+
+	public synchronized Map<Integer, Integer> getAvailableTaxiCounts() {
+		TreeMap<Integer, Integer> counts = new TreeMap<Integer, Integer>();
+		for (Map.Entry<Integer, TreeSet<ElectricTaxi>> entry : this.availableTaxiMap.entrySet()) {
+			counts.put(entry.getKey(), entry.getValue().size());
+		}
+		return counts;
+	}
 	
 	public synchronized void addAvailableTaxi(ElectricTaxi v, int z) {
+		if (v == null) return;
+		initializeZoneMaps(z);
+		Integer oldZone = this.availableTaxiZoneByID.put(v.getID(), z);
+		if (oldZone != null && oldZone.intValue() != z) {
+			TreeSet<ElectricTaxi> oldSet = this.availableTaxiMap.get(oldZone);
+			if (oldSet != null) oldSet.remove(v);
+		}
 		this.availableTaxiMap.get(z).add(v);
 	}
 	
 	public synchronized void removeAvailableTaxi(ElectricTaxi v, int z) {
-		this.availableTaxiMap.get(z).remove(v);
+		if (v == null) return;
+		TreeSet<ElectricTaxi> set = this.availableTaxiMap.get(z);
+		if (set != null) set.remove(v);
+		this.availableTaxiZoneByID.remove(v.getID(), z);
 	}
 
 	public synchronized void removeAvailableTaxiFromAllZones(ElectricTaxi v) {
-		for (TreeSet<ElectricTaxi> set : this.availableTaxiMap.values()) {
-			set.remove(v);
+		if (v == null) return;
+		Integer zone = this.availableTaxiZoneByID.remove(v.getID());
+		if (zone != null) {
+			TreeSet<ElectricTaxi> set = this.availableTaxiMap.get(zone);
+			if (set != null && set.remove(v)) return;
+		}
+		for (Map.Entry<Integer, TreeSet<ElectricTaxi>> entry : this.availableTaxiMap.entrySet()) {
+			if (entry.getValue().remove(v)) break;
 		}
 	}
 	
 	public synchronized void updateAvailableTaxi(ElectricTaxi v, int oldZone, int newZone) {
-		if (this.availableTaxiMap.containsKey(oldZone)) {
-			this.availableTaxiMap.get(oldZone).remove(v);
-		}
+		removeAvailableTaxi(v, oldZone);
 		v.setCurrentZone(newZone);
-		this.availableTaxiMap.get(newZone).add(v);
+		addAvailableTaxi(v, newZone);
 	}
 	
 	public synchronized void updateRelocationTaxi(ElectricTaxi v, int newZone) {
-		int oldZone = v.getCurrentZone();
-		
-		if (relocationTaxiMap.containsKey(oldZone)) {
-	        TreeSet<ElectricTaxi> set = relocationTaxiMap.get(oldZone);
-	        set.remove(v);
-	    }
-
-	    v.setCurrentZone(newZone);
-
-	    relocationTaxiMap.get(newZone).add(v);
+		removeRelocationTaxi(v);
+		v.setCurrentZone(newZone);
+		addRelocationTaxi(v, newZone);
 	}
 	
 	public synchronized void addRelocationTaxi(ElectricTaxi v, int z) {
+		if (v == null) return;
+		initializeZoneMaps(z);
+		Integer oldZone = this.relocationTaxiZoneByID.put(v.getID(), z);
+		if (oldZone != null && oldZone.intValue() != z) {
+			TreeSet<ElectricTaxi> oldSet = this.relocationTaxiMap.get(oldZone);
+			if (oldSet != null) oldSet.remove(v);
+		}
 		this.relocationTaxiMap.get(z).add(v);
 	}
 	
 	public synchronized void removeRelocationTaxi(ElectricTaxi v){
-		int zone = v.getCurrentZone();
-	    TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
-	    if (set != null) {
-	        set.remove(v);
-	    }
+		if (v == null) return;
+		Integer zone = this.relocationTaxiZoneByID.remove(v.getID());
+		if (zone == null) zone = v.getCurrentZone();
+		TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
+		if (set != null) set.remove(v);
 	}
 
 	public synchronized void removeRelocationTaxiFromAllZones(ElectricTaxi v) {
-		for (TreeSet<ElectricTaxi> set : this.relocationTaxiMap.values()) {
-			set.remove(v);
+		if (v == null) return;
+		Integer zone = this.relocationTaxiZoneByID.remove(v.getID());
+		if (zone != null) {
+			TreeSet<ElectricTaxi> set = this.relocationTaxiMap.get(zone);
+			if (set != null && set.remove(v)) return;
+		}
+		for (Map.Entry<Integer, TreeSet<ElectricTaxi>> entry : this.relocationTaxiMap.entrySet()) {
+			if (entry.getValue().remove(v)) break;
+		}
+	}
+
+	private synchronized void rebuildTaxiPoolIndexes() {
+		this.availableTaxiZoneByID.clear();
+		this.relocationTaxiZoneByID.clear();
+		for (Map.Entry<Integer, TreeSet<ElectricTaxi>> entry : this.availableTaxiMap.entrySet()) {
+			for (ElectricTaxi taxi : entry.getValue()) {
+				this.availableTaxiZoneByID.put(taxi.getID(), entry.getKey());
+			}
+		}
+		for (Map.Entry<Integer, TreeSet<ElectricTaxi>> entry : this.relocationTaxiMap.entrySet()) {
+			for (ElectricTaxi taxi : entry.getValue()) {
+				this.relocationTaxiZoneByID.put(taxi.getID(), entry.getKey());
+			}
+		}
+	}
+
+	public static class PendingTaxiRequestEntry {
+		public final Request request;
+		public final int zoneID;
+		public final String queueKind;
+
+		PendingTaxiRequestEntry(Request request, int zoneID, String queueKind) {
+			this.request = request;
+			this.zoneID = zoneID;
+			this.queueKind = queueKind;
+		}
+	}
+
+	public synchronized void registerPendingTaxiRequest(Request request, int zoneID, String queueKind) {
+		if (request == null) return;
+		this.pendingTaxiRequestMap.put(request.getID(), new PendingTaxiRequestEntry(request, zoneID, queueKind));
+	}
+
+	public synchronized PendingTaxiRequestEntry getPendingTaxiRequest(int requestID) {
+		return this.pendingTaxiRequestMap.get(requestID);
+	}
+
+	public synchronized void unregisterPendingTaxiRequest(int requestID) {
+		this.pendingTaxiRequestMap.remove(requestID);
+	}
+
+	public synchronized void rebuildPendingTaxiRequestIndex() {
+		this.pendingTaxiRequestMap.clear();
+		if (ContextCreator.getZoneContext() == null) return;
+		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
+			for (Request request : zone.getTaxiRequestQueue()) {
+				registerPendingTaxiRequest(request, zone.getID(), "queue");
+			}
+			for (Queue<Request> requests : zone.getSharableRequestForTaxi().values()) {
+				for (Request request : requests) registerPendingTaxiRequest(request, zone.getID(), "sharable");
+			}
+			for (Request request : zone.getToAddTaxiRequestQueue()) {
+				registerPendingTaxiRequest(request, zone.getID(), "toAdd");
+			}
 		}
 	}
 	
@@ -398,6 +491,7 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		for (ElectricTaxi taxi : this.taxiMap.values()) {
 			registerTaxiRequests(taxi);
 		}
+		rebuildPendingTaxiRequestIndex();
 	}
 
 	private HashMap<Integer, Integer> requestVehicleIDMap(Map<Integer, Vehicle> requestMap) {
@@ -512,6 +606,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.privateGVMap.clear();
 		this.privateVIDMap.clear();
 		this.vidToAgentMap.clear();
+		this.availableTaxiZoneByID.clear();
+		this.relocationTaxiZoneByID.clear();
+		this.pendingTaxiRequestMap.clear();
 		for (TreeSet<ElectricTaxi> q : this.availableTaxiMap.values()) {
 			q.clear();
 		}
@@ -543,8 +640,18 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 
 	public synchronized void removeZoneMaps(int zoneID) {
-		this.availableTaxiMap.remove(zoneID);
-		this.relocationTaxiMap.remove(zoneID);
+		TreeSet<ElectricTaxi> available = this.availableTaxiMap.remove(zoneID);
+		if (available != null) {
+			for (ElectricTaxi taxi : available) {
+				this.availableTaxiZoneByID.remove(taxi.getID(), zoneID);
+			}
+		}
+		TreeSet<ElectricTaxi> relocating = this.relocationTaxiMap.remove(zoneID);
+		if (relocating != null) {
+			for (ElectricTaxi taxi : relocating) {
+				this.relocationTaxiZoneByID.remove(taxi.getID(), zoneID);
+			}
+		}
 	}
 	
 	public void executeGlobalTransfers() {

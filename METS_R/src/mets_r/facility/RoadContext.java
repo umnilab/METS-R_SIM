@@ -133,7 +133,8 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	public void markRoadActive(int roadID) {
-		this.activeRoadIDs.put(roadID, this.activeRoadMarkVersion.incrementAndGet());
+		this.activeRoadIDs.computeIfAbsent(roadID,
+				id -> Long.valueOf(this.activeRoadMarkVersion.incrementAndGet()));
 	}
 
 	public void registerEnteringVehicle(Road road, Vehicle vehicle) {
@@ -225,7 +226,9 @@ public class RoadContext extends FacilityContext<Road> {
 			if (road != null) {
 				activeRoads.add(road);
 			} else {
-				this.activeRoadIDs.remove(roadID);
+				if (this.activeRoadIDs.remove(roadID) != null) {
+					this.activeRoadMarkVersion.incrementAndGet();
+				}
 			}
 		}
 		return activeRoads;
@@ -242,17 +245,32 @@ public class RoadContext extends FacilityContext<Road> {
 			if (road.hasActiveVehicles()) {
 				markRoadActive(road);
 			} else {
-				Long activeMark = this.activeRoadIDs.get(road.getID());
-				if (activeMark != null && !road.hasActiveVehicles()) {
-					this.activeRoadIDs.remove(road.getID(), activeMark);
-				}
+				this.activeRoadIDs.computeIfPresent(road.getID(), (id, mark) -> {
+					if (road.hasActiveVehicles()) {
+						return mark;
+					}
+					this.activeRoadMarkVersion.incrementAndGet();
+					return null;
+				});
 			}
 		}
+	}
+
+	public void refreshActiveRoadPartitions(List<? extends Collection<Road>> partitions) {
+		if (partitions == null) return;
+		for (Collection<Road> partition : partitions) {
+			refreshActiveRoads(partition);
+		}
+	}
+
+	public long getActiveRoadVersion() {
+		return this.activeRoadMarkVersion.get();
 	}
 
 	public void rebuildActiveRoadsFromState() {
 		this.activeRoadIDs.clear();
 		this.enteringVehicleRoadIDs.clear();
+		this.activeRoadMarkVersion.incrementAndGet();
 		for (Road road : this.getAll()) {
 			if (road.hasActiveVehicles()) {
 				markRoadActive(road);
@@ -273,7 +291,9 @@ public class RoadContext extends FacilityContext<Road> {
 
 	@Override
 	public void remove(int ID) {
-		this.activeRoadIDs.remove(ID);
+		if (this.activeRoadIDs.remove(ID) != null) {
+			this.activeRoadMarkVersion.incrementAndGet();
+		}
 		for (ConcurrentHashMap<Integer, Boolean> roadIDs : this.enteringVehicleRoadIDs.values()) {
 			roadIDs.remove(ID);
 		}

@@ -26,6 +26,7 @@ import mets_r.communication.ConnectionManager;
 import mets_r.communication.ControlMessageHandler;
 import mets_r.communication.KafkaDataStreamProducer;
 import mets_r.communication.StepMessageHandler;
+import mets_r.communication.SimulationEventJournal;
 import mets_r.data.input.BackgroundTraffic;
 import mets_r.data.input.BusSchedule;
 import mets_r.data.input.NetworkEventHandler;
@@ -48,7 +49,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	/* Loggers */
 	// Loggers for aggregated metrics
-	public static AggregatedLogger agg_logger = new AggregatedLogger();
+	public static AggregatedLogger agg_logger = GlobalVariables.ENABLE_AGGREGATE_WRITE
+			? new AggregatedLogger() : null;
 	// Logger for console outputs
 	public static Logger logger = Logger.getLogger(ContextCreator.class);
 
@@ -77,9 +79,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static final StepMessageHandler stepHandler = new StepMessageHandler();
 	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
 	// Kafka manager maintains the resources for sending message to Kafka
-	public static final KafkaDataStreamProducer kafkaManager = GlobalVariables.STANDALONE?null:new KafkaDataStreamProducer(); 
+	public static final KafkaDataStreamProducer kafkaManager = GlobalVariables.V2X
+			? new KafkaDataStreamProducer() : null;
 	// Data collector gather tick by tick tickSnapshot and provide it to data consumers
-	public static final DataCollector dataCollector = new DataCollector();
+	public static final DataCollector dataCollector = GlobalVariables.ENABLE_DATA_COLLECTION
+			? new DataCollector() : null;
+	// Periodic aggregate and console metrics do not depend on trajectory collection.
+	public static final MetricsReporter metricsReporter = new MetricsReporter();
 	
 	// Road collections for co-simulation
 	public static LinkedHashMap<String, Road> coSimRoads = new LinkedHashMap<String, Road>();
@@ -106,6 +112,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * has been rescheduled, so that reset() can remove them cleanly.
 	 */
 	public static volatile long completedTickCount = 0;
+	private static volatile long runEpoch = 0L;
 
 	public static class StepCommandResult {
 		public final boolean accepted;
@@ -178,7 +185,73 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (tscheduler != null) {
 			status.put("threadedScheduler", tscheduler.getStatus());
 		}
+		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
+			LinkedHashMap<String, Object> scheduledNanos = new LinkedHashMap<String, Object>();
+			scheduledNanos.put("roadNetworkRefresh", roadNetworkRefreshNanos);
+			scheduledNanos.put("freeFlowRefresh", freeFlowRefreshNanos);
+			scheduledNanos.put("networkEvents", networkEventNanos);
+			status.put("scheduledRefreshCumulativeNanos", scheduledNanos);
+			LinkedHashMap<String, Object> scheduledCounts = new LinkedHashMap<String, Object>();
+			scheduledCounts.put("roadNetworkRefresh", roadNetworkRefreshCount);
+			scheduledCounts.put("freeFlowRefresh", freeFlowRefreshCount);
+			scheduledCounts.put("networkEvents", networkEventCount);
+			status.put("scheduledRefreshCounts", scheduledCounts);
+		}
 		return status;
+	}
+
+	public static LinkedHashMap<String, Object> getCapabilities() {
+		LinkedHashMap<String, Object> capabilities = new LinkedHashMap<String, Object>();
+		boolean headless = kafkaManager == null && dataCollector == null && agg_logger == null
+				&& !GlobalVariables.ENABLE_METRICS_DISPLAY && !GlobalVariables.DEBUG_NETWORK
+				&& !logger.isDebugEnabled();
+		capabilities.put("headless", headless);
+		capabilities.put("standalone", GlobalVariables.STANDALONE);
+		capabilities.put("synchronized", GlobalVariables.SYNCHRONIZED);
+		capabilities.put("v2x", kafkaManager != null);
+		capabilities.put("kafkaProducer", kafkaManager != null);
+		capabilities.put("dataCollection", dataCollector != null);
+		capabilities.put("jsonTrajectoryWrite", dataCollector != null && GlobalVariables.ENABLE_JSON_WRITE);
+		capabilities.put("binaryTrajectoryWrite",
+				dataCollector != null && GlobalVariables.ENABLE_TRAJECTORY_BINARY_WRITE);
+		capabilities.put("aggregateWrite", agg_logger != null);
+		capabilities.put("metricsDisplay", GlobalVariables.ENABLE_METRICS_DISPLAY);
+		capabilities.put("metricScanning",
+				GlobalVariables.ENABLE_METRICS_DISPLAY || GlobalVariables.ENABLE_AGGREGATE_WRITE);
+		capabilities.put("schedulerProfiling", GlobalVariables.ENABLE_SCHEDULER_PROFILING);
+		capabilities.put("activeRoadStepping", GlobalVariables.ACTIVE_ROAD_STEPPING);
+		capabilities.put("multiThreading", GlobalVariables.MULTI_THREADING);
+		capabilities.put("debugNetwork", GlobalVariables.DEBUG_NETWORK);
+		capabilities.put("inboundDebugLogging", logger.isDebugEnabled());
+		capabilities.put("runEpoch", runEpoch);
+		return capabilities;
+	}
+
+	public static long getRunEpoch() {
+		return runEpoch;
+	}
+
+	private static void beginNewRunEpoch() {
+		runEpoch++;
+		SimulationEventJournal.reset(runEpoch);
+		controlHandler.resetRunEpoch(runEpoch);
+	}
+
+	public static boolean awaitStepTarget(int targetTick, long timeoutMs) {
+		long deadline = System.currentTimeMillis() + Math.max(1L, timeoutMs);
+		synchronized (stepCommandLock) {
+			while (!(schedulerAtStepGate && lastStepGateTick >= targetTick)) {
+				long remaining = deadline - System.currentTimeMillis();
+				if (remaining <= 0L) return false;
+				try {
+					stepCommandLock.wait(Math.min(remaining, 100L));
+				} catch (InterruptedException e) {
+					Thread.currentThread().interrupt();
+					return false;
+				}
+			}
+			return true;
+		}
 	}
 	
 	/* For enable the reset function*/
@@ -187,6 +260,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static ContextCreator scheduleOwner = null;
 	private static ISchedulableAction stepGateAction = null;
 	private static SnapshotUtil.SimulationSnapshot initialSnapshot = null;
+	private static volatile long roadNetworkRefreshNanos = 0L;
+	private static volatile long freeFlowRefreshNanos = 0L;
+	private static volatile long networkEventNanos = 0L;
+	private static volatile long roadNetworkRefreshCount = 0L;
+	private static volatile long freeFlowRefreshCount = 0L;
+	private static volatile long networkEventCount = 0L;
 	
 	/* Functions */
 	// Initializing simulation agents
@@ -205,9 +284,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		vehicleContext = new VehicleContext();
 		mainContext.addSubContext(vehicleContext);
 
-		// Create data collector
-		dataContext = new DataCollectionContext();
-		mainContext.addSubContext(dataContext);
+		createAndStartDataContext();
 
 		// Initialize operational parameters 
 		cityContext.modifyRoadNetwork(); // This initializes data for path calculation, DO NOT remove it
@@ -224,7 +301,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 		
-		dataContext.startCollecting();
 	}
 	
 	// Schedule simulation events
@@ -240,6 +316,9 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Set up data collection
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
 			scheduleDataCollection();
+		}
+		if (GlobalVariables.ENABLE_AGGREGATE_WRITE || GlobalVariables.ENABLE_METRICS_DISPLAY) {
+			scheduleMetricsReporting();
 		}
 
 		// Schedule agent movements
@@ -284,7 +363,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters agentParamsNW = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL, 3);
-		scheduledActions.add(schedule.schedule(agentParamsNW, cityContext, "modifyRoadNetwork"));
+		scheduledActions.add(schedule.schedule(agentParamsNW, scheduleOwner, "refreshRoadNetwork"));
 	}
 
 	// Schedule the event of updating background speeds/estimated travel time
@@ -294,7 +373,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
-		scheduledActions.add(schedule.schedule(speedProfileParams, cityContext, "updateFreeFlowSpeeds"));
+		scheduledActions.add(schedule.schedule(speedProfileParams, scheduleOwner, "refreshFreeFlowSpeeds"));
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
@@ -302,7 +381,34 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(initTick,
 				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
-		scheduledActions.add(schedule.schedule(supplySideEventParams, eventHandler, "checkEvents"));
+		scheduledActions.add(schedule.schedule(supplySideEventParams, scheduleOwner, "handleNetworkEvents"));
+	}
+
+	public void refreshRoadNetwork() {
+		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
+		cityContext.modifyRoadNetwork();
+		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
+			roadNetworkRefreshNanos += System.nanoTime() - start;
+			roadNetworkRefreshCount++;
+		}
+	}
+
+	public void refreshFreeFlowSpeeds() {
+		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
+		cityContext.updateFreeFlowSpeeds();
+		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
+			freeFlowRefreshNanos += System.nanoTime() - start;
+			freeFlowRefreshCount++;
+		}
+	}
+
+	public void handleNetworkEvents() {
+		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
+		eventHandler.checkEvents();
+		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
+			networkEventNanos += System.nanoTime() - start;
+			networkEventCount++;
+		}
 	}
 
 	// Schedule the event for synchronized update
@@ -336,10 +442,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ScheduleParameters agentParaParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0);
 		scheduledActions.add(schedule.schedule(agentParaParams, tscheduler, "paraRoadStep"));
 
-		// Schedule time counter
-		ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(initTick + 1,
-				GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 0);
-		scheduledActions.add(schedule.schedule(timerParaParams, tscheduler, "reportTime"));
+		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
+			ScheduleParameters timerParaParams = ScheduleParameters.createRepeating(initTick + 1,
+					GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 0);
+			scheduledActions.add(schedule.schedule(timerParaParams, tscheduler, "reportTime"));
+		}
 
 		// Full-road stepping uses a cached partition list; active-road stepping
 		// rebalances active roads every tick in ThreadedScheduler.
@@ -500,7 +607,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for data collection
 	public static void scheduleDataCollection() {
 		int tickDuration = 1;
-		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
+		if (dataContext != null) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 			ScheduleParameters tickStartParams = ScheduleParameters.createRepeating(initTick, tickDuration,
 					ScheduleParameters.FIRST_PRIORITY);
@@ -509,11 +616,58 @@ public class ContextCreator implements ContextBuilder<Object> {
 			ScheduleParameters tickEndParams = ScheduleParameters.createRepeating(initTick, tickDuration,
 					-1);
 			scheduledActions.add(schedule.schedule(tickEndParams, dataContext, "stopTick"));
-
-			ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(initTick,
-					GlobalVariables.METRICS_DISPLAY_INTERVAL, 6);
-			scheduledActions.add(schedule.schedule(recordRuntimeParams, dataContext, "displayMetrics"));
 		}
+	}
+
+	public static void scheduleMetricsReporting() {
+		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
+		ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(initTick,
+				GlobalVariables.METRICS_DISPLAY_INTERVAL, 6);
+		scheduledActions.add(schedule.schedule(recordRuntimeParams, metricsReporter, "report"));
+	}
+
+	private static void createAndStartDataContext() {
+		dataContext = null;
+		if (!GlobalVariables.ENABLE_DATA_COLLECTION) {
+			return;
+		}
+		dataContext = new DataCollectionContext();
+		mainContext.addSubContext(dataContext);
+		dataContext.startCollecting();
+	}
+
+	private static void stopAndRemoveDataContext() {
+		if (dataContext == null) {
+			return;
+		}
+		dataContext.stopCollecting();
+		mainContext.removeSubContext(dataContext);
+		dataContext = null;
+	}
+
+	private static void closeAggregateLogger(boolean recordUnfinishedTrips) {
+		if (agg_logger == null) {
+			return;
+		}
+		if (recordUnfinishedTrips) {
+			agg_logger.recordUnfinishedTrips();
+		}
+		agg_logger.close();
+		agg_logger = null;
+	}
+
+	private static void recreateAggregateLogger() {
+		closeAggregateLogger(false);
+		agg_logger = GlobalVariables.ENABLE_AGGREGATE_WRITE ? new AggregatedLogger() : null;
+	}
+
+	private static void resetScheduledProfiling() {
+		roadNetworkRefreshNanos = 0L;
+		freeFlowRefreshNanos = 0L;
+		networkEventNanos = 0L;
+		roadNetworkRefreshCount = 0L;
+		freeFlowRefreshCount = 0L;
+		networkEventCount = 0L;
 	}
 
 	// The main function
@@ -699,15 +853,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 
 		logger.info("Restart the simulation from the in-memory tick-0 baseline!");
+		beginNewRunEpoch();
 		clearScheduledActions("RESET-SCHED");
-		if (dataContext != null) {
-			dataContext.stopCollecting();
-			mainContext.removeSubContext(dataContext);
-		}
+		stopAndRemoveDataContext();
 		if (vehicleContext != null) {
 			mainContext.removeSubContext(vehicleContext);
 		}
-		agg_logger.close();
+		closeAggregateLogger(false);
 		travel_demand.close();
 
 		coSimRoads.clear();
@@ -719,7 +871,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		BSMDataStream.setRandom(new Random(GlobalVariables.RandomGenerator.nextInt()));
 		BusSchedule.route_num = 0;
 
-		agg_logger = new AggregatedLogger();
+		recreateAggregateLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
@@ -733,11 +885,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (tscheduler != null) {
 			tscheduler.resetTickGuards();
 		}
+		resetScheduledProfiling();
 
 		vehicleContext = new VehicleContext(true);
 		mainContext.addSubContext(vehicleContext);
-		dataContext = new DataCollectionContext();
-		mainContext.addSubContext(dataContext);
+		createAndStartDataContext();
 
 		SnapshotUtil.restoreToCurrentContexts(initialSnapshot);
 
@@ -753,7 +905,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 
-		dataContext.startCollecting();
 		scheduleEvents();
 
 		logger.info("FAST RESET OK: restored tick-0 state without rebuilding facilities"
@@ -762,15 +913,15 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	private static void resetByRebuild() {
 		logger.info("Restart the simulation!");
+		beginNewRunEpoch();
 		
 		// 0. Clear scheduled actions and variables
 		clearScheduledActions("RESET-SCHED");
-		dataContext.stopCollecting();
-		agg_logger.close();
+		stopAndRemoveDataContext();
+		closeAggregateLogger(false);
 		travel_demand.close();
 		
 		mainContext.removeSubContext(cityContext);
-		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
 		
 		// Release stale Road references so query_coSimVehicle cannot return
@@ -798,7 +949,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		BSMDataStream.RANDOM = new Random(GlobalVariables.RandomGenerator.nextInt()); 
 		BusSchedule.route_num = 0;
 		
-		agg_logger = new AggregatedLogger();
+		recreateAggregateLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
 		bus_schedule = new BusSchedule();
@@ -810,6 +961,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (tscheduler != null) {
 			tscheduler.resetTickGuards();
 		}
+		resetScheduledProfiling();
 		
 		// Regenerate the sub-contexts
 		buildSubContexts();
@@ -883,17 +1035,13 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public static void restoreForLoadWithoutNetworkRebuild(SnapshotUtil.SimulationSnapshot snapshot, int savedTick) {
 		logger.info("Fast-loading simulation state without rebuilding network facilities...");
+		beginNewRunEpoch();
 		clearScheduledActions("LOAD-FAST-SCHED");
-		if (dataContext != null) {
-			dataContext.stopCollecting();
-			mainContext.removeSubContext(dataContext);
-		}
+		stopAndRemoveDataContext();
 		if (vehicleContext != null) {
 			mainContext.removeSubContext(vehicleContext);
 		}
-		if (agg_logger != null) {
-			agg_logger.close();
-		}
+		closeAggregateLogger(false);
 		if (travel_demand != null) {
 			travel_demand.close();
 		}
@@ -904,7 +1052,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		initTick = currentRepastTick;
 
-		agg_logger = new AggregatedLogger();
+		recreateAggregateLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
 		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
@@ -920,11 +1068,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (tscheduler != null) {
 			tscheduler.resetTickGuards();
 		}
+		resetScheduledProfiling();
 
 		vehicleContext = new VehicleContext(true);
 		mainContext.addSubContext(vehicleContext);
-		dataContext = new DataCollectionContext();
-		mainContext.addSubContext(dataContext);
+		createAndStartDataContext();
 
 		SnapshotUtil.restoreToCurrentContexts(snapshot);
 
@@ -939,7 +1087,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 
-		dataContext.startCollecting();
 		scheduleEvents();
 		initTick = currentRepastTick - savedTick;
 
@@ -954,17 +1101,17 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 */
 	public static void rebuildForLoad(int savedInitTick, int savedTick) {
 		logger.info("Rebuilding simulation infrastructure for load...");
+		beginNewRunEpoch();
 		
 		// Clear scheduled actions (mirror of reset(): track removal so the
 		// on-deck-queue leak is visible if deferredLoad ever fails to land in
 		// a quiescent state)
 		clearScheduledActions("LOAD-SCHED");
-		dataContext.stopCollecting();
-		agg_logger.close();
+		stopAndRemoveDataContext();
+		closeAggregateLogger(false);
 		travel_demand.close();
 		
 		mainContext.removeSubContext(cityContext);
-		mainContext.removeSubContext(dataContext);
 		mainContext.removeSubContext(vehicleContext);
 		
 		// Release stale Road references so query_coSimVehicle cannot return
@@ -986,7 +1133,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		initTick = currentRepastTick;
 		
 		// Reinitialize data structures
-		agg_logger = new AggregatedLogger();
+		recreateAggregateLogger();
 		background_traffic = new BackgroundTraffic();
 		travel_demand = new TravelDemand();
 		BusSchedule.rand_route_only = new Random(GlobalVariables.RandomGenerator.nextInt());
@@ -1000,6 +1147,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		if (tscheduler != null) {
 			tscheduler.resetTickGuards();
 		}
+		resetScheduledProfiling();
 		
 		// Rebuild city context (roads, zones, charging stations from data.properties)
 		cityContext = new CityContext();
@@ -1013,9 +1161,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 		vehicleContext = new VehicleContext(true);
 		mainContext.addSubContext(vehicleContext);
 		
-		// Rebuild data context
-		dataContext = new DataCollectionContext();
-		mainContext.addSubContext(dataContext);
+		// Rebuild data context only when trajectory collection is enabled.
+		createAndStartDataContext();
 		
 		// Initialize operational parameters
 		cityContext.modifyRoadNetwork();
@@ -1031,8 +1178,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 		
-		dataContext.startCollecting();
-		
 		// Reschedule events (initTick == currentRepastTick, so events start now)
 		scheduleEvents();
 		
@@ -1046,11 +1191,19 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Called by sched.executeEndActions()
 	public static void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
-		tscheduler.shutdownScheduler();
-		agg_logger.recordUnfinishedTrips();
-		dataContext.stopCollecting();
-		agg_logger.close();
-		travel_demand.close();
+		if (tscheduler != null) {
+			tscheduler.shutdownScheduler();
+		}
+		closeAggregateLogger(true);
+		if (dataContext != null) {
+			dataContext.stopCollecting();
+		}
+		if (kafkaManager != null) {
+			kafkaManager.close();
+		}
+		if (travel_demand != null) {
+			travel_demand.close();
+		}
 		// Close the user interface
 		System.exit(0);
 	}

@@ -77,6 +77,8 @@ public class Road {
 	private double travelTime;
 	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
+	private final ArrayList<Vehicle> stepVehicleBuffer = new ArrayList<Vehicle>();
+	private final ArrayList<Vehicle> departureBuffer = new ArrayList<Vehicle>();
 	private boolean eventFlag; // Indicator whether there is an event happening on the road
 	private double speedLimit_; // Speed for travel time estimation
 	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
@@ -191,7 +193,7 @@ public class Road {
 		this.prevFirstVehicle = currentVehicle;
 		if (this.prevFirstVehicle != null) this.prevFirstVehicle.recordPrevState();
 		boolean shouldReportStatus = GlobalVariables.V2X;
-		boolean shouldRecordSnapshot = GlobalVariables.ENABLE_DATA_COLLECTION
+		boolean shouldRecordSnapshot = ContextCreator.dataCollector != null
 				&& tickcount % GlobalVariables.JSON_TICKS_BETWEEN_TWO_RECORDS == 0;
 		while (currentVehicle != null) {
 			Vehicle nextVehicle = currentVehicle.macroTrailing();
@@ -278,7 +280,8 @@ public class Road {
 			}
 
 			// Phase 2: repair macro list ordering after all lane changes
-			List<Vehicle> vehicleBuffer = new ArrayList<>(Math.max(0, this.nVehicles_.get()));
+			List<Vehicle> vehicleBuffer = this.stepVehicleBuffer;
+			vehicleBuffer.clear();
 			currentVehicle = this.firstVehicle();
 
 			// 1. Create a static snapshot of the vehicles currently on the road
@@ -301,6 +304,7 @@ public class Road {
 							+ " vehicle=" + v.getID(), ex);
 				}
 			}
+			vehicleBuffer.clear();
 
 			// Phase 3: acceleration decisions (now with correct leading vehicles)
 			currentVehicle = this.firstVehicle();
@@ -630,7 +634,9 @@ public class Road {
 
 	private void markParkingStateChanged() {
 		this.parkingStateDirty = true;
-		ContextCreator.dataCollector.recordRoadParkingStateChange(this);
+		if (ContextCreator.dataCollector != null) {
+			ContextCreator.dataCollector.recordRoadParkingStateChange(this);
+		}
 	}
 
 	public boolean hasActiveVehicles() {
@@ -720,7 +726,11 @@ public class Road {
 
 	// This add queue using TreeMap structure
 	public synchronized void addVehicleToDepartureMap() {
-		ArrayList<Vehicle> pending = new ArrayList<Vehicle>();
+		if (this.toAddDepartureVeh.isEmpty()) {
+			return;
+		}
+		ArrayList<Vehicle> pending = this.departureBuffer;
+		pending.clear();
 		for (Vehicle v = this.toAddDepartureVeh.poll(); v != null; v = this.toAddDepartureVeh.poll()) {
 			pending.add(v);
 		}
@@ -735,6 +745,7 @@ public class Road {
 				this.departureVehMap.get(departuretime_).add(v);
 			}
 		}
+		pending.clear();
 	}
 
 	// This add vehicle to the thread-safe pending list
@@ -1006,7 +1017,7 @@ public class Road {
 			this.totalEnergy += linkConsume;
 			this.currentEnergy += linkConsume;
 			recordEnergyConsumptionSample(linkConsume);
-			if(ev.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
+			if(ev.getVehicleSensorType() == Vehicle.MOBILEDEVICE && ContextCreator.kafkaManager != null) {
 				ContextCreator.kafkaManager.produceLinkEnergy(ev.getID(), ev.getVehicleClass(), this.getID(),
 						linkConsume);
 			}
@@ -1017,7 +1028,7 @@ public class Road {
 			this.totalEnergy += linkConsume;
 			this.currentEnergy += linkConsume;
 			recordEnergyConsumptionSample(linkConsume);
-			if(bv.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
+			if(bv.getVehicleSensorType() == Vehicle.MOBILEDEVICE && ContextCreator.kafkaManager != null) {
 				ContextCreator.kafkaManager.produceLinkEnergy(bv.getID(), bv.getVehicleClass(), this.getID(),
 						linkConsume);
 			}
@@ -1236,7 +1247,7 @@ public class Road {
 	public void recordTravelTime(Vehicle v) {
 		this.travelTimeSum += v.getLinkTravelTime();
 		this.travelTimeCount += 1;
-		if (v.getVehicleSensorType() == Vehicle.MOBILEDEVICE) {
+		if (v.getVehicleSensorType() == Vehicle.MOBILEDEVICE && ContextCreator.kafkaManager != null) {
 			ContextCreator.kafkaManager.produceLinkTravelTime(v.getID(), v.getVehicleClass(), this.getID(),
 					v.getLinkTravelTime(), this.getLength());
 		}

@@ -9,6 +9,7 @@ import mets_r.GlobalVariables;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
+import mets_r.communication.SimulationEventJournal;
 
 /**
  * Electric taxis
@@ -76,10 +77,12 @@ public class ElectricTaxi extends ElectricVehicle {
 		+ this.getPassNum() + "," + this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
 		+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
 		+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
-		try {
-			ContextCreator.agg_logger.ev_logger.write(formated_msg);
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (ContextCreator.agg_logger != null) {
+			try {
+				ContextCreator.agg_logger.ev_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 		this.setState(Vehicle.NONE_OF_THE_ABOVE);
 		this.tripConsume = 0;
@@ -535,10 +538,12 @@ public class ElectricTaxi extends ElectricVehicle {
 					+ this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
 					+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
 					+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
-			try {
-				ContextCreator.agg_logger.ev_logger.write(formated_msg);
-			} catch (IOException e) {
-				e.printStackTrace();
+			if (ContextCreator.agg_logger != null) {
+				try {
+					ContextCreator.agg_logger.ev_logger.write(formated_msg);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
 			}
 			super.reachDestButNotLeave();
 			super.leaveNetwork(); // remove from the network
@@ -555,10 +560,12 @@ public class ElectricTaxi extends ElectricVehicle {
 				+ this.getPassNum() + "," + this.getMatchedRequests() + "," + this.getMatchedPassengers() + ","
 				+ this.getPickupRequests() + "," + this.getPickupPassengers() + ","
 				+ this.getDropoffRequests() + "," + this.getDropoffPassengers() + "\r\n";
-				try {
-					ContextCreator.agg_logger.ev_logger.write(formated_msg);
-				} catch (IOException e) {
-					e.printStackTrace();
+				if (ContextCreator.agg_logger != null) {
+					try {
+						ContextCreator.agg_logger.ev_logger.write(formated_msg);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
 				}
 				this.tripConsume = 0;
 			}
@@ -574,6 +581,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				ContextCreator.getVehicleContext().removeOccupiedTaxiRequest(arrived_request);
 				this.passNum = this.passNum - arrived_request.getNumPeople(); // passenger arrived
 				this.recordPassengerDropoff(arrived_request);
+				SimulationEventJournal.record("dropoff", this.getID(), arrived_request, z.getID());
 				z.taxiServedRequest += 1;
 				z.taxiServedPassengers += arrived_request.getNumPeople();
 				// if pass need to take the bus to complete his or her trip
@@ -593,10 +601,12 @@ public class ElectricTaxi extends ElectricVehicle {
 							+ arrived_request.getNumPeople() + "," + arrived_request.generationTime + ","
 							+ arrived_request.matchedTime + "," + arrived_request.pickupTime + ","
 							+ arrived_request.arriveTIme + "," + this.getID() + "," + this.getVehicleClass() + "\r\n";
-					try {
-						ContextCreator.agg_logger.request_logger.write(formated_msg);
-					} catch (IOException e) {
-						e.printStackTrace();
+					if (ContextCreator.agg_logger != null) {
+						try {
+							ContextCreator.agg_logger.request_logger.write(formated_msg);
+						} catch (IOException e) {
+							e.printStackTrace();
+						}
 					}
 				}
 
@@ -644,6 +654,8 @@ public class ElectricTaxi extends ElectricVehicle {
 				Request pickedup_request = this.toBoardRequests.poll();
 				ContextCreator.getVehicleContext().removePickupTaxiRequest(pickedup_request);
 				pickedup_request.pickupTime = ContextCreator.getCurrentTick();
+				SimulationEventJournal.record("pickup", this.getID(), pickedup_request,
+						pickedup_request.getOriginZone());
 				this.recordPassengerPickup(pickedup_request);
 				Zone pickupZone = ContextCreator.getZoneContext().get(pickedup_request.getOriginZone());
 				if (pickupZone != null) {
@@ -709,6 +721,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				
 			}
 			else if (this.getState() == Vehicle.INACCESSIBLE_RELOCATION_TRIP || this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
+				SimulationEventJournal.record("relocationCompletion", this.getID(), null, z.getID());
 				if (this.getState() == Vehicle.ACCESSIBLE_RELOCATION_TRIP)
 					ContextCreator.getVehicleContext().removeRelocationTaxi(this);
 				z.removeFutureSupply();
@@ -772,13 +785,15 @@ public class ElectricTaxi extends ElectricVehicle {
 		String formated_msg = ContextCreator.getCurrentTick() + "," + chargerID + "," + this.getID() + ","
 				+ this.getVehicleClass() + "," + chargerType + "," + this.chargingWaitingTime + ","
 				+ this.chargingTime + "," + this.initialChargingState + "\r\n";
-		try {
-			ContextCreator.agg_logger.charger_logger.write(formated_msg);
-			this.chargingWaitingTime = 0;
-			this.chargingTime = 0;
-		} catch (IOException e) {
-			e.printStackTrace();
+		if (ContextCreator.agg_logger != null) {
+			try {
+				ContextCreator.agg_logger.charger_logger.write(formated_msg);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
+		this.chargingWaitingTime = 0;
+		this.chargingTime = 0;
 
 		this.onChargingRoute_ = false;
 		if(this.getPlan().size() < 2) { // No where to go, head to the current Zone

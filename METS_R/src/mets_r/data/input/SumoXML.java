@@ -491,6 +491,7 @@ public class SumoXML {
 			parameters.parameter("false_easting").setValue(falseEasting);
 			parameters.parameter("false_northing").setValue(falseNorthing);
 			Map<String, String> properties = Collections.singletonMap("name", name);
+			@SuppressWarnings("deprecation")
 			ProjectedCRS sourceCRS = factories.createProjectedCRS(properties, geoCRS, null, parameters, cartCS);
 			CoordinateReferenceSystem targetlatlong = CRS.decode("EPSG:4326", true);
 			return CRS.findMathTransform(sourceCRS, targetlatlong, false);
@@ -551,7 +552,6 @@ public class SumoXML {
 			isInternalLaneMap = new LinkedHashMap<String, Boolean>();
 		}
 		
-		@SuppressWarnings("deprecation")
 		@Override
 		public void startElement(
 	            String uri,

@@ -13,7 +13,7 @@ public class NodeToJgraph<T> {
 	@SuppressWarnings({ "unchecked", "rawtypes" })
 	public SimWeightedGraph<T, RepastEdge<T>> convertToJgraph(Graph<T, RepastEdge<T>> jungGraph) {
 		SimWeightedGraph<T, RepastEdge<T>> jGraph = new SimWeightedGraph<T, RepastEdge<T>>(
-				(Class<? extends RepastEdge<T>>) RepastEdge.class);
+				(Class<? extends RepastEdge<T>>) (Class<?>) RepastEdge.class);
 
 		for (T vertex : jungGraph.getVertices()) {
 			jGraph.addVertex(vertex);
