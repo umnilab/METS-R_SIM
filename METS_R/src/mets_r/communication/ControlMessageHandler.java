@@ -920,8 +920,11 @@ public class ControlMessageHandler extends MessageHandler {
      * <p>Input DATA: list of {@code {vehID, vehType, roadID, laneID, dist}}
      * or {@code {vehID, vehType, roadID, laneID, x, y, transformCoord}} where
      * {@code vehType=true} selects a private vehicle and {@code vehType=false}
-     * selects a public one. When {@code x} and {@code y} are provided, they are
-     * projected onto the target lane to compute the distance to downstream.
+     * selects a public one. {@code laneID} is a zero-based index local to the
+     * specified road. When {@code x} and {@code y} are provided, they are
+     * projected onto the target lane to compute the distance to downstream. A
+     * {@code laneID} of {@code -1} selects the closest lane on the specified
+     * road and therefore requires both {@code x} and {@code y}.
      */
     private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg){
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -956,15 +959,24 @@ public class ControlMessageHandler extends MessageHandler {
 			                ContextCreator.logger.error("Road not found for ID: " + vehIDVehTypeRoadLaneDist.roadID);
 						}
 		                else {
-		                	if (vehIDVehTypeRoadLaneDist.laneID < 0 || vehIDVehTypeRoadLaneDist.laneID >= road.getNumberOfLanes()) {
+					if (vehIDVehTypeRoadLaneDist.laneID < -1 || vehIDVehTypeRoadLaneDist.laneID >= road.getNumberOfLanes()) {
 		                		 ContextCreator.logger.error(
 		                                 String.format("Invalid lane index %d for road %s (lanes: %d)",
 		                                		 vehIDVehTypeRoadLaneDist.laneID, vehIDVehTypeRoadLaneDist.roadID, road.getNumberOfLanes()));
 		                	}
 		                	else{
 		                		try {
-									Lane lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
-									double teleportDistance = traceReplayTeleportDistance(vehIDVehTypeRoadLaneDist, lane);
+									Lane lane;
+									double teleportDistance;
+									if (vehIDVehTypeRoadLaneDist.laneID == -1) {
+										TraceReplayLaneProjection projection = closestTraceReplayLaneProjection(
+												vehIDVehTypeRoadLaneDist, road);
+										lane = projection.lane;
+										teleportDistance = projection.downstreamDistance;
+									} else {
+										lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
+										teleportDistance = traceReplayTeleportDistance(vehIDVehTypeRoadLaneDist, lane);
+									}
 									removeVehicleFromEnteringQueues(veh);
 									// Update its location in the target link and target lane
 									if (veh.getRoad() == road) {
@@ -1009,10 +1021,7 @@ public class ControlMessageHandler extends MessageHandler {
 	private double traceReplayTeleportDistance(VehIDVehTypeRoadLaneDist request, Lane lane)
 			throws TransformException {
 		if (request.x != null && request.y != null) {
-			Coordinate coord = new Coordinate(request.x, request.y);
-			if (request.transformCoord) {
-				JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-			}
+			Coordinate coord = traceReplayCoordinate(request);
 			return laneDistanceFromCoordinate(lane, coord);
 		}
 		if (request.dist != null) {
@@ -1021,7 +1030,49 @@ public class ControlMessageHandler extends MessageHandler {
 		throw new IllegalArgumentException("teleportTraceReplayVeh requires either dist or x/y");
 	}
 
+	private Coordinate traceReplayCoordinate(VehIDVehTypeRoadLaneDist request) throws TransformException {
+		if (request.x == null || request.y == null) {
+			throw new IllegalArgumentException(
+					"teleportTraceReplayVeh requires both x and y when laneID is -1");
+		}
+		if (!Double.isFinite(request.x.doubleValue()) || !Double.isFinite(request.y.doubleValue())) {
+			throw new IllegalArgumentException("teleportTraceReplayVeh requires finite x and y values");
+		}
+
+		Coordinate coord = new Coordinate(request.x, request.y);
+		if (request.transformCoord) {
+			JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+		}
+		return coord;
+	}
+
+	private TraceReplayLaneProjection closestTraceReplayLaneProjection(
+			VehIDVehTypeRoadLaneDist request, Road road) throws TransformException {
+		Coordinate coord = traceReplayCoordinate(request);
+		TraceReplayLaneProjection closestProjection = null;
+		for (Lane lane : road.getLanes()) {
+			try {
+				TraceReplayLaneProjection projection = traceReplayLaneProjection(lane, coord);
+				if (closestProjection == null
+						|| projection.projectionError < closestProjection.projectionError) {
+					closestProjection = projection;
+				}
+			} catch (IllegalArgumentException ignored) {
+				// Ignore malformed lane geometry if another lane on the road is usable.
+			}
+		}
+		if (closestProjection == null) {
+			throw new IllegalArgumentException("Road " + request.roadID
+					+ " has no lane with usable geometry");
+		}
+		return closestProjection;
+	}
+
 	private double laneDistanceFromCoordinate(Lane lane, Coordinate coord) {
+		return traceReplayLaneProjection(lane, coord).downstreamDistance;
+	}
+
+	private TraceReplayLaneProjection traceReplayLaneProjection(Lane lane, Coordinate coord) {
 		ArrayList<Coordinate> coords = lane.getCoords();
 		if (coords == null || coords.size() < 2) {
 			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID()
@@ -1056,7 +1107,20 @@ public class ControlMessageHandler extends MessageHandler {
 		if (Double.isNaN(bestDistance)) {
 			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID());
 		}
-		return Math.max(0.0, Math.min(lane.getLength(), bestDistance));
+		return new TraceReplayLaneProjection(lane,
+				Math.max(0.0, Math.min(lane.getLength(), bestDistance)), minProjectionError);
+	}
+
+	private static class TraceReplayLaneProjection {
+		final Lane lane;
+		final double downstreamDistance;
+		final double projectionError;
+
+		TraceReplayLaneProjection(Lane lane, double downstreamDistance, double projectionError) {
+			this.lane = lane;
+			this.downstreamDistance = downstreamDistance;
+			this.projectionError = projectionError;
+		}
 	}
     
 	/**
@@ -1064,8 +1128,7 @@ public class ControlMessageHandler extends MessageHandler {
 	 * coordinate, optionally transforming from the external simulator's
 	 * coordinate system, and update its bearing and speed.
 	 *
-	 * <p>Input DATA: list of {@code {vehID, vehType, x, y, z, bearing,
-	 * speed, transformCoord}}.
+	 * Input DATA: list of {{vehID, vehType, x, y, z, bearing, speed, transformCoord}}.
 	 */
 	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
