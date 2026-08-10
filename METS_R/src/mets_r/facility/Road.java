@@ -363,8 +363,25 @@ public class Road {
 	 * caused by the order of vehicle updates.
 	 */
 	public void teleportVehicle(Vehicle veh, Lane lane, double dist) { 
+		if (veh == null) {
+			throw new IllegalArgumentException("Vehicle must not be null");
+		}
+		if (lane == null || lane.getRoad() != this) {
+			throw new IllegalArgumentException("Teleport lane must belong to the target road");
+		}
+		double laneLength = lane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0
+				|| !Double.isFinite(dist) || dist < 0.0 || dist > laneLength) {
+			throw new IllegalArgumentException("Teleport distance must be within the target lane");
+		}
+		if (lane.getCoords() == null || lane.getCoords().size() < 2) {
+			throw new IllegalArgumentException("Teleport lane must have usable geometry");
+		}
+		if (veh.getLane() != null) {
+			throw new IllegalStateException("Vehicle must be detached from its lane before teleporting");
+		}
 		if (veh.getRoad() != this) {
-			veh.appendToRoad(this);
+			veh.appendToRoadForTeleport(this);
 		}
 		
 		// Move veh to the x and y location
@@ -375,6 +392,9 @@ public class Road {
 		
 		// Insert the veh to the proper macroList loc, find the macroleading and trailing veh
 		veh.advanceInMacroList();
+		// Trace replay may also move a vehicle backward (larger distance to the
+		// downstream junction). advanceInMacroList only repairs forward moves.
+		veh.retreatInMacroList();
 	}
 
 	@Override

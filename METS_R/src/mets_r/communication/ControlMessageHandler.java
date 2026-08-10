@@ -13,6 +13,7 @@ import java.util.Queue;
 import java.util.Set;
 
 import org.geotools.geometry.jts.JTS;
+import org.geotools.referencing.GeodeticCalculator;
 import org.json.simple.JSONObject;
 import org.opengis.referencing.operation.TransformException;
 
@@ -77,6 +78,10 @@ import mets_r.routing.RouteContext;
 
 public class ControlMessageHandler extends MessageHandler {
 	private static final int MAX_COMPLETED_ADVANCE_COMMANDS = 128;
+	private static final double TRACE_REPLAY_CLEARANCE_METERS = 0.01;
+	private static final double TRACE_REPLAY_DISTANCE_EPSILON = 1.0e-6;
+	private static final double TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS = 1.0e-4;
+	private static final double TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS = 0.05;
 	private final Object advanceCommandLock = new Object();
 	private final LinkedHashMap<String, AdvanceCommandRecord> advanceCommands =
 			new LinkedHashMap<String, AdvanceCommandRecord>();
@@ -923,100 +928,436 @@ public class ControlMessageHandler extends MessageHandler {
      * selects a public one. {@code laneID} is a zero-based index local to the
      * specified road. When {@code x} and {@code y} are provided, they are
      * projected onto the target lane to compute the distance to downstream. A
-     * {@code laneID} of {@code -1} selects the closest lane on the specified
-     * road and therefore requires both {@code x} and {@code y}.
+     * {@code laneID} of {@code -1} considers every lane on the specified road
+     * and therefore requires both {@code x} and {@code y}.
+     *
+     * <p>Records are processed sequentially. If the requested footprint overlaps
+     * a vehicle already present on the target or a directly connected road, the
+     * target is moved upstream to the nearest collision-free location. With
+     * {@code laneID=-1}, the nearest valid location may be on another lane. A
+     * saturated road still returns an OK record, marked {@code FORCED=true}, at the
+     * farthest-back best-effort location. Spatial-only conflicts are searched at
+     * 0.05 m intervals, then the first free boundary is refined by bisection.
      */
-    private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg){
-    	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("DATA")) { 
-			jsonAns.put("WARN", "No DATA field found in the control message");
-			jsonAns.put("CODE", "KO");
+    private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg) {
+		HashMap<String, Object> answer = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			answer.put("WARN", "No DATA field found in the control message");
+			answer.put("CODE", "KO");
+			return answer;
 		}
-		else {
-	    	try {
-				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeRoadLaneDist>> collectionType = new TypeToken<Collection<VehIDVehTypeRoadLaneDist>>() {
-				};
-				Collection<VehIDVehTypeRoadLaneDist> vehIDVehTypeRoadLaneDists = gson
-						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-				ArrayList<Object> jsonData = new ArrayList<Object>();
-
-				for (VehIDVehTypeRoadLaneDist vehIDVehTypeRoadLaneDist : vehIDVehTypeRoadLaneDists) {
-					// Get data
-					Vehicle veh = null;
-					if (vehIDVehTypeRoadLaneDist.vehType) {
-						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeRoadLaneDist.vehID);
-					} else {
-						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeRoadLaneDist.vehID);
-					}
-					
-					if(veh == null) {
-						ContextCreator.logger.error("Vehicle not found for ID: " + vehIDVehTypeRoadLaneDist.vehID);
-					}
-					else{
-						Road road = ContextCreator.getCityContext().findRoadWithOrigID(vehIDVehTypeRoadLaneDist.roadID);
-						if (road == null) {
-			                ContextCreator.logger.error("Road not found for ID: " + vehIDVehTypeRoadLaneDist.roadID);
-						}
-		                else {
-					if (vehIDVehTypeRoadLaneDist.laneID < -1 || vehIDVehTypeRoadLaneDist.laneID >= road.getNumberOfLanes()) {
-		                		 ContextCreator.logger.error(
-		                                 String.format("Invalid lane index %d for road %s (lanes: %d)",
-		                                		 vehIDVehTypeRoadLaneDist.laneID, vehIDVehTypeRoadLaneDist.roadID, road.getNumberOfLanes()));
-		                	}
-		                	else{
-		                		try {
-									Lane lane;
-									double teleportDistance;
-									if (vehIDVehTypeRoadLaneDist.laneID == -1) {
-										TraceReplayLaneProjection projection = closestTraceReplayLaneProjection(
-												vehIDVehTypeRoadLaneDist, road);
-										lane = projection.lane;
-										teleportDistance = projection.downstreamDistance;
-									} else {
-										lane = road.getLane(vehIDVehTypeRoadLaneDist.laneID);
-										teleportDistance = traceReplayTeleportDistance(vehIDVehTypeRoadLaneDist, lane);
-									}
-									removeVehicleFromEnteringQueues(veh);
-									// Update its location in the target link and target lane
-									if (veh.getRoad() == road) {
-										veh.removeFromCurrentLane(); // Just remove the vehicle from the current lane
-									}
-									else {
-										veh.removeFromCurrentLane();
-										veh.removeFromCurrentRoad();
-									}
-									
-									road.teleportVehicle(veh, lane, teleportDistance);
-									HashMap<String, Object> record2 = new HashMap<String, Object>();
-									record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
-									record2.put("STATUS", "OK");
-									jsonData.add(record2);
-									continue;
-		                		} catch (Exception innerEx) {
-		                            ContextCreator.logger.error("Teleport failure for vehicle " + vehIDVehTypeRoadLaneDist.vehID
-		                                + " on road " + vehIDVehTypeRoadLaneDist.roadID + ": " + innerEx.getMessage(), innerEx);
-		                        }
-
-							}
-						}
-					}
-					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("ID", vehIDVehTypeRoadLaneDist.vehID);
-					record2.put("STATUS", "KO");
-					jsonData.add(record2);
-				}
-				jsonAns.put("DATA", jsonData);
-				jsonAns.put("CODE", "OK");
+		try {
+			Gson gson = new Gson();
+			String dataJson = jsonMsg.get("DATA").toString();
+			TypeToken<Collection<VehIDVehTypeRoadLaneDist>> requestType =
+					new TypeToken<Collection<VehIDVehTypeRoadLaneDist>>() { };
+			TypeToken<Collection<Map<String, Object>>> rawType =
+					new TypeToken<Collection<Map<String, Object>>>() { };
+			Collection<VehIDVehTypeRoadLaneDist> requests = gson.fromJson(dataJson, requestType.getType());
+			Collection<Map<String, Object>> rawRequests = gson.fromJson(dataJson, rawType.getType());
+			if (requests == null || rawRequests == null || requests.size() != rawRequests.size()) {
+				throw new IllegalArgumentException("teleportTraceReplayVeh DATA must be an array of objects");
 			}
-			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
-			    jsonAns.put("CODE", "KO");
+			ArrayList<Object> responseData = new ArrayList<Object>();
+			Iterator<Map<String, Object>> rawIterator = rawRequests.iterator();
+			for (VehIDVehTypeRoadLaneDist request : requests) {
+				responseData.add(processTraceReplayTeleport(request, rawIterator.next()));
 			}
+			answer.put("DATA", responseData);
+			answer.put("CODE", "OK");
+		} catch (Exception ex) {
+			ContextCreator.logger.error("Error processing teleportTraceReplayVeh: " + ex, ex);
+			answer.put("WARN", ex.getMessage());
+			answer.put("CODE", "KO");
 		}
-		return jsonAns;
+		return answer;
     }
+
+    private HashMap<String, Object> processTraceReplayTeleport(
+            VehIDVehTypeRoadLaneDist request, Map<String, Object> rawRequest) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", request == null ? null : request.vehID);
+		try {
+			validateTraceReplayRequestFormat(rawRequest, request);
+			Vehicle veh = request.vehType
+					? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID)
+					: ContextCreator.getVehicleContext().getPublicVehicle(request.vehID);
+			if (veh == null) {
+				throw new IllegalArgumentException("Vehicle not found for ID " + request.vehID);
+			}
+			Road road = ContextCreator.getCityContext().findRoadWithOrigID(request.roadID);
+			if (road == null) {
+				throw new IllegalArgumentException("Road not found for ID " + request.roadID);
+			}
+			if (request.laneID < -1 || request.laneID >= road.getNumberOfLanes()) {
+				throw new IllegalArgumentException(String.format(
+						"Invalid lane index %d for road %s (lanes: %d)", request.laneID,
+						request.roadID, road.getNumberOfLanes()));
+			}
+
+			// Resolve before unlinking. Earlier records have already moved, so every
+			// successful placement immediately constrains the next record in the batch.
+			TraceReplayPlacement placement = resolveTraceReplayPlacement(request, veh, road);
+			veh.removeFromCurrentLane();
+			if (veh.getRoad() != road) {
+				veh.removeFromCurrentRoad();
+			}
+			road.teleportVehicle(veh, placement.lane, placement.appliedDistance);
+			removeVehicleFromEnteringQueues(veh);
+
+			record.put("STATUS", "OK");
+			record.put("LANE", road.getLaneIndex(placement.lane));
+			record.put("REQUESTED_DIST", placement.requestedDistance);
+			record.put("DIST", placement.appliedDistance);
+			record.put("BACKWARD_SHIFT", placement.backwardShift());
+			record.put("ADJUSTED", placement.adjusted());
+			record.put("FORCED", !placement.collisionFree);
+			if (!placement.collisionFree) {
+				String warning = "FORCED_OVERLAP: no collision-free location exists behind "
+						+ "the requested position on the permitted lane(s)";
+				record.put("WARN", warning);
+				ContextCreator.logger.warn("Trace replay vehicle " + request.vehID + " on road "
+						+ request.roadID + ": " + warning);
+			}
+		} catch (Exception ex) {
+			record.put("STATUS", "KO");
+			record.put("ERROR", ex.getMessage());
+			ContextCreator.logger.error("Invalid trace replay teleport request for vehicle "
+					+ (request == null ? "unknown" : request.vehID) + ": " + ex.getMessage(), ex);
+		}
+		return record;
+    }
+
+	private void validateTraceReplayRequestFormat(Map<String, Object> raw,
+			VehIDVehTypeRoadLaneDist request) {
+		if (raw == null || request == null) {
+			throw new IllegalArgumentException("Each teleportTraceReplayVeh record must be an object");
+		}
+		double vehID = requiredFiniteNumber(raw, "vehID");
+		double laneID = requiredFiniteNumber(raw, "laneID");
+		if (vehID != Math.rint(vehID) || vehID < Integer.MIN_VALUE || vehID > Integer.MAX_VALUE
+				|| laneID != Math.rint(laneID) || laneID < Integer.MIN_VALUE || laneID > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException("vehID and laneID must be integers");
+		}
+		request.vehID = (int) vehID;
+		request.laneID = (int) laneID;
+		if (!(raw.get("vehType") instanceof Boolean)) {
+			throw new IllegalArgumentException("vehType must be a boolean");
+		}
+		Object roadID = raw.get("roadID");
+		if (roadID instanceof String) {
+			request.roadID = ((String) roadID).trim();
+		} else if (roadID instanceof Number) {
+			double value = ((Number) roadID).doubleValue();
+			if (!Double.isFinite(value)) {
+				throw new IllegalArgumentException("roadID must be finite");
+			}
+			request.roadID = value == Math.rint(value)
+					? Long.toString((long) value) : roadID.toString();
+		} else {
+			throw new IllegalArgumentException("roadID must be a string or number");
+		}
+		if (request.roadID.length() == 0) {
+			throw new IllegalArgumentException("roadID must not be empty");
+		}
+		if (raw.containsKey("transformCoord") && !(raw.get("transformCoord") instanceof Boolean)) {
+			throw new IllegalArgumentException("transformCoord must be a boolean");
+		}
+
+		boolean hasDist = raw.get("dist") != null;
+		boolean hasX = raw.get("x") != null;
+		boolean hasY = raw.get("y") != null;
+		if (hasX != hasY) {
+			throw new IllegalArgumentException("x and y must be supplied together");
+		}
+		if (hasDist) requiredFiniteNumber(raw, "dist");
+		if (hasX) {
+			requiredFiniteNumber(raw, "x");
+			requiredFiniteNumber(raw, "y");
+		}
+		if (request.laneID == -1 && !hasX) {
+			throw new IllegalArgumentException("laneID=-1 requires finite x and y");
+		}
+		if (!hasDist && !hasX) {
+			throw new IllegalArgumentException("A finite dist or x/y pair is required");
+		}
+	}
+
+	private double requiredFiniteNumber(Map<String, Object> raw, String field) {
+		Object value = raw.get(field);
+		if (!(value instanceof Number) || !Double.isFinite(((Number) value).doubleValue())) {
+			throw new IllegalArgumentException(field + " must be a finite number");
+		}
+		return ((Number) value).doubleValue();
+	}
+
+	private TraceReplayPlacement resolveTraceReplayPlacement(
+			VehIDVehTypeRoadLaneDist request, Vehicle veh, Road road) throws TransformException {
+		if (request.laneID >= 0) {
+			Lane lane = road.getLane(request.laneID);
+			double requestedDistance = traceReplayTeleportDistance(request, lane);
+			return closestBackwardTraceReplayPlacement(veh, road, lane, requestedDistance, null);
+		}
+
+		Coordinate requestedCoordinate = traceReplayCoordinate(request);
+		TraceReplayPlacement bestValid = null;
+		TraceReplayPlacement bestForced = null;
+		for (Lane lane : road.getLanes()) {
+			try {
+				TraceReplayLaneProjection projection = traceReplayLaneProjection(lane, requestedCoordinate);
+				TraceReplayPlacement placement = closestBackwardTraceReplayPlacement(
+						veh, road, lane, projection.downstreamDistance, requestedCoordinate);
+				if (placement.collisionFree) {
+					if (isBetterTraceReplayPlacement(placement, bestValid, road)) bestValid = placement;
+				} else if (isBetterTraceReplayPlacement(placement, bestForced, road)) {
+					bestForced = placement;
+				}
+			} catch (IllegalArgumentException ignored) {
+				// A malformed lane must not prevent trying the neighboring lanes.
+			}
+		}
+		if (bestValid != null) return bestValid;
+		if (bestForced != null) return bestForced;
+		throw new IllegalArgumentException("Road " + request.roadID + " has no lane with usable geometry");
+	}
+
+	private boolean isBetterTraceReplayPlacement(
+			TraceReplayPlacement candidate, TraceReplayPlacement current, Road road) {
+		if (current == null) return true;
+		int displacementCompare = Double.compare(candidate.sourceDisplacement, current.sourceDisplacement);
+		if (displacementCompare != 0) return displacementCompare < 0;
+		int shiftCompare = Double.compare(candidate.backwardShift(), current.backwardShift());
+		if (shiftCompare != 0) return shiftCompare < 0;
+		return road.getLaneIndex(candidate.lane) < road.getLaneIndex(current.lane);
+	}
+
+	private TraceReplayPlacement closestBackwardTraceReplayPlacement(Vehicle veh, Road road,
+			Lane lane, double requestedDistance, Coordinate requestedCoordinate) {
+		double laneLength = lane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
+			throw new IllegalArgumentException("Lane " + lane.getID() + " has an invalid length");
+		}
+		double boundedDistance = Math.max(0.0, Math.min(laneLength, requestedDistance));
+		double candidateDistance = boundedDistance;
+		boolean collisionFree = false;
+		double lastConflictingDistance = Double.NaN;
+		int iterations = 0;
+		int maxIterations = Math.max(64,
+				(int) Math.ceil(Math.max(0.0, laneLength - boundedDistance)
+						/ TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS) + road.getVehicleNum() * 4 + 8);
+
+		while (candidateDistance <= laneLength + TRACE_REPLAY_DISTANCE_EPSILON
+				&& iterations++ < maxIterations) {
+			candidateDistance = Math.min(candidateDistance, laneLength);
+			TraceReplayConflict conflict = traceReplayConflictAt(
+					veh, road, lane, candidateDistance);
+			if (conflict == null) {
+				if (Double.isFinite(lastConflictingDistance)) {
+					double low = lastConflictingDistance;
+					double high = candidateDistance;
+					for (int refinement = 0; refinement < 10; refinement++) {
+						double middle = (low + high) / 2.0;
+						if (traceReplayConflictAt(veh, road, lane, middle) == null) high = middle;
+						else low = middle;
+					}
+					candidateDistance = high;
+				}
+				collisionFree = true;
+				break;
+			}
+			lastConflictingDistance = candidateDistance;
+			double nextDistance = conflict.incrementalSearch
+					? candidateDistance + TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS
+					: conflict.nextDistance;
+			if (nextDistance <= candidateDistance + TRACE_REPLAY_DISTANCE_EPSILON) {
+				nextDistance = candidateDistance + TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS;
+			}
+			if (nextDistance > laneLength + TRACE_REPLAY_DISTANCE_EPSILON) {
+				if (candidateDistance < laneLength - TRACE_REPLAY_DISTANCE_EPSILON) {
+					candidateDistance = laneLength;
+					continue;
+				}
+				break;
+			}
+			candidateDistance = nextDistance;
+		}
+
+		double appliedDistance = collisionFree ? Math.min(candidateDistance, laneLength) : laneLength;
+		TraceReplayLanePose pose = traceReplayLanePose(lane, appliedDistance);
+		double sourceDisplacement = requestedCoordinate == null
+				? Math.max(0.0, appliedDistance - boundedDistance)
+				: ContextCreator.getCityContext().getDistance(requestedCoordinate, pose.frontCoordinate);
+		return new TraceReplayPlacement(lane, requestedDistance, boundedDistance,
+				appliedDistance, collisionFree, sourceDisplacement);
+	}
+
+	private TraceReplayConflict traceReplayConflictAt(
+			Vehicle moving, Road road, Lane lane, double candidateDistance) {
+		TraceReplayLanePose candidatePose = traceReplayLanePose(lane, candidateDistance);
+		Set<Vehicle> visited = new HashSet<Vehicle>();
+		double nextDistance = candidateDistance;
+		boolean conflictFound = false;
+		boolean incrementalSearch = false;
+		for (Road collisionRoad : traceReplayCollisionRoads(road)) {
+			for (Lane occupiedLane : collisionRoad.getLanes()) {
+				Vehicle existing = occupiedLane.firstVehicle();
+				Set<Vehicle> laneVisited = new HashSet<Vehicle>();
+				while (existing != null && laneVisited.add(existing)) {
+					Vehicle next = existing.trailing();
+					if (existing != moving && visited.add(existing)) {
+						boolean distanceOverlap = existing.isOnLane() && existing.getLane() == lane
+								&& traceReplayLongitudinalOverlap(candidateDistance, moving.length(),
+										existing.getDistanceToNextJunction(), existing.length());
+						double existingBearing = existing.getBearing();
+						if (existing.isOnLane() && existing.getLane() != null) {
+							try {
+								existingBearing = traceReplayLanePose(existing.getLane(),
+										existing.getDistanceToNextJunction()).bearing;
+							} catch (IllegalArgumentException ignored) { }
+						}
+						boolean spatialOverlap = traceReplayFootprintsOverlap(candidatePose, moving.length(),
+								existing.getCurrentCoord(), existingBearing, existing.length());
+						if (distanceOverlap || spatialOverlap) {
+							double blockerDistance = distanceOverlap
+									? existing.getDistanceToNextJunction()
+									: traceReplayLaneProjection(lane, existing.getCurrentCoord()).downstreamDistance;
+							double clearingDistance = blockerDistance + existing.length()
+									+ TRACE_REPLAY_CLEARANCE_METERS;
+							nextDistance = Math.max(nextDistance, clearingDistance);
+							conflictFound = true;
+							incrementalSearch |= spatialOverlap && !distanceOverlap;
+						}
+					}
+					existing = next;
+				}
+			}
+		}
+		return conflictFound ? new TraceReplayConflict(nextDistance, incrementalSearch) : null;
+	}
+
+	private Set<Road> traceReplayCollisionRoads(Road road) {
+		Set<Road> roads = new HashSet<Road>();
+		roads.add(road);
+		for (int roadID : road.getDownStreamRoads()) {
+			Road connected = ContextCreator.getRoadContext().get(roadID);
+			if (connected != null) roads.add(connected);
+		}
+		for (Lane lane : road.getLanes()) {
+			addTraceReplayConnectedLaneRoads(roads, lane.getUpStreamLanes());
+			addTraceReplayConnectedLaneRoads(roads, lane.getDownStreamLanes());
+		}
+		return roads;
+	}
+
+	private void addTraceReplayConnectedLaneRoads(Set<Road> roads, Collection<Integer> laneIDs) {
+		for (int laneID : laneIDs) {
+			Lane connectedLane = ContextCreator.getLaneContext().get(laneID);
+			if (connectedLane != null && connectedLane.getRoad() != null) {
+				roads.add(connectedLane.getRoad());
+			}
+		}
+	}
+
+	private boolean traceReplayLongitudinalOverlap(double firstDistance, double firstLength,
+			double secondDistance, double secondLength) {
+		return firstDistance < secondDistance + secondLength - TRACE_REPLAY_DISTANCE_EPSILON
+				&& secondDistance < firstDistance + firstLength - TRACE_REPLAY_DISTANCE_EPSILON;
+	}
+
+	private TraceReplayLanePose traceReplayLanePose(Lane lane, double distance) {
+		ArrayList<Coordinate> coords = lane.getCoords();
+		if (coords == null || coords.size() < 2) {
+			throw new IllegalArgumentException("Lane " + lane.getID() + " has unusable geometry");
+		}
+		double remaining = Math.max(0.0, Math.min(lane.getLength(), distance));
+		for (int i = coords.size() - 1; i > 0; i--) {
+			Coordinate downstream = coords.get(i);
+			Coordinate upstream = coords.get(i - 1);
+			double segmentLength = ContextCreator.getCityContext().getDistance(downstream, upstream);
+			if (segmentLength <= TRACE_REPLAY_DISTANCE_EPSILON) continue;
+			boolean firstUsableSegment = i == 1;
+			if (remaining < segmentLength - TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS
+					|| firstUsableSegment) {
+				double fractionTowardUpstream = Math.max(0.0, Math.min(1.0, remaining / segmentLength));
+				Coordinate front = new Coordinate(
+						downstream.x + fractionTowardUpstream * (upstream.x - downstream.x),
+						downstream.y + fractionTowardUpstream * (upstream.y - downstream.y),
+						downstream.z + fractionTowardUpstream * (upstream.z - downstream.z));
+				return new TraceReplayLanePose(front, traceReplayAzimuth(upstream, downstream));
+			}
+			remaining -= segmentLength;
+		}
+		for (int i = 0; i < coords.size() - 1; i++) {
+			if (ContextCreator.getCityContext().getDistance(coords.get(i), coords.get(i + 1))
+					> TRACE_REPLAY_DISTANCE_EPSILON) {
+				return new TraceReplayLanePose(coords.get(0),
+						traceReplayAzimuth(coords.get(i), coords.get(i + 1)));
+			}
+		}
+		throw new IllegalArgumentException("Lane " + lane.getID() + " has degenerate geometry");
+	}
+
+	private double traceReplayAzimuth(Coordinate from, Coordinate to) {
+		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
+		calculator.setStartingGeographicPoint(from.x, from.y);
+		calculator.setDestinationGeographicPoint(to.x, to.y);
+		double azimuth = calculator.getAzimuth();
+		if (!Double.isFinite(azimuth)) {
+			throw new IllegalArgumentException("Cannot determine lane heading from degenerate geometry");
+		}
+		return azimuth;
+	}
+
+	private boolean traceReplayFootprintsOverlap(TraceReplayLanePose candidate, double candidateLength,
+			Coordinate otherFront, double otherBearing, double otherLength) {
+		if (otherFront == null || !Double.isFinite(otherFront.x) || !Double.isFinite(otherFront.y)
+				|| !Double.isFinite(otherBearing)) return false;
+
+		double candidateBearingRadians = Math.toRadians(candidate.bearing);
+		double otherBearingRadians = Math.toRadians(otherBearing);
+		double candidateForwardX = Math.sin(candidateBearingRadians);
+		double candidateForwardY = Math.cos(candidateBearingRadians);
+		double candidateLateralX = Math.cos(candidateBearingRadians);
+		double candidateLateralY = -Math.sin(candidateBearingRadians);
+		double otherForwardX = Math.sin(otherBearingRadians);
+		double otherForwardY = Math.cos(otherBearingRadians);
+		double otherLateralX = Math.cos(otherBearingRadians);
+		double otherLateralY = -Math.sin(otherBearingRadians);
+
+		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
+		calculator.setStartingGeographicPoint(candidate.frontCoordinate.x, candidate.frontCoordinate.y);
+		calculator.setDestinationGeographicPoint(otherFront.x, otherFront.y);
+		double frontDistance = calculator.getOrthodromicDistance();
+		double frontAzimuth = frontDistance <= TRACE_REPLAY_DISTANCE_EPSILON
+				? 0.0 : Math.toRadians(calculator.getAzimuth());
+		double deltaX = frontDistance * Math.sin(frontAzimuth)
+				+ candidateForwardX * candidateLength / 2.0 - otherForwardX * otherLength / 2.0;
+		double deltaY = frontDistance * Math.cos(frontAzimuth)
+				+ candidateForwardY * candidateLength / 2.0 - otherForwardY * otherLength / 2.0;
+
+		double halfCandidateLength = Math.max(0.0, candidateLength) / 2.0;
+		double halfOtherLength = Math.max(0.0, otherLength) / 2.0;
+		double halfWidth = Math.max(0.0, GlobalVariables.DEFAULT_VEHICLE_WIDTH) / 2.0;
+		double[][] axes = {
+				{ candidateForwardX, candidateForwardY },
+				{ candidateLateralX, candidateLateralY },
+				{ otherForwardX, otherForwardY },
+				{ otherLateralX, otherLateralY }
+		};
+		for (double[] axis : axes) {
+			double separation = Math.abs(deltaX * axis[0] + deltaY * axis[1]);
+			double candidateRadius = halfCandidateLength
+					* Math.abs(candidateForwardX * axis[0] + candidateForwardY * axis[1])
+					+ halfWidth * Math.abs(candidateLateralX * axis[0] + candidateLateralY * axis[1]);
+			double otherRadius = halfOtherLength
+					* Math.abs(otherForwardX * axis[0] + otherForwardY * axis[1])
+					+ halfWidth * Math.abs(otherLateralX * axis[0] + otherLateralY * axis[1]);
+			if (separation >= candidateRadius + otherRadius - TRACE_REPLAY_DISTANCE_EPSILON) {
+				return false;
+			}
+		}
+		return true;
+	}
 
 	private double traceReplayTeleportDistance(VehIDVehTypeRoadLaneDist request, Lane lane)
 			throws TransformException {
@@ -1046,28 +1387,6 @@ public class ControlMessageHandler extends MessageHandler {
 		return coord;
 	}
 
-	private TraceReplayLaneProjection closestTraceReplayLaneProjection(
-			VehIDVehTypeRoadLaneDist request, Road road) throws TransformException {
-		Coordinate coord = traceReplayCoordinate(request);
-		TraceReplayLaneProjection closestProjection = null;
-		for (Lane lane : road.getLanes()) {
-			try {
-				TraceReplayLaneProjection projection = traceReplayLaneProjection(lane, coord);
-				if (closestProjection == null
-						|| projection.projectionError < closestProjection.projectionError) {
-					closestProjection = projection;
-				}
-			} catch (IllegalArgumentException ignored) {
-				// Ignore malformed lane geometry if another lane on the road is usable.
-			}
-		}
-		if (closestProjection == null) {
-			throw new IllegalArgumentException("Road " + request.roadID
-					+ " has no lane with usable geometry");
-		}
-		return closestProjection;
-	}
-
 	private double laneDistanceFromCoordinate(Lane lane, Coordinate coord) {
 		return traceReplayLaneProjection(lane, coord).downstreamDistance;
 	}
@@ -1093,9 +1412,11 @@ public class ControlMessageHandler extends MessageHandler {
 				double apx = coord.x - upstream.x;
 				double apy = coord.y - upstream.y;
 				double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
-				double closestX = upstream.x + param * dx;
-				double closestY = upstream.y + param * dy;
-				double projectionError = Math.hypot(coord.x - closestX, coord.y - closestY);
+				Coordinate closest = new Coordinate(
+						upstream.x + param * dx,
+						upstream.y + param * dy,
+						upstream.z + param * (downstream.z - upstream.z));
+				double projectionError = ContextCreator.getCityContext().getDistance(coord, closest);
 				if (projectionError < minProjectionError) {
 					minProjectionError = projectionError;
 					bestDistance = downstreamDistance + (1.0 - param) * segmentLen;
@@ -1107,19 +1428,63 @@ public class ControlMessageHandler extends MessageHandler {
 		if (Double.isNaN(bestDistance)) {
 			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID());
 		}
-		return new TraceReplayLaneProjection(lane,
-				Math.max(0.0, Math.min(lane.getLength(), bestDistance)), minProjectionError);
+		return new TraceReplayLaneProjection(
+				Math.max(0.0, Math.min(lane.getLength(), bestDistance)));
+	}
+
+	private static class TraceReplayPlacement {
+		final Lane lane;
+		final double requestedDistance;
+		final double boundedDistance;
+		final double appliedDistance;
+		final boolean collisionFree;
+		final double sourceDisplacement;
+
+		TraceReplayPlacement(Lane lane, double requestedDistance, double boundedDistance,
+				double appliedDistance, boolean collisionFree, double sourceDisplacement) {
+			this.lane = lane;
+			this.requestedDistance = requestedDistance;
+			this.boundedDistance = boundedDistance;
+			this.appliedDistance = appliedDistance;
+			this.collisionFree = collisionFree;
+			this.sourceDisplacement = sourceDisplacement;
+		}
+
+		double backwardShift() {
+			return Math.max(0.0, appliedDistance - boundedDistance);
+		}
+
+		boolean adjusted() {
+			return Math.abs(requestedDistance - boundedDistance) > TRACE_REPLAY_DISTANCE_EPSILON
+					|| backwardShift() > TRACE_REPLAY_DISTANCE_EPSILON;
+		}
+	}
+
+	private static class TraceReplayConflict {
+		final double nextDistance;
+		final boolean incrementalSearch;
+
+		TraceReplayConflict(double nextDistance, boolean incrementalSearch) {
+			this.nextDistance = nextDistance;
+			this.incrementalSearch = incrementalSearch;
+		}
+	}
+
+	private static class TraceReplayLanePose {
+		final Coordinate frontCoordinate;
+		final double bearing;
+
+		TraceReplayLanePose(Coordinate frontCoordinate, double bearing) {
+			this.frontCoordinate = new Coordinate(frontCoordinate);
+			this.bearing = bearing;
+		}
 	}
 
 	private static class TraceReplayLaneProjection {
-		final Lane lane;
 		final double downstreamDistance;
-		final double projectionError;
 
-		TraceReplayLaneProjection(Lane lane, double downstreamDistance, double projectionError) {
-			this.lane = lane;
+		TraceReplayLaneProjection(double downstreamDistance) {
 			this.downstreamDistance = downstreamDistance;
-			this.projectionError = projectionError;
 		}
 	}
     

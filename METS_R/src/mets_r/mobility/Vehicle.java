@@ -1482,17 +1482,26 @@ public class Vehicle {
 			coordMap.clear();
 			double accDist = lane.getLength();
 			for (int i = 0; i < coords.size() - 1; i++) {
-				accDist -= distance(coords.get(i), coords.get(i+1));
+				Coordinate upstream = coords.get(i);
+				Coordinate downstream = coords.get(i + 1);
+				double segmentDistance = ContextCreator.getCityContext().getDistance(upstream, downstream);
+				if (!Double.isFinite(segmentDistance) || segmentDistance <= 1e-9) {
+					continue;
+				}
+				accDist -= segmentDistance;
 				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_, add noise to avoid numerical issue
-					
-					this.setCurrentCoord(coords.get(i)); // Set current coord
+					double distanceToDownstream = Math.max(0.0,
+							Math.min(segmentDistance, this.distance_ - accDist));
+					double distanceFromUpstream = segmentDistance - distanceToDownstream;
+					double fraction = Math.max(0.0, Math.min(1.0,
+							distanceFromUpstream / segmentDistance));
+					this.setCurrentCoord(new Coordinate(
+							upstream.x + fraction * (downstream.x - upstream.x),
+							upstream.y + fraction * (downstream.y - upstream.y),
+							upstream.z + fraction * (downstream.z - upstream.z)));
 					double[] distAndAngle = new double[2];
-					this.distance2(coords.get(i), coords.get(i+1), distAndAngle);
-					double distToMove = distAndAngle[0] - (this.distance_ - accDist);
-					if (distToMove > 0) {
-						move2(coords.get(i), coords.get(i+1), distAndAngle[0], distToMove); // Update vehicle location
-					}
-					this.nextDistance_ = (this.distance_ - accDist);
+					this.distance2(upstream, downstream, distAndAngle);
+					this.nextDistance_ = distanceToDownstream;
 					this.bearing_ = distAndAngle[1];
 					
 				for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
@@ -2958,24 +2967,7 @@ public class Vehicle {
 	 * @param road Target road
 	 */
 	public void appendToRoad(Road road) {
-		this.road = road;
-		updateLastDeparturableRoad(road);
-		
-		// If the macroLeading is modified in advanceInMacroList by other thread
-		// then this vehicle will be misplaced in the Linked List
-		if (road.lastVehicle() != null) {
-			road.lastVehicle().macroTrailing_ = this;
-			macroLeading_ = road.lastVehicle();
-		} else {
-			macroLeading_ = null;
-			road.firstVehicle(this);
-		}
-		road.lastVehicle(this);
-		
-		// After this appending, update the number of vehicles
-		road.changeNumberOfVehicles(1);
-		ContextCreator.getRoadContext().markRoadActive(road);
-		this.onRoad = true;
+		attachToRoad(road);
 		
 		// Set next road
 		if ((this.nextRoad_!=null) && (this.nextRoad_.getID() == road.getID())) // Veh enter the next road in its planned route
@@ -2986,6 +2978,41 @@ public class Vehicle {
 			if(this.destRoad_ != null)
 				this.rerouteAndSetNextRoad();
 		}
+	}
+
+	/**
+	 * Register this vehicle on a road for trace replay or snapshot restoration
+	 * without changing its route. A normal {@link #appendToRoad(Road)} may reroute
+	 * or queue the vehicle before the replay position has been applied.
+	 */
+	public void appendToRoadForTeleport(Road road) {
+		if (this.road != null) {
+			throw new IllegalStateException("Vehicle must be detached before teleport road attachment");
+		}
+		attachToRoad(road);
+	}
+
+	private void attachToRoad(Road road) {
+		if (road == null) {
+			throw new IllegalArgumentException("Target road must not be null");
+		}
+		this.road = road;
+		updateLastDeparturableRoad(road);
+
+		// Append first, then let advance/retreat place the vehicle by distance.
+		Vehicle oldLast = road.lastVehicle();
+		this.macroLeading_ = oldLast;
+		this.macroTrailing_ = null;
+		if (oldLast != null) {
+			oldLast.macroTrailing_ = this;
+		} else {
+			road.firstVehicle(this);
+		}
+		road.lastVehicle(this);
+
+		road.changeNumberOfVehicles(1);
+		ContextCreator.getRoadContext().markRoadActive(road);
+		this.onRoad = true;
 	}
 	
 	/**
