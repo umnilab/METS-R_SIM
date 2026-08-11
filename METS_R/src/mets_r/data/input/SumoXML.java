@@ -49,6 +49,10 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 
 public class SumoXML {
+	private static final double MIN_CONTROL_POINT_SEPARATION_METERS = 0.001;
+	private static final double MIN_CONTROL_POINT_SEPARATION_SQUARED =
+			MIN_CONTROL_POINT_SEPARATION_METERS * MIN_CONTROL_POINT_SEPARATION_METERS;
+
 	public double x_offs = 0;
 	public double y_offs = 0;
 	public ArrayList<Double> boundary;
@@ -177,6 +181,8 @@ public class SumoXML {
 		int roadNum = 0;
 		int junctionNum = 0;
 		int signalNum = 0;
+		int removedCoincidentLaneControlPoints = 0;
+		int zeroLengthLaneShapes = 0;
 		
 		public LinkedHashMap<Integer,Road> getRoad() {return roads;};
 		public LinkedHashMap<Integer,Junction> getJunction() {return junctions;};
@@ -241,6 +247,117 @@ public class SumoXML {
 			double dx = c1.x - c2.x;
 			double dy = c1.y - c2.y;
 			return dx * dx + dy * dy;
+		}
+
+		private double geographicDistanceMeters(Coordinate c1, Coordinate c2) {
+			double lat1 = Math.toRadians(c1.y);
+			double lat2 = Math.toRadians(c2.y);
+			double deltaLat = lat2 - lat1;
+			double deltaLon = Math.toRadians(c2.x - c1.x);
+			double sinLat = Math.sin(deltaLat / 2.0);
+			double sinLon = Math.sin(deltaLon / 2.0);
+			double a = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon;
+			a = Math.max(0.0, Math.min(1.0, a));
+			return 6371008.8 * 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(Math.max(0.0, 1.0 - a)));
+		}
+
+		private ArrayList<Coordinate> cleanTransformedLaneControlPoints(
+				ArrayList<Coordinate> source, String laneID) {
+			ArrayList<Coordinate> cleaned = new ArrayList<Coordinate>();
+			if (source.isEmpty()) return cleaned;
+
+			cleaned.add(copyCoordinate(source.get(0)));
+			for (int i = 1; i < source.size() - 1; i++) {
+				Coordinate point = source.get(i);
+				Coordinate previous = cleaned.get(cleaned.size() - 1);
+				if (geographicDistanceMeters(previous, point)
+						> MIN_CONTROL_POINT_SEPARATION_METERS) {
+					cleaned.add(copyCoordinate(point));
+				} else {
+					rejectVerticalOnlyLaneSegment(previous, point, laneID);
+				}
+			}
+
+			Coordinate finalPoint = source.get(source.size() - 1);
+			while (cleaned.size() > 1
+					&& geographicDistanceMeters(cleaned.get(cleaned.size() - 1), finalPoint)
+							<= MIN_CONTROL_POINT_SEPARATION_METERS) {
+				rejectVerticalOnlyLaneSegment(
+						cleaned.get(cleaned.size() - 1), finalPoint, laneID);
+				cleaned.remove(cleaned.size() - 1);
+			}
+			cleaned.add(copyCoordinate(finalPoint));
+			return cleaned;
+		}
+
+		private boolean hasUsableLaneControlSegment(ArrayList<Coordinate> points) {
+			for (int i = 0; i < points.size() - 1; i++) {
+				if (geographicDistanceMeters(points.get(i), points.get(i + 1))
+						> MIN_CONTROL_POINT_SEPARATION_METERS) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		private ArrayList<Coordinate> cleanLaneControlPoints(
+				ArrayList<Coordinate> source, String laneID) {
+			ArrayList<Coordinate> cleaned = new ArrayList<Coordinate>();
+			for (Coordinate point : source) {
+				if (!Double.isFinite(point.x) || !Double.isFinite(point.y)
+						|| !Double.isFinite(point.z)) {
+					throw new IllegalArgumentException(
+							"SUMO lane " + laneID + " has a non-finite shape coordinate");
+				}
+			}
+			if (source.isEmpty()) {
+				throw new IllegalArgumentException("SUMO lane " + laneID + " has an empty shape");
+			}
+
+			cleaned.add(copyCoordinate(source.get(0)));
+			for (int i = 1; i < source.size() - 1; i++) {
+				Coordinate point = source.get(i);
+				Coordinate previous = cleaned.get(cleaned.size() - 1);
+				if (squaredDistance2D(previous, point)
+						> MIN_CONTROL_POINT_SEPARATION_SQUARED) {
+					cleaned.add(copyCoordinate(point));
+				} else {
+					rejectVerticalOnlyLaneSegment(previous, point, laneID);
+				}
+			}
+
+			Coordinate finalPoint = source.get(source.size() - 1);
+			while (cleaned.size() > 1
+					&& squaredDistance2D(cleaned.get(cleaned.size() - 1), finalPoint)
+							<= MIN_CONTROL_POINT_SEPARATION_SQUARED) {
+				rejectVerticalOnlyLaneSegment(
+						cleaned.get(cleaned.size() - 1), finalPoint, laneID);
+				cleaned.remove(cleaned.size() - 1);
+			}
+			// Preserve the final anchor. When the entire shape is coincident this
+			// intentionally leaves the two points required by JTS without
+			// inventing a heading.
+			cleaned.add(copyCoordinate(finalPoint));
+			removedCoincidentLaneControlPoints += Math.max(0, source.size() - cleaned.size());
+			if (cleaned.size() == 2
+					&& squaredDistance2D(cleaned.get(0), cleaned.get(1))
+							<= MIN_CONTROL_POINT_SEPARATION_SQUARED) {
+				if (Math.abs(cleaned.get(0).z - cleaned.get(1).z)
+						> MIN_CONTROL_POINT_SEPARATION_METERS) {
+					throw new IllegalArgumentException("SUMO lane " + laneID
+							+ " has vertical-only geometry with no usable bearing");
+				}
+				zeroLengthLaneShapes++;
+			}
+			return cleaned;
+		}
+
+		private void rejectVerticalOnlyLaneSegment(
+				Coordinate first, Coordinate second, String laneID) {
+			if (Math.abs(first.z - second.z) > MIN_CONTROL_POINT_SEPARATION_METERS) {
+				throw new IllegalArgumentException("SUMO lane " + laneID
+						+ " has vertical-only geometry with no usable bearing");
+			}
 		}
 
 		private Coordinate interpolateCoordinate(Coordinate c1, Coordinate c2, double t) {
@@ -383,6 +500,7 @@ public class SumoXML {
 				for (int toLaneID : fromLane.getDownStreamLanes()) {
 					Lane toLane = lanes.get(toLaneID);
 					if (toLane == null) continue;
+					ArrayList<Coordinate> originalToCoords = toLane.getCoords();
 					ArrayList<Coordinate> toCoords = toLane.getCoords();
 					if (toCoords.size() < 2) continue;
 
@@ -427,7 +545,23 @@ public class SumoXML {
 						scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
 					}
 					if (adjustedLane) {
-						toLane.setCoords(toCoords);
+						ArrayList<Coordinate> cleanedCandidate;
+						try {
+							cleanedCandidate = cleanTransformedLaneControlPoints(
+									toCoords, toLane.getOrigID());
+						} catch (IllegalArgumentException invalidCandidate) {
+							ContextCreator.logger.warn("SUMO transition prescan discarded geometry "
+									+ "for lane " + toLane.getOrigID() + ": "
+									+ invalidCandidate.getMessage());
+							continue;
+						}
+						if (hasUsableLaneControlSegment(cleanedCandidate)
+								|| !hasUsableLaneControlSegment(originalToCoords)) {
+							toLane.setCoords(cleanedCandidate);
+						} else {
+							ContextCreator.logger.warn("SUMO transition prescan discarded a degenerate "
+									+ "geometry adjustment for lane " + toLane.getOrigID());
+						}
 					}
 				}
 			}
@@ -550,6 +684,8 @@ public class SumoXML {
 			laneRoadMap = new LinkedHashMap<String, String>();
 			isInternalRoadMap = new LinkedHashMap<String, Boolean>();
 			isInternalLaneMap = new LinkedHashMap<String, Boolean>();
+			removedCoincidentLaneControlPoints = 0;
+			zeroLengthLaneShapes = 0;
 		}
 		
 		@Override
@@ -639,19 +775,29 @@ public class SumoXML {
 					    currentMaxSpeed = Math.max(currentLane.getSpeed(), currentMaxSpeed);
 					    // get coords
 				    coords = new ArrayList<Coordinate>();
-				    for(String one_coord: attributes.getValue("shape").split(" ")) {
+				    String laneShape = attributes.getValue("shape");
+				    for(String one_coord: laneShape.trim().split(" +")) {
 				    	Coordinate coord = new Coordinate();
 				    	String[] parts = one_coord.split(",");
 				    	coord.x = Double.parseDouble(parts[0]) - x_offs;
 				    	coord.y = Double.parseDouble(parts[1]) - y_offs;
 				    	coord.z = (parts.length > 2) ? Double.parseDouble(parts[2]) : 0.0;
+						coords.add(coord);
+				    }
+				    coords = cleanLaneControlPoints(coords, attributes.getValue("id"));
+				    for (Coordinate coord : coords) {
 				    	try {
 							JTS.transform(coord, coord, transform);
 						} catch (TransformException e) {
-							e.printStackTrace();
+							throw new IllegalArgumentException(
+									"Failed to transform SUMO lane " + attributes.getValue("id"), e);
 						}
-				    	coords.add(coord);
-					    }
+						if (!Double.isFinite(coord.x) || !Double.isFinite(coord.y)
+								|| !Double.isFinite(coord.z)) {
+							throw new IllegalArgumentException("SUMO lane " + attributes.getValue("id")
+									+ " transformed to a non-finite coordinate");
+						}
+				    }
 					    currentLane.setCoords(coords);
 					    
 					    intLaneJunctionMap.put(attributes.getValue("id"), currentFromJunctionID);
@@ -994,6 +1140,12 @@ public class SumoXML {
 				}
 
 				prescanTransitionControlPoints();
+				if (removedCoincidentLaneControlPoints > 0 || zeroLengthLaneShapes > 0) {
+					ContextCreator.logger.info("SUMO lane control-point cleanup removed "
+							+ removedCoincidentLaneControlPoints + " coincident points and retained "
+							+ zeroLengthLaneShapes
+							+ " irreducible zero-length lane shapes as degenerate two-point lines.");
+				}
 			}
 		}
 		

@@ -98,6 +98,7 @@ public class Vehicle {
 	private static final int LC_REASON_SPEED_GAIN = 3;
 	private static final int LC_REASON_KEEP_RIGHT = 4;
 	private static final int LC_REASON_REGULATORY = 5;
+	private static final double COINCIDENT_WAYPOINT_TOLERANCE_METERS = 0.001;
 	/* Constants */
 	private static final double GRAVITY = 9.81; // m/s², used for grade resistance
 	
@@ -1317,23 +1318,35 @@ public class Vehicle {
 	}
 
 	private void updateBearingAndNextDistanceToCoordMap() {
-		if (this.coordMap.isEmpty()) {
-			this.nextDistance_ = 0;
+		double previousBearing = Double.isFinite(this.bearing_) ? this.bearing_ : 0.0;
+		this.bearing_ = previousBearing;
+		this.nextDistance_ = 0.0;
+		Coordinate current = this.currentCoord_;
+		if (current == null || this.coordMap.isEmpty()) {
 			return;
 		}
-		double[] distAndAngle = new double[2];
-		this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
-		this.nextDistance_ = distAndAngle[0];
-		if (this.nextDistance_ > 1e-4) {
-			this.bearing_ = distAndAngle[1];
-			return;
+
+		double[] distanceAndAngle = new double[2];
+		double distanceToFirst =
+				ContextCreator.getCityContext().getDistance(current, this.coordMap.get(0));
+		if (Double.isFinite(distanceToFirst) && distanceToFirst >= 0.0) {
+			this.nextDistance_ = distanceToFirst;
 		}
-		if (this.coordMap.size() > 1) {
-			this.distance2(this.coordMap.get(0), this.coordMap.get(1), distAndAngle);
-			if (distAndAngle[0] > 1e-4) {
-				this.bearing_ = distAndAngle[1];
+
+		// Keep nextDistance_ tied to the first waypoint, but look past every
+		// coincident leading point when choosing a heading.
+		for (Coordinate target : this.coordMap) {
+			double distance = this.distance2(current, target, distanceAndAngle);
+			if (!Double.isFinite(distance)
+					|| distance <= COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
+				continue;
 			}
+			if (Double.isFinite(distanceAndAngle[1])) {
+				this.bearing_ = distanceAndAngle[1];
+			}
+			return;
 		}
+		this.bearing_ = previousBearing;
 	}
 
 	/**
@@ -1344,36 +1357,25 @@ public class Vehicle {
 		if (plane != null) {
 			this.distance_ = this.distance_ + plane.getLength();
 			
-		ArrayList<Coordinate> coords = plane.getCoords();
-		double accDist = plane.getLength();
-		for (int i = 0; i < coords.size() - 1; i++) {
-			accDist -= distance(coords.get(i), coords.get(i+1));
-			if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
-				for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
-					coordMap.add(coords.get(j));
+			ArrayList<Coordinate> coords = plane.getCoords();
+			double accDist = plane.getLength();
+			for (int i = 0; i < coords.size() - 1; i++) {
+				accDist -= distance(coords.get(i), coords.get(i+1));
+				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
+					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
+						coordMap.add(coords.get(j));
+					}
+					currentSegmentIdx_ = i;
+					currentLaneSlope_ = plane.getSegmentSlope(i);
+					break;
 				}
-				currentSegmentIdx_ = i;
-				currentLaneSlope_ = plane.getSegmentSlope(i);
-				break;
 			}
-		}
-		if (coordMap.size() == 0) {
-			ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
-		}
-		else {
-			// Update bearing to be the directions of the first two consecutive coord in coordMap
-			if(this.coordMap.size() >= 1) {
-				Coordinate c1 = this.getCurrentCoord();
-			    Coordinate c2 = this.coordMap.get(0);
-			    // returnVals[0] → distance, returnVals[1] → azimuth in [-180,180]
-			    double[] returnVals = new double[2];
-			    this.distance2(c1, c2, returnVals);
-			    
-			    this.bearing_ = returnVals[1];
+			if (coordMap.size() == 0) {
+				ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
 			}
-		}
-	this.insertToLane(plane);
-	this.nextLane_ = null;
+			this.updateBearingAndNextDistanceToCoordMap();
+			this.insertToLane(plane);
+			this.nextLane_ = null;
 		} else {
 			ContextCreator.logger.error("There is no target lane to set!");
 		}
@@ -1442,10 +1444,6 @@ public class Vehicle {
 			
 			Vehicle toCheckVeh = lane.firstVehicle();
 			while (toCheckVeh != null) { // find where to insert the veh
-				 // edge case, two vehicle share the same distance, this can happen due to the accuracy loss in the co-sim map
-				 if(toCheckVeh.getDistanceToNextJunction() == distance) {
-					 distance = distance + 0.01; // edge case add a tiny value to the distance of the to-insert vehicle
-				 }
 				 if(toCheckVeh.getDistanceToNextJunction() < distance) {
 					 leadVehicle = toCheckVeh;
 					 toCheckVeh = toCheckVeh.trailing();
@@ -1481,6 +1479,7 @@ public class Vehicle {
 			ArrayList<Coordinate> coords = lane.getCoords();
 			coordMap.clear();
 			double accDist = lane.getLength();
+			boolean positioned = false;
 			for (int i = 0; i < coords.size() - 1; i++) {
 				Coordinate upstream = coords.get(i);
 				Coordinate downstream = coords.get(i + 1);
@@ -1500,28 +1499,38 @@ public class Vehicle {
 							upstream.y + fraction * (downstream.y - upstream.y),
 							upstream.z + fraction * (downstream.z - upstream.z)));
 					double[] distAndAngle = new double[2];
-					this.distance2(upstream, downstream, distAndAngle);
-					this.nextDistance_ = distanceToDownstream;
-					this.bearing_ = distAndAngle[1];
+					double horizontalDistance = this.distance2(upstream, downstream, distAndAngle);
+					if (horizontalDistance > COINCIDENT_WAYPOINT_TOLERANCE_METERS
+							&& Double.isFinite(distAndAngle[1])) {
+						this.bearing_ = distAndAngle[1];
+					}
 					
-				for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
-					coordMap.add(coords.get(j));
+					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
+						coordMap.add(coords.get(j));
+					}
+					currentSegmentIdx_ = i;
+					currentLaneSlope_ = lane.getSegmentSlope(i);
+					this.updateBearingAndNextDistanceToCoordMap();
+					positioned = true;
+					break;
 				}
-				currentSegmentIdx_ = i;
-				currentLaneSlope_ = lane.getSegmentSlope(i);
-				break;
 			}
+			if (!positioned) {
+				// A zero-length connector has no heading of its own. Keep the
+				// incoming bearing and install the normal end-of-lane sentinel.
+				Coordinate endpoint = lane.getEndCoord();
+				this.setCurrentCoord(endpoint);
+				this.coordMap.add(endpoint);
+				this.updateBearingAndNextDistanceToCoordMap();
+				this.currentSegmentIdx_ = 0;
+				this.currentLaneSlope_ = 0.0;
+			}
+			this.lane = lane;
+			this.lane.addOneVehicle();
+			this.onLane = true;
+		} else {
+			ContextCreator.logger.error("Teleport to lane error, the specified distance" + distance + "is greater than the length of lane " + lane.getID());
 		}
-	this.lane = lane;
-	this.lane.addOneVehicle();
-	this.onLane = true;
-		if (coordMap.size() == 0) {
-			ContextCreator.logger.error("Teleport to lane error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
-		}
-	}
-	else {
-		ContextCreator.logger.error("Teleport to lane error, the specified distance" + distance + "is greater than the length of lane " + lane.getID());
-	}
 	}
 	
 	public void resetLaneChangeRuntimeState() {
@@ -2670,9 +2679,6 @@ public class Vehicle {
 		double step = GlobalVariables.SIMULATION_STEP_SIZE;
 		accRate_ =  Math.max(this.maxDeceleration_, 2.0f * (dx - oldv * step) / (step * step));
 		currentSpeed_ =  Math.max(currentSpeed_ + accRate_ * step, 0);
-		// Update vehicle coords
-		double[] distAndAngle = new double[2];
-		
 		while (!travelledMaxDist) {
 			// If we can get all the way to the next coords on the route then, just go there
 			if (distTravelled + nextDistance_ <= dx + 1e-3) { // Add a small value since the nextDistance_ might be a tiny but non-zero value
@@ -2688,10 +2694,8 @@ public class Vehicle {
 					this.onLane = false; // add to junction
 					break;
 			} else {
-				this.distance2(this.getCurrentCoord(), this.coordMap.get(0), distAndAngle);
 				this.distance_ -= this.nextDistance_;
-				this.nextDistance_ = distAndAngle[0];
-				this.bearing_ = distAndAngle[1];
+				this.updateBearingAndNextDistanceToCoordMap();
 				if (this.onLane && this.lane != null) {
 					currentSegmentIdx_++;
 					currentLaneSlope_ = this.lane.getSegmentSlope(currentSegmentIdx_);

@@ -36,6 +36,8 @@ import repast.simphony.space.graph.RepastEdge;
  * Initialize and maintain facility agents
  **/
 public class CityContext extends DefaultContext<Object> {
+	private static final double MIN_TURN_CONTROL_POINT_SEPARATION_METERS = 0.001;
+
 	private HashMap<RepastEdge<?>, Integer> edgeRoadID_KeyEdge; // Store the TOIDs of edges (Edge as key)
 	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
 	private HashMap<Coordinate, Road> coordOrigRoad_KeyCoord; // Cache the closest road
@@ -100,6 +102,8 @@ public class CityContext extends DefaultContext<Object> {
      */
     public ArrayList<Coordinate> catmullRomInterpolate(Coordinate p0, Coordinate p1, Coordinate p2,  Coordinate p3) {
     	ArrayList<Coordinate> coords = new ArrayList<Coordinate>();
+		double startZ = Double.isNaN(p1.z) ? 0.0 : p1.z;
+		double endZ = Double.isNaN(p2.z) ? 0.0 : p2.z;
     	for(double i = 0; i < 6; i++) {
     		double t = i/5.0;
 	        double t2 = t * t;
@@ -113,7 +117,8 @@ public class CityContext extends DefaultContext<Object> {
 	                          (-p0.y + p2.y) * t +
 	                          (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
 	                          (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3);
-	        coords.add(new Coordinate(x, y));
+	        double z = startZ + t * (endZ - startZ);
+	        coords.add(new Coordinate(x, y, z));
     	}
         return coords;
     }
@@ -158,6 +163,31 @@ public class CityContext extends DefaultContext<Object> {
 		return coords;
 	}
 
+	private ArrayList<Coordinate> cleanTurnControlPoints(ArrayList<Coordinate> source) {
+		ArrayList<Coordinate> cleaned = new ArrayList<Coordinate>();
+		if (source.isEmpty()) return cleaned;
+
+		cleaned.add(copyCoordinate(source.get(0)));
+		for (int i = 1; i < source.size() - 1; i++) {
+			Coordinate point = source.get(i);
+			if (getHorizontalDistance(cleaned.get(cleaned.size() - 1), point)
+					> MIN_TURN_CONTROL_POINT_SEPARATION_METERS) {
+				cleaned.add(copyCoordinate(point));
+			}
+		}
+
+		Coordinate finalPoint = source.get(source.size() - 1);
+		while (cleaned.size() > 1
+				&& getHorizontalDistance(cleaned.get(cleaned.size() - 1), finalPoint)
+						<= MIN_TURN_CONTROL_POINT_SEPARATION_METERS) {
+			cleaned.remove(cleaned.size() - 1);
+		}
+		if (source.size() > 1) {
+			cleaned.add(copyCoordinate(finalPoint));
+		}
+		return cleaned;
+	}
+
 	private double projectionAlongSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
 		double segX = segmentEnd.x - segmentStart.x;
 		double segY = segmentEnd.y - segmentStart.y;
@@ -183,18 +213,43 @@ public class CityContext extends DefaultContext<Object> {
 	
 	// Calculate the turning coords and length based on two connected lanes
 	private void initializeLaneTurningCurves(Lane lane1, Lane lane2) {
-		Coordinate p0 = lane1.getCoords().get(lane1.getCoords().size()-2);
-		Coordinate p1 = lane1.getCoords().get(lane1.getCoords().size()-1);
-		Coordinate p2 = lane2.getCoords().get(0);
-		Coordinate p3 = lane2.getCoords().get(1);
-		ArrayList<Coordinate> coords = catmullRomInterpolate(p0, p1, p2, p3);
-		skipBehindFirstTurnControlPoints(coords);
-		if (hasSharpTurnBack(p0, coords, p3)) {
+		ArrayList<Coordinate> lane1Coords = lane1.getCoords();
+		ArrayList<Coordinate> lane2Coords = lane2.getCoords();
+		ArrayList<Coordinate> coords = new ArrayList<Coordinate>();
+		if (lane1Coords.isEmpty() || lane2Coords.isEmpty()) {
+			lane1.setTurningCoords(lane2.getID(), coords);
+			lane1.setTurningDist(lane2.getID(), 0.0);
+			return;
+		}
+
+		Coordinate p1 = lane1Coords.get(lane1Coords.size() - 1);
+		Coordinate p2 = lane2Coords.get(0);
+		if (lane1Coords.size() >= 2 && lane2Coords.size() >= 2) {
+			Coordinate p0 = lane1Coords.get(lane1Coords.size() - 2);
+			Coordinate p3 = lane2Coords.get(1);
+			coords = cleanTurnControlPoints(catmullRomInterpolate(p0, p1, p2, p3));
+			skipBehindFirstTurnControlPoints(coords);
+			if (hasSharpTurnBack(p0, coords, p3)) {
+				coords = directTurnCoords(p1, p2);
+			}
+		} else {
 			coords = directTurnCoords(p1, p2);
 		}
+		coords = cleanTurnControlPoints(coords);
+		if (coords.size() < 2) {
+			// enterNextLane already falls back directly to the next lane start
+			// when the stored turning distance is zero.
+			coords.clear();
+		}
 		double distance = 0;
+		double horizontalDistance = 0;
 		for (int i = 0; i < coords.size() - 1; i++) {
 			distance += getDistance(coords.get(i), coords.get(i+1));
+			horizontalDistance += getHorizontalDistance(coords.get(i), coords.get(i+1));
+		}
+		if (horizontalDistance <= MIN_TURN_CONTROL_POINT_SEPARATION_METERS) {
+			coords.clear();
+			distance = 0.0;
 		}
 		
 		lane1.setTurningCoords(lane2.getID(), coords);

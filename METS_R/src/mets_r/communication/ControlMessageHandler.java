@@ -80,6 +80,7 @@ public class ControlMessageHandler extends MessageHandler {
 	private static final int MAX_COMPLETED_ADVANCE_COMMANDS = 128;
 	private static final double TRACE_REPLAY_CLEARANCE_METERS = 0.01;
 	private static final double TRACE_REPLAY_DISTANCE_EPSILON = 1.0e-6;
+	private static final double TRACE_REPLAY_COINCIDENT_GEOMETRY_TOLERANCE_METERS = 0.001;
 	private static final double TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS = 1.0e-4;
 	private static final double TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS = 0.05;
 	private final Object advanceCommandLock = new Object();
@@ -1183,7 +1184,8 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 
 		double appliedDistance = collisionFree ? Math.min(candidateDistance, laneLength) : laneLength;
-		TraceReplayLanePose pose = traceReplayLanePose(lane, appliedDistance);
+		TraceReplayLanePose pose =
+				traceReplayLanePose(lane, appliedDistance, veh.getBearing());
 		double sourceDisplacement = requestedCoordinate == null
 				? Math.max(0.0, appliedDistance - boundedDistance)
 				: ContextCreator.getCityContext().getDistance(requestedCoordinate, pose.frontCoordinate);
@@ -1193,7 +1195,8 @@ public class ControlMessageHandler extends MessageHandler {
 
 	private TraceReplayConflict traceReplayConflictAt(
 			Vehicle moving, Road road, Lane lane, double candidateDistance) {
-		TraceReplayLanePose candidatePose = traceReplayLanePose(lane, candidateDistance);
+		TraceReplayLanePose candidatePose =
+				traceReplayLanePose(lane, candidateDistance, moving.getBearing());
 		Set<Vehicle> visited = new HashSet<Vehicle>();
 		double nextDistance = candidateDistance;
 		boolean conflictFound = false;
@@ -1212,7 +1215,7 @@ public class ControlMessageHandler extends MessageHandler {
 						if (existing.isOnLane() && existing.getLane() != null) {
 							try {
 								existingBearing = traceReplayLanePose(existing.getLane(),
-										existing.getDistanceToNextJunction()).bearing;
+										existing.getDistanceToNextJunction(), existingBearing).bearing;
 							} catch (IllegalArgumentException ignored) { }
 						}
 						boolean spatialOverlap = traceReplayFootprintsOverlap(candidatePose, moving.length(),
@@ -1264,7 +1267,8 @@ public class ControlMessageHandler extends MessageHandler {
 				&& secondDistance < firstDistance + firstLength - TRACE_REPLAY_DISTANCE_EPSILON;
 	}
 
-	private TraceReplayLanePose traceReplayLanePose(Lane lane, double distance) {
+	private TraceReplayLanePose traceReplayLanePose(
+			Lane lane, double distance, double fallbackBearing) {
 		ArrayList<Coordinate> coords = lane.getCoords();
 		if (coords == null || coords.size() < 2) {
 			throw new IllegalArgumentException("Lane " + lane.getID() + " has unusable geometry");
@@ -1283,7 +1287,8 @@ public class ControlMessageHandler extends MessageHandler {
 						downstream.x + fractionTowardUpstream * (upstream.x - downstream.x),
 						downstream.y + fractionTowardUpstream * (upstream.y - downstream.y),
 						downstream.z + fractionTowardUpstream * (upstream.z - downstream.z));
-				return new TraceReplayLanePose(front, traceReplayAzimuth(upstream, downstream));
+				return new TraceReplayLanePose(front,
+						traceReplayAzimuthOrFallback(upstream, downstream, fallbackBearing));
 			}
 			remaining -= segmentLength;
 		}
@@ -1291,21 +1296,31 @@ public class ControlMessageHandler extends MessageHandler {
 			if (ContextCreator.getCityContext().getDistance(coords.get(i), coords.get(i + 1))
 					> TRACE_REPLAY_DISTANCE_EPSILON) {
 				return new TraceReplayLanePose(coords.get(0),
-						traceReplayAzimuth(coords.get(i), coords.get(i + 1)));
+						traceReplayAzimuthOrFallback(
+								coords.get(i), coords.get(i + 1), fallbackBearing));
 			}
 		}
-		throw new IllegalArgumentException("Lane " + lane.getID() + " has degenerate geometry");
+		return new TraceReplayLanePose(
+				lane.getEndCoord(), finiteTraceReplayBearing(fallbackBearing));
 	}
 
-	private double traceReplayAzimuth(Coordinate from, Coordinate to) {
+	private double traceReplayAzimuthOrFallback(
+			Coordinate from, Coordinate to, double fallbackBearing) {
 		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 		calculator.setStartingGeographicPoint(from.x, from.y);
 		calculator.setDestinationGeographicPoint(to.x, to.y);
-		double azimuth = calculator.getAzimuth();
-		if (!Double.isFinite(azimuth)) {
-			throw new IllegalArgumentException("Cannot determine lane heading from degenerate geometry");
+		double horizontalDistance = calculator.getOrthodromicDistance();
+		if (!Double.isFinite(horizontalDistance)
+				|| horizontalDistance <= TRACE_REPLAY_COINCIDENT_GEOMETRY_TOLERANCE_METERS) {
+			return finiteTraceReplayBearing(fallbackBearing);
 		}
-		return azimuth;
+		double azimuth = calculator.getAzimuth();
+		return Double.isFinite(azimuth)
+				? azimuth : finiteTraceReplayBearing(fallbackBearing);
+	}
+
+	private double finiteTraceReplayBearing(double bearing) {
+		return Double.isFinite(bearing) ? bearing : 0.0;
 	}
 
 	private boolean traceReplayFootprintsOverlap(TraceReplayLanePose candidate, double candidateLength,
@@ -1425,9 +1440,7 @@ public class ControlMessageHandler extends MessageHandler {
 			downstreamDistance += segmentLen;
 		}
 
-		if (Double.isNaN(bestDistance)) {
-			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID());
-		}
+		if (Double.isNaN(bestDistance)) bestDistance = 0.0;
 		return new TraceReplayLaneProjection(
 				Math.max(0.0, Math.min(lane.getLength(), bestDistance)));
 	}
