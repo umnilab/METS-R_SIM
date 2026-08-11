@@ -306,8 +306,11 @@ public class DataCollector {
 			return;
 		}
 		try {
-			int nVehicles = road.getVehicleNum();
 			boolean changed = road.stateHasChanged();
+			// Road publishes membership by updating its count before advancing the
+			// sparse-output version. Consume that version first, then read the count,
+			// so a changed record can never pair a new version with a stale count.
+			int nVehicles = road.getVehicleNum();
 			double speed = (nVehicles > 0 || changed) ? road.calcSpeed() : 0;
 			// Every road contributes to frame-level metrics; only changed roads
 			// are stored as sparse link records.

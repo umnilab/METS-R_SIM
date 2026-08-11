@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -386,7 +387,8 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 	/**
-	 * Snapshot of every vehicle currently on a co-simulation road
+	 * Snapshot of every vehicle currently on a co-simulation road, plus vehicles
+	 * still externally controlled on a connector into a native road
 	 * (i.e. roads previously marked via the {@code setCoSimRoad} control
 	 * API). Used by the bridge to a CARLA / SUMO simulator.
 	 *
@@ -401,36 +403,74 @@ public class QueryMessageHandler extends MessageHandler {
 		
 //		List<Integer> vehicleIDList = new ArrayList<Integer>();
 //		List<Boolean> vehicleTypeList = new ArrayList<Boolean>();
-		ArrayList<Object> jsonData = new ArrayList<Object>();
+		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
+		List<Vehicle.ExternalRoadTransitionSnapshot> pendingBefore = vehicleContext == null
+				? Collections.emptyList()
+				: vehicleContext.getExternalRoadTransitionSnapshots();
+		LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot> snapshotsByVehicleID =
+				new LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot>();
 		for(Road r: ContextCreator.coSimRoads.values()) {
 			Vehicle v = r.firstVehicle();
 			while(v != null) {
 				Vehicle nextVehicle = v.macroTrailing();
-				int vid = -1;
-				boolean vtype = false;
-				if(v.getVehicleClass() == Vehicle.EV || v.getVehicleClass() == Vehicle.GV) { // private vehicle
-					vid = ContextCreator.getVehicleContext().getPrivateVID(v.getID());
-					vtype= true;
-				}
-				else { // public vehicle
-					vid = v.getID();
-					vtype = false;
-				}
-				if(vid != -1) {
-					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("ID", vid);
-					record2.put("v_type", vtype);
-					record2.put("coord_map",v.getRecentCoordMap(6, true));
-					record2.put("route", v.getRoute());
-					jsonData.add(record2);
-				}
+				mergeCoSimVehicleSnapshot(snapshotsByVehicleID,
+						v.getExternalRoadTransitionSnapshot());
 				v = nextVehicle;
 			}
+		}
+		for (Vehicle.ExternalRoadTransitionSnapshot snapshot : pendingBefore) {
+			mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
+		}
+		if (vehicleContext != null) {
+			for (Vehicle.ExternalRoadTransitionSnapshot snapshot
+					: vehicleContext.getExternalRoadTransitionSnapshots()) {
+				mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
+			}
+		}
+
+		ArrayList<Object> jsonData = new ArrayList<Object>(snapshotsByVehicleID.size());
+		for (Vehicle.ExternalRoadTransitionSnapshot snapshot : snapshotsByVehicleID.values()) {
+			appendCoSimVehicleRecord(jsonData, snapshot);
 		}
 		
 		jsonObj.put("DATA", jsonData);
 		
 		return jsonObj;
+	}
+
+	private void mergeCoSimVehicleSnapshot(
+			Map<Integer, Vehicle.ExternalRoadTransitionSnapshot> snapshotsByVehicleID,
+			Vehicle.ExternalRoadTransitionSnapshot snapshot) {
+		if (snapshot == null || snapshot.getVehicle() == null) return;
+		Vehicle.ExternalRoadTransitionSnapshot existing =
+				snapshotsByVehicleID.get(snapshot.getVehicleID());
+		if (existing == null || snapshot.isPending()) {
+			snapshotsByVehicleID.put(snapshot.getVehicleID(), snapshot);
+		}
+	}
+
+	private void appendCoSimVehicleRecord(ArrayList<Object> jsonData,
+			Vehicle.ExternalRoadTransitionSnapshot transitionSnapshot) {
+		Vehicle vehicle = transitionSnapshot == null ? null : transitionSnapshot.getVehicle();
+		if (vehicle == null) return;
+		int bridgeVehicleID;
+		boolean privateVehicle;
+		if (vehicle.getVehicleClass() == Vehicle.EV || vehicle.getVehicleClass() == Vehicle.GV) {
+			bridgeVehicleID = ContextCreator.getVehicleContext().getPrivateVID(vehicle.getID());
+			privateVehicle = true;
+		} else {
+			bridgeVehicleID = vehicle.getID();
+			privateVehicle = false;
+		}
+		if (bridgeVehicleID == -1) return;
+
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", bridgeVehicleID);
+		record.put("v_type", privateVehicle);
+		record.put("coord_map", vehicle.getRecentCoordMap(6, true));
+		record.put("route", vehicle.getRoute());
+		addExternalTransitionFields(record, transitionSnapshot);
+		jsonData.add(record);
 	}
 	
 	/**
@@ -592,6 +632,7 @@ public class QueryMessageHandler extends MessageHandler {
 
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
+		addExternalTransitionFields(record, vehicle);
 		Road currentRoad = vehicle.isOnRoad() ? vehicle.getRoad() : null;
 		Road queuedRoad = vehicle.isOnRoad() ? null : findEnteringQueueRoad(vehicle);
 		int originRoadID = firstAvailableRoadID(vehicle.getOriginRoad(), vehicle.getLastDeparturableRoad(),
@@ -611,6 +652,30 @@ public class QueryMessageHandler extends MessageHandler {
 			record.put("queuedRoadID", queuedRoad.getOrigID());
 			record.put("queuedRoadControlType", queuedRoad.getControlType());
 			record.put("queuedRoadActive", ContextCreator.getRoadContext().isRoadActive(queuedRoad.getID()));
+		}
+	}
+
+	private void addExternalTransitionFields(Map<String, Object> record, Vehicle vehicle) {
+		Vehicle.ExternalRoadTransitionSnapshot snapshot = vehicle == null
+				? null : vehicle.getExternalRoadTransitionSnapshot();
+		addExternalTransitionFields(record, snapshot);
+	}
+
+	private void addExternalTransitionFields(Map<String, Object> record,
+			Vehicle.ExternalRoadTransitionSnapshot snapshot) {
+		boolean pending = snapshot != null && snapshot.isPending();
+		record.put("transitionPending", pending);
+		if (!pending) return;
+
+		Road targetRoad = snapshot.getTargetRoad();
+		Lane targetLane = snapshot.getTargetLane();
+		if (targetRoad != null) {
+			record.put("transitionTargetRoadID", targetRoad.getOrigID());
+		}
+		if (targetLane != null) {
+			int laneIndex = targetRoad == null ? -1 : targetRoad.getLaneIndex(targetLane);
+			if (laneIndex >= 0) record.put("transitionTargetLaneID", laneIndex);
+			record.put("transitionTargetInternalLaneID", targetLane.getID());
 		}
 	}
 

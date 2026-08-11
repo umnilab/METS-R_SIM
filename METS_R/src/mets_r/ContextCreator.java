@@ -305,12 +305,16 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	// Schedule simulation events
 	public static void scheduleEvents() {
+		scheduleEvents(0);
+	}
+
+	private static void scheduleEvents(int backgroundSpeedRefreshDelay) {
 		if (GlobalVariables.SYNCHRONIZED) {
 			scheduleNextStepUpdating();
 		}
 		schedulePrivateTripLoader();
 		scheduleRoadNetworkRefresh();
-		scheduleFreeFlowSpeedRefresh();
+		scheduleFreeFlowSpeedRefresh(backgroundSpeedRefreshDelay);
 		scheduleNetworkEventHandling(); // For temporarily alter the link speed
 		
 		// Set up data collection
@@ -370,10 +374,20 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// For each link (per update), background speed serves as the target speed of vehicles, 
 	// which follows a normal distribution.
 	public static void scheduleFreeFlowSpeedRefresh() {
+		scheduleFreeFlowSpeedRefresh(0);
+	}
+
+	private static void scheduleFreeFlowSpeedRefresh(int delay) {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick,
+		ScheduleParameters speedProfileParams = ScheduleParameters.createRepeating(initTick + delay,
 				GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL, 4);
 		scheduledActions.add(schedule.schedule(speedProfileParams, scheduleOwner, "refreshFreeFlowSpeeds"));
+	}
+
+	private static int backgroundSpeedRefreshDelayForSavedTick(int savedTick) {
+		int interval = Math.max(1, GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL);
+		int phase = Math.floorMod(Math.max(0, savedTick), interval);
+		return phase == 0 ? 0 : interval - phase;
 	}
 
 	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
@@ -1087,7 +1101,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			}
 		}
 
-		scheduleEvents();
+		scheduleEvents(backgroundSpeedRefreshDelayForSavedTick(savedTick));
 		initTick = currentRepastTick - savedTick;
 
 		logger.info("FAST LOAD OK: restored saved tick " + savedTick
@@ -1179,7 +1193,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		
 		// Reschedule events (initTick == currentRepastTick, so events start now)
-		scheduleEvents();
+		scheduleEvents(backgroundSpeedRefreshDelayForSavedTick(savedTick));
 		
 		// Now set the correct offset so getCurrentTick() returns the saved logical tick
 		initTick = currentRepastTick - savedTick;

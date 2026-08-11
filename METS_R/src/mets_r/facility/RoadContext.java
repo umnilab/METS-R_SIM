@@ -160,6 +160,28 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
+	public boolean hasEnteringVehicleRegistration(Vehicle vehicle) {
+		if (vehicle == null) return false;
+		ConcurrentHashMap<Integer, Boolean> roadIDs =
+				this.enteringVehicleRoadIDs.get(vehicle.getID());
+		return roadIDs != null && !roadIDs.isEmpty();
+	}
+
+	public boolean isEnteringVehicleRegistered(Road road, Vehicle vehicle) {
+		if (road == null || vehicle == null) return false;
+		ConcurrentHashMap<Integer, Boolean> roadIDs =
+				this.enteringVehicleRoadIDs.get(vehicle.getID());
+		return roadIDs != null && roadIDs.containsKey(road.getID());
+	}
+
+	public boolean isOnlyEnteringVehicleRegistered(Road road, Vehicle vehicle) {
+		if (road == null || vehicle == null) return false;
+		ConcurrentHashMap<Integer, Boolean> roadIDs =
+				this.enteringVehicleRoadIDs.get(vehicle.getID());
+		return roadIDs != null && roadIDs.size() == 1
+				&& roadIDs.containsKey(road.getID());
+	}
+
 	public void removeVehicleFromEnteringQueues(Vehicle vehicle) {
 		if (vehicle == null) return;
 		ConcurrentHashMap<Integer, Boolean> roadIDMap = this.enteringVehicleRoadIDs.get(vehicle.getID());

@@ -117,9 +117,6 @@ public class Lane {
 				i += 1;
 			}
 		}
-		else {
-			ContextCreator.logger.warn("Lane with ID" + targetLaneID + " asking for turning coords is not connected with lane with oriID " + this.getOrigID());
-		}
 		return res;
 	}
 	

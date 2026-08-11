@@ -100,6 +100,7 @@ public class MessageClass{
 	    double y;
 	    double z = 0.0;
 	    double speed;
+	    String observedRoadID;
 
 	    // Constructor
 	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
@@ -112,6 +113,13 @@ public class MessageClass{
 	        this.y = y;
 	        this.z = z;
 	        this.speed = speed;
+	    }
+
+	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord,
+	                                         double bearing, double x, double y, double z, double speed,
+	                                         String observedRoadID) {
+	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed);
+	        this.observedRoadID = observedRoadID;
 	    }
 	}
 	

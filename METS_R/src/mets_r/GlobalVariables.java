@@ -64,6 +64,12 @@ public class GlobalVariables {
 		String value = loadConfig(property);
 		return value == null ? defaultValue : Boolean.valueOf(value);
 	}
+
+	private static int loadIntConfig(String property, int defaultValue) {
+		String value = loadConfig(property);
+		return value == null || value.trim().isEmpty()
+				? defaultValue : Integer.valueOf(value.trim());
+	}
 	
 	// Whether the simulation is ran in the synchronized mode
 	public static boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
@@ -129,6 +135,31 @@ public class GlobalVariables {
 	// Background traffic
 	public static String BT_EVENT_FILE = loadConfig("BT_EVENT_FILE");
 	public static String BT_STD_FILE = loadConfig("BT_STD_FILE");
+	// Zero-based hourly column used at logical simulation tick 0.
+	public static int BT_START_HOUR = loadIntConfig("BT_START_HOUR", 0);
+
+	/**
+	 * Re-read only the background-traffic settings from Data.properties.
+	 *
+	 * Snapshot loading replaces Data.properties after this class has already been
+	 * initialized, so clearing the Properties cache alone does not update these
+	 * static fields. Keeping this reload targeted avoids unexpectedly changing
+	 * unrelated runtime configuration during a fast restore.
+	 */
+	public static void reloadBackgroundTrafficConfig() {
+		BT_EVENT_FILE = loadConfig("BT_EVENT_FILE");
+		BT_STD_FILE = loadConfig("BT_STD_FILE");
+		BT_START_HOUR = loadIntConfig("BT_START_HOUR", 0);
+	}
+
+	public static void restoreBackgroundTrafficConfig(String eventFile, String stdFile, int startHour) {
+		if (startHour < 0) {
+			throw new IllegalArgumentException("BT_START_HOUR must be non-negative: " + startHour);
+		}
+		BT_EVENT_FILE = eventFile;
+		BT_STD_FILE = stdFile;
+		BT_START_HOUR = startHour;
+	}
 
 	// Travel demand
 	public static String EV_DEMAND_FILE = loadConfig("EV_DEMAND_FILE");

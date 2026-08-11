@@ -3,14 +3,20 @@ package mets_r.facility;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.*;
+import mets_r.data.input.BackgroundTraffic;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
@@ -65,6 +71,9 @@ public class Road {
 	// For vehicle movement
 	private int lastUpdateHour; // To find the current hour of the simulation
 	private AtomicInteger nVehicles_; // Number of vehicles currently in the road
+	/* Incremented on every macro-list membership change for sparse link output. */
+	private AtomicInteger vehicleCountStateVersion;
+	private int previousVehicleCountStateVersion;
 	private volatile int parking_capacity; // Maximum number of parked vehicles this road provides
 	private boolean parkingCapacityExplicitlySet;
 	private AtomicInteger parked_num; // Number of vehicles currently parked on this road
@@ -74,6 +83,11 @@ public class Road {
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
 	private Vehicle firstVehicle_;
 	private Vehicle prevFirstVehicle; // For parallel computing
+	/* One externally controlled connector may reserve each target lane. */
+	private ConcurrentHashMap<Integer, Vehicle> externalLaneReservations;
+	private volatile boolean nativeReleaseInProgress;
+	private int activeExternalLaneAdmissions;
+	private int activeExternalLaneCommits;
 	private double travelTime;
 	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
@@ -107,6 +121,8 @@ public class Road {
 		this.origID = Integer.toString(id);
 		this.lanes = new ArrayList<Lane>();
 		this.nVehicles_ = new AtomicInteger(0);
+		this.vehicleCountStateVersion = new AtomicInteger(0);
+		this.previousVehicleCountStateVersion = 0;
 		this.parking_capacity = 0;
 		this.parkingCapacityExplicitlySet = false;
 		this.parked_num = new AtomicInteger(0);
@@ -117,6 +133,10 @@ public class Road {
 		this.downStreamRoads = new ArrayList<Integer>();
 		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
+		this.externalLaneReservations = new ConcurrentHashMap<Integer, Vehicle>();
+		this.nativeReleaseInProgress = false;
+		this.activeExternalLaneAdmissions = 0;
+		this.activeExternalLaneCommits = 0;
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeSum = 0.0;
@@ -221,30 +241,51 @@ public class Road {
 
 		/* Vehicle departure */
 		if (this.getControlType() != Road.COSIM) {
-			while (!this.departureVehMap.isEmpty()) {
-			    Vehicle v = this.departureVehicleQueueHead();
-			    if (v == null) break;
-			    try {
-			    	int departTime = v.getDepTime();
-				    if (tickcount >= departTime) {
-				        boolean busTrip = (v.getVehicleClass() == Vehicle.EBUS);
-				        if ((busTrip && (v.getOriginID() == v.getDestID()))) {
-				            this.removeVehicleFromNewQueue(departTime, v);
-				            v.reachDest();
-				        } else if(v.enterNetwork(this)) {
-				        	this.removeVehicleFromNewQueue(departTime, v);
-				        }
-				        else {
-				            break; // Network is full, stop processing departures
-				        }
-				    } else {
-				        break; // Reached vehicles scheduled for future ticks
-				    }
-			    } catch (Throwable ex) {
-				    ContextCreator.logger.error("Road.stepPart1 departure failed road=" + this.ID
-						    + " vehicle=" + v.getID(), ex);
-				    break;
-			    }
+			while (true) {
+				Vehicle v = this.departureVehicleQueueHead();
+				if (v == null) break;
+				try {
+					// Queue ownership transfer and admission use the same vehicle
+					// monitor, so two road workers cannot admit or requeue it between
+					// the ownership check and queue cleanup.
+					synchronized (v) {
+						int departTime = v.getDepTime();
+						RoadContext roadContext = ContextCreator.getRoadContext();
+						boolean registeredAnywhere =
+								roadContext.hasEnteringVehicleRegistration(v);
+						if (v.isOnRoad() || (registeredAnywhere
+								&& !roadContext.isEnteringVehicleRegistered(this, v))) {
+							// This entry lost queue ownership or survived an earlier
+							// successful admission. Purge it without touching road counts.
+							this.removeVehicleFromEnteringQueue(v);
+							continue;
+						}
+						if (tickcount >= departTime) {
+							boolean busTrip = (v.getVehicleClass() == Vehicle.EBUS);
+							if (busTrip && v.getOriginID() == v.getDestID()) {
+								roadContext.removeVehicleFromEnteringQueues(v);
+								v.reachDest();
+							} else if (v.enterNetwork(this)) {
+								this.removeVehicleFromNewQueue(departTime, v);
+							} else {
+								boolean stillRegisteredAnywhere =
+										roadContext.hasEnteringVehicleRegistration(v);
+								if (v.isOnRoad() || (stillRegisteredAnywhere
+										&& !roadContext.isEnteringVehicleRegistered(this, v))) {
+									this.removeVehicleFromEnteringQueue(v);
+									continue;
+								}
+								break; // Network is full, stop processing departures
+							}
+						} else {
+							break; // Reached vehicles scheduled for future ticks
+						}
+					}
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("Road.stepPart1 departure failed road=" + this.ID
+							+ " vehicle=" + v.getID(), ex);
+					break;
+				}
 			}
 		}
 
@@ -266,7 +307,7 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad()) {
+				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -292,7 +333,7 @@ public class Road {
 
 			// 2. Iterate through the buffered list to safely apply macro list repairs
 			for (Vehicle v : vehicleBuffer) {
-				if (v.isDormantOnRoad()) {
+				if (v.isDormantOnRoad() || v.isExternalRoadTransition()) {
 					continue;
 				}
 				try {
@@ -310,7 +351,7 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad()) {
+				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -337,7 +378,7 @@ public class Road {
 			// happened during time t to t + 1, conducting vehicle movements
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad()) {
+				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -524,7 +565,13 @@ public class Road {
 	}
 
 	public void changeNumberOfVehicles(int nVeh) {
-		if (this.nVehicles_.addAndGet(nVeh) < 0) {
+		int vehicleCount = this.nVehicles_.addAndGet(nVeh);
+		if (nVeh != 0) {
+			// A version counter cannot lose a membership update if it races with
+			// stateHasChanged(), unlike a boolean dirty flag which may be cleared.
+			this.vehicleCountStateVersion.incrementAndGet();
+		}
+		if (vehicleCount < 0) {
 			ContextCreator.logger.error("Something went wrong, the vehicle number becomes negative!");
 		}
 	}
@@ -555,6 +602,91 @@ public class Road {
 
 	public Vehicle lastVehicle() {
 		return lastVehicle_;
+	}
+
+	/**
+	 * Return the vehicle that currently reserves a lane entrance while it is on
+	 * an externally controlled connector.
+	 */
+	public synchronized Vehicle getExternalLaneReservationBlocker(Lane lane, Vehicle requester) {
+		if (lane == null || lane.getRoad() != this) return null;
+		Vehicle existing = this.externalLaneReservations.get(lane.getID());
+		return existing == requester ? null : existing;
+	}
+
+	/**
+	 * Atomically reserve a target lane for a regular-road -> CoSim connector.
+	 * The reservation prevents a second handoff from passing the lane-level gap
+	 * check before the first external vehicle has reached and joined the lane.
+	 */
+	public synchronized boolean tryReserveExternalLane(Lane lane, Vehicle vehicle) {
+		if (lane == null || vehicle == null || lane.getRoad() != this) return false;
+		Vehicle current = this.externalLaneReservations.get(lane.getID());
+		if (current == vehicle) return true;
+		if (this.nativeReleaseInProgress) return false;
+		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
+		return existing == null || existing == vehicle;
+	}
+
+	/**
+	 * Atomically reserve a target lane and hold release control until the pending
+	 * vehicle is fully attached and published in the transition registry.
+	 */
+	public synchronized boolean beginExternalLaneAdmission(Lane lane, Vehicle vehicle) {
+		if (this.nativeReleaseInProgress || lane == null || vehicle == null || lane.getRoad() != this) {
+			return false;
+		}
+		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
+		if (existing != null && existing != vehicle) return false;
+		this.activeExternalLaneAdmissions++;
+		return true;
+	}
+
+	/** Finish an admission lease, optionally retaining its lane reservation. */
+	public synchronized void endExternalLaneAdmission(Lane lane, Vehicle vehicle,
+			boolean retainReservation) {
+		if (this.activeExternalLaneAdmissions > 0) this.activeExternalLaneAdmissions--;
+		if (!retainReservation && lane != null && vehicle != null && lane.getRoad() == this) {
+			this.externalLaneReservations.remove(lane.getID(), vehicle);
+		}
+	}
+
+	/** Reserve an alternate only for a vehicle already owned by this release. */
+	public synchronized boolean tryReserveExternalLaneForNativeRelease(Lane lane, Vehicle vehicle) {
+		if (!this.nativeReleaseInProgress || lane == null || vehicle == null || lane.getRoad() != this
+				|| !this.externalLaneReservations.containsValue(vehicle)) return false;
+		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
+		return existing == null || existing == vehicle;
+	}
+
+	/** Release a connector reservation only when it is owned by this vehicle. */
+	public synchronized void releaseExternalLaneReservation(Lane lane, Vehicle vehicle) {
+		if (lane == null || vehicle == null || lane.getRoad() != this) return;
+		this.externalLaneReservations.remove(lane.getID(), vehicle);
+	}
+
+	public synchronized boolean hasExternalLaneReservation(Lane lane, Vehicle vehicle) {
+		return lane != null && vehicle != null && lane.getRoad() == this
+				&& this.externalLaneReservations.get(lane.getID()) == vehicle;
+	}
+
+	public synchronized int getExternalLaneReservationCount() {
+		return this.externalLaneReservations.size();
+	}
+
+	public boolean isNativeReleaseInProgress() {
+		return this.nativeReleaseInProgress;
+	}
+
+	public synchronized boolean beginExternalLaneCommit(Lane lane, Vehicle vehicle) {
+		if (this.nativeReleaseInProgress || lane == null || vehicle == null
+				|| this.externalLaneReservations.get(lane.getID()) != vehicle) return false;
+		this.activeExternalLaneCommits++;
+		return true;
+	}
+
+	public synchronized void endExternalLaneCommit() {
+		if (this.activeExternalLaneCommits > 0) this.activeExternalLaneCommits--;
 	}
 
 	/* Number of vehicles on the road */
@@ -674,8 +806,18 @@ public class Road {
 			double restoredCurrentEnergy, double restoredTotalEnergy, int restoredCurrentFlow,
 			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType,
 			int restoredParkingCapacity, int restoredParkedNum) {
+		restoreRuntimeState(restoredTravelTime, restoredSpeedLimit, restoredCurrentEnergy,
+				restoredTotalEnergy, restoredCurrentFlow, restoredTotalFlow, restoredPrevFlow,
+				restoredControlType, restoredParkingCapacity, restoredParkedNum, -1);
+	}
+
+	public void restoreRuntimeState(double restoredTravelTime, double restoredSpeedLimit,
+			double restoredCurrentEnergy, double restoredTotalEnergy, int restoredCurrentFlow,
+			int restoredTotalFlow, int restoredPrevFlow, int restoredControlType,
+			int restoredParkingCapacity, int restoredParkedNum,
+			int restoredBackgroundSpeedHour) {
 		unregisterEnteringQueueMemberships();
-		this.lastUpdateHour = -1;
+		this.lastUpdateHour = restoredBackgroundSpeedHour;
 		this.nVehicles_.set(0);
 		this.firstVehicle_ = null;
 		this.lastVehicle_ = null;
@@ -771,42 +913,63 @@ public class Road {
 	// This add vehicle to the thread-safe pending list
 	public void addVehicleToPendingQueue(Vehicle v) {
 		if (v != null) {
-			this.toAddDepartureVeh.add(v);
-			ContextCreator.getRoadContext().registerEnteringVehicle(this, v);
-			ContextCreator.getRoadContext().markRoadActive(this);
+			synchronized (v) {
+				RoadContext roadContext = ContextCreator.getRoadContext();
+				if (v.isOnRoad()) {
+					// An active vehicle can never own an entering-queue slot.
+					roadContext.removeVehicleFromEnteringQueues(v);
+					this.removeVehicleFromEnteringQueue(v);
+					return;
+				}
+				if (this.hasOneCurrentEnteringQueueOccurrence(v)
+						&& roadContext.isOnlyEnteringVehicleRegistered(this, v)) {
+					// Repeated departure/recovery requests for the same road are
+					// idempotent and must not move the vehicle to the back of the queue.
+					roadContext.markRoadActive(this);
+					return;
+				}
+				// Queue ownership is unique per vehicle. Remove the prior indexed
+				// owner (or a duplicate on this road) before publishing the new one.
+				if (roadContext.hasEnteringVehicleRegistration(v)) {
+					roadContext.removeVehicleFromEnteringQueues(v);
+				} else {
+					this.removeVehicleFromEnteringQueue(v);
+				}
+				// A concurrent admission may have won before this enqueue acquired
+				// the vehicle monitor. Do not create a stale entry for an on-road
+				// vehicle.
+				if (v.isOnRoad()) return;
+				this.toAddDepartureVeh.add(v);
+				roadContext.registerEnteringVehicle(this, v);
+				roadContext.markRoadActive(this);
+			}
 		}
 	}
 
-	/*
-	 * RemoveVehicleFromNewQueue, will remove vehicle v from the TreeMap by looking
-	 * at the departuretime_ of the vehicle if there are more than one vehicle with
-	 * the same departuretime_, it will remove the vehicle match with id of v.
-	 */
+	/** Remove all local pending entries for this vehicle. */
 	public synchronized void removeVehicleFromNewQueue(int departureTime, Vehicle v) {
-		if (v == null) return;
-		ArrayList<Vehicle> temporalList = this.departureVehMap.get(departureTime);
-		if (temporalList == null) return;
-		boolean removed = temporalList.remove(v);
-		if (temporalList.isEmpty()) {
-			this.departureVehMap.remove(departureTime);
-		}
-		if (removed && !containsVehicleInEnteringQueue(v)) {
-			ContextCreator.getRoadContext().unregisterEnteringVehicle(this, v);
-		}
+		// Departure time can change after an entry was queued. Remove every local
+		// occurrence instead of trusting a possibly stale TreeMap key.
+		this.removeVehicleFromEnteringQueue(v);
 	}
 
 	public synchronized boolean removeVehicleFromEnteringQueue(Vehicle v) {
 		if (v == null) return false;
 		boolean removed = false;
-		while (this.toAddDepartureVeh.remove(v)) {
-			removed = true;
-			// Remove all stale pending entries for this vehicle.
+		for (Vehicle queued : new ArrayList<Vehicle>(this.toAddDepartureVeh)) {
+			if (!sameEnteringVehicle(queued, v)) continue;
+			while (this.toAddDepartureVeh.remove(queued)) {
+				removed = true;
+			}
 		}
 		ArrayList<Integer> emptyDepartureTimes = new ArrayList<Integer>();
 		for (Map.Entry<Integer, ArrayList<Vehicle>> entry : this.departureVehMap.entrySet()) {
-			while (entry.getValue().remove(v)) {
-				removed = true;
-				// Remove all stale scheduled entries for this vehicle.
+			Iterator<Vehicle> iterator = entry.getValue().iterator();
+			while (iterator.hasNext()) {
+				if (sameEnteringVehicle(iterator.next(), v)) {
+					iterator.remove();
+					removed = true;
+				}
 			}
 			if (entry.getValue().isEmpty()) {
 				emptyDepartureTimes.add(entry.getKey());
@@ -821,13 +984,51 @@ public class Road {
 		return removed;
 	}
 
-	private boolean containsVehicleInEnteringQueue(Vehicle v) {
-		if (v == null) return false;
-		if (this.toAddDepartureVeh.contains(v)) return true;
-		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
-			if (queue != null && queue.contains(v)) return true;
+	private synchronized int enteringQueueOccurrenceCount(Vehicle v) {
+		if (v == null) return 0;
+		int occurrences = 0;
+		for (Vehicle queued : this.toAddDepartureVeh) {
+			if (sameEnteringVehicle(queued, v)) occurrences++;
 		}
-		return false;
+		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
+			if (queue == null) continue;
+			for (Vehicle queued : queue) {
+				if (sameEnteringVehicle(queued, v)) occurrences++;
+			}
+		}
+		return occurrences;
+	}
+
+	private synchronized boolean hasOneCurrentEnteringQueueOccurrence(Vehicle v) {
+		if (v == null) return false;
+		int occurrences = 0;
+		boolean currentPlacement = false;
+		for (Vehicle queued : this.toAddDepartureVeh) {
+			if (sameEnteringVehicle(queued, v)) {
+				occurrences++;
+				// Pending entries are keyed from the latest departure time when
+				// addVehicleToDepartureMap() promotes them.
+				currentPlacement = true;
+			}
+		}
+		for (Map.Entry<Integer, ArrayList<Vehicle>> entry : this.departureVehMap.entrySet()) {
+			for (Vehicle queued : entry.getValue()) {
+				if (sameEnteringVehicle(queued, v)) {
+					occurrences++;
+					currentPlacement = entry.getKey().intValue() == v.getDepTime();
+				}
+			}
+		}
+		return occurrences == 1 && currentPlacement;
+	}
+
+	private synchronized boolean containsVehicleInEnteringQueue(Vehicle v) {
+		return enteringQueueOccurrenceCount(v) > 0;
+	}
+
+	private static boolean sameEnteringVehicle(Vehicle first, Vehicle second) {
+		return first == second || (first != null && second != null
+				&& first.getID() == second.getID());
 	}
 
 	private void unregisterEnteringQueueMemberships() {
@@ -849,26 +1050,38 @@ public class Road {
 	}
 
 	public synchronized List<Vehicle> getEnteringVehicleQueueSnapshot() {
-		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+		LinkedHashMap<Integer, Vehicle> uniqueVehicles = new LinkedHashMap<Integer, Vehicle>();
 		for (ArrayList<Vehicle> queue : this.departureVehMap.values()) {
-			vehicles.addAll(queue);
+			for (Vehicle vehicle : queue) {
+				if (vehicle != null && !vehicle.isOnRoad()
+						&& !uniqueVehicles.containsKey(vehicle.getID())) {
+					uniqueVehicles.put(vehicle.getID(), vehicle);
+				}
+			}
 		}
 		ArrayList<Vehicle> pending = new ArrayList<Vehicle>(this.toAddDepartureVeh);
 		pending.sort((a, b) -> {
 			int departCompare = Integer.compare(a.getDepTime(), b.getDepTime());
 			return departCompare != 0 ? departCompare : Integer.compare(a.getID(), b.getID());
 		});
-		vehicles.addAll(pending);
-		return vehicles;
+		for (Vehicle vehicle : pending) {
+			if (vehicle != null && !vehicle.isOnRoad()
+					&& !uniqueVehicles.containsKey(vehicle.getID())) {
+				uniqueVehicles.put(vehicle.getID(), vehicle);
+			}
+		}
+		return new ArrayList<Vehicle>(uniqueVehicles.values());
 	}
 
 	public synchronized void restoreEnteringVehicleQueue(List<Vehicle> vehicles) {
 		unregisterEnteringQueueMemberships();
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
+		this.externalLaneReservations.clear();
 		if (vehicles == null) return;
+		Set<Integer> restoredVehicleIDs = new HashSet<Integer>();
 		for (Vehicle v : vehicles) {
-			if (v == null || v.isOnRoad()) continue;
+			if (v == null || v.isOnRoad() || !restoredVehicleIDs.add(v.getID())) continue;
 			int departureTime = v.getDepTime();
 			ArrayList<Vehicle> queue = this.departureVehMap.get(departureTime);
 			if (queue == null) {
@@ -889,7 +1102,7 @@ public class Road {
 	 * 
 	 * @author Zhan & Hemant
 	 */
-	public boolean updateTravelTimeEstimation() {
+	public synchronized boolean updateTravelTimeEstimation() {
 		// for output travel times
 		double newTravelTime;
 		if(travelTimeCount > 0) {
@@ -924,14 +1137,17 @@ public class Road {
 	public synchronized boolean stateHasChanged() {
 		int currentParkingCapacity = this.parking_capacity;
 		int currentParkedNum = this.parked_num.get();
+		int currentVehicleCountStateVersion = this.vehicleCountStateVersion.get();
 		if(this.prevFlow == this.totalFlow && this.prevParkingCapacity == currentParkingCapacity
-				&& this.prevParkedNum == currentParkedNum && !this.parkingStateDirty) {
+				&& this.prevParkedNum == currentParkedNum && !this.parkingStateDirty
+				&& this.previousVehicleCountStateVersion == currentVehicleCountStateVersion) {
 			return false;
 		}
 		else {
 			this.prevFlow = this.totalFlow;
 			this.prevParkingCapacity = currentParkingCapacity;
 			this.prevParkedNum = currentParkedNum;
+			this.previousVehicleCountStateVersion = currentVehicleCountStateVersion;
 			this.parkingStateDirty = false;
 			return true;
 		}
@@ -997,11 +1213,12 @@ public class Road {
 	 * true, just pass to cached speed limit, otherwise, update link free flow speed
 	 */
 	public void updateFreeFlowSpeed() {
-		// Get current tick
-		int hour = ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL;
-		// each hour set events
-		if (this.lastUpdateHour < hour) {
-			double new_speed = ContextCreator.background_traffic.getBackgroundTraffic(this.origID, hour);
+		BackgroundTraffic.BackgroundSpeedSample speedSample = ContextCreator.background_traffic
+				.getBackgroundTrafficForSimulationTick(this.origID, ContextCreator.getCurrentTick());
+		int profileHour = speedSample.getProfileHour();
+		// != also permits a restored or explicitly changed profile clock to move backward.
+		if (this.lastUpdateHour != profileHour) {
+			double new_speed = speedSample.getSpeed();
 			for(Lane lane: this.getLanes()) {
 				if(new_speed > 0) lane.setSpeed(new_speed * 0.44694);
 			}
@@ -1012,7 +1229,11 @@ public class Road {
 				this.speedLimit_ =  this.cachedSpeedLimit_;
 			}
 		}
-		this.lastUpdateHour = hour;
+		this.lastUpdateHour = profileHour;
+	}
+
+	public int getLastBackgroundSpeedHour() {
+		return this.lastUpdateHour;
 	}
 
 	/* Modify the free flow speed based on the events */
@@ -1020,7 +1241,7 @@ public class Road {
 		this.speedLimit_ = newFFSpd * 0.44694; // Convert from mph to m/s
 	}
 
-	public void recordEnergyConsumption(Vehicle v) {
+	public synchronized void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
 		this.currentFlow += 1;
 		if (v.getVehicleClass() == Vehicle.EV) { // Private
@@ -1076,13 +1297,13 @@ public class Road {
 		return totalFlow;
 	}
 	
-	public double getAndResetCurrentEnergy() {
+	public synchronized double getAndResetCurrentEnergy() {
 		double res = this.currentEnergy;
 		this.currentEnergy = 0;
 		return res;
 	}
 
-	public int getAndResetCurrentFlow() {
+	public synchronized int getAndResetCurrentFlow() {
 		int res = this.currentFlow;
 		this.currentFlow = 0;
 		return res;
@@ -1126,145 +1347,261 @@ public class Road {
 	}
 	
 	public void setControlType(int controlType) {
-		// If from cosim to others and there is vehicles on road, recompute the distance and recreated the vehicle linkedlist
-		if (this.controlType == Road.COSIM && this.getVehicleNum() > 0) {
-			// Collect all vehicles on the road by traversing the macro linked list
-			ArrayList<Vehicle> vehicles = new ArrayList<>();
-			Vehicle curVeh = this.firstVehicle();
-			while (curVeh != null) {
-				vehicles.add(curVeh);
-				curVeh = curVeh.macroTrailing();
+		boolean releasingCoSimControl;
+		synchronized (this) {
+			releasingCoSimControl = this.controlType == Road.COSIM && controlType != Road.COSIM;
+			if (!releasingCoSimControl) {
+				this.controlType = controlType;
+				return;
 			}
-
-			int n = vehicles.size();
-			if (n == 0) return;
-
-			// Remove all vehicles from their current lanes
-			for (Vehicle veh : vehicles) {
-				veh.removeFromCurrentLane();
-			}
-
-			// For each vehicle on the road, compute the closest distance to each lane
-			// Assign the vehicle to the lane with the closest distance
-			// Compute the distance variable (distance to the road end point) for each vehicle
-			Lane[] assignedLanes = new Lane[n];
-			double[] assignedDistances = new double[n];
-
-			for (int v = 0; v < n; v++) {
-				Vehicle veh = vehicles.get(v);
-				Coordinate currCoord = veh.getCurrentCoord();
-
-				Lane closestLane = null;
-				double minPerpDist = Double.MAX_VALUE;
-				double bestDistance = 0;
-
-				for (Lane lane : this.lanes) {
-					ArrayList<Coordinate> coords = lane.getCoords();
-					double distFromEnd = 0;  
-					boolean found = false;
-
-					// Iterate from downstream end to upstream, same as changeLane
-					for (int i = coords.size() - 1; i > 0; i--) {
-						Coordinate a = coords.get(i);     // more downstream
-						Coordinate b = coords.get(i - 1); // more upstream
-
-						double dx = b.x - a.x;
-						double dy = b.y - a.y;
-						double lenSq = dx * dx + dy * dy;
-
-						if (lenSq > 0) {
-							double apx = currCoord.x - a.x;
-							double apy = currCoord.y - a.y;
-							double param = (apx * dx + apy * dy) / lenSq;
-
-							if (param >= 0.0 && param <= 1.0) {
-								// Projection falls on this segment, compute perpendicular distance
-								double projX = a.x + param * dx;
-								double projY = a.y + param * dy;
-								Coordinate projCoord = new Coordinate(projX, projY);
-								double perpDist = ContextCreator.getCityContext().getDistance(currCoord, projCoord);
-
-								if (perpDist < minPerpDist) {
-									minPerpDist = perpDist;
-									closestLane = lane;
-									// Distance to road end = accumulated distance from downstream + partial segment
-									double segLen = ContextCreator.getCityContext().getDistance(a, b);
-									bestDistance = distFromEnd + segLen * param;
-								}
-								found = true;
-								break;
-							}
-						}
-
-						double segLen = ContextCreator.getCityContext().getDistance(a, b);
-						distFromEnd += segLen;
-					}
-
-					// If no projection found on this lane, use nearest endpoint
-					if (!found) {
-						double distToStart = ContextCreator.getCityContext().getDistance(currCoord, coords.get(0));
-						double distToEnd = ContextCreator.getCityContext().getDistance(currCoord, coords.get(coords.size() - 1));
-						if (distToEnd < minPerpDist) {
-							minPerpDist = distToEnd;
-							closestLane = lane;
-							bestDistance = 0; // Near downstream end
-						}
-						if (distToStart < minPerpDist) {
-							minPerpDist = distToStart;
-							closestLane = lane;
-							bestDistance = lane.getLength(); // Near upstream end
-						}
-					}
-				}
-
-				assignedLanes[v] = closestLane;
-				assignedDistances[v] = Math.max(0, Math.min(bestDistance, closestLane.getLength()));
-			}
-
-			// Update the CoordMap of each vehicle by teleporting to the assigned lane
-			// (this also rebuilds lane-level linked lists: leading/trailing, firstVehicle/lastVehicle)
-			for (int v = 0; v < n; v++) {
-				Vehicle veh = vehicles.get(v);
-				Coordinate currCoord = veh.getCurrentCoord();
-				veh.teleportToLane(assignedLanes[v], assignedDistances[v]);
-				if(veh.getDistanceToNextJunction() > 0) {
-					// concatenate the currCoord to the first point in the CoordMap, then update the distance
-					veh.extendCoordMap(currCoord);
-				}
-				assignedDistances[v] = veh.getDistanceToNextJunction();
-			}
-
-			// Sort the vehicles by the distance variable (distFraction, descending)
-			// firstVehicle has the highest distFraction (closest to upstream end)
-			Integer[] sortedIndices = new Integer[n];
-			for (int i = 0; i < n; i++) sortedIndices[i] = i;
-			Arrays.sort(sortedIndices, (idx1, idx2) -> {
-				double fracA = assignedDistances[idx1] / assignedLanes[idx1].getLength();
-				double fracB = assignedDistances[idx2] / assignedLanes[idx2].getLength();
-				return Double.compare(fracB, fracA); // Descending order
-			});
-
-			// Update the first vehicle and last vehicle of the road
-			// Recreate the vehicle macro linked list, starting from the first vehicle
-			Vehicle first = vehicles.get(sortedIndices[0]);
-			this.firstVehicle(first);
-			Vehicle prev = first;
-			for (int i = 1; i < n; i++) {
-				Vehicle curr = vehicles.get(sortedIndices[i]);
-				prev.macroTrailing(curr);
-				curr.macroLeading(prev);
-				prev = curr;
-			}
-			this.lastVehicle(prev);
+			if (this.nativeReleaseInProgress || this.activeExternalLaneAdmissions > 0
+					|| this.activeExternalLaneCommits > 0) return;
+			this.nativeReleaseInProgress = true;
 		}
-		this.controlType = controlType;
+		try {
+		if (!releasingCoSimControl) {
+			this.controlType = controlType;
+			return;
+		}
+		if (this.getVehicleNum() == 0) {
+			this.externalLaneReservations.clear();
+			this.controlType = controlType;
+			return;
+		}
+
+		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+		Vehicle current = this.firstVehicle();
+		while (current != null) {
+			vehicles.add(current);
+			current = current.macroTrailing();
+		}
+		if (vehicles.isEmpty()) {
+			ContextCreator.logger.error("Cannot release COSIM road " + this.ID
+					+ ": macro count is nonzero but its vehicle list is empty");
+			return;
+		}
+
+		List<NativeReleasePlacement> placements = this.planNativeReleasePlacements(vehicles);
+		if (placements == null) {
+			ContextCreator.logger.warn("Keeping road " + this.ID
+					+ " under COSIM control because no collision-free native placement exists");
+			return;
+		}
+
+		// Planning is complete before the first mutation, so a blocked release leaves
+		// COSIM membership, lane lists, reservations, and poses untouched.
+		for (Vehicle vehicle : vehicles) vehicle.removeFromCurrentLane();
+		for (NativeReleasePlacement placement : placements) {
+			boolean placed;
+			if (placement.externalTransition) {
+				placed = placement.vehicle.commitExternalRoadTransitionAtClosestAvailableDistance(
+						placement.lane, placement.distance);
+			} else {
+				placement.vehicle.teleportToLane(placement.lane, placement.distance);
+				placed = placement.vehicle.getLane() == placement.lane;
+			}
+			if (!placed) {
+				throw new IllegalStateException("Preplanned native placement failed for vehicle "
+						+ placement.vehicle.getID() + " on road " + this.ID);
+			}
+			// Releasing external control may snap a pose backward or laterally. Treat
+			// that placement as a discontinuity so the next trajectory snapshot does
+			// not interpolate a false high-speed sweep from the last external pose.
+			placement.vehicle.syncPreviousEpochCoord();
+		}
+
+		Collections.sort(vehicles, (a, b) -> {
+			int byDistance = Double.compare(a.getDistanceToNextJunction(), b.getDistanceToNextJunction());
+			return byDistance != 0 ? byDistance : Integer.compare(a.getID(), b.getID());
+		});
+		for (Vehicle vehicle : vehicles) {
+			vehicle.macroLeading(null);
+			vehicle.macroTrailing(null);
+		}
+		this.firstVehicle(vehicles.get(0));
+		for (int i = 1; i < vehicles.size(); i++) {
+			Vehicle leading = vehicles.get(i - 1);
+			Vehicle trailing = vehicles.get(i);
+			leading.macroTrailing(trailing);
+			trailing.macroLeading(leading);
+		}
+		this.lastVehicle(vehicles.get(vehicles.size() - 1));
+		synchronized (this) {
+			this.externalLaneReservations.clear();
+			this.controlType = controlType;
+		}
+		} finally {
+			synchronized (this) {
+				this.nativeReleaseInProgress = false;
+			}
+		}
+	}
+
+	private List<NativeReleasePlacement> planNativeReleasePlacements(List<Vehicle> vehicles) {
+		Map<Integer, ArrayList<double[]>> occupiedIntervals = new TreeMap<Integer, ArrayList<double[]>>();
+		ArrayList<NativeReleasePlacement> result = new ArrayList<NativeReleasePlacement>();
+		for (int pass = 0; pass < 2; pass++) {
+			boolean externalPass = pass == 1;
+			for (Vehicle vehicle : vehicles) {
+				if (vehicle.isExternalRoadTransition() != externalPass) continue;
+				ArrayList<NativeReleaseProjection> candidates = new ArrayList<NativeReleaseProjection>();
+				Lane reservedLane = vehicle.getExternalTransitionTargetLane();
+				for (Lane lane : this.lanes) {
+					if (externalPass && lane != reservedLane
+							&& (!this.isNativeReleaseLaneRouteCompatible(vehicle, lane)
+									|| this.getExternalLaneReservationBlocker(lane, vehicle) != null)) {
+						continue;
+					}
+					if (!externalPass && lane != vehicle.getLane()
+							&& this.getExternalLaneReservationBlocker(lane, vehicle) != null) {
+						continue;
+					}
+					if (externalPass
+							&& !vehicle.isExternalRoadTransitionPoseReadyForLaneEntry(lane)) {
+						continue;
+					}
+					NativeReleaseProjection projection = this.projectForNativeRelease(vehicle, lane);
+					if (projection != null) candidates.add(projection);
+				}
+				Collections.sort(candidates, (a, b) -> {
+					if (externalPass && (a.lane == reservedLane) != (b.lane == reservedLane)) {
+						return a.lane == reservedLane ? -1 : 1;
+					}
+					int byDistance = Double.compare(a.perpendicularDistance, b.perpendicularDistance);
+					return byDistance != 0 ? byDistance : Integer.compare(a.lane.getID(), b.lane.getID());
+				});
+
+				NativeReleasePlacement placement = null;
+				for (NativeReleaseProjection candidate : candidates) {
+					double available = this.findNativeReleaseDistance(candidate.lane, candidate.distance,
+							vehicle.length(), occupiedIntervals.get(candidate.lane.getID()));
+					if (Double.isFinite(available)) {
+						placement = new NativeReleasePlacement(vehicle, candidate.lane, available,
+								externalPass);
+						occupiedIntervals.computeIfAbsent(candidate.lane.getID(),
+								id -> new ArrayList<double[]>()).add(
+										new double[] { available, available + Math.max(0.0, vehicle.length()) });
+						break;
+					}
+				}
+				if (placement == null) return null;
+				result.add(placement);
+			}
+		}
+		return result;
+	}
+
+	private NativeReleaseProjection projectForNativeRelease(Vehicle vehicle, Lane lane) {
+		if (lane == null || lane.getRoad() != this) return null;
+		ArrayList<Coordinate> coordinates = lane.getCoords();
+		if (coordinates == null || coordinates.isEmpty()) return null;
+		Coordinate pose = vehicle.getCurrentCoord();
+		double bestPerpendicular = Double.POSITIVE_INFINITY;
+		double bestDistance = Double.NaN;
+		double distanceFromEnd = 0.0;
+		for (int i = coordinates.size() - 1; i > 0; i--) {
+			Coordinate downstream = coordinates.get(i);
+			Coordinate upstream = coordinates.get(i - 1);
+			double segmentLength = ContextCreator.getCityContext().getDistance(downstream, upstream);
+			if (!Double.isFinite(segmentLength) || segmentLength < 0.0) segmentLength = 0.0;
+			double dx = upstream.x - downstream.x;
+			double dy = upstream.y - downstream.y;
+			double lengthSquared = dx * dx + dy * dy;
+			if (lengthSquared > 0.0 && segmentLength > 0.0) {
+				double parameter = ((pose.x - downstream.x) * dx + (pose.y - downstream.y) * dy)
+						/ lengthSquared;
+				if (parameter >= 0.0 && parameter <= 1.0) {
+					Coordinate projected = new Coordinate(downstream.x + parameter * dx,
+							downstream.y + parameter * dy);
+					double perpendicular = ContextCreator.getCityContext().getDistance(pose, projected);
+					if (Double.isFinite(perpendicular) && perpendicular < bestPerpendicular) {
+						bestPerpendicular = perpendicular;
+						bestDistance = distanceFromEnd + parameter * segmentLength;
+					}
+				}
+			}
+			distanceFromEnd += segmentLength;
+		}
+		if (!Double.isFinite(bestDistance)) {
+			double toEnd = ContextCreator.getCityContext().getDistance(pose,
+					coordinates.get(coordinates.size() - 1));
+			double toStart = ContextCreator.getCityContext().getDistance(pose, coordinates.get(0));
+			if (toEnd <= toStart) {
+				bestPerpendicular = toEnd;
+				bestDistance = 0.0;
+			} else {
+				bestPerpendicular = toStart;
+				bestDistance = lane.getLength();
+			}
+		}
+		if (!Double.isFinite(bestPerpendicular) || !Double.isFinite(bestDistance)) return null;
+		return new NativeReleaseProjection(lane,
+				Math.max(0.0, Math.min(lane.getLength(), bestDistance)), bestPerpendicular);
+	}
+
+	private double findNativeReleaseDistance(Lane lane, double preferredDistance, double vehicleLength,
+			List<double[]> occupiedIntervals) {
+		double laneLength = lane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0) return Double.NaN;
+		double candidate = Math.max(0.0, Math.min(laneLength, preferredDistance));
+		double footprint = Math.max(0.0, vehicleLength);
+		while (candidate <= laneLength + 0.001) {
+			double shifted = candidate;
+			if (occupiedIntervals != null) {
+				for (double[] interval : occupiedIntervals) {
+					boolean overlaps = candidate < interval[1] - 0.001
+							&& interval[0] < candidate + footprint - 0.001;
+					if (overlaps) shifted = Math.max(shifted, interval[1] + 0.001);
+				}
+			}
+			if (shifted <= candidate + 1e-9) return Math.min(candidate, laneLength);
+			candidate = shifted;
+		}
+		return Double.NaN;
+	}
+
+	private boolean isNativeReleaseLaneRouteCompatible(Vehicle vehicle, Lane lane) {
+		Road followingRoad = vehicle.getNextRoad();
+		if (followingRoad == null) return true;
+		for (Integer downstreamLaneID : lane.getDownStreamLanes()) {
+			Lane downstreamLane = ContextCreator.getLaneContext().get(downstreamLaneID);
+			if (downstreamLane != null && downstreamLane.getRoad() == followingRoad) return true;
+		}
+		return false;
+	}
+
+	private static final class NativeReleaseProjection {
+		final Lane lane;
+		final double distance;
+		final double perpendicularDistance;
+
+		NativeReleaseProjection(Lane lane, double distance, double perpendicularDistance) {
+			this.lane = lane;
+			this.distance = distance;
+			this.perpendicularDistance = perpendicularDistance;
+		}
+	}
+
+	private static final class NativeReleasePlacement {
+		final Vehicle vehicle;
+		final Lane lane;
+		final double distance;
+		final boolean externalTransition;
+
+		NativeReleasePlacement(Vehicle vehicle, Lane lane, double distance,
+				boolean externalTransition) {
+			this.vehicle = vehicle;
+			this.lane = lane;
+			this.distance = distance;
+			this.externalTransition = externalTransition;
+		}
 	}
 	
 	public int getControlType() {
 		return controlType;
 	}
 
-	public void recordTravelTime(Vehicle v) {
+	public synchronized void recordTravelTime(Vehicle v) {
 		this.travelTimeSum += v.getLinkTravelTime();
 		this.travelTimeCount += 1;
 		if (v.getVehicleSensorType() == Vehicle.MOBILEDEVICE && ContextCreator.kafkaManager != null) {

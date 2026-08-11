@@ -11,6 +11,7 @@ import com.google.gson.reflect.TypeToken;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.communication.BSMDataStream;
+import mets_r.data.input.BackgroundTraffic;
 import mets_r.facility.*;
 import mets_r.mobility.*;
 
@@ -368,6 +369,7 @@ public class SnapshotUtil {
 		m.put("id", r.getID());
 		m.put("travelTime", r.getTravelTime());
 		m.put("speedLimit", r.getSpeedLimit());
+		m.put("lastBackgroundSpeedHour", r.getLastBackgroundSpeedHour());
 		m.put("controlType", r.getControlType());
 		m.put("currentEnergy", r.currentEnergy);
 		m.put("totalEnergy", r.totalEnergy);
@@ -392,6 +394,46 @@ public class SnapshotUtil {
 		return m;
 	}
 
+	private static void putBackgroundTrafficState(HashMap<String, Object> globalState) {
+		BackgroundTraffic profile = ContextCreator.background_traffic;
+		if (globalState == null || profile == null) return;
+		int currentTick = ContextCreator.getCurrentTick();
+		BackgroundTraffic.ProfileStateSnapshot profileState =
+				profile.snapshotProfileState(currentTick);
+		globalState.put("backgroundSpeedEventFile", profileState.getEventFilePath());
+		globalState.put("backgroundSpeedStdFile", profileState.getStdFilePath());
+		globalState.put("backgroundSpeedHourOffset", profileState.getProfileHourOffset());
+		globalState.put("backgroundSpeedCurrentHour",
+				profileState.getCurrentProfileHour());
+	}
+
+	private static void restoreBackgroundTrafficState(HashMap<String, Object> globalState) {
+		if (globalState == null) return;
+		String eventFile = globalState.containsKey("backgroundSpeedEventFile")
+				? (String) globalState.get("backgroundSpeedEventFile") : GlobalVariables.BT_EVENT_FILE;
+		String stdFile = globalState.containsKey("backgroundSpeedStdFile")
+				? (String) globalState.get("backgroundSpeedStdFile") : GlobalVariables.BT_STD_FILE;
+		int savedTick = globalState.containsKey("currentTick")
+				? toInt(globalState.get("currentTick")) : 0;
+		boolean hasSavedHourOffset = globalState.containsKey("backgroundSpeedHourOffset");
+		int hourOffset = hasSavedHourOffset
+				? toInt(globalState.get("backgroundSpeedHourOffset")) : GlobalVariables.BT_START_HOUR;
+		// The saved offset is the authoritative clock anchor. Current-hour-only
+		// snapshots can reconstruct it, but must not override an exact offset by
+		// using this process's potentially different refresh interval.
+		if (!hasSavedHourOffset && globalState.containsKey("backgroundSpeedCurrentHour")) {
+			int elapsedHours = Math.floorDiv(Math.max(0, savedTick),
+					Math.max(1, GlobalVariables.SIMULATION_SPEED_REFRESH_INTERVAL));
+			hourOffset = toInt(globalState.get("backgroundSpeedCurrentHour")) - elapsedHours;
+		}
+		GlobalVariables.restoreBackgroundTrafficConfig(eventFile, stdFile, hourOffset);
+		if (ContextCreator.background_traffic == null) {
+			ContextCreator.background_traffic = new BackgroundTraffic(eventFile, stdFile, hourOffset);
+		} else {
+			ContextCreator.background_traffic.restoreProfileState(eventFile, stdFile, hourOffset);
+		}
+	}
+
 	public static SimulationSnapshot captureToMemory() {
 		SimulationSnapshot snapshot = new SimulationSnapshot();
 
@@ -403,6 +445,7 @@ public class SnapshotUtil {
 		globalState.put("initTick", ContextCreator.initTick);
 		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
 		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
+		putBackgroundTrafficState(globalState);
 		snapshot.globalState = globalState;
 
 		snapshot.vehicleSnapshots = new ArrayList<>();
@@ -556,6 +599,7 @@ public class SnapshotUtil {
 		if (snapshot == null) {
 			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
 		}
+		restoreBackgroundTrafficState(snapshot.globalState);
 
 		String globalRandomStr = (String) snapshot.globalState.get("globalRandom");
 		String bsmRandomStr = (String) snapshot.globalState.get("bsmRandom");
@@ -586,7 +630,9 @@ public class SnapshotUtil {
 						toInt(rs.get("prevFlow")),
 						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE,
 						rs.containsKey("parkingCapacity") ? toInt(rs.get("parkingCapacity")) : toInt(rs.get("parking_capacity")),
-						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")));
+						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")),
+						rs.containsKey("lastBackgroundSpeedHour")
+								? toInt(rs.get("lastBackgroundSpeedHour")) : -1);
 				if (r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
@@ -673,6 +719,7 @@ public class SnapshotUtil {
 		globalState.put("initTick", ContextCreator.initTick);
 		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
 		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
+		putBackgroundTrafficState(globalState);
 
 		// 2. Collect all vehicle snapshots
 		ArrayList<HashMap<String, Object>> vehicleSnapshots = new ArrayList<>();
@@ -820,6 +867,10 @@ public class SnapshotUtil {
 			Files.write(Paths.get(propsPath), entries.get("Data.properties"));
 			// Reload GlobalVariables config
 			GlobalVariables.config = null;
+			// Existing static fields retain their pre-load values unless explicitly
+			// refreshed. This targeted reload supplies the correct fallback profile
+			// for older snapshots which predate background-speed state in JSON.
+			GlobalVariables.reloadBackgroundTrafficConfig();
 			ContextCreator.logger.info("Data.properties restored");
 		}
 		
@@ -906,6 +957,7 @@ public class SnapshotUtil {
 		// 4. Rebuild the road network and zone/charging station from data.properties
 		// (similar to reset, but we'll restore dynamic state afterwards)
 		ContextCreator.rebuildForLoad(savedInitTick, savedTick);
+		restoreBackgroundTrafficState(globalState);
 
 		// 5. Restore agent ID counter
 		setAgentIDCounter(savedAgentID);
@@ -948,7 +1000,9 @@ public class SnapshotUtil {
 						toInt(rs.get("prevFlow")),
 						rs.containsKey("controlType") ? toInt(rs.get("controlType")) : Road.NONE_OF_THE_ABOVE,
 						rs.containsKey("parkingCapacity") ? toInt(rs.get("parkingCapacity")) : toInt(rs.get("parking_capacity")),
-						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")));
+						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")),
+						rs.containsKey("lastBackgroundSpeedHour")
+								? toInt(rs.get("lastBackgroundSpeedHour")) : -1);
 				if (r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
@@ -1462,14 +1516,36 @@ public class SnapshotUtil {
 	private static void restoreRoadEnteringQueues(ArrayList<HashMap<String, Object>> roadSnapshots,
 			HashMap<Integer, Vehicle> restoredVehicleMap) {
 		if (roadSnapshots == null || restoredVehicleMap == null) return;
+		HashMap<Integer, Integer> selectedRoadByVehicle = new HashMap<Integer, Integer>();
 		for (HashMap<String, Object> rs : roadSnapshots) {
 			if (rs == null) continue;
-			Road road = ContextCreator.getRoadContext().get(toInt(rs.get("id")));
-			if (road == null) continue;
-			ArrayList<Vehicle> queue = new ArrayList<Vehicle>();
+			int roadID = toInt(rs.get("id"));
 			for (int vehicleID : toIntList((List<?>) rs.get("enteringVehicleQueue"))) {
 				Vehicle vehicle = restoredVehicleMap.get(vehicleID);
-				if (vehicle != null) {
+				if (vehicle == null || vehicle.isOnRoad()) continue;
+				Integer selectedRoadID = selectedRoadByVehicle.get(vehicleID);
+				int preferredRoadID = vehicle.getOriginRoad();
+				if (preferredRoadID < 0) {
+					preferredRoadID = vehicle.getLastDeparturableRoad();
+				}
+				if (selectedRoadID == null || roadID == preferredRoadID) {
+					selectedRoadByVehicle.put(vehicleID, roadID);
+				}
+			}
+		}
+		for (HashMap<String, Object> rs : roadSnapshots) {
+			if (rs == null) continue;
+			int roadID = toInt(rs.get("id"));
+			Road road = ContextCreator.getRoadContext().get(roadID);
+			if (road == null) continue;
+			ArrayList<Vehicle> queue = new ArrayList<Vehicle>();
+			HashSet<Integer> localVehicleIDs = new HashSet<Integer>();
+			for (int vehicleID : toIntList((List<?>) rs.get("enteringVehicleQueue"))) {
+				Vehicle vehicle = restoredVehicleMap.get(vehicleID);
+				Integer selectedRoadID = selectedRoadByVehicle.get(vehicleID);
+				if (vehicle != null && !vehicle.isOnRoad()
+						&& selectedRoadID != null && selectedRoadID.intValue() == roadID
+						&& localVehicleIDs.add(vehicleID)) {
 					queue.add(vehicle);
 				}
 			}
