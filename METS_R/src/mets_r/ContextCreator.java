@@ -29,7 +29,6 @@ import mets_r.communication.StepMessageHandler;
 import mets_r.communication.SimulationEventJournal;
 import mets_r.data.input.BackgroundTraffic;
 import mets_r.data.input.BusSchedule;
-import mets_r.data.input.NetworkEventHandler;
 import mets_r.data.input.SumoXML;
 import mets_r.data.input.TravelDemand;
 import mets_r.data.output.*;
@@ -75,7 +74,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// set to be final to avoid further modifications
 	public static final ConnectionManager manager =  GlobalVariables.STANDALONE?null: new ConnectionManager();
 	public static Connection connection = null;
-	public static NetworkEventHandler eventHandler = new NetworkEventHandler(); 
 	public static final StepMessageHandler stepHandler = new StepMessageHandler();
 	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
 	// Kafka manager maintains the resources for sending message to Kafka
@@ -189,12 +187,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 			LinkedHashMap<String, Object> scheduledNanos = new LinkedHashMap<String, Object>();
 			scheduledNanos.put("roadNetworkRefresh", roadNetworkRefreshNanos);
 			scheduledNanos.put("freeFlowRefresh", freeFlowRefreshNanos);
-			scheduledNanos.put("networkEvents", networkEventNanos);
 			status.put("scheduledRefreshCumulativeNanos", scheduledNanos);
 			LinkedHashMap<String, Object> scheduledCounts = new LinkedHashMap<String, Object>();
 			scheduledCounts.put("roadNetworkRefresh", roadNetworkRefreshCount);
 			scheduledCounts.put("freeFlowRefresh", freeFlowRefreshCount);
-			scheduledCounts.put("networkEvents", networkEventCount);
 			status.put("scheduledRefreshCounts", scheduledCounts);
 		}
 		return status;
@@ -262,10 +258,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static SnapshotUtil.SimulationSnapshot initialSnapshot = null;
 	private static volatile long roadNetworkRefreshNanos = 0L;
 	private static volatile long freeFlowRefreshNanos = 0L;
-	private static volatile long networkEventNanos = 0L;
 	private static volatile long roadNetworkRefreshCount = 0L;
 	private static volatile long freeFlowRefreshCount = 0L;
-	private static volatile long networkEventCount = 0L;
 	
 	/* Functions */
 	// Initializing simulation agents
@@ -315,7 +309,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		schedulePrivateTripLoader();
 		scheduleRoadNetworkRefresh();
 		scheduleFreeFlowSpeedRefresh(backgroundSpeedRefreshDelay);
-		scheduleNetworkEventHandling(); // For temporarily alter the link speed
 		
 		// Set up data collection
 		if (GlobalVariables.ENABLE_DATA_COLLECTION) {
@@ -390,14 +383,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return phase == 0 ? 0 : interval - phase;
 	}
 
-	// Schedule the event for link management, transit scheduling, or incidents, e.g., road closure
-	public static void scheduleNetworkEventHandling() {
-		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters supplySideEventParams = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.EVENT_CHECK_FREQUENCY, 1);
-		scheduledActions.add(schedule.schedule(supplySideEventParams, scheduleOwner, "handleNetworkEvents"));
-	}
-
 	public void refreshRoadNetwork() {
 		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
 		cityContext.modifyRoadNetwork();
@@ -409,19 +394,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	public void refreshFreeFlowSpeeds() {
 		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
-		cityContext.updateFreeFlowSpeeds();
+		cityContext.updateBackgroundSpeeds();
 		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
 			freeFlowRefreshNanos += System.nanoTime() - start;
 			freeFlowRefreshCount++;
-		}
-	}
-
-	public void handleNetworkEvents() {
-		long start = GlobalVariables.ENABLE_SCHEDULER_PROFILING ? System.nanoTime() : 0L;
-		eventHandler.checkEvents();
-		if (GlobalVariables.ENABLE_SCHEDULER_PROFILING) {
-			networkEventNanos += System.nanoTime() - start;
-			networkEventCount++;
 		}
 	}
 
@@ -501,7 +477,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
 			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
 		}
-		// Free-flow speed refresh is batched in cityContext.updateFreeFlowSpeeds(),
+		// Background speed refresh is batched in cityContext.updateBackgroundSpeeds(),
 		// so newly added roads are picked up automatically at the next refresh.
 	}
 
@@ -678,10 +654,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static void resetScheduledProfiling() {
 		roadNetworkRefreshNanos = 0L;
 		freeFlowRefreshNanos = 0L;
-		networkEventNanos = 0L;
 		roadNetworkRefreshCount = 0L;
 		freeFlowRefreshCount = 0L;
-		networkEventCount = 0L;
 	}
 
 	// The main function
@@ -729,7 +703,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	 * for execution this tick, not yet rescheduled). Tearing down the
 	 * simulation while any actions are in that state leaves recurring actions
 	 * orphaned in the schedule, which then keep firing on the static
-	 * singletons (tscheduler, eventHandler) and pin per-run heap state
+	 * scheduler state and pin per-run heap state
 	 * (cityContext, dataContext, partitioner, ...) for garbage collection.
 	 *
 	 * After this method returns, every previously-recurring action has been
@@ -877,7 +851,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		travel_demand.close();
 
 		coSimRoads.clear();
-		eventHandler.reinitialize();
 		initTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 
 		GlobalVariables.RandomGenerator = new java.util.Random(GlobalVariables.RANDOM_SEED);
@@ -941,9 +914,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Release stale Road references so query_coSimVehicle cannot return
 		// vehicle IDs from the previous run before set_cosim_road is called again.
 		coSimRoads.clear();
-		
-		// Re-populate the network event queue so events replay from tick 0
-		eventHandler.reinitialize();
 		
 		// CRITICAL: drop the SumoXML singleton so the next getData() call re-parses
 		// the network file. Without this, RoadContext/LaneContext/CityContext would
@@ -1061,7 +1031,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 
 		coSimRoads.clear();
-		eventHandler.reinitialize();
 
 		int currentRepastTick = (int) Math.max(RepastEssentials.GetTickCount(), 0);
 		initTick = currentRepastTick;
@@ -1131,9 +1100,6 @@ public class ContextCreator implements ContextBuilder<Object> {
 		// Release stale Road references so query_coSimVehicle cannot return
 		// vehicle IDs from the previous run before set_cosim_road is called again.
 		coSimRoads.clear();
-		
-		// Re-populate the network event queue so events replay correctly
-		eventHandler.reinitialize();
 		
 		// Drop the SumoXML singleton (see reset() for rationale): forces a fresh
 		// parse so RoadContext/LaneContext/CityContext do NOT reuse facility

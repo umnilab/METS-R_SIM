@@ -101,6 +101,7 @@ public class MessageClass{
 	    double z = 0.0;
 	    double speed;
 	    String observedRoadID;
+	    Integer observedLaneID;
 
 	    // Constructor
 	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
@@ -120,6 +121,13 @@ public class MessageClass{
 	                                         String observedRoadID) {
 	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed);
 	        this.observedRoadID = observedRoadID;
+	    }
+
+	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord,
+	                                         double bearing, double x, double y, double z, double speed,
+	                                         String observedRoadID, Integer observedLaneID) {
+	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed, observedRoadID);
+	        this.observedLaneID = observedLaneID;
 	    }
 	}
 	
@@ -383,6 +391,21 @@ public class MessageClass{
 	    public RoadIDWeight(String roadID, double weight) {
 	        this.roadID = roadID;
 	        this.weight = weight;
+	    }
+    }
+
+    class RoadIDTargetSpeed{
+	    String roadID;
+	    String origID;
+	    String orig_id;
+	    String ID;
+	    Double targetSpeed;
+	    Double target_speed;
+	    Double speed;
+
+	    public RoadIDTargetSpeed(String roadID, Double targetSpeed) {
+	        this.roadID = roadID;
+	        this.targetSpeed = targetSpeed;
 	    }
     }
 

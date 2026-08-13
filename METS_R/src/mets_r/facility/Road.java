@@ -41,8 +41,9 @@ public class Road {
 	
 	public final static int NONE_OF_THE_ABOVE = -1;
 
+	private static final double MPH_TO_METERS_PER_SECOND = 0.44694;
 	private static final double DEFAULT_STREET_PARKING_CAPACITY_PER_METER = 0.115;
-	private static final double DEFAULT_STREET_PARKING_MAX_SPEED_MPS = 30.0 * 0.44694;
+	private static final double DEFAULT_STREET_PARKING_MAX_SPEED_MPS = 30.0 * MPH_TO_METERS_PER_SECOND;
 	
 	/* Private variables */
 	private int ID;
@@ -93,9 +94,7 @@ public class Road {
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
 	private final ArrayList<Vehicle> stepVehicleBuffer = new ArrayList<Vehicle>();
 	private final ArrayList<Vehicle> departureBuffer = new ArrayList<Vehicle>();
-	private boolean eventFlag; // Indicator whether there is an event happening on the road
 	private double speedLimit_; // Speed for travel time estimation
-	private double cachedSpeedLimit_; // For caching the speed before certain regulation events
 	private double travelTimeSum;
 	private int travelTimeCount;
 	private double avgEnergyConsumption;
@@ -157,10 +156,6 @@ public class Road {
 		// For adaptive network partitioning
 		this.nShadowVehicles = new AtomicInteger(0);
 		this.nFutureRoutingVehicles = new AtomicInteger(0);
-		this.eventFlag = false;
-
-		// Set default value
-		this.cachedSpeedLimit_ = this.speedLimit_; 
 		this.totalEnergy = 0;
 		this.totalFlow = 0;
 		this.prevFlow = 0;
@@ -173,31 +168,10 @@ public class Road {
 		this.length = length;
 	}
 
-	// Set the defaultFreeSpeed_
-	public void cacheSpeedLimit() {
-		this.cachedSpeedLimit_ = this.speedLimit_;
-	}
-
 	// Get the speed limit
 	public double getSpeedLimit() {
 		return this.speedLimit_;
 	}
-
-	// Check the eventFlag
-	public boolean checkEventFlag() {
-		return this.eventFlag;
-	}
-
-	// Set the eventFlag
-	public void setEventFlag() {
-		this.eventFlag = true;
-	}
-
-	// Restore the eventFlag after the event
-	public void restoreEventFlag() {
-		this.eventFlag = false;
-	}
-
 
 	/* New step function using node based routing */
 	// @ScheduledMethod(start=1, priority=1, duration=1)
@@ -824,9 +798,7 @@ public class Road {
 		this.prevFirstVehicle = null;
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
-		this.eventFlag = false;
 		this.speedLimit_ = restoredSpeedLimit;
-		this.cachedSpeedLimit_ = restoredSpeedLimit;
 		this.travelTime = restoredTravelTime;
 		this.travelTimeSum = 0.0;
 		this.travelTimeCount = 0;
@@ -1208,39 +1180,54 @@ public class Road {
 		ContextCreator.logger.info("Ending point: " + this.getEndCoord());
 	}
 
-	/*
-	 * Update background traffic through a speed file. if road event flag is
-	 * true, just pass to cached speed limit, otherwise, update link free flow speed
+	/**
+	 * Set the physical target speed and its corresponding free-flow routing cost.
+	 *
+	 * <p>The lane speeds drive vehicle behavior, while the road speed limit constrains
+	 * existing vehicles and supplies the routing fallback travel time. Clearing old
+	 * samples prevents observations collected under the previous target from
+	 * immediately replacing the new cost.
+	 *
+	 * @param targetSpeed target speed in meters per second
 	 */
-	public void updateFreeFlowSpeed() {
+	public synchronized void setTargetSpeed(double targetSpeed) {
+		if (!Double.isFinite(targetSpeed) || targetSpeed <= 0.0) {
+			throw new IllegalArgumentException("Target speed must be a finite positive value: " + targetSpeed);
+		}
+		for (Lane lane : this.getLanes()) {
+			lane.setSpeed(targetSpeed);
+		}
+		this.speedLimit_ = targetSpeed;
+		this.travelTime = Math.max(0.0, this.length) / targetSpeed;
+		this.travelTimeSum = 0.0;
+		this.travelTimeCount = 0;
+	}
+
+	/**
+	 * Apply this road's value from the hourly background-speed profile.
+	 *
+	 * @return true when a valid profile value changed the target speed
+	 */
+	public synchronized boolean updateBackgroundSpeed() {
 		BackgroundTraffic.BackgroundSpeedSample speedSample = ContextCreator.background_traffic
 				.getBackgroundTrafficForSimulationTick(this.origID, ContextCreator.getCurrentTick());
 		int profileHour = speedSample.getProfileHour();
-		// != also permits a restored or explicitly changed profile clock to move backward.
-		if (this.lastUpdateHour != profileHour) {
-			double new_speed = speedSample.getSpeed();
-			for(Lane lane: this.getLanes()) {
-				if(new_speed > 0) lane.setSpeed(new_speed * 0.44694);
-			}
-			
-			if (this.checkEventFlag()) {
-				this.cacheSpeedLimit();
-			} else {
-				this.speedLimit_ =  this.cachedSpeedLimit_;
-			}
+		if (this.lastUpdateHour == profileHour) {
+			return false;
 		}
+		// Mark missing or invalid entries as handled so they are not retried every tick.
 		this.lastUpdateHour = profileHour;
+		double newSpeedMph = speedSample.getSpeed();
+		if (!Double.isFinite(newSpeedMph) || newSpeedMph <= 0.0) {
+			return false;
+		}
+		setTargetSpeed(newSpeedMph * MPH_TO_METERS_PER_SECOND);
+		return true;
 	}
 
 	public int getLastBackgroundSpeedHour() {
 		return this.lastUpdateHour;
 	}
-
-	/* Modify the free flow speed based on the events */
-	public void updateFreeFlowSpeed(double newFFSpd) {
-		this.speedLimit_ = newFFSpd * 0.44694; // Convert from mph to m/s
-	}
-
 	public synchronized void recordEnergyConsumption(Vehicle v) {
 		this.totalFlow += 1;
 		this.currentFlow += 1;
@@ -1338,7 +1325,6 @@ public class Road {
 				break;
 		}
 		this.roadType = roadType;
-		this.cachedSpeedLimit_ = this.speedLimit_;
 		this.refreshDefaultParkingCapacity();
 	}
 	
@@ -1649,7 +1635,6 @@ public class Road {
 
 	public void setSpeedLimit(double speedLimit) {
 		this.speedLimit_ = speedLimit;
-		this.cachedSpeedLimit_ = speedLimit;
 		this.refreshDefaultParkingCapacity();
 	}
 	

@@ -1073,33 +1073,50 @@ public class CityContext extends DefaultContext<Object> {
 				e.printStackTrace();
 			}
 		}
-				
+
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if(road.updateTravelTimeEstimation()) {
-				Node node1 = road.getUpStreamNode();
-				Node node2 = road.getDownStreamNode();
-				ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(road.getTravelTime());
-				RouteContext.setEdgeWeight(node1, node2, road.getTravelTime());
+			if (road.updateTravelTimeEstimation()) {
+				updateRoadRoutingWeight(road, road.getTravelTime());
 			}
 		}
 	}
 
-	public void updateFreeFlowSpeeds() {
+	public void updateBackgroundSpeeds() {
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			road.updateFreeFlowSpeed();
+			if (road.updateBackgroundSpeed()) {
+				updateRoadRoutingWeight(road, road.getTravelTime());
+			}
 		}
+	}
+
+	/**
+	 * Update only the graph weight used for routing. This method deliberately does
+	 * not change the road speed limit, lane target speeds, or measured travel time.
+	 */
+	public boolean updateRoadRoutingWeight(Road road, double weight) {
+		if (road == null || !Double.isFinite(weight)) {
+			return false;
+		}
+		Node node1 = road.getUpStreamNode();
+		Node node2 = road.getDownStreamNode();
+		if (node1 == null || node2 == null) {
+			return false;
+		}
+		RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
+		if (edge == null) {
+			return false;
+		}
+		double routingWeight = Math.max(weight, 1.0e-3);
+		edge.setWeight(routingWeight);
+		if (this.networkInitialized) {
+			RouteContext.setEdgeWeight(node1, node2, routingWeight);
+		}
+		return true;
 	}
 
 	public void refreshRoadNetworkWeights() {
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			Node node1 = road.getUpStreamNode();
-			Node node2 = road.getDownStreamNode();
-			if (node1 == null || node2 == null) continue;
-			RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
-			if (edge != null) {
-				edge.setWeight(road.getTravelTime());
-			}
-			RouteContext.setEdgeWeight(node1, node2, road.getTravelTime());
+			updateRoadRoutingWeight(road, road.getTravelTime());
 		}
 	}
 

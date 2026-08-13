@@ -5,7 +5,6 @@ import java.util.Collection;
 import java.util.HashMap;
 import com.vividsolutions.jts.geom.Coordinate;
 
-import mets_r.data.input.NetworkEventObject;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
 import mets_r.mobility.ElectricVehicle;
@@ -70,9 +69,6 @@ public class TickSnapshot {
 	// private HashMap<Integer, ZoneSnapshot> zones;
 	// private HashMap<Integer, ChargingStationSnapshot> chargers;
 
-	/** The collection of event data gathered during this time tick. */
-	private ArrayList<ArrayList<NetworkEventObject>> events;
-
 	/**
 	 * Creates the tick snapshot with the given simulation tick number and
 	 * initializes all the data structures for holding the data gathered during the
@@ -99,13 +95,6 @@ public class TickSnapshot {
 		this.frameSummaryRecorded = false;
 		this.roadVehicleCount = 0;
 		this.links = new ArrayList<LinkSnapshot>();
-
-		// Setup the map for holding the event data. Two subarraylists (for starting
-		// events and ending events) is created in a large arraylist
-		this.events = new ArrayList<ArrayList<NetworkEventObject>>(3);
-		for (int i = 0; i < 3; i++) {
-			this.events.add(new ArrayList<NetworkEventObject>());
-		}
 
 		// Setup the map for holding the link energy consumption, which is a map of
 		// linkid: link of passed vehicles, we store this for each tick
@@ -491,23 +480,6 @@ public class TickSnapshot {
 		}
 	}
 
-	public void logEvent(NetworkEventObject event, int type) throws Throwable {
-
-		// Make sure the given event object is valid
-		if (event == null) {
-			throw new IllegalArgumentException("No event given.");
-		}
-
-		// Add event to the arraylist
-		if (type == 1) { // if it is event starting
-			this.events.get(0).add(event);
-		} else if (type == 2) {// if it is event ending
-			this.events.get(1).add(event);
-		} else {// if external event has been added to queue
-			this.events.get(2).add(event);
-		}
-	}
-
 	public Collection<Integer> getVehicleList() {
 		if (this.vehicles == null || this.vehicles.isEmpty()) {
 			return null;
@@ -562,14 +534,6 @@ public class TickSnapshot {
 		}
 
 		return this.buses.keySet();
-	}
-
-	public ArrayList<ArrayList<NetworkEventObject>> getEventList() {
-		if (this.events == null || this.events.isEmpty()) {
-			return null;
-		}
-
-		return this.events;
 	}
 
 	public VehicleSnapshot getVehicleSnapshot(int id) {

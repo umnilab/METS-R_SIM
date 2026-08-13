@@ -12,6 +12,7 @@ import java.util.Random;
 
 import org.geotools.geometry.jts.JTS;
 import org.json.simple.JSONObject;
+import repast.simphony.space.graph.RepastEdge;
 import org.opengis.referencing.operation.TransformException;
 
 import com.google.gson.Gson;
@@ -242,7 +243,8 @@ public class QueryMessageHandler extends MessageHandler {
 					if(vehicle.isOnRoad()) {
 						Lane lane = vehicle.getLane();
 						if(vehicle.isOnLane() && lane != null) {
-							record2.put("lane", lane.getIndex());
+					Road laneRoad = lane.getRoad();
+					record2.put("lane", laneRoad == null ? -1 : laneRoad.getLaneIndex(lane));
 							record2.put("dist", vehicle.getDistanceToNextJunction());
 						}
 					}
@@ -937,6 +939,7 @@ public class QueryMessageHandler extends MessageHandler {
 					topologyHash = 31L * topologyHash + (downstream == null ? 0 : downstream.hashCode());
 				}
 				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getTravelTime());
+				metricHash = 31L * metricHash + Double.doubleToLongBits(routingWeightForRoad(road, road.getTravelTime()));
 				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getSpeedLimit());
 				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getAvgEnergyConsumption());
 			}
@@ -1194,6 +1197,7 @@ public class QueryMessageHandler extends MessageHandler {
 	private void addRoutingMetricFields(HashMap<String, Object> record, RoutingGraphRoadState state) {
 		record.put("speed_limit", state.speedLimit);
 		record.put("avg_travel_time", state.travelTime);
+		record.put("weight", state.routingWeight);
 		record.put("length", state.distance);
 		record.put("energy_consumed", state.energyConsumed);
 		record.put("avg_energy_consumption", state.avgEnergyConsumption);
@@ -1206,6 +1210,7 @@ public class QueryMessageHandler extends MessageHandler {
 		if (travelTime <= 0.0 && distance > 0.0 && speedLimit > 0.0) {
 			travelTime = distance / speedLimit;
 		}
+		double routingWeight = routingWeightForRoad(road, travelTime);
 		ArrayList<String> downstreamRoads = new ArrayList<String>();
 		try {
 			ArrayList<String> downstream = road.getDownStreamRoadOrigIDs();
@@ -1216,9 +1221,9 @@ public class QueryMessageHandler extends MessageHandler {
 		catch (Exception e) {
 			// Missing downstream references are handled as a topology change by callers.
 		}
-		return new RoutingGraphRoadState(road.getOrigID(), distance, travelTime,
-				finiteDouble(road.getTotalEnergy(), 0.0), finiteDouble(road.getAvgEnergyConsumption(), 0.0),
-				speedLimit, downstreamRoads);
+		return new RoutingGraphRoadState(road.getOrigID(), distance, travelTime, routingWeight,
+				finiteDouble(road.getTotalEnergy(), 0.0),
+				finiteDouble(road.getAvgEnergyConsumption(), 0.0), speedLimit, downstreamRoads);
 	}
 
 	private double finiteDouble(double value, double fallback) {
@@ -1228,21 +1233,36 @@ public class QueryMessageHandler extends MessageHandler {
 		return value;
 	}
 
+	private double routingWeightForRoad(Road road, double fallback) {
+		if (road == null || ContextCreator.getRoadNetwork() == null) {
+			return fallback;
+		}
+		Node node1 = road.getUpStreamNode();
+		Node node2 = road.getDownStreamNode();
+		if (node1 == null || node2 == null) {
+			return fallback;
+		}
+		RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
+		return edge == null ? fallback : finiteDouble(edge.getWeight(), fallback);
+	}
+
 	private class RoutingGraphRoadState {
 		final String roadID;
 		final double distance;
 		final double travelTime;
+		final double routingWeight;
 		final double energyConsumed;
 		final double avgEnergyConsumption;
 		final double speedLimit;
 		final ArrayList<String> downstreamRoads;
 
 		RoutingGraphRoadState(String roadID, double distance, double travelTime,
-				double energyConsumed, double avgEnergyConsumption, double speedLimit,
-				ArrayList<String> downstreamRoads) {
+				double routingWeight, double energyConsumed, double avgEnergyConsumption,
+				double speedLimit, ArrayList<String> downstreamRoads) {
 			this.roadID = roadID;
 			this.distance = distance;
 			this.travelTime = travelTime;
+			this.routingWeight = routingWeight;
 			this.energyConsumed = energyConsumed;
 			this.avgEnergyConsumption = avgEnergyConsumption;
 			this.speedLimit = speedLimit;
@@ -1252,6 +1272,7 @@ public class QueryMessageHandler extends MessageHandler {
 		boolean sameRoutingMetrics(RoutingGraphRoadState other) {
 			return sameDouble(this.distance, other.distance)
 					&& sameDouble(this.travelTime, other.travelTime)
+					&& sameDouble(this.routingWeight, other.routingWeight)
 					&& sameDouble(this.energyConsumed, other.energyConsumed)
 					&& sameDouble(this.avgEnergyConsumption, other.avgEnergyConsumption)
 					&& sameDouble(this.speedLimit, other.speedLimit);

@@ -10,7 +10,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.communication.DataConsumer;
-import mets_r.data.input.NetworkEventObject;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
@@ -370,29 +369,6 @@ public class DataCollector {
 		}
 		this.recordSnapshot(vehicle, coordinate);
 		return true;
-	}
-
-	/**
-	 * HG: Records starting and ending of events
-	 * 
-	 * @param event the event for which a snapshot is being recorded.
-	 * @param type  whether it is starting or end of the event. 1: starting, 2:
-	 *              ending
-	 * @throws Throwable if an error occurs trying to record the event.
-	 */
-	public void recordEventSnapshot(NetworkEventObject event, int type) throws Throwable {
-		// Make sure the given event object is valid
-		if (event == null) {
-			throw new IllegalArgumentException("No event given.");
-		}
-
-		// Make sure a tick is currently being processed
-		if (this.currentSnapshot == null) {
-			throw new Exception("No tick snapshot being processed.");
-		}
-
-		// Add the event to the current snapshot
-		this.currentSnapshot.logEvent(event, type);
 	}
 
 	/**

@@ -2,8 +2,6 @@ package mets_r;
 
 import java.util.Random;
 
-import mets_r.data.input.NetworkEventObject;
-
 /**
  * Central location for any useful variables (e.g. filenames).
  * 
@@ -40,7 +38,6 @@ import mets_r.data.input.NetworkEventObject;
 
 import java.io.FileInputStream;
 import java.io.IOException;
-import java.util.LinkedList;
 import java.util.Properties;
 
 public class GlobalVariables {
@@ -205,11 +202,6 @@ public class GlobalVariables {
 	public static double BUS_ENERGY_FRONTAL_AREA = Double.valueOf(loadConfig("BUS_ENERGY_FRONTAL_AREA"));
 	public static double BUS_ENERGY_DRAG_COEFFICIENT = Double.valueOf(loadConfig("BUS_ENERGY_DRAG_COEFFICIENT"));
 	public static double BUS_ENERGY_AUXILIARY_POWER = Double.valueOf(loadConfig("BUS_ENERGY_AUXILIARY_POWER"));
-
-	// Event file, placeholder for future extension
-	public static String EVENT_FILE = loadConfig("EVENT_FILE");
-	public static int EVENT_CHECK_FREQUENCY = Integer.valueOf(loadConfig("EVENT_CHECK_FREQUENCY"));
-	
 
 	/* Operation Options */
 	public static boolean K_SHORTEST_PATH = Boolean.valueOf(loadConfig("K_SHORTEST_PATH"));
@@ -434,8 +426,6 @@ public class GlobalVariables {
 	public static double LC2013_COOPERATIVE_SPEED = Double.valueOf(loadConfig("LC2013_COOPERATIVE_SPEED"));
 	public static double LC2013_REGULATORY_PARAM = Double.valueOf(loadConfig("LC2013_REGULATORY_PARAM"));
 
-	public static LinkedList<NetworkEventObject> newEventQueue = new LinkedList<NetworkEventObject>();
-	
 	// Parameters for mode split
 	public static double BUS_TICKET_PRICE = Double.valueOf(loadConfig("BUS_TICKET_PRICE"));
 	public static double MS_ALPHA = Double.valueOf(loadConfig("MS_ALPHA"));

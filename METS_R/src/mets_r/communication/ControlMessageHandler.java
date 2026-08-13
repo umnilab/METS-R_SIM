@@ -36,6 +36,7 @@ import mets_r.communication.MessageClass.SignalPhasePlanTicks;
 import mets_r.communication.MessageClass.OrigRoadDestRoadNumMaxW;
 import mets_r.communication.MessageClass.OriginDestNumMaxW;
 import mets_r.communication.MessageClass.RoadParkingCapacity;
+import mets_r.communication.MessageClass.RoadIDTargetSpeed;
 import mets_r.communication.MessageClass.RoadIDWeight;
 import mets_r.communication.MessageClass.RouteNameDepartTime;
 import mets_r.communication.MessageClass.RouteNameZonesRoads;
@@ -119,9 +120,10 @@ public class ControlMessageHandler extends MessageHandler {
 		messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
 		
 		// =============================================================
-		// Routing weights
+		// Road speeds and routing weights
 		// =============================================================
 		messageHandlers.put("updateEdgeWeight", this::updateEdgeWeight);
+		messageHandlers.put("updateTargetSpeed", this::updateTargetSpeed);
 		messageHandlers.put("updateRoadParkingCapacity", this::updateRoadParkingCapacity);
 		
 		// =============================================================
@@ -564,6 +566,62 @@ public class ControlMessageHandler extends MessageHandler {
 	 *
 	 * <p>Input DATA: list of original road IDs.
 	 */
+	private String coSimTakeoverBlockReason(Road road) {
+		if (road.isNativeReleaseInProgress()) {
+			return "TRANSIENT: Road is still completing a native-control release";
+		}
+		int expectedVehicleCount = road.getVehicleNum();
+		HashSet<Vehicle> visited = new HashSet<Vehicle>();
+		Vehicle vehicle = road.firstVehicle();
+		while (vehicle != null) {
+			if (!visited.add(vehicle)) {
+				return "Road macro vehicle list contains a cycle at vehicle " + vehicle.getID();
+			}
+			String reason = vehicle.coSimTakeoverBlockReason(road);
+			if (reason != null) return reason;
+			vehicle = vehicle.macroTrailing();
+		}
+		if (visited.size() != expectedVehicleCount) {
+			return "Road macro vehicle count/list mismatch: count=" + expectedVehicleCount
+					+ ", listed=" + visited.size();
+		}
+		return null;
+	}
+
+	private HashMap<String, Object> coSimTakeoverBlockedRecord(
+			String roadID, Road road, String detail, boolean retryable) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", roadID);
+		record.put("STATUS", "KO");
+		record.put("REASON", "FREEZE_BLOCKED");
+		record.put("RETRYABLE", retryable);
+		record.put("WARN", detail);
+
+		Vehicle vehicle = road.firstVehicle();
+		HashSet<Vehicle> visited = new HashSet<Vehicle>();
+		while (vehicle != null && visited.add(vehicle)) {
+			String reason = vehicle.coSimTakeoverBlockReason(road);
+			if (reason != null) {
+				record.put("blockingVehicleID", vehicle.getID());
+				record.put("onRoad", vehicle.isOnRoad());
+				record.put("onLane", vehicle.isOnLane());
+				record.put("transitionPending", vehicle.isExternalRoadTransition());
+				Road currentRoad = vehicle.getRoad();
+				record.put("currentRoadID", currentRoad == null ? null : currentRoad.getOrigID());
+				Lane lane = vehicle.getLane();
+				if (lane != null) {
+					record.put("laneID", road.getLaneIndex(lane));
+					record.put("internalLaneID", lane.getID());
+					record.put("laneLength", lane.getLength());
+				}
+				record.put("distance", vehicle.getDistanceToNextJunction());
+				break;
+			}
+			vehicle = vehicle.macroTrailing();
+		}
+		return record;
+	}
+
 	private HashMap<String, Object> setCoSimRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
@@ -580,10 +638,28 @@ public class ControlMessageHandler extends MessageHandler {
 			    for(String roadID: IDs) {
 			    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
 			    	if(r != null) {
-			    		r.setControlType(Road.COSIM);
-						// Add road to coSim HashMap in the road context
-						ContextCreator.coSimRoads.put(roadID, r);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						if (r.getControlType() != Road.COSIM) {
+							String blockedReason = coSimTakeoverBlockReason(r);
+							if (blockedReason != null) {
+								boolean retryable = blockedReason.startsWith("TRANSIENT: ");
+								if (retryable) blockedReason = blockedReason.substring("TRANSIENT: ".length());
+								String detail = "Road " + roadID
+										+ " cannot enter COSIM control yet: " + blockedReason;
+								ContextCreator.logger.debug(detail);
+								jsonData.add(coSimTakeoverBlockedRecord(
+										roadID, r, detail, retryable));
+								continue;
+							}
+							r.setControlType(Road.COSIM);
+						}
+						if (r.getControlType() != Road.COSIM) {
+							String detail = "Road " + roadID + " did not accept COSIM control";
+							jsonData.add(coSimTakeoverBlockedRecord(roadID, r, detail, false));
+							continue;
+						}
+						// Publish bridge ownership only after the road accepts the takeover.
+						ContextCreator.coSimRoads.put(roadID, r);
 						record2.put("ID", roadID);
 						record2.put("STATUS", "OK");
 						
@@ -692,7 +768,7 @@ public class ControlMessageHandler extends MessageHandler {
 			jsonAns.put("CODE", "KO");
 		}
     	else {
-	    	try {
+		try {
 				Gson gson = new Gson();
 				TypeToken<Collection<VehIDOrigDestNum>> collectionType = new TypeToken<Collection<VehIDOrigDestNum>>() {};
 			    Collection<VehIDOrigDestNum> vehIDVehTypeOrigDests = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
@@ -1512,9 +1588,14 @@ public class ControlMessageHandler extends MessageHandler {
 	 * coordinate system, and update its bearing and speed.
 	 *
 	 * Input DATA: list of
-	 * {{vehID, vehType, x, y, z, bearing, speed, transformCoord, observedRoadID?}}.
+	 * {{vehID, vehType, x, y, z, bearing, speed, transformCoord,
+	 * observedRoadID?, observedLaneID?}}.
 	 * When a sparse update has already crossed a short pending target road,
-	 * observedRoadID may identify its directly planned downstream road.
+	 * observedRoadID may identify its directly planned downstream road. For a
+	 * non-pending vehicle, an observedRoadID/observedLaneID pair authoritatively
+	 * synchronizes lane membership and downstream distance on the current COSIM
+	 * road. The pair is validated against the supplied pose before any state is
+	 * changed.
 	 */
 	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -1523,29 +1604,35 @@ public class ControlMessageHandler extends MessageHandler {
 			jsonAns.put("CODE", "KO");
 		}
 		else {
-	    	try {
+			try {
 				Gson gson = new Gson();
 				TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>> collectionType = new TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>>() {
 				};
 				Collection<VehIDVehTypeTranBearingXYSpeed> vehIDVehTypeTranBearingXYSpeeds = gson
 						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				if (vehIDVehTypeTranBearingXYSpeeds == null) {
+					throw new IllegalArgumentException("teleportCoSimVeh DATA must be an array");
+				}
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 
-				for (VehIDVehTypeTranBearingXYSpeed vehIDVehTypeTranBearingXYSpeed : vehIDVehTypeTranBearingXYSpeeds) {
-					// Get data
+				for (VehIDVehTypeTranBearingXYSpeed request : vehIDVehTypeTranBearingXYSpeeds) {
 					Vehicle veh = null;
-					if (vehIDVehTypeTranBearingXYSpeed.vehType) {
-						veh = ContextCreator.getVehicleContext().getPrivateVehicle(vehIDVehTypeTranBearingXYSpeed.vehID);
+					if (request.vehType) {
+						veh = ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID);
 					} else {
-						veh = ContextCreator.getVehicleContext().getPublicVehicle(vehIDVehTypeTranBearingXYSpeed.vehID);
+						veh = ContextCreator.getVehicleContext().getPublicVehicle(request.vehID);
+					}
+					if (veh == null) {
+						jsonData.add(coSimTeleportFailure(request.vehID, "VEHICLE_NOT_FOUND",
+								"Vehicle not found for ID " + request.vehID));
+						continue;
 					}
 
-				if (veh != null) {
-					double x = vehIDVehTypeTranBearingXYSpeed.x;
-					double y = vehIDVehTypeTranBearingXYSpeed.y;
-					double z = vehIDVehTypeTranBearingXYSpeed.z;
+					double x = request.x;
+					double y = request.y;
+					double z = request.z;
 					// Transform XY coordinates if needed (Z is in meters and not transformed)
-					if (vehIDVehTypeTranBearingXYSpeed.transformCoord) {
+					if (request.transformCoord) {
 						Coordinate coord = new Coordinate(x, y);
 						try {
 							JTS.transform(coord, coord,
@@ -1553,25 +1640,92 @@ public class ControlMessageHandler extends MessageHandler {
 							x = coord.x;
 							y = coord.y;
 						} catch (TransformException e) {
-							ContextCreator.logger
-									.error("Coordinates transformation failed, input x: " + x + " y:" + y);
-							e.printStackTrace();
+							jsonData.add(coSimTeleportFailure(request.vehID,
+									"COORDINATE_TRANSFORM_FAILED",
+									"Coordinates transformation failed, input x: " + x + " y:" + y));
+							continue;
 						}
 					}
-					
-					removeVehicleFromEnteringQueues(veh);
-					veh.setCurrentCoord(new Coordinate(x, y, z));
-					veh.setSpeed(vehIDVehTypeTranBearingXYSpeed.speed);
-					veh.setBearing(vehIDVehTypeTranBearingXYSpeed.bearing);
+
+					Coordinate authoritativePose = new Coordinate(x, y, z);
 					boolean externalTransitionBeforeUpdate = veh.isExternalRoadTransition();
+					boolean onLaneBeforeUpdate = veh.isOnLane();
+					if (request.observedLaneID != null) {
+						if (externalTransitionBeforeUpdate) {
+							jsonData.add(coSimTeleportFailure(request.vehID,
+									"LANE_SYNC_DURING_TRANSITION",
+									"Cannot synchronize a current lane while a road transition is pending"));
+							continue;
+						}
+						String observedRoadID = request.observedRoadID == null
+								? null : request.observedRoadID.trim();
+						if (observedRoadID == null || observedRoadID.isEmpty()) {
+							jsonData.add(coSimTeleportFailure(request.vehID,
+									"OBSERVED_LANE_REQUIRES_ROAD",
+									"observedLaneID requires a non-blank observedRoadID"));
+							continue;
+						}
+						Road observedRoad = ContextCreator.getCityContext()
+								.findRoadWithOrigID(observedRoadID);
+						if (observedRoad == null) {
+							jsonData.add(coSimTeleportFailure(request.vehID, "OBSERVED_ROAD_NOT_FOUND",
+									"Observed road not found for ID " + observedRoadID));
+							continue;
+						}
+						int observedLaneIndex = request.observedLaneID.intValue();
+						if (observedLaneIndex < 0 || observedLaneIndex >= observedRoad.getNumberOfLanes()) {
+							jsonData.add(coSimTeleportFailure(request.vehID, "OBSERVED_LANE_NOT_FOUND",
+									"Invalid observed lane index " + observedLaneIndex + " for road "
+											+ observedRoadID));
+							continue;
+						}
+
+						Lane previousLane = veh.getLane();
+						Lane observedLane = observedRoad.getLane(observedLaneIndex);
+						try {
+							double projectedDistance = veh.synchronizeCoSimLaneObservation(
+									observedRoad, observedLane, authoritativePose,
+									request.bearing, request.speed);
+							removeVehicleFromEnteringQueues(veh);
+							recordCoSimTeleportSnapshot(veh);
+							HashMap<String, Object> record = new HashMap<String, Object>();
+							record.put("ID", request.vehID);
+							record.put("STATUS", "OK");
+							record.put("laneSynchronized", true);
+							record.put("laneChanged", previousLane != observedLane);
+							record.put("reattachedFromJunction",
+									!onLaneBeforeUpdate && veh.isOnLane());
+							record.put("roadID", observedRoadID);
+							record.put("laneID", observedLaneIndex);
+							record.put("dist", projectedDistance);
+							addExternalTransitionState(record, veh);
+							jsonData.add(record);
+						} catch (IllegalArgumentException ex) {
+							jsonData.add(coSimTeleportFailure(request.vehID,
+									"INVALID_LANE_OBSERVATION", ex.getMessage()));
+						} catch (RuntimeException ex) {
+							String failureDetail = "Unexpected lane synchronization failure for vehicle "
+									+ request.vehID + " on road " + observedRoadID + " lane "
+									+ observedLaneIndex + ": " + ex.getMessage();
+							ContextCreator.logger.error(failureDetail, ex);
+							jsonData.add(coSimTeleportFailure(request.vehID,
+									"LANE_SYNC_FAILED", failureDetail));
+						}
+						continue;
+					}
+
+					removeVehicleFromEnteringQueues(veh);
+					veh.setCurrentCoord(authoritativePose);
+					veh.setSpeed(request.speed);
+					veh.setBearing(request.bearing);
 					boolean externalTransitionCommitted = externalTransitionBeforeUpdate
 							&& veh.tryCommitExternalRoadTransition();
 					if (externalTransitionBeforeUpdate && !externalTransitionCommitted
-							&& vehIDVehTypeTranBearingXYSpeed.observedRoadID != null
-							&& !vehIDVehTypeTranBearingXYSpeed.observedRoadID.trim().isEmpty()) {
+							&& request.observedRoadID != null
+							&& !request.observedRoadID.trim().isEmpty()) {
 						try {
 							Road observedRoad = ContextCreator.getCityContext().findRoadWithOrigID(
-									vehIDVehTypeTranBearingXYSpeed.observedRoadID.trim());
+									request.observedRoadID.trim());
 							externalTransitionCommitted = observedRoad != null
 									&& veh.tryCommitExternalRoadTransitionAfterSkippedTarget(observedRoad);
 						} catch (RuntimeException ex) {
@@ -1584,7 +1738,7 @@ public class ControlMessageHandler extends MessageHandler {
 					recordCoSimTeleportSnapshot(veh);
 
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
+						record2.put("ID", request.vehID);
 						record2.put("STATUS", "OK");
 						if (externalTransitionBeforeUpdate) {
 							record2.put("transitionCommitted", externalTransitionCommitted);
@@ -1592,11 +1746,6 @@ public class ControlMessageHandler extends MessageHandler {
 						addExternalTransitionState(record2, veh);
 						jsonData.add(record2);
 						continue;
-					}
-					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					record2.put("ID", vehIDVehTypeTranBearingXYSpeed.vehID);
-					record2.put("STATUS", "KO");
-					jsonData.add(record2);
 				}
 				jsonAns.put("DATA", jsonData);
 				jsonAns.put("CODE", "OK");
@@ -1608,6 +1757,16 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 		}
 		return jsonAns;
+	}
+
+	private HashMap<String, Object> coSimTeleportFailure(int vehicleID, String reason,
+			String warning) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", vehicleID);
+		record.put("STATUS", "KO");
+		record.put("REASON", reason);
+		if (warning != null && !warning.isEmpty()) record.put("WARN", warning);
+		return record;
 	}
 
 	private void recordCoSimTeleportSnapshot(Vehicle veh) {
@@ -1726,17 +1885,18 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 	
 	/**
-	 * Ask a vehicle to enter its already-planned next road. An explicit
+	 * Ask a vehicle to enter its already-planned next road. Explicit
 	 * {@code roadID} is an assertion, not a reroute command: it must match the
-	 * vehicle's planned next road. The planned lane must also be directly
-	 * connected from the current lane. A regular-to-COSIM crossing can remain in
-	 * an external-connector state until a later {@link #teleportCoSimVeh(JSONObject)}
-	 * pose reaches the exact target lane.
+	 * vehicle's planned next road. Optional {@code laneID} is the compact lane
+	 * index on that target road and asserts the exact direct successor to use; it
+	 * never changes the route or path. A regular-to-COSIM crossing can
+	 * remain in an external-connector state until a later
+	 * {@link #teleportCoSimVeh(JSONObject)} pose reaches the exact target lane.
 	 *
-	 * <p>Input DATA: list of {@code {vehID, vehType, roadID?}}. A missing or
-	 * blank {@code roadID} follows the existing route. A well-formed batch always
-	 * returns one record per input; record-level validation and state failures do
-	 * not abort later records.
+	 * <p>Input DATA: list of {@code {vehID, vehType, roadID?, laneID?}}. A missing
+	 * or blank {@code roadID} follows the existing route; a missing laneID follows
+	 * the route-prepared lane selection. A well-formed batch always returns one
+	 * record per input; record-level failures do not abort later records.
 	 */
 	private HashMap<String, Object> enterNextRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> answer = new HashMap<String, Object>();
@@ -1789,6 +1949,10 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			boolean privateVehicle = ((Boolean) vehicleTypeValue).booleanValue();
 			String explicitRoadID = optionalEnterNextRoadID(raw, "roadID");
+			Integer explicitLaneID = optionalEnterNextRoadInteger(raw, "laneID");
+			if (explicitLaneID != null) {
+				record.put("requestedLaneID", explicitLaneID);
+			}
 
 			Vehicle vehicle = privateVehicle
 					? ContextCreator.getVehicleContext().getPrivateVehicle(vehicleID)
@@ -1821,6 +1985,14 @@ public class ControlMessageHandler extends MessageHandler {
 					return enterNextRoadFailure(record, "KO", "PENDING_TARGET_MISMATCH",
 							"Vehicle is already transitioning to " + pendingRoad.getOrigID());
 				}
+				if (explicitLaneID != null
+						&& pendingRoad.getLaneIndex(pendingLane) != explicitLaneID.intValue()) {
+					addEnterNextRoadTarget(record, pendingRoad, pendingLane);
+					return enterNextRoadFailure(record, "KO", "PENDING_TARGET_LANE_MISMATCH",
+							"Vehicle is already transitioning to lane "
+									+ pendingRoad.getLaneIndex(pendingLane));
+				}
+				if (explicitLaneID != null) record.put("laneAsserted", true);
 				record.put("STATUS", "OK");
 				record.put("transitionAccepted", true);
 				addExternalTransitionState(record, vehicle);
@@ -1833,6 +2005,15 @@ public class ControlMessageHandler extends MessageHandler {
 						"Vehicle has no planned next road");
 			}
 			if (vehicleRoadMatches(vehicle.getRoad(), targetRoad)) {
+				Lane currentLane = vehicle.getLane();
+				if (explicitLaneID != null
+						&& (currentLane == null
+								|| targetRoad.getLaneIndex(currentLane) != explicitLaneID.intValue())) {
+					addEnterNextRoadTarget(record, targetRoad, currentLane);
+					return enterNextRoadFailure(record, "KO", "ALREADY_ON_TARGET_LANE_MISMATCH",
+							"Vehicle is already on the requested road but not its asserted lane");
+				}
+				if (explicitLaneID != null) record.put("laneAsserted", true);
 				record.put("STATUS", "OK");
 				record.put("alreadyOnRoad", true);
 				record.put("transitionAccepted", true);
@@ -1851,7 +2032,7 @@ public class ControlMessageHandler extends MessageHandler {
 				return enterNextRoadFailure(record, "KO", "NO_CURRENT_LANE",
 						"Vehicle must be on a lane before entering its next road");
 			}
-			if (vehicle.getNextLane() == null) {
+			if (vehicle.getNextLane() == null && explicitLaneID == null) {
 				vehicle.assignNextLane();
 			}
 			if (explicitRoad == null) {
@@ -1866,10 +2047,39 @@ public class ControlMessageHandler extends MessageHandler {
 				return enterNextRoadFailure(record, "KO", "INVALID_TRANSITION",
 						"Requested road is not directly downstream of the current road");
 			}
+			if (explicitLaneID != null) {
+				int laneIndex = explicitLaneID.intValue();
+				if (laneIndex < 0 || laneIndex >= targetRoad.getNumberOfLanes()) {
+					return enterNextRoadFailure(record, "KO", "TARGET_LANE_NOT_FOUND",
+							"Invalid compact lane index " + laneIndex + " for target road "
+									+ targetRoad.getOrigID() + " (lanes: "
+									+ targetRoad.getNumberOfLanes() + ")");
+				}
+				Lane assertedLane = targetRoad.getLane(laneIndex);
+				addEnterNextRoadTarget(record, targetRoad, assertedLane);
+				if (!currentLane.getDownStreamLanes().contains(assertedLane.getID())) {
+					return enterNextRoadFailure(record, "KO", "ASSERTED_LANE_NOT_DIRECT_SUCCESSOR",
+							"Asserted target lane is not directly connected from the current lane");
+				}
+				if (!vehicle.assertNextLaneForExternalTransition(targetRoad, assertedLane)) {
+					return enterNextRoadFailure(record, "KO", "TARGET_LANE_ASSERTION_REJECTED",
+							"Vehicle rejected the asserted target lane without changing its route");
+				}
+				targetLane = assertedLane;
+				record.put("laneAsserted", true);
+			}
 			if (targetLane == null || targetLane.getRoad() != targetRoad
 					|| !currentLane.getDownStreamLanes().contains(targetLane.getID())) {
-				return enterNextRoadFailure(record, "KO", "NO_DIRECT_TARGET_LANE",
-						"Planned target lane is not directly connected from the current lane");
+				Lane routePreparedLane = targetLane;
+				targetLane = vehicle.adjustNextLaneToDirectSuccessor(targetRoad);
+				if (targetLane == null) {
+					return enterNextRoadFailure(record, "KO", "NO_DIRECT_TARGET_LANE",
+							"Planned target road has no lane directly connected from the current lane");
+				}
+				addEnterNextRoadLaneAdjustment(
+						record, routePreparedLane, targetLane);
+			} else {
+				record.put("laneAdjusted", false);
 			}
 
 			addEnterNextRoadTarget(record, targetRoad, targetLane);
@@ -1878,7 +2088,7 @@ public class ControlMessageHandler extends MessageHandler {
 				return enterNextRoadFailure(record, "KO", "TARGET_LANE_RESERVED",
 						"The planned target lane is reserved by another external transition");
 			}
-			boolean entered = vehicle.changeRoad();
+			boolean entered = vehicle.changeRoad(explicitLaneID != null);
 			if (entered) {
 				// A true return is this handler's ownership token for source-road
 				// accounting. Retries take the pending/already-on-road paths, while
@@ -1934,6 +2144,11 @@ public class ControlMessageHandler extends MessageHandler {
 		return (int) number;
 	}
 
+	private Integer optionalEnterNextRoadInteger(Map<?, ?> raw, String field) {
+		if (!raw.containsKey(field) || raw.get(field) == null) return null;
+		return Integer.valueOf(requiredEnterNextRoadInteger(raw, field));
+	}
+
 	private String optionalEnterNextRoadID(Map<?, ?> raw, String field) {
 		Object value = raw.get(field);
 		if (value == null) return null;
@@ -1950,6 +2165,23 @@ public class ControlMessageHandler extends MessageHandler {
 		record.put("REASON", reason);
 		if (warning != null && !warning.isEmpty()) record.put("WARN", warning);
 		return record;
+	}
+
+	private void addEnterNextRoadLaneAdjustment(Map<String, Object> record,
+			Lane oldLane, Lane newLane) {
+		record.put("laneAdjusted", true);
+		addEnterNextRoadLaneMetadata(record, "old", oldLane);
+		addEnterNextRoadLaneMetadata(record, "new", newLane);
+	}
+
+	private void addEnterNextRoadLaneMetadata(Map<String, Object> record,
+			String prefix, Lane lane) {
+		Road road = lane == null ? null : lane.getRoad();
+		int laneIndex = road == null ? -1 : road.getLaneIndex(lane);
+		record.put(prefix + "LaneID", laneIndex);
+		record.put(prefix + "InternalLaneID", lane == null ? null : lane.getID());
+		record.put(prefix + "LaneOrigID", lane == null ? null : lane.getOrigID());
+		record.put(prefix + "RoadID", road == null ? null : road.getOrigID());
 	}
 
 	private void addExternalTransitionState(Map<String, Object> record, Vehicle vehicle) {
@@ -4434,7 +4666,7 @@ public class ControlMessageHandler extends MessageHandler {
 	
 	
 	// =============================================================
-	// ROUTING WEIGHTS
+	// ROAD SPEEDS AND ROUTING WEIGHTS
 	// =============================================================
 	
 	/**
@@ -4446,43 +4678,121 @@ public class ControlMessageHandler extends MessageHandler {
 	 */
 	private HashMap<String, Object> updateEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("DATA")) {
+		if (!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
 			jsonAns.put("CODE", "KO");
 		}
 		else {
 			try {
 				Gson gson = new Gson();
-				TypeToken<Collection<RoadIDWeight>> collectionType = new TypeToken<Collection<RoadIDWeight>>() {};
-			    Collection<RoadIDWeight> roadIDWeights = gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-			    ArrayList<Object> jsonData = new ArrayList<Object>();
-			    
-			    for(RoadIDWeight roadIDWeight: roadIDWeights) {
-			    	Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadIDWeight.roadID);
-			    	if(r != null) {
-			    		Node node1 = r.getUpStreamNode();
-				    	Node node2 = r.getDownStreamNode();
-				    	ContextCreator.getRoadNetwork().getEdge(node1, node2).setWeight(Math.max(roadIDWeight.weight, 1e-3)); // weight cannot be negative 
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", roadIDWeight.roadID);
-			    		record2.put("STATUS", "OK");
-						jsonData.add(record2);
-			    	}
-			    	else {
-			    		ContextCreator.logger.warn("Cannot find the road, road ID: " + roadIDWeight.roadID);
-			    		HashMap<String, Object> record2 = new HashMap<String, Object>();
-			    		record2.put("ID", roadIDWeight.roadID);
-			    		record2.put("STATUS", "KO");
-						jsonData.add(record2);
-			    	}
-			    }
+				TypeToken<Collection<RoadIDWeight>> collectionType =
+						new TypeToken<Collection<RoadIDWeight>>() {};
+				Collection<RoadIDWeight> roadIDWeights =
+						gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+
+				for (RoadIDWeight roadIDWeight : roadIDWeights) {
+					HashMap<String, Object> record = statusRecord(roadIDWeight.roadID, "KO");
+					Road road = findRoadByOrigOrInternalID(roadIDWeight.roadID);
+					if (road == null) {
+						ContextCreator.logger.warn("Cannot find the road, road ID: " + roadIDWeight.roadID);
+						record.put("WARN", "road not found");
+					}
+					else if (!Double.isFinite(roadIDWeight.weight)) {
+						record.put("WARN", "weight must be finite");
+					}
+					else {
+						double routingWeight = Math.max(roadIDWeight.weight, 1.0e-3);
+						if (ContextCreator.getCityContext().updateRoadRoutingWeight(road, routingWeight)) {
+							record.put("weight", routingWeight);
+							record.put("STATUS", "OK");
+						}
+						else {
+							record.put("WARN", "road has no routing edge");
+						}
+					}
+					jsonData.add(record);
+				}
 				jsonAns.put("DATA", jsonData);
 				jsonAns.put("CODE", "OK");
 			}
 			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
-			    jsonAns.put("CODE", "KO");
+				ContextCreator.logger.error("Error processing control: " + e.toString());
+				jsonAns.put("CODE", "KO");
+			}
+		}
+		return jsonAns;
+	}
+
+	/**
+	 * Set the target speed of one or more roads in meters per second. Unlike
+	 * {@link #updateEdgeWeight(JSONObject)}, this updates both lane/vehicle behavior
+	 * and the road's free-flow routing cost.
+	 *
+	 * <p>Input DATA: list of {@code {roadID, target_speed}}. Aliases
+	 * {@code origID}, {@code orig_id}, {@code ID}, {@code targetSpeed}, and
+	 * {@code speed} are accepted.
+	 */
+	private HashMap<String, Object> updateTargetSpeed(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+		}
+		else {
+			try {
+				Gson gson = new Gson();
+				TypeToken<Collection<RoadIDTargetSpeed>> collectionType =
+						new TypeToken<Collection<RoadIDTargetSpeed>>() {};
+				Collection<RoadIDTargetSpeed> entries =
+						gson.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
+				ArrayList<Object> jsonData = new ArrayList<Object>();
+
+				for (RoadIDTargetSpeed entry : entries) {
+					String roadID = firstNonBlank(entry.roadID, entry.origID, entry.orig_id, entry.ID);
+					Double targetSpeed = firstDoubleOrNull(entry.targetSpeed, entry.target_speed, entry.speed);
+					HashMap<String, Object> record = statusRecord(roadID, "KO");
+					if (roadID == null) {
+						record.put("WARN", "roadID is required");
+					}
+					else if (targetSpeed == null || !Double.isFinite(targetSpeed) || targetSpeed <= 0.0) {
+						record.put("WARN", "target_speed must be a finite positive value in m/s");
+					}
+					else {
+						Road road = findRoadByOrigOrInternalID(roadID);
+						if (road == null) {
+							ContextCreator.logger.warn("Cannot find the road, road ID: " + roadID);
+							record.put("WARN", "road not found");
+						}
+						else {
+							Node node1 = road.getUpStreamNode();
+							Node node2 = road.getDownStreamNode();
+							if (node1 == null || node2 == null
+									|| ContextCreator.getRoadNetwork().getEdge(node1, node2) == null) {
+								record.put("WARN", "road has no routing edge");
+							}
+							else {
+								road.setTargetSpeed(targetSpeed);
+								ContextCreator.getCityContext()
+										.updateRoadRoutingWeight(road, road.getTravelTime());
+								record.put("target_speed", targetSpeed);
+								record.put("speed_unit", "m/s");
+								record.put("speed_limit", road.getSpeedLimit());
+								record.put("avg_travel_time", road.getTravelTime());
+								record.put("weight", ContextCreator.getRoadNetwork()
+										.getEdge(node1, node2).getWeight());
+								record.put("STATUS", "OK");
+							}
+						}
+					}
+					jsonData.add(record);
+				}
+				jsonAns.put("DATA", jsonData);
+				jsonAns.put("CODE", "OK");
+			}
+			catch (Exception e) {
+				ContextCreator.logger.error("Error processing control: " + e.toString());
+				jsonAns.put("CODE", "KO");
 			}
 		}
 		return jsonAns;
@@ -5894,6 +6204,13 @@ public class ControlMessageHandler extends MessageHandler {
 
 	private Integer firstIntegerOrNull(Integer... values) {
 		for (Integer value : values) {
+			if (value != null) return value;
+		}
+		return null;
+	}
+
+	private Double firstDoubleOrNull(Double... values) {
+		for (Double value : values) {
 			if (value != null) return value;
 		}
 		return null;
