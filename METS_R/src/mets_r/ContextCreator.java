@@ -451,15 +451,23 @@ public class ContextCreator implements ContextBuilder<Object> {
 	// Schedule the event for vehicle movements (single-thread)
 	public static void scheduleSequentialRoadStep() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-		ScheduleParameters agentParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0);
+		ScheduleParameters part1Params = ScheduleParameters.createRepeating(initTick + 1, 1, 0.3);
+		ScheduleParameters part2Params = ScheduleParameters.createRepeating(initTick + 1, 1, 0.2);
+		ScheduleParameters transferParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0.1);
 		for (Road r : getRoadContext().getAll()) {
-			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
+			scheduledActions.add(schedule.schedule(part1Params, r, "stepPart1"));
 		}
 		for (Road r : getRoadContext().getAll()) {
-			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
+			scheduledActions.add(schedule.schedule(part2Params, r, "stepPart2"));
 		}
-		
-		scheduledActions.add(schedule.schedule(agentParams, ContextCreator.getVehicleContext(), "executeGlobalTransfers"));
+		scheduledActions.add(schedule.schedule(transferParams,
+				ContextCreator.getVehicleContext(), "executeGlobalTransfers"));
+		if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+			ScheduleParameters intersectionParams =
+					ScheduleParameters.createRepeating(initTick + 1, 1, 0.0);
+			scheduledActions.add(schedule.schedule(intersectionParams,
+					ContextCreator.getRoadContext(), "stepIntersections"));
+		}
 	}
 
 	/**
@@ -473,9 +481,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void scheduleNewRoad(Road r) {
 		if (!GlobalVariables.MULTI_THREADING) {
 			ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
-			ScheduleParameters agentParams = ScheduleParameters.createRepeating(getCurrentTick() + 1, 1, 0);
-			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart1"));
-			scheduledActions.add(schedule.schedule(agentParams, r, "stepPart2"));
+			ScheduleParameters part1Params = ScheduleParameters.createRepeating(
+					getCurrentTick() + 1, 1, 0.3);
+			ScheduleParameters part2Params = ScheduleParameters.createRepeating(
+					getCurrentTick() + 1, 1, 0.2);
+			scheduledActions.add(schedule.schedule(part1Params, r, "stepPart1"));
+			scheduledActions.add(schedule.schedule(part2Params, r, "stepPart2"));
 		}
 		// Background speed refresh is batched in cityContext.updateBackgroundSpeeds(),
 		// so newly added roads are picked up automatically at the next refresh.

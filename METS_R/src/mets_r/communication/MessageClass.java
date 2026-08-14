@@ -180,13 +180,19 @@ public class MessageClass{
     	int orig;
     	int dest;
     	int num;
+		Double length;
     	
     	// Constructor
     	public VehIDOrigDestNum(int vehID, int orig, int dest, int num) {
+			this(vehID, orig, dest, num, null);
+		}
+
+		public VehIDOrigDestNum(int vehID, int orig, int dest, int num, Double length) {
     		this.vehID = vehID;
     		this.orig = orig;
     		this.dest = dest;
     		this.num = num;
+			this.length = length;
     	}
     }
     
@@ -195,13 +201,20 @@ public class MessageClass{
     	String orig;
     	String dest;
     	int num;
+		Double length;
     	
     	// Constructor
     	public VehIDOrigRoadDestRoadNum(int vehID, String orig, String dest, int num) {
+			this(vehID, orig, dest, num, null);
+		}
+
+		public VehIDOrigRoadDestRoadNum(int vehID, String orig, String dest, int num,
+				Double length) {
     		this.vehID = vehID;
     		this.orig = orig;
     		this.dest = dest;
     		this.num = num;
+			this.length = length;
     	}
     }
     
@@ -735,20 +748,32 @@ public class MessageClass{
     class AddTaxiToZone {
     	int zoneID;
     	int num;
+		Double length;
 
     	public AddTaxiToZone(int zoneID, int num) {
+			this(zoneID, num, null);
+		}
+
+		public AddTaxiToZone(int zoneID, int num, Double length) {
     		this.zoneID = zoneID;
     		this.num = num;
+			this.length = length;
     	}
     }
 
     class RouteNameNum {
     	String routeName;
     	int num;
+		Double length;
 
     	public RouteNameNum(String routeName, int num) {
+			this(routeName, num, null);
+		}
+
+		public RouteNameNum(String routeName, int num, Double length) {
     		this.routeName = routeName;
     		this.num = num;
+			this.length = length;
     	}
     }
 

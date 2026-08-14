@@ -36,14 +36,24 @@ public class ElectricVehicle extends Vehicle {
 	public double initialChargingState = 0;
 	
 	public ElectricVehicle(int vType, int vSensor) {
-		super(vType, vSensor);
+		this(vType, vSensor, GlobalVariables.DEFAULT_VEHICLE_LENGTH);
+	}
+
+	public ElectricVehicle(int vType, int vSensor, double length) {
+		super(vType, vSensor, length);
 		initializeEVFields(GlobalVariables.EV_BATTERY, GlobalVariables.EV_MASS,
 				GlobalVariables.EV_METERS_PER_KWH, GlobalVariables.RECHARGE_LEVEL_LOW,
 				GlobalVariables.RECHARGE_LEVEL_HIGH);
 	}
 	
 	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration, int vClass, int vSensor) {
-		super(maximumAcceleration, maximumDeceleration, vClass, vSensor);
+		this(maximumAcceleration, maximumDeceleration, vClass, vSensor,
+				GlobalVariables.DEFAULT_VEHICLE_LENGTH);
+	}
+
+	public ElectricVehicle(double maximumAcceleration, double maximumDeceleration,
+			int vClass, int vSensor, double length) {
+		super(maximumAcceleration, maximumDeceleration, vClass, vSensor, length);
 		initializeEVFields(GlobalVariables.EV_BATTERY, GlobalVariables.EV_MASS,
 				GlobalVariables.EV_METERS_PER_KWH, GlobalVariables.RECHARGE_LEVEL_LOW,
 				GlobalVariables.RECHARGE_LEVEL_HIGH);

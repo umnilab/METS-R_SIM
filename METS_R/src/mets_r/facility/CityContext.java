@@ -953,6 +953,7 @@ public class CityContext extends DefaultContext<Object> {
 		// Mark deadend roads
 		markInvalidOrigins();
 		markInvalidDestinations();
+		ContextCreator.getRoadContext().rebuildConnectorTopology();
 		
 		ContextCreator.logger.info("City initialized!");
 	}
@@ -1161,6 +1162,7 @@ public class CityContext extends DefaultContext<Object> {
 
 		markInvalidOrigins();
 		markInvalidDestinations();
+		ContextCreator.getRoadContext().rebuildConnectorTopology();
 		clearRoadLookupCaches();
 	}
 

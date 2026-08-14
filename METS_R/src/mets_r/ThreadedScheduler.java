@@ -21,6 +21,7 @@ public class ThreadedScheduler {
 	private final Future<?>[] futures;
 	private final RoadPartitionTask[] roadPart1Tasks;
 	private final RoadPartitionTask[] roadPart2Tasks;
+	private final IntersectionPartitionTask[] intersectionTasks;
 	private final ZonePartitionTask[] zonePart2Tasks;
 	private final ChargingPartitionTask[] chargingPart1Tasks;
 	private final SignalPartitionTask[] signalTasks;
@@ -39,6 +40,7 @@ public class ThreadedScheduler {
 
 	private volatile long roadPart1Nanos;
 	private volatile long roadPart2Nanos;
+	private volatile long intersectionNanos;
 	private volatile long activeRoadPartitionNanos;
 	private volatile long activeRoadRefreshNanos;
 	private volatile long globalTransferNanos;
@@ -57,12 +59,18 @@ public class ThreadedScheduler {
 		this.futures = new Future<?>[this.nPartitions];
 		this.roadPart1Tasks = new RoadPartitionTask[this.nPartitions];
 		this.roadPart2Tasks = new RoadPartitionTask[this.nPartitions];
+		this.intersectionTasks = GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
+				? new IntersectionPartitionTask[this.nPartitions]
+				: new IntersectionPartitionTask[0];
 		this.zonePart2Tasks = new ZonePartitionTask[this.nPartitions];
 		this.chargingPart1Tasks = new ChargingPartitionTask[this.nPartitions];
 		this.signalTasks = new SignalPartitionTask[this.nPartitions];
 		for (int i = 0; i < this.nPartitions; i++) {
 			this.roadPart1Tasks[i] = new RoadPartitionTask(i, true);
 			this.roadPart2Tasks[i] = new RoadPartitionTask(i, false);
+			if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+				this.intersectionTasks[i] = new IntersectionPartitionTask(i);
+			}
 			this.zonePart2Tasks[i] = new ZonePartitionTask(i);
 			this.chargingPart1Tasks[i] = new ChargingPartitionTask(i);
 			this.signalTasks[i] = new SignalPartitionTask(i);
@@ -76,6 +84,7 @@ public class ThreadedScheduler {
 		this.lastSignalStepTick = -1;
 		this.roadPart1Nanos = 0L;
 		this.roadPart2Nanos = 0L;
+		this.intersectionNanos = 0L;
 		this.activeRoadPartitionNanos = 0L;
 		this.activeRoadRefreshNanos = 0L;
 		this.globalTransferNanos = 0L;
@@ -170,6 +179,7 @@ public class ThreadedScheduler {
 			LinkedHashMap<String, Object> nanos = new LinkedHashMap<String, Object>();
 			nanos.put("roadPart1", this.roadPart1Nanos);
 			nanos.put("roadPart2", this.roadPart2Nanos);
+			nanos.put("intersections", this.intersectionNanos);
 			nanos.put("activeRoadPartitioning", this.activeRoadPartitionNanos);
 			nanos.put("activeRoadRefresh", this.activeRoadRefreshNanos);
 			nanos.put("globalTransfers", this.globalTransferNanos);
@@ -229,6 +239,29 @@ public class ThreadedScheduler {
 		} finally {
 			this.globalTransferNanos += elapsed(stageStart);
 			endStage("vehicle.globalTransfers");
+		}
+
+		if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+			stageStart = profileStart();
+			beginStage("intersection.collision");
+			try {
+				ArrayList<ArrayList<Integer>> intersectionPartitions =
+						ContextCreator.getRoadContext()
+								.getActiveIntersectionPartitions(this.nPartitions);
+				for (int i = 0; i < this.nPartitions; i++) {
+					this.intersectionTasks[i].setIntersectionIDs(
+							i < intersectionPartitions.size()
+									? intersectionPartitions.get(i)
+									: Collections.<Integer>emptyList());
+				}
+				submitAndAwait(this.intersectionTasks);
+			} catch (Exception ex) {
+				ContextCreator.logger.error(
+						"ThreadedScheduler intersection.collision failed", ex);
+			} finally {
+				this.intersectionNanos += elapsed(stageStart);
+				endStage("intersection.collision");
+			}
 		}
 
 		if (GlobalVariables.ACTIVE_ROAD_STEPPING) {
@@ -388,6 +421,34 @@ public class ThreadedScheduler {
 					ContextCreator.logger.error("road.part" + (this.part1 ? "1" : "2")
 							+ " partition " + this.partitionID + " failed on road " + roadID
 							+ " vehicles=" + vehicleCount, ex);
+				}
+			}
+		}
+	}
+
+	private static class IntersectionPartitionTask implements Runnable {
+		private final int partitionID;
+		private List<Integer> intersectionIDs = Collections.emptyList();
+
+		IntersectionPartitionTask(int partitionID) {
+			this.partitionID = partitionID;
+		}
+
+		void setIntersectionIDs(List<Integer> intersectionIDs) {
+			this.intersectionIDs = intersectionIDs;
+		}
+
+		public void run() {
+			for (Integer intersectionID : this.intersectionIDs) {
+				try {
+					if (intersectionID != null) {
+						ContextCreator.getRoadContext()
+								.processIntersectionState(intersectionID.intValue());
+					}
+				} catch (Throwable ex) {
+					ContextCreator.logger.error("intersection.collision partition "
+							+ this.partitionID + " failed on intersection "
+							+ intersectionID, ex);
 				}
 			}
 		}

@@ -61,7 +61,12 @@ public class ElectricBus extends ElectricVehicle {
 
 	// Constructor
 	public ElectricBus(int routeID, ArrayList<Integer> route, ArrayList<Integer> departureTime) {
-		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE); // max acc, min dc, and vehicle class
+		this(routeID, route, departureTime, GlobalVariables.DEFAULT_VEHICLE_LENGTH);
+	}
+
+	public ElectricBus(int routeID, ArrayList<Integer> route,
+			ArrayList<Integer> departureTime, double length) {
+		super(1.2, -2.0, Vehicle.EBUS, Vehicle.NONE_OF_THE_ABOVE, length); // max acc, min dc, and vehicle class
 		initializeEVFields(GlobalVariables.BUS_BATTERY, GlobalVariables.BUS_MASS,
 				GlobalVariables.BUS_METERS_PER_KWH, GlobalVariables.BUS_RECHARGE_LEVEL_LOW,
 				GlobalVariables.BUS_RECHARGE_LEVEL_HIGH);

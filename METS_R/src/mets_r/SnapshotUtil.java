@@ -114,11 +114,13 @@ public class SnapshotUtil {
 
 	// --------------- Vehicle snapshot ---------------
 	public static HashMap<String, Object> snapshotVehicle(Vehicle v) {
+		synchronized (v) {
 		HashMap<String, Object> m = new HashMap<>();
 		m.put("id", v.getID());
 		m.put("vehicleClass", v.getVehicleClass());
 		m.put("vehicleSensorType", v.getVehicleSensorType());
 		m.put("vehicleState", v.getState());
+		m.put("length", v.length());
 		m.put("coordX", v.getCurrentCoord().x);
 		m.put("coordY", v.getCurrentCoord().y);
 		m.put("coordZ", v.getCurrentCoord().z);
@@ -137,6 +139,7 @@ public class SnapshotUtil {
 		m.put("onLane", v.isOnLane());
 		m.put("movingFlag", v.getMovingFlag());
 		m.put("currentParkingRoad", v.getCurrentParkingRoad());
+		addConnectorSnapshotFields(m, v.getConnectorPersistenceSnapshot());
 
 		// Origin road
 		try {
@@ -248,6 +251,7 @@ public class SnapshotUtil {
 		}
 
 		return m;
+	}
 	}
 
 	// --------------- Zone snapshot (dynamic state only) ---------------
@@ -384,6 +388,40 @@ public class SnapshotUtil {
 		}
 		m.put("enteringVehicleQueue", enteringVehicleIDs);
 		return m;
+	}
+
+	private static void addConnectorSnapshotFields(HashMap<String, Object> target,
+			Vehicle.ConnectorPersistenceSnapshot connectorState) {
+		if (connectorState == null) return;
+		ConnectorRoad connector = connectorState.getConnector();
+		target.put("connectorStateVersion", 1);
+		target.put("connectorActive", true);
+		target.put("connectorOrigID", connector.getOrigID());
+		target.put("connectorSourceRoadID", connector.getSourceRoad().getID());
+		target.put("connectorTargetRoadID", connector.getTargetRoad().getID());
+		target.put("connectorIntersectionID", connector.getIntersectionID());
+		target.put("connectorFrontCleared", connectorState.isFrontCleared());
+		target.put("connectorExternalTransition", connectorState.isExternalTransition());
+		target.put("connectorTargetLaneID", connectorState.getTargetLane().getID());
+		target.put("connectorDistance", connectorState.getDistance());
+		target.put("connectorNextDistance", connectorState.getNextDistance());
+		target.put("connectorSegmentIndex", connectorState.getSegmentIndex());
+		target.put("connectorLaneSlope", connectorState.getLaneSlope());
+		if (connectorState.isExternalTransition()) {
+			target.put("externalTransitionSourceRoadID",
+					connectorState.getExternalSourceRoad().getID());
+			target.put("externalTransitionTargetRoadID",
+					connectorState.getExternalTargetRoad().getID());
+		}
+		ArrayList<ArrayList<Double>> coordinates = new ArrayList<ArrayList<Double>>();
+		for (Coordinate coordinate : connectorState.getRemainingCoordinates()) {
+			ArrayList<Double> point = new ArrayList<Double>(3);
+			point.add(coordinate.x);
+			point.add(coordinate.y);
+			point.add(Double.isNaN(coordinate.z) ? 0.0 : coordinate.z);
+			coordinates.add(point);
+		}
+		target.put("connectorCoordMap", coordinates);
 	}
 
 	public static HashMap<String, Object> snapshotLane(Lane l) {
@@ -599,6 +637,9 @@ public class SnapshotUtil {
 		if (snapshot == null) {
 			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
 		}
+		if (ContextCreator.getRoadContext() != null) {
+			ContextCreator.getRoadContext().resetConnectorRuntimeState();
+		}
 		restoreBackgroundTrafficState(snapshot.globalState);
 
 		String globalRandomStr = (String) snapshot.globalState.get("globalRandom");
@@ -675,6 +716,7 @@ public class SnapshotUtil {
 
 		HashMap<Integer, Vehicle> restoredVehicleMap = restoreVehicles(snapshot.vehicleSnapshots);
 		restoreRoadEnteringQueues(snapshot.roadSnapshots, restoredVehicleMap);
+		restoreConnectorStates(snapshot.vehicleSnapshots, restoredVehicleMap);
 		ContextCreator.getVehicleContext().rebuildPendingTaxiRequestIndex();
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
@@ -1179,18 +1221,25 @@ public class SnapshotUtil {
 			int roadID = toInt(vs.get("roadID"));
 			int laneIndex = toInt(vs.get("laneIndex"));
 			double distance = toDouble(vs.get("distance"));
+			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
+					&& toBool(vs.get("connectorExternalTransition"));
 
 			if (wasOnRoad && roadID >= 0) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
-					Lane lane = null;
-					if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
-						lane = road.getLane(laneIndex);
-					} else if (road.getNumberOfLanes() > 0) {
-						lane = road.getLane(0);
-					}
-					if (lane != null) {
-						road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
+					if (savedExternalConnector) {
+						v.appendToRoadForTeleport(road);
+						v.setOnLane(false);
+					} else {
+						Lane lane = null;
+						if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
+							lane = road.getLane(laneIndex);
+						} else if (road.getNumberOfLanes() > 0) {
+							lane = road.getLane(0);
+						}
+						if (lane != null) {
+							road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
+						}
 					}
 				}
 			}
@@ -1240,6 +1289,7 @@ public class SnapshotUtil {
 		vc.rebuildTaxiRequestMaps();
 
 		restoreRoadEnteringQueues(roadSnapshots, restoredVehicleMap);
+		restoreConnectorStates(vehicleSnapshots, restoredVehicleMap);
 
 		// 12. Restore charging station queues (now that vehicles are created)
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
@@ -1366,18 +1416,25 @@ public class SnapshotUtil {
 			int roadID = toInt(vs.get("roadID"));
 			int laneIndex = toInt(vs.get("laneIndex"));
 			double distance = toDouble(vs.get("distance"));
+			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
+					&& toBool(vs.get("connectorExternalTransition"));
 
 			if (wasOnRoad && roadID >= 0) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
-					Lane lane = null;
-					if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
-						lane = road.getLane(laneIndex);
-					} else if (road.getNumberOfLanes() > 0) {
-						lane = road.getLane(0);
-					}
-					if (lane != null) {
-						road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
+					if (savedExternalConnector) {
+						v.appendToRoadForTeleport(road);
+						v.setOnLane(false);
+					} else {
+						Lane lane = null;
+						if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
+							lane = road.getLane(laneIndex);
+						} else if (road.getNumberOfLanes() > 0) {
+							lane = road.getLane(0);
+						}
+						if (lane != null) {
+							road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
+						}
 					}
 				}
 			}
@@ -1426,7 +1483,7 @@ public class SnapshotUtil {
 	}
 
 	private static ElectricTaxi restoreTaxi(HashMap<String, Object> vs) {
-		ElectricTaxi taxi = new ElectricTaxi();
+		ElectricTaxi taxi = new ElectricTaxi(restoredVehicleLength(vs));
 		restoreEVFields(taxi, vs);
 		taxi.setPassNum(toInt(vs.get("passNum")));
 		taxi.setCurrentZone(toInt(vs.get("currentZone")));
@@ -1456,7 +1513,8 @@ public class SnapshotUtil {
 		ArrayList<Integer> departureTimes = toIntList((List<?>) vs.get("departureTimes"));
 		int routeID = toInt(vs.get("routeID"));
 
-		ElectricBus bus = new ElectricBus(routeID, stopZones, departureTimes);
+		ElectricBus bus = new ElectricBus(
+				routeID, stopZones, departureTimes, restoredVehicleLength(vs));
 		restoreEVFields(bus, vs);
 		bus.setPassNum(toInt(vs.get("passNum")));
 		bus.setNextStop(toInt(vs.get("nextStop")));
@@ -1488,13 +1546,20 @@ public class SnapshotUtil {
 	}
 
 	private static ElectricVehicle restoreElectricVehicle(HashMap<String, Object> vs) {
-		ElectricVehicle ev = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
+		ElectricVehicle ev = new ElectricVehicle(Vehicle.EV,
+				Vehicle.NONE_OF_THE_ABOVE, restoredVehicleLength(vs));
 		restoreEVFields(ev, vs);
 		return ev;
 	}
 
 	private static Vehicle restoreBaseVehicle(HashMap<String, Object> vs) {
-		return new Vehicle(Vehicle.GV, Vehicle.NONE_OF_THE_ABOVE);
+		return new Vehicle(Vehicle.GV,
+				Vehicle.NONE_OF_THE_ABOVE, restoredVehicleLength(vs));
+	}
+
+	private static double restoredVehicleLength(HashMap<String, Object> vs) {
+		return vs != null && vs.containsKey("length")
+				? toDouble(vs.get("length")) : GlobalVariables.DEFAULT_VEHICLE_LENGTH;
 	}
 
 	private static void restoreEVFields(ElectricVehicle ev, HashMap<String, Object> vs) {
@@ -1511,6 +1576,78 @@ public class SnapshotUtil {
 		if (vs.containsKey("chargingTime")) ev.setChargingTime(toInt(vs.get("chargingTime")));
 		if (vs.containsKey("chargingWaitingTime")) ev.setChargingWaitingTime(toInt(vs.get("chargingWaitingTime")));
 		if (vs.containsKey("initialChargingState")) ev.setInitialChargingState(toDouble(vs.get("initialChargingState")));
+	}
+
+	private static void restoreConnectorStates(
+			ArrayList<HashMap<String, Object>> vehicleSnapshots,
+			HashMap<Integer, Vehicle> restoredVehicleMap) {
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext == null || vehicleSnapshots == null || restoredVehicleMap == null) return;
+		for (HashMap<String, Object> vs : vehicleSnapshots) {
+			if (!toBool(vs.get("connectorActive"))) continue;
+			int stateVersion = toInt(vs.get("connectorStateVersion"));
+			if (stateVersion != 1) {
+				throw new IllegalStateException("Unsupported connector snapshot version "
+						+ stateVersion + " for vehicle " + toInt(vs.get("id")));
+			}
+			Vehicle vehicle = restoredVehicleMap.get(toInt(vs.get("id")));
+			if (vehicle == null) {
+				throw new IllegalStateException("Missing restored connector vehicle "
+						+ toInt(vs.get("id")));
+			}
+			int sourceRoadID = toInt(vs.get("connectorSourceRoadID"));
+			int targetRoadID = toInt(vs.get("connectorTargetRoadID"));
+			ConnectorRoad connector = roadContext.getConnector(sourceRoadID, targetRoadID);
+			if (connector == null) {
+				throw new IllegalStateException("Saved connector topology is unavailable for vehicle "
+						+ vehicle.getID() + ": " + sourceRoadID + " -> " + targetRoadID);
+			}
+			Object savedOrigID = vs.get("connectorOrigID");
+			if (savedOrigID != null && !connector.getOrigID().equals(savedOrigID.toString())) {
+				throw new IllegalStateException("Saved connector ID does not match rebuilt topology for vehicle "
+						+ vehicle.getID());
+			}
+			Lane targetLane = ContextCreator.getLaneContext().get(
+					toInt(vs.get("connectorTargetLaneID")));
+			if (targetLane == null || targetLane.getRoad() != connector.getTargetRoad()) {
+				throw new IllegalStateException("Saved connector target lane is unavailable for vehicle "
+						+ vehicle.getID());
+			}
+
+			boolean external = toBool(vs.get("connectorExternalTransition"));
+			Road externalSourceRoad = null;
+			Road externalTargetRoad = null;
+			if (external) {
+				externalSourceRoad = roadContext.get(
+						toInt(vs.get("externalTransitionSourceRoadID")));
+				externalTargetRoad = roadContext.get(
+						toInt(vs.get("externalTransitionTargetRoadID")));
+			}
+			ArrayList<Coordinate> remainingCoordinates = new ArrayList<Coordinate>();
+			Object rawCoordinates = vs.get("connectorCoordMap");
+			if (rawCoordinates instanceof List<?>) {
+				for (Object rawPoint : (List<?>) rawCoordinates) {
+					if (!(rawPoint instanceof List<?>)) continue;
+					List<?> point = (List<?>) rawPoint;
+					if (point.size() < 2) continue;
+					remainingCoordinates.add(new Coordinate(toDouble(point.get(0)),
+							toDouble(point.get(1)),
+							point.size() >= 3 ? toDouble(point.get(2)) : 0.0));
+				}
+			}
+			vehicle.restoreConnectorPersistenceState(connector,
+					toBool(vs.get("connectorFrontCleared")), external,
+					externalSourceRoad, externalTargetRoad, targetLane,
+					remainingCoordinates, toDouble(vs.get("connectorDistance")),
+					toDouble(vs.get("connectorNextDistance")),
+					toInt(vs.get("connectorSegmentIndex")),
+					toDouble(vs.get("connectorLaneSlope")),
+					new Coordinate(toDouble(vs.get("coordX")),
+							toDouble(vs.get("coordY")),
+							vs.containsKey("coordZ") ? toDouble(vs.get("coordZ")) : 0.0),
+					toDouble(vs.get("bearing")));
+		}
+		roadContext.finishConnectorStateRestore();
 	}
 
 	private static void restoreRoadEnteringQueues(ArrayList<HashMap<String, Object>> roadSnapshots,

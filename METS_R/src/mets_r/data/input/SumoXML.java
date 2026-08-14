@@ -558,10 +558,11 @@ public class SumoXML {
 						if (hasUsableLaneControlSegment(cleanedCandidate)
 								|| !hasUsableLaneControlSegment(originalToCoords)) {
 							toLane.setCoords(cleanedCandidate);
-						} else {
-							ContextCreator.logger.warn("SUMO transition prescan discarded a degenerate "
-									+ "geometry adjustment for lane " + toLane.getOrigID());
-						}
+						} 
+//						else {
+//							ContextCreator.logger.warn("SUMO transition prescan discarded a degenerate "
+//									+ "geometry adjustment for lane " + toLane.getOrigID());
+//						}
 					}
 				}
 			}

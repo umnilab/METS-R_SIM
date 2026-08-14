@@ -46,7 +46,11 @@ public class ElectricTaxi extends ElectricVehicle {
 	public int routeChoice = -1;
 
 	public ElectricTaxi() {
-		super(Vehicle.ETAXI, Vehicle.NONE_OF_THE_ABOVE);
+		this(GlobalVariables.DEFAULT_VEHICLE_LENGTH);
+	}
+
+	public ElectricTaxi(double length) {
+		super(Vehicle.ETAXI, Vehicle.NONE_OF_THE_ABOVE, length);
 		initializeEVFields(GlobalVariables.TAXI_BATTERY, GlobalVariables.TAXI_MASS,
 				GlobalVariables.TAXI_METERS_PER_KWH, GlobalVariables.TAXI_RECHARGE_LEVEL_LOW,
 				GlobalVariables.TAXI_RECHARGE_LEVEL_HIGH);

@@ -23,10 +23,12 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.ConnectorRoad;
 import mets_r.facility.Junction;
 import mets_r.facility.Lane;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
+import mets_r.facility.RoadContext;
 import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
@@ -240,11 +242,13 @@ public class QueryMessageHandler extends MessageHandler {
 					if (vehicle instanceof ElectricVehicle) {
 						addElectricVehicleFields(record2, (ElectricVehicle) vehicle);
 					}
-					if(vehicle.isOnRoad()) {
+					if(vehicle.isOnRoad() && !vehicle.isOnConnector()) {
 						Lane lane = vehicle.getLane();
 						if(vehicle.isOnLane() && lane != null) {
-					Road laneRoad = lane.getRoad();
-					record2.put("lane", laneRoad == null ? -1 : laneRoad.getLaneIndex(lane));
+							Road laneRoad = lane.getRoad();
+							int laneIndex = laneRoad == null ? -1 : laneRoad.getLaneIndex(lane);
+							record2.put("lane", laneIndex);
+							record2.put("laneID", laneIndex);
 							record2.put("dist", vehicle.getDistanceToNextJunction());
 						}
 					}
@@ -282,13 +286,25 @@ public class QueryMessageHandler extends MessageHandler {
 				for (Road road : ContextCreator.getRoadContext().getActiveRoadsSnapshot()) {
 					if (road == null) continue;
 					String roadID = road.getOrigID();
-					activeRoadIDs.add(roadID);
 					HashMap<String, Object> record = new HashMap<String, Object>();
 					record.put("ID", roadID);
 					record.put("roadID", roadID);
-					record.put("num_veh", road.getVehicleNum());
-					record.put("nVehicles", road.getVehicleNum());
+					int vehicleCount =
+							ContextCreator.getRoadContext().getQueryableVehicleCount(road);
+					if (vehicleCount == 0 && road.getPendingDepartureVehicleNum() == 0) continue;
+					activeRoadIDs.add(roadID);
+					record.put("num_veh", vehicleCount);
+					record.put("nVehicles", vehicleCount);
 					record.put("pendingDepartureVehicles", road.getPendingDepartureVehicleNum());
+					record.put("isConnector", false);
+					record.put("STATUS", "OK");
+					jsonData.add(record);
+				}
+				for (ConnectorRoad connector
+						: ContextCreator.getRoadContext().getActiveConnectorsSnapshot()) {
+					String connectorID = connector.getOrigID();
+					activeRoadIDs.add(connectorID);
+					HashMap<String, Object> record = connectorRoadRecord(connector);
 					record.put("STATUS", "OK");
 					jsonData.add(record);
 				}
@@ -325,7 +341,7 @@ public class QueryMessageHandler extends MessageHandler {
 			if (jsonMsg.containsKey("DATA")) {
 				ArrayList<Object> jsonData = new ArrayList<Object>();
 				for (String roadID : parseRoadIDs(jsonMsg.get("DATA"))) {
-					Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+					Road road = findQueryableRoad(roadID);
 					if (road != null) {
 						jsonData.add(onRoadVehicleRecord(road));
 					} else {
@@ -345,6 +361,10 @@ public class QueryMessageHandler extends MessageHandler {
 			if (ContextCreator.getRoadContext() != null) {
 				for (Road road : ContextCreator.getRoadContext().getActiveRoadsSnapshot()) {
 					appendOnRoadVehicleIDs(road, privateVehicleIDs, publicVehicleIDs);
+				}
+				for (ConnectorRoad connector
+						: ContextCreator.getRoadContext().getActiveConnectorsSnapshot()) {
+					appendOnRoadVehicleIDs(connector, privateVehicleIDs, publicVehicleIDs);
 				}
 			}
 			jsonObj.put("private_vids", privateVehicleIDs);
@@ -368,6 +388,8 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("roadID", road.getOrigID());
 		record.put("private_vids", privateVehicleIDs);
 		record.put("public_vids", publicVehicleIDs);
+		record.put("isConnector", road instanceof ConnectorRoad);
+		if (road instanceof ConnectorRoad) record.put("laneID", ConnectorRoad.NO_LANE);
 		record.put("STATUS", "OK");
 		return record;
 	}
@@ -375,10 +397,21 @@ public class QueryMessageHandler extends MessageHandler {
 	private void appendOnRoadVehicleIDs(Road road, ArrayList<Integer> privateVehicleIDs,
 			ArrayList<Integer> publicVehicleIDs) {
 		if (road == null) return;
+		if (road instanceof ConnectorRoad) {
+			for (Vehicle vehicle : ((ConnectorRoad) road).getActiveVehiclesSnapshot()) {
+				if (!vehicle.isOnConnector()) continue;
+				if (bridgeVehicleType(vehicle)) {
+					privateVehicleIDs.add(bridgeVehicleID(vehicle));
+				} else {
+					publicVehicleIDs.add(vehicle.getID());
+				}
+			}
+			return;
+		}
 		Vehicle vehicle = road.firstVehicle();
 		while (vehicle != null) {
 			Vehicle nextVehicle = vehicle.macroTrailing();
-			if (vehicle.isOnRoad()) {
+			if (vehicle.isOnRoad() && !vehicle.isOnConnector()) {
 				if (bridgeVehicleType(vehicle)) {
 					privateVehicleIDs.add(bridgeVehicleID(vehicle));
 				} else {
@@ -471,7 +504,7 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("v_type", privateVehicle);
 		record.put("coord_map", vehicle.getRecentCoordMap(6, true));
 		record.put("route", vehicle.getRoute());
-		addExternalTransitionFields(record, transitionSnapshot);
+		addVehicleRoadFields(record, vehicle);
 		jsonData.add(record);
 	}
 	
@@ -555,8 +588,9 @@ public class QueryMessageHandler extends MessageHandler {
 	 * <p>Output DATA: list of {@code {ID, state, x, y, z, originZoneID, destZoneID,
 	 * originRoadID, destRoadID, pass_num, matchedRequests, matchedPassengers, pickupRequests,
 	 * pickupPassengers, dropoffRequests, dropoffPassengers}} records. Active
-	 * trip states also include {@code remainingDistance} in meters and
-	 * {@code remainingDistanceMiles}.
+	 * trip states also include connector-inclusive {@code remainingDistance} in
+	 * meters, {@code remainingDistanceMiles}, and connector-only distance /
+	 * travel-time breakdowns (meters / seconds).
 	 */
 	public HashMap<String, Object> getTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -616,8 +650,13 @@ public class QueryMessageHandler extends MessageHandler {
 	private void addRemainingDistanceFields(HashMap<String, Object> record, Vehicle vehicle) {
 		if (!shouldReportRemainingDistance(vehicle)) return;
 		double remainingDistance = remainingDistance(vehicle);
+		double connectorDistance = vehicle.getRemainingConnectorDistance();
 		record.put("remainingDistance", remainingDistance);
 		record.put("remainingDistanceMiles", remainingDistance / MILE_IN_METERS);
+		record.put("remainingConnectorDistance", connectorDistance);
+		record.put("remainingConnectorDistanceMiles", connectorDistance / MILE_IN_METERS);
+		record.put("remainingConnectorTravelTime",
+				vehicle.getRemainingConnectorTravelTime());
 	}
 
 	private boolean shouldReportRemainingDistance(Vehicle vehicle) {
@@ -629,11 +668,14 @@ public class QueryMessageHandler extends MessageHandler {
 	}
 
 	private double remainingDistance(Vehicle vehicle) {
-		return vehicle == null ? Double.POSITIVE_INFINITY : Math.max(0.0, vehicle.getDistToTravel());
+		return vehicle == null ? Double.POSITIVE_INFINITY
+				: Math.max(0.0, vehicle.getDistToTravelIncludingConnectors());
 	}
 
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
+		record.put("onConnector", vehicle.isOnConnector());
+		record.put("connectorOccupancyActive", vehicle.hasActiveConnectorReservation());
 		addExternalTransitionFields(record, vehicle);
 		Road currentRoad = vehicle.isOnRoad() ? vehicle.getRoad() : null;
 		Road queuedRoad = vehicle.isOnRoad() ? null : findEnteringQueueRoad(vehicle);
@@ -643,10 +685,53 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("originRoadID", roadOrigIDOrNull(originRoadID));
 		record.put("destRoadID", roadOrigIDOrNull(destRoadID));
 		record.put("currentParkingRoadID", roadOrigIDOrNull(vehicle.getCurrentParkingRoad()));
+		ConnectorRoad connector = vehicle.isOnConnector()
+				? vehicle.getCurrentConnector() : null;
+		if (connector != null) {
+			record.put("roadID", connector.getOrigID());
+			record.put("lane", ConnectorRoad.NO_LANE);
+			record.put("laneID", ConnectorRoad.NO_LANE);
+			double connectorDistanceRemaining =
+					vehicle.getEstimatedConnectorDistanceRemaining();
+			double connectorTravelTimeRemaining =
+					vehicle.getEstimatedConnectorTravelTimeRemaining();
+			// Native motion has an exact distance. Lane-less external motion is
+			// projected onto the closest connector centerline.
+			if (shouldEmitConnectorDistance(true, connectorDistanceRemaining)) {
+				record.put("dist", connectorDistanceRemaining);
+				record.put("connectorDistanceRemaining", connectorDistanceRemaining);
+			}
+			if (Double.isFinite(connectorTravelTimeRemaining)) {
+				record.put("connectorTravelTimeRemaining",
+						connectorTravelTimeRemaining);
+			}
+			record.put("connectorDistance", connector.getLength());
+			record.put("connectorTravelTime", connector.getTravelTime());
+			record.put("roadControlType", connector.getControlType());
+			record.put("roadActive", connector.hasActiveVehicles());
+			record.put("connectorSourceRoadID",
+					connector.getSourceRoad().getOrigID());
+			record.put("connectorTargetRoadID",
+					connector.getTargetRoad().getOrigID());
+			record.put("sourceRoadID", connector.getSourceRoad().getOrigID());
+			record.put("targetRoadID", connector.getTargetRoad().getOrigID());
+			record.put("intersectionID", connector.getIntersectionID());
+			record.put("intersectionCollision",
+					ContextCreator.getRoadContext().connectorHasCollision(connector));
+			return;
+		}
 		if (currentRoad != null) {
 			record.put("roadID", currentRoad.getOrigID());
 			record.put("roadControlType", currentRoad.getControlType());
 			record.put("roadActive", ContextCreator.getRoadContext().isRoadActive(currentRoad.getID()));
+			Lane currentLane = vehicle.isOnLane() ? vehicle.getLane() : null;
+			int laneIndex = currentLane == null ? -1
+					: currentRoad.getLaneIndex(currentLane);
+			record.put("lane", laneIndex);
+			record.put("laneID", laneIndex);
+			if (laneIndex >= 0) {
+				record.put("dist", vehicle.getDistanceToNextJunction());
+			}
 			return;
 		}
 
@@ -655,6 +740,11 @@ public class QueryMessageHandler extends MessageHandler {
 			record.put("queuedRoadControlType", queuedRoad.getControlType());
 			record.put("queuedRoadActive", ContextCreator.getRoadContext().isRoadActive(queuedRoad.getID()));
 		}
+	}
+
+	static boolean shouldEmitConnectorDistance(boolean hasUsableEstimate,
+			double connectorDistance) {
+		return hasUsableEstimate && Double.isFinite(connectorDistance);
 	}
 
 	private void addExternalTransitionFields(Map<String, Object> record, Vehicle vehicle) {
@@ -669,8 +759,12 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("transitionPending", pending);
 		if (!pending) return;
 
+		Road sourceRoad = snapshot.getSourceRoad();
 		Road targetRoad = snapshot.getTargetRoad();
 		Lane targetLane = snapshot.getTargetLane();
+		if (sourceRoad != null) {
+			record.put("transitionSourceRoadID", sourceRoad.getOrigID());
+		}
 		if (targetRoad != null) {
 			record.put("transitionTargetRoadID", targetRoad.getOrigID());
 		}
@@ -870,7 +964,8 @@ public class QueryMessageHandler extends MessageHandler {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			beginRoutingGraphSnapshotBaseline();
-			List<String> roadIDs = ContextCreator.getRoadContext().getOrigIDList();
+			List<String> roadIDs =
+					ContextCreator.getRoadContext().getQueryableOrigIDList();
 			jsonObj.put("id_list", roadIDs);
 			jsonObj.put("CODE", "OK");
 			addRoutingGraphMetadata(jsonObj, false);
@@ -883,15 +978,23 @@ public class QueryMessageHandler extends MessageHandler {
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		      
 		    for(String id: IDs) {
-		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(id);
+			Road road = findQueryableRoad(id);
 				if (road != null) {
+					if (road instanceof ConnectorRoad) {
+						jsonData.add(connectorRoadRecord((ConnectorRoad) road));
+						continue;
+					}
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", road.getOrigID());
 					record2.put("roadID", road.getOrigID());
 					record2.put("roadIndex", getVisualizationRoadIndex(road));
 					record2.put("r_type", road.getRoadType());
-					record2.put("num_veh", road.getVehicleNum());
-					record2.put("nVehicles", road.getVehicleNum());
+					int vehicleCount =
+							ContextCreator.getRoadContext().getQueryableVehicleCount(road);
+					record2.put("num_veh", vehicleCount);
+					record2.put("nVehicles", vehicleCount);
+					record2.put("isConnector", false);
+					record2.put("routingEdge", true);
 					record2.put("speed", road.calcSpeed());
 					addRoutingMetricFields(record2, road);
 					record2.put("flow", road.getTotalFlow());
@@ -917,6 +1020,69 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private HashMap<String, Object> connectorRoadRecord(ConnectorRoad connector) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", connector.getOrigID());
+		record.put("roadID", connector.getOrigID());
+		record.put("roadIndex", -1);
+		record.put("r_type", connector.getRoadType());
+		record.put("num_veh", connector.getVehicleNum());
+		record.put("nVehicles", connector.getVehicleNum());
+		record.put("speed", connector.calcSpeed());
+		record.put("speed_limit", connector.getSpeedLimit());
+		record.put("avg_travel_time", connector.getTravelTime());
+		record.put("weight", connector.getTravelTime());
+		record.put("length", connector.getLength());
+		record.put("connectorTravelTime", connector.getTravelTime());
+		record.put("connectorDistance", connector.getLength());
+		record.put("flow", 0);
+		record.put("energy", 0.0);
+		record.put("energy_consumed", 0.0);
+		record.put("avg_energy_consumption", 0.0);
+		record.put("parking_capacity", 0);
+		record.put("parkingCapacity", 0);
+		record.put("parked_num", 0);
+		record.put("parkedNum", 0);
+		record.put("down_stream_road", connector.getDownStreamRoadOrigIDs());
+		record.put("isConnector", true);
+		record.put("routingEdge", false);
+		record.put("laneID", ConnectorRoad.NO_LANE);
+		record.put("sourceRoadID", connector.getSourceRoad().getOrigID());
+		record.put("targetRoadID", connector.getTargetRoad().getOrigID());
+		record.put("connectorSourceRoadID", connector.getSourceRoad().getOrigID());
+		record.put("connectorTargetRoadID", connector.getTargetRoad().getOrigID());
+		record.put("intersectionID", connector.getIntersectionID());
+		record.put("conflictingConnectorIDs",
+				connectorOrigIDs(connector.getConflictingConnectorIDs()));
+		RoadContext.IntersectionSnapshot snapshot =
+				ContextCreator.getRoadContext()
+						.getIntersectionSnapshot(connector.getIntersectionID());
+		record.put("intersectionCollision", snapshot.hasCollision());
+		record.put("intersectionStateVersion", snapshot.getVersion());
+		record.put("STATUS", "OK");
+		return record;
+	}
+
+	private ArrayList<String> connectorOrigIDs(Collection<Integer> connectorInternalIDs) {
+		ArrayList<String> result = new ArrayList<String>();
+		if (connectorInternalIDs == null) return result;
+		for (Integer connectorID : connectorInternalIDs) {
+			ConnectorRoad connector = connectorID == null ? null
+					: ContextCreator.getRoadContext().getConnector(connectorID.intValue());
+			if (connector != null) result.add(connector.getOrigID());
+		}
+		Collections.sort(result);
+		return result;
+	}
+
+	private Road findQueryableRoad(String origID) {
+		if (origID == null) return null;
+		Road road = ContextCreator.getCityContext().findRoadWithOrigID(origID);
+		if (road != null) return road;
+		return ContextCreator.getRoadContext() == null ? null
+				: ContextCreator.getRoadContext().getConnector(origID);
 	}
 
 	public HashMap<String, Object> getRoutingTopology(JSONObject jsonMsg) {
@@ -1341,14 +1507,15 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getEnteringVehicleQueue(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
-			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
-			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getQueryableIDList());
+			jsonObj.put("orig_id",
+					ContextCreator.getRoadContext().getQueryableOrigIDList());
 			return jsonObj;
 		}
 		try {
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 			for (String roadID : parseRoadIDs(jsonMsg.get("DATA"))) {
-				Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
+				Road road = findQueryableRoad(roadID);
 				if (road != null) {
 					jsonData.add(roadEnteringQueueRecord(road));
 				} else {
@@ -1417,6 +1584,10 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 		record.put("ID", road.getOrigID());
 		record.put("controlType", road.getControlType());
+		record.put("isConnector", road instanceof ConnectorRoad);
+		if (road instanceof ConnectorRoad) {
+			record.put("laneID", ConnectorRoad.NO_LANE);
+		}
 		record.put("enteringVehicleIDs", ids);
 		record.put("queue", queue);
 		record.put("STATUS", "OK");
@@ -1546,8 +1717,9 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getCenterLine(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
-			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getQueryableIDList());
+			jsonObj.put("orig_id",
+					ContextCreator.getRoadContext().getQueryableOrigIDList());
 			return jsonObj;
 		}
 		try {
@@ -1557,14 +1729,27 @@ public class QueryMessageHandler extends MessageHandler {
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		      
 		    for(RoadIDLaneIndexTransform roadIDLaneIndexTransform: roadIDLaneIndexTransforms) {
-		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(roadIDLaneIndexTransform.roadID);
+			Road road = findQueryableRoad(roadIDLaneIndexTransform.roadID);
 				if (road != null) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", road.getOrigID());
 					ArrayList<ArrayList<Double>> res = new ArrayList<ArrayList<Double>>();
 					int laneIndex = roadIDLaneIndexTransform.laneIndex;
 					boolean transformCoord = roadIDLaneIndexTransform.transformCoord;
-					if(laneIndex < 0) {
+					if (road instanceof ConnectorRoad) {
+						ConnectorRoad connector = (ConnectorRoad) road;
+						record2.put("isConnector", true);
+						record2.put("laneID", ConnectorRoad.NO_LANE);
+						res = coordinatesForQuery(
+								connector.getRepresentativeCenterLine(), transformCoord);
+						ArrayList<Object> allCenterLines = new ArrayList<Object>();
+						for (List<Coordinate> centerLine : connector.getCenterLines()) {
+							allCenterLines.add(coordinatesForQuery(
+									centerLine, transformCoord));
+						}
+						record2.put("centerlines", allCenterLines);
+					}
+					else if(laneIndex < 0) {
 						Coordinate startCoord = road.getStartCoord();
 						Coordinate endCoord = road.getEndCoord();
 						if(transformCoord) {
@@ -1638,6 +1823,23 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private ArrayList<ArrayList<Double>> coordinatesForQuery(
+			List<Coordinate> coordinates, boolean transformCoord) {
+		ArrayList<ArrayList<Double>> result = new ArrayList<ArrayList<Double>>();
+		if (coordinates == null) return result;
+		for (Coordinate coordinate : coordinates) {
+			if (coordinate == null) continue;
+			Coordinate output = coordinateForQuery(coordinate, transformCoord);
+			if (output == null) continue;
+			ArrayList<Double> xyz = new ArrayList<Double>();
+			xyz.add(output.x);
+			xyz.add(output.y);
+			xyz.add(output.z);
+			result.add(xyz);
+		}
+		return result;
 	}
 	
 	// =============================================================
@@ -2032,8 +2234,10 @@ public class QueryMessageHandler extends MessageHandler {
 	 * coordinates are first transformed from the network file's source
 	 * CRS into METS-R's internal CRS.
 	 *
-	 * <p>Output DATA: list of {@code {road_list}} records (original road
-	 * IDs along the path), or {@code "KO"} for unreachable pairs.
+	 * <p>Output DATA: list of route records. {@code road_list} remains the
+	 * physical-road-only path; connector IDs, interleaved paths, and road /
+	 * connector / total distance and travel-time estimates are also returned.
+	 * Distances are meters and travel times are seconds.
 	 */
 	public HashMap<String, Object> getRoutesBwCoords(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -2073,11 +2277,7 @@ public class QueryMessageHandler extends MessageHandler {
 					List<Road> roadList = RouteContext.shortestPathRoute(orig, dest, this.rand_route);
 					if(roadList != null) {
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						List<String>  roadIDList = new ArrayList<String>();
-						for(Road r: roadList) {
-							roadIDList.add(r.getOrigID());
-						}
-						record2.put("road_list", roadIDList);
+						addRouteMetrics(record2, roadList);
 						jsonData.add(record2);
 					}
 					else {
@@ -2103,7 +2303,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * specified as road IDs.
 	 *
 	 * <p>Input DATA: list of {@code {orig, dest}}.
-	 * <p>Output DATA: list of {@code {road_list}} records.
+	 * <p>Output DATA: connector-aware route records; {@code road_list} remains
+	 * physical-road-only for backward compatibility.
 	 */
 	public HashMap<String, Object> getRoutesBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -2128,11 +2329,7 @@ public class QueryMessageHandler extends MessageHandler {
 					List<Road> roadList = RouteContext.shortestPathRoute(origRoad, destRoad, this.rand_route);
 					if(roadList != null) {
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						List<String>  roadIDList = new ArrayList<String>();
-						for(Road r: roadList) {
-							roadIDList.add(r.getOrigID());
-						}
-						record2.put("road_list", roadIDList);
+						addRouteMetrics(record2, roadList);
 						jsonData.add(record2);
 					}
 					else {
@@ -2158,8 +2355,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 *
 	 * <p>Input DATA: list of {@code {origX, origY, origZ, destX, destY,
 	 * destZ, transformCoord, K}}.
-	 * <p>Output DATA: list of {@code {road_lists}} records where
-	 * {@code road_lists} is an array of K route arrays.
+	 * <p>Output DATA: list of connector-aware K-route records where
+	 * {@code road_lists} remains an array of physical-road-only paths.
 	 */
 	public HashMap<String, Object> getKRoutesBwCoords(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -2191,15 +2388,7 @@ public class QueryMessageHandler extends MessageHandler {
 				List<List<Road>> kRoadLists = RouteContext.kShortestPathRoute(req.K, orig, dest);
 				if(kRoadLists != null && !kRoadLists.isEmpty()) {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
-					ArrayList<List<String>> allRoutes = new ArrayList<List<String>>();
-					for(List<Road> roadList: kRoadLists) {
-						List<String> roadIDList = new ArrayList<String>();
-						for(Road r: roadList) {
-							roadIDList.add(r.getOrigID());
-						}
-						allRoutes.add(roadIDList);
-					}
-					record2.put("road_lists", allRoutes);
+					addKRouteMetrics(record2, kRoadLists);
 					jsonData.add(record2);
 				}
 				else {
@@ -2220,7 +2409,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * Top-K shortest paths between two road IDs.
 	 *
 	 * <p>Input DATA: list of {@code {orig, dest, K}}.
-	 * <p>Output DATA: list of {@code {road_lists}} records.
+	 * <p>Output DATA: connector-aware K-route records; {@code road_lists}
+	 * remains physical-road-only for backward compatibility.
 	 */
 	public HashMap<String, Object> getKRoutesBwRoads(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
@@ -2242,15 +2432,7 @@ public class QueryMessageHandler extends MessageHandler {
 					List<List<Road>> kRoadLists = RouteContext.kShortestPathRoute(req.K, origRoad, destRoad);
 					if(kRoadLists != null && !kRoadLists.isEmpty()) {
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						ArrayList<List<String>> allRoutes = new ArrayList<List<String>>();
-						for(List<Road> roadList: kRoadLists) {
-							List<String> roadIDList = new ArrayList<String>();
-							for(Road r: roadList) {
-								roadIDList.add(r.getOrigID());
-							}
-							allRoutes.add(roadIDList);
-						}
-						record2.put("road_lists", allRoutes);
+						addKRouteMetrics(record2, kRoadLists);
 						jsonData.add(record2);
 					}
 					else {
@@ -2283,8 +2465,8 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getEdgeWeight(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
-			jsonObj.put("id_list", ContextCreator.getRoadContext().getIDList());
-			jsonObj.put("orig_id", ContextCreator.getRoadContext().getOrigIDList());
+			jsonObj.put("id_list", ContextCreator.getRoadContext().getQueryableIDList());
+			jsonObj.put("orig_id", ContextCreator.getRoadContext().getQueryableOrigIDList());
 			return jsonObj;
 		}
 		try {
@@ -2294,16 +2476,28 @@ public class QueryMessageHandler extends MessageHandler {
 		    ArrayList<Object> jsonData = new ArrayList<Object>();
 		      
 		    for(String id: IDs) {
-		    	Road road = ContextCreator.getCityContext().findRoadWithOrigID(id);
+			Road road = findQueryableRoad(id);
 				if (road != null) {
-					Node node1 = road.getUpStreamNode();
-			    	Node node2 = road.getDownStreamNode();
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("ID", road.getOrigID());
 					record2.put("r_type", road.getRoadType());
 					record2.put("avg_travel_time", road.getTravelTime());
 					record2.put("length", road.getLength());
-					record2.put("weight", ContextCreator.getRoadNetwork().getEdge(node1, node2).getWeight());
+					if (road instanceof ConnectorRoad) {
+						record2.put("weight", road.getTravelTime());
+						record2.put("connectorTravelTime", road.getTravelTime());
+						record2.put("connectorDistance", road.getLength());
+						record2.put("isConnector", true);
+						record2.put("routingEdge", false);
+						record2.put("laneID", ConnectorRoad.NO_LANE);
+					} else {
+						Node node1 = road.getUpStreamNode();
+						Node node2 = road.getDownStreamNode();
+						record2.put("weight",
+								ContextCreator.getRoadNetwork().getEdge(node1, node2).getWeight());
+						record2.put("isConnector", false);
+						record2.put("routingEdge", true);
+					}
 					jsonData.add(record2);
 				}
 				else jsonData.add("KO");
@@ -2317,6 +2511,87 @@ public class QueryMessageHandler extends MessageHandler {
 		    jsonObj.put("CODE", "KO");
 		    return jsonObj;
 		}
+	}
+
+	private void addRouteMetrics(HashMap<String, Object> record,
+			List<Road> roadList) {
+		RouteQueryMetrics metrics = routeMetrics(roadList);
+		record.put("road_list", metrics.roadIDs);
+		record.put("connector_list", metrics.connectorIDs);
+		record.put("road_list_with_connectors", metrics.interleavedIDs);
+		record.put("road_distance", metrics.roadDistance);
+		record.put("connector_distance", metrics.connectorDistance);
+		record.put("distance", metrics.roadDistance + metrics.connectorDistance);
+		record.put("road_travel_time", metrics.roadTravelTime);
+		record.put("connector_travel_time", metrics.connectorTravelTime);
+		record.put("travel_time", metrics.roadTravelTime + metrics.connectorTravelTime);
+	}
+
+	private void addKRouteMetrics(HashMap<String, Object> record,
+			List<List<Road>> roadLists) {
+		ArrayList<List<String>> roads = new ArrayList<List<String>>();
+		ArrayList<List<String>> connectors = new ArrayList<List<String>>();
+		ArrayList<List<String>> interleaved = new ArrayList<List<String>>();
+		ArrayList<Double> roadDistances = new ArrayList<Double>();
+		ArrayList<Double> connectorDistances = new ArrayList<Double>();
+		ArrayList<Double> distances = new ArrayList<Double>();
+		ArrayList<Double> roadTravelTimes = new ArrayList<Double>();
+		ArrayList<Double> connectorTravelTimes = new ArrayList<Double>();
+		ArrayList<Double> travelTimes = new ArrayList<Double>();
+		for (List<Road> roadList : roadLists) {
+			RouteQueryMetrics metrics = routeMetrics(roadList);
+			roads.add(metrics.roadIDs);
+			connectors.add(metrics.connectorIDs);
+			interleaved.add(metrics.interleavedIDs);
+			roadDistances.add(metrics.roadDistance);
+			connectorDistances.add(metrics.connectorDistance);
+			distances.add(metrics.roadDistance + metrics.connectorDistance);
+			roadTravelTimes.add(metrics.roadTravelTime);
+			connectorTravelTimes.add(metrics.connectorTravelTime);
+			travelTimes.add(metrics.roadTravelTime + metrics.connectorTravelTime);
+		}
+		record.put("road_lists", roads);
+		record.put("connector_lists", connectors);
+		record.put("road_lists_with_connectors", interleaved);
+		record.put("road_distances", roadDistances);
+		record.put("connector_distances", connectorDistances);
+		record.put("distances", distances);
+		record.put("road_travel_times", roadTravelTimes);
+		record.put("connector_travel_times", connectorTravelTimes);
+		record.put("travel_times", travelTimes);
+	}
+
+	private RouteQueryMetrics routeMetrics(List<Road> roadList) {
+		RouteQueryMetrics result = new RouteQueryMetrics();
+		if (roadList == null) return result;
+		for (int i = 0; i < roadList.size(); i++) {
+			Road road = roadList.get(i);
+			if (road == null) continue;
+			result.roadIDs.add(road.getOrigID());
+			result.interleavedIDs.add(road.getOrigID());
+			result.roadDistance += finiteDouble(road.getLength(), 0.0);
+			result.roadTravelTime += finiteDouble(road.getTravelTime(), 0.0);
+			if (i + 1 >= roadList.size()) continue;
+			Road target = roadList.get(i + 1);
+			ConnectorRoad connector = target == null ? null
+					: ContextCreator.getRoadContext().getConnector(road, target);
+			if (connector == null) continue;
+			result.connectorIDs.add(connector.getOrigID());
+			result.interleavedIDs.add(connector.getOrigID());
+			result.connectorDistance += finiteDouble(connector.getLength(), 0.0);
+			result.connectorTravelTime += finiteDouble(connector.getTravelTime(), 0.0);
+		}
+		return result;
+	}
+
+	private static final class RouteQueryMetrics {
+		final ArrayList<String> roadIDs = new ArrayList<String>();
+		final ArrayList<String> connectorIDs = new ArrayList<String>();
+		final ArrayList<String> interleavedIDs = new ArrayList<String>();
+		double roadDistance = 0.0;
+		double connectorDistance = 0.0;
+		double roadTravelTime = 0.0;
+		double connectorTravelTime = 0.0;
 	}
 	
 	// =============================================================
@@ -2694,8 +2969,8 @@ public class QueryMessageHandler extends MessageHandler {
 	 * soon.
 	 *
 	 * <p>A taxi is included when it is on an occupied trip, has exactly one
-	 * onboard request, has no queued pickup, and its remaining trip distance from
-	 * {@code Vehicle.getDistToTravel()} is less than the requested distance
+	 * onboard request, has no queued pickup, and its connector-inclusive remaining
+	 * trip distance is less than the requested distance
 	 * threshold. A bare {@code DATA} number is interpreted as miles; an object can
 	 * use {@code distanceThresholdMiles}/{@code thresholdMiles} or
 	 * {@code distanceThresholdMeters}/{@code thresholdMeters}. If omitted, the
@@ -2813,7 +3088,7 @@ public class QueryMessageHandler extends MessageHandler {
 	private boolean isAlmostFinishedTaxi(ElectricTaxi taxi, double thresholdMeters) {
 		if (taxi == null || taxi.getState() != Vehicle.OCCUPIED_TRIP) return false;
 		if (!taxi.getToBoardRequests().isEmpty() || taxi.getOnBoardRequests().size() != 1) return false;
-		double remainingDistance = taxi.getDistToTravel();
+		double remainingDistance = taxi.getDistToTravelIncludingConnectors();
 		return remainingDistance >= 0 && remainingDistance < thresholdMeters;
 	}
 

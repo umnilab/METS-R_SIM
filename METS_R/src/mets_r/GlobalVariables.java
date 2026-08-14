@@ -220,6 +220,8 @@ public class GlobalVariables {
 	/* Network Partitioning */
 	public static boolean MULTI_THREADING = Boolean.valueOf(loadConfig("MULTI_THREADING"));
 	public static boolean ACTIVE_ROAD_STEPPING = Boolean.valueOf(loadConfig("ACTIVE_ROAD_STEPPING"));
+	public static boolean ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK =
+			loadBooleanConfig("ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK", true);
 	// Load the number of partitions from the config file
 	public static int N_Partition = Integer.valueOf(loadConfig("N_PARTITION"));
 	public static int N_THREADS = Integer.valueOf(loadConfig("N_THREADS"));

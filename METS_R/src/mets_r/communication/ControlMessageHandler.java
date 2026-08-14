@@ -62,6 +62,7 @@ import mets_r.communication.MessageClass.ZoneParams;
 import mets_r.facility.ZoneContext;
 import mets_r.data.input.SumoXML;
 import mets_r.facility.ChargingStation;
+import mets_r.facility.ConnectorRoad;
 import mets_r.facility.Lane;
 import mets_r.facility.Node;
 import mets_r.facility.Road;
@@ -144,6 +145,7 @@ public class ControlMessageHandler extends MessageHandler {
 		// Private-vehicle trip generation
 		// =============================================================
 		messageHandlers.put("generateTrip", this::generateTrip);
+		messageHandlers.put("generatePrivateTrips", this::generateTrip);
 		messageHandlers.put("genTripBwRoads", this::generateTripBwRoads);
 		
 		// =============================================================
@@ -752,14 +754,26 @@ public class ControlMessageHandler extends MessageHandler {
 	// =============================================================
 	// PRIVATE-VEHICLE TRIP GENERATION
 	// =============================================================
+
+	private static boolean isValidOptionalVehicleLength(Double length) {
+		return length == null || (Double.isFinite(length.doubleValue())
+				&& length.doubleValue() > 0.0);
+	}
+
+	private static String invalidVehicleLengthWarning() {
+		return "length must be a finite positive value in meters";
+	}
 	
 	/**
 	 * Generate a one-shot private-EV trip between two zones. If a vehicle
 	 * with the given {@code vehID} is not yet registered, a new
 	 * {@link ElectricVehicle} is created on the fly.
 	 *
-	 * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
-	 * {@code orig}/{@code dest} are zone IDs (use {@code <= 0} for random).
+	 * <p>Input DATA: list of {@code {vehID, orig, dest, num, length}} where
+	 * {@code orig}/{@code dest} are zone IDs (use {@code <= 0} for random) and
+	 * optional {@code length} is the vehicle length in meters. It is used only
+	 * when {@code vehID} is first created; later trips retain that vehicle's
+	 * original length.
 	 */
     private HashMap<String, Object> generateTrip(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -776,6 +790,14 @@ public class ControlMessageHandler extends MessageHandler {
 			    for(VehIDOrigDestNum vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
 			    	// Get data
 			    	int vehID = vehIDVehTypeOrigDest.vehID;
+					if (!isValidOptionalVehicleLength(vehIDVehTypeOrigDest.length)) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("ID", vehID);
+						record2.put("STATUS", "KO");
+						record2.put("WARN", invalidVehicleLengthWarning());
+						jsonData.add(record2);
+						continue;
+					}
 			    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
 			    	if(v != null) {
 						if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
@@ -787,10 +809,6 @@ public class ControlMessageHandler extends MessageHandler {
 			    			continue;
 						}
 			    	}
-					else { // If vehicle does not exists, create vehicle
-						v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
-						ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
-					}
 					
 					// Find the origin and dest zones
 					int originID = vehIDVehTypeOrigDest.orig;
@@ -862,6 +880,14 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 			    			
 					// Assign trips
+					if (v == null) {
+						double initialLength = vehIDVehTypeOrigDest.length == null
+								? GlobalVariables.DEFAULT_VEHICLE_LENGTH
+								: vehIDVehTypeOrigDest.length.doubleValue();
+						v = new ElectricVehicle(Vehicle.EV,
+								Vehicle.NONE_OF_THE_ABOVE, initialLength);
+						ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
+					}
 					int origRoad = originZone.sampleRoad(false);
 					v.initializePlan(originID, origRoad, (int) ContextCreator.getCurrentTick());
 					v.addPlan(destID, destZone.sampleRoad(true), (int) ContextCreator.getNextTick());
@@ -873,6 +899,7 @@ public class ControlMessageHandler extends MessageHandler {
 					record2.put("STATUS", "OK");
 					record2.put("origin", originID);
 					record2.put("destination",destID);
+					record2.put("length", v.length());
 					jsonData.add(record2);
 			    }
 			    jsonAns.put("DATA", jsonData);
@@ -891,8 +918,10 @@ public class ControlMessageHandler extends MessageHandler {
      * Like {@link #generateTrip} but with origin/destination specified as
      * road IDs instead of zone IDs.
      *
-     * <p>Input DATA: list of {@code {vehID, orig, dest, num}} where
-     * {@code orig} and {@code dest} are original road IDs.
+	 * <p>Input DATA: list of {@code {vehID, orig, dest, num, length}} where
+	 * {@code orig} and {@code dest} are original road IDs and optional
+	 * {@code length} is the vehicle length in meters. It is used only when
+	 * {@code vehID} is first created.
      */
     private HashMap<String, Object> generateTripBwRoads(JSONObject jsonMsg) {
     	HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -909,6 +938,14 @@ public class ControlMessageHandler extends MessageHandler {
 			    for(VehIDOrigRoadDestRoadNum vehIDVehTypeOrigDest:  vehIDVehTypeOrigDests) {
 			    	// Get data
 			    	int vehID = vehIDVehTypeOrigDest.vehID;
+					if (!isValidOptionalVehicleLength(vehIDVehTypeOrigDest.length)) {
+						HashMap<String, Object> record2 = new HashMap<String, Object>();
+						record2.put("vehID", vehID);
+						record2.put("STATUS", "KO");
+						record2.put("WARN", invalidVehicleLengthWarning());
+						jsonData.add(record2);
+						continue;
+					}
 			    	ElectricVehicle v = ContextCreator.getVehicleContext().getPrivateEV(vehID);
 			    	if(v != null) {
 						if (v.getState() != Vehicle.NONE_OF_THE_ABOVE) {
@@ -920,10 +957,6 @@ public class ControlMessageHandler extends MessageHandler {
 			    			continue;
 						}
 			    	}
-					else { // If vehicle does not exists, create vehicle
-						v = new ElectricVehicle(Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE);
-						ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
-					}
 					
 					// Find the origin and dest zones
 					String originID = vehIDVehTypeOrigDest.orig;
@@ -971,6 +1004,14 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 
 					// Assign trips
+					if (v == null) {
+						double initialLength = vehIDVehTypeOrigDest.length == null
+								? GlobalVariables.DEFAULT_VEHICLE_LENGTH
+								: vehIDVehTypeOrigDest.length.doubleValue();
+						v = new ElectricVehicle(Vehicle.EV,
+								Vehicle.NONE_OF_THE_ABOVE, initialLength);
+						ContextCreator.getVehicleContext().registerPrivateEV(vehID, v);
+					}
 					v.initializePlan(originZoneID, originRoad.getID(), (int) ContextCreator.getCurrentTick());
 					v.addPlan(destZoneID, destRoad.getID(), (int) ContextCreator.getNextTick());
 					v.setNextPlan();
@@ -978,9 +1019,10 @@ public class ControlMessageHandler extends MessageHandler {
 					v.departure(originRoad);
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("vehID", vehID); // Note this vehID will be different from that obtained by veh.getID() which is generated by ContextCreator.generateAgentID();
-		    		record2.put("STATUS", "OK");
-		    		record2.put("origin", originID);
+					record2.put("STATUS", "OK");
+					record2.put("origin", originID);
 					record2.put("destination",destID);
+					record2.put("length", v.length());
 					jsonData.add(record2);
 			    }
 			    jsonAns.put("DATA", jsonData);
@@ -2189,6 +2231,22 @@ public class ControlMessageHandler extends MessageHandler {
 				? null : vehicle.getExternalRoadTransitionSnapshot();
 		boolean pending = snapshot != null && snapshot.isPending();
 		record.put("transitionPending", pending);
+		ConnectorRoad connector = vehicle != null && vehicle.isOnConnector()
+				? vehicle.getCurrentConnector() : null;
+		if (connector != null) {
+			record.put("roadID", connector.getOrigID());
+			record.put("laneID", ConnectorRoad.NO_LANE);
+			record.put("sourceRoadID", connector.getSourceRoad().getOrigID());
+			record.put("targetRoadID", connector.getTargetRoad().getOrigID());
+			record.put("intersectionID", connector.getIntersectionID());
+			if (snapshot != null && snapshot.getTargetLane() != null) {
+				record.put("transitionTargetRoadID",
+						connector.getTargetRoad().getOrigID());
+				record.put("transitionTargetLaneID",
+						connector.getTargetRoad().getLaneIndex(snapshot.getTargetLane()));
+			}
+			return;
+		}
 		if (pending) {
 			addEnterNextRoadTarget(record, snapshot.getTargetRoad(), snapshot.getTargetLane());
 		}
@@ -5511,6 +5569,7 @@ public class ControlMessageHandler extends MessageHandler {
 				ContextCreator.getCityContext().removeRoadReferences(road);
 				removeRoadLanes(road);
 				ContextCreator.getRoadContext().remove(road.getID());
+				ContextCreator.getRoadContext().rebuildConnectorTopology();
 				updateFacilitiesAfterRoadRemoval(road);
 				RouteContext.createRoute();
 
@@ -5614,6 +5673,9 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private String roadRemovalBlocker(Road road) {
+		if (ContextCreator.getRoadContext().hasActiveConnectorForRoad(road)) {
+			return "Road belongs to a connector that is still occupied";
+		}
 		if (road.hasActiveVehicles()) {
 			return "Road still has active or queued vehicles";
 		}
@@ -6368,7 +6430,8 @@ public class ControlMessageHandler extends MessageHandler {
 
 	/**
 	 * Dynamically spawns e-taxis parked at a specified zone.
-	 * <p>Input DATA: list of {@code {zoneID, num}}.
+	 * <p>Input DATA: list of {@code {zoneID, num, length}}. Optional
+	 * {@code length} is applied to every spawned taxi in the record, in meters.
 	 * <p>Output DATA: list of {@code {zoneID, IDs, STATUS}} with the
 	 * assigned vehicle IDs.
 	 */
@@ -6386,6 +6449,14 @@ public class ControlMessageHandler extends MessageHandler {
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 
 			for (AddTaxiToZone req : requests) {
+				if (!isValidOptionalVehicleLength(req.length)) {
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					record.put("zoneID", req.zoneID);
+					record.put("STATUS", "KO");
+					record.put("WARN", invalidVehicleLengthWarning());
+					jsonData.add(record);
+					continue;
+				}
 				Zone zone = ContextCreator.getZoneContext().get(req.zoneID);
 				if (zone == null) {
 					ContextCreator.logger.warn("addTaxi: zone not found: " + req.zoneID);
@@ -6410,7 +6481,9 @@ public class ControlMessageHandler extends MessageHandler {
 
 				ArrayList<Integer> spawnedIDs = new ArrayList<Integer>();
 				for (int i = 0; i < req.num; i++) {
-					ElectricTaxi v = new ElectricTaxi();
+					double length = req.length == null
+							? GlobalVariables.DEFAULT_VEHICLE_LENGTH : req.length.doubleValue();
+					ElectricTaxi v = new ElectricTaxi(length);
 					ContextCreator.getVehicleContext().add(v);
 					v.initializePlan(req.zoneID, departureRoadID, (int) ContextCreator.getCurrentTick());
 					v.getParked(zone);
@@ -6429,6 +6502,8 @@ public class ControlMessageHandler extends MessageHandler {
 				HashMap<String, Object> record = new HashMap<String, Object>();
 				record.put("zoneID", req.zoneID);
 				record.put("IDs", spawnedIDs);
+				record.put("length", req.length == null
+						? GlobalVariables.DEFAULT_VEHICLE_LENGTH : req.length);
 				record.put("STATUS", "OK");
 				jsonData.add(record);
 			}
@@ -6443,7 +6518,8 @@ public class ControlMessageHandler extends MessageHandler {
 
 	/**
 	 * Dynamically spawns e-buses on an existing named route.
-	 * <p>Input DATA: list of {@code {routeName, num}}.
+	 * <p>Input DATA: list of {@code {routeName, num, length}}. Optional
+	 * {@code length} is applied to every spawned bus in the record, in meters.
 	 * <p>Output DATA: list of {@code {routeName, IDs, STATUS}} with the
 	 * assigned vehicle IDs.
 	 */
@@ -6461,6 +6537,14 @@ public class ControlMessageHandler extends MessageHandler {
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 
 			for (RouteNameNum req : requests) {
+				if (!isValidOptionalVehicleLength(req.length)) {
+					HashMap<String, Object> record = new HashMap<String, Object>();
+					record.put("routeName", req.routeName);
+					record.put("STATUS", "KO");
+					record.put("WARN", invalidVehicleLengthWarning());
+					jsonData.add(record);
+					continue;
+				}
 				int routeID = ContextCreator.bus_schedule.getRouteID(req.routeName);
 				if (routeID == -1) {
 					ContextCreator.logger.warn("addBus: unknown route name: " + req.routeName);
@@ -6487,7 +6571,10 @@ public class ControlMessageHandler extends MessageHandler {
 
 				ArrayList<Integer> spawnedIDs = new ArrayList<Integer>();
 				for (int i = 0; i < req.num; i++) {
-					ElectricBus b = new ElectricBus(routeID, stopZones, departureTime);
+					double length = req.length == null
+							? GlobalVariables.DEFAULT_VEHICLE_LENGTH : req.length.doubleValue();
+					ElectricBus b = new ElectricBus(
+							routeID, stopZones, departureTime, length);
 					b.addPlan(startZone.getID(), startZone.getClosestRoad(false), ContextCreator.getCurrentTick());
 					ContextCreator.getVehicleContext().add(b);
 					b.setCurrentCoord(startZone.getCoord());
@@ -6503,6 +6590,8 @@ public class ControlMessageHandler extends MessageHandler {
 				HashMap<String, Object> record = new HashMap<String, Object>();
 				record.put("routeName", req.routeName);
 				record.put("IDs", spawnedIDs);
+				record.put("length", req.length == null
+						? GlobalVariables.DEFAULT_VEHICLE_LENGTH : req.length);
 				record.put("STATUS", "OK");
 				jsonData.add(record);
 			}
