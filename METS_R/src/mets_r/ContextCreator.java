@@ -220,6 +220,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		capabilities.put("debugNetwork", GlobalVariables.DEBUG_NETWORK);
 		capabilities.put("inboundDebugLogging", logger.isDebugEnabled());
 		capabilities.put("runEpoch", runEpoch);
+		ArrayList<Integer> schemaVersions = new ArrayList<Integer>();
+		schemaVersions.add(Integer.valueOf(1));
+		schemaVersions.add(Integer.valueOf(2));
+		capabilities.put("supportedSchemaVersions", schemaVersions);
+		capabilities.put("defaultSchemaVersion", Integer.valueOf(1));
 		return capabilities;
 	}
 

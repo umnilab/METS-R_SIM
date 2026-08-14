@@ -21,5 +21,10 @@ public abstract class MessageHandler {
 	public int getCount() {
 		return count;
 	}
+
+	/** Return whether this handler exposes the supplied operation name. */
+	public boolean supports(String msgType) {
+		return msgType != null && this.messageHandlers.containsKey(msgType);
+	}
 	
 }

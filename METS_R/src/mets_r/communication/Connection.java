@@ -3,55 +3,54 @@ package mets_r.communication;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.HashMap;
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.annotations.*;
 
+import org.eclipse.jetty.websocket.api.Session;
+import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
+import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
+import org.eclipse.jetty.websocket.api.annotations.OnWebSocketError;
+import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
+import org.eclipse.jetty.websocket.api.annotations.WebSocket;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
+
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 /**
- * When a request from a remote program for a network connection is received,
- * the network connection manager will produce a new WebSocket connection to be
- * managed by a new instance of this class. This class provides both the
- * WebSocket annotated methods the Jetty library will use to handle processing
- * control of this particular socket and the delivery of messages received from
- * the remote program and the interface methods of a data consumer which uses
- * the data collection buffer built into the simulation. 
- * 
- * @author: Christopher Thompson, Zengxiang Lei
-**/
-
+ * WebSocket connection and wire-schema boundary.
+ *
+ * <p>The selected API schema is connection scoped. Existing handlers continue
+ * to use the v1 representation; {@link ApiSchemaAdapter} normalizes v2 requests
+ * before dispatch and serializes handler responses back to v2.</p>
+ */
 @WebSocket
-public class Connection{
+public class Connection {
 	private int id;
-	private static int COUNTER = 0; // Number of instances of the connection created so far
+	private static int COUNTER = 0;
 
-	private Session session; // The websocket session object for the connection. 
-	private InetAddress ip; // The address of the remote host. 
-	
+	private Session session;
+	private InetAddress ip;
+	private volatile int schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
+
 	private QueryMessageHandler queryHandler;
 	private StepMessageSender stepSender;
 	private AnswerMessageSender answerSender;
 
 	public Connection() {
-		// increment our instance counter and save this object's number
 		this.id = ++Connection.COUNTER;
-		
 		this.queryHandler = new QueryMessageHandler();
 		this.stepSender = new StepMessageSender();
 		this.answerSender = new AnswerMessageSender();
-
 		ContextCreator.logger.info("Connection object created.");
 	}
-	
+
 	@OnWebSocketClose
 	public void onClose(int statusCode, String reason) {
 		ConnectionManager.activeSession = null;
 		ContextCreator.logger.info(statusCode + ": " + reason);
-		// Register the connection in ContextCreator
 		ContextCreator.connection = null;
+		this.session = null;
+		this.schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
 	}
 
 	@OnWebSocketError
@@ -61,29 +60,20 @@ public class Connection{
 
 	@OnWebSocketConnect
 	public void onConnect(Session session) {
-		if (session == null) {
-			return;
-		}
-		
-		session.setIdleTimeout(0); //Never timeout
-		
+		if (session == null) return;
+		session.setIdleTimeout(0);
+
 		if (ConnectionManager.activeSession == null) {
 			ConnectionManager.activeSession = session;
-		}
-		else {
-			// Reject the new connection if there's already one
-            session.close(4000, "Only one connection allowed");
-            return;
+		} else {
+			session.close(4000, "Only one connection allowed");
+			return;
 		}
 
 		this.ip = session.getRemoteAddress().getAddress();
-
 		ContextCreator.logger.info("Connected to " + this.ip.toString() + ".");
-
-		// Save a reference to the session for this socket connection
 		this.session = session;
-
-		// Register the connection in ContextCreator
+		this.schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
 		ContextCreator.connection = this;
 	}
 
@@ -92,69 +82,125 @@ public class Connection{
 		if (ContextCreator.logger.isDebugEnabled()) {
 			ContextCreator.logger.debug("Received message " + message);
 		}
-		JSONObject jsonMsg = new JSONObject();
+
+		String operation = "error";
 		try {
-			JSONParser parser = new JSONParser();
-			jsonMsg = (JSONObject) parser.parse(message);
-			String[] msgType = jsonMsg.get("TYPE").toString().split("_");
-			if (msgType[0].equals("STEP")) {
-				String answer = ContextCreator.stepHandler.handleMessage(msgType[0], jsonMsg);
-				if (answer != null && session != null) {
-					this.answerSender.sendMessage(session, answer);
-				}
+			Object parsed = new JSONParser().parse(message);
+			if (!(parsed instanceof JSONObject)) {
+				sendBoundaryError(operation, "INVALID_REQUEST",
+						"Request must be a JSON object", this.schemaVersion);
+				return;
 			}
-			else if (msgType[0].equals("CTRL")) {
-				String answer = ContextCreator.controlHandler.handleMessage(msgType[1], jsonMsg); // controlHandler is shared
-				if (answer != null && session != null) {
-					this.answerSender.sendMessage(session, answer);
-					if (shouldSendStepAfterControl(msgType[1], answer)) {
-						this.stepSender.sendMessage(session, ContextCreator.getCurrentTick());
-					}
-				} else if (session == null) {
-					ContextCreator.logger.warn("CTRL_" + msgType[1] + ": cannot send answer, session is null");
-				} else {
-					// answer is null: handler failed to produce output, send a KO fallback
-					ContextCreator.logger.warn("CTRL_" + msgType[1] + ": handler returned null answer, sending KO");
-					HashMap<String, Object> errObj = new HashMap<String, Object>();
-					errObj.put("TYPE", "CTRL_" + msgType[1]);
-					errObj.put("CODE", "KO");
-					errObj.put("MSG", "Unknown control name: " + msgType[0]);
-					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
+			JSONObject jsonMsg = (JSONObject) parsed;
+
+			Integer requestedVersion = ApiSchemaAdapter.requestedVersion(jsonMsg);
+			if (requestedVersion != null) {
+				if (!ApiSchemaAdapter.isSupported(requestedVersion.intValue())) {
+					sendBoundaryError(operation, "UNSUPPORTED_SCHEMA_VERSION",
+							"Supported schema versions are 1 and 2", ApiSchemaAdapter.VERSION_2);
+					return;
 				}
+				this.schemaVersion = requestedVersion.intValue();
 			}
-			else if (msgType[0].equals("QUERY")) {
-				String answer = this.queryHandler.handleMessage(msgType[1], jsonMsg); // queryHandler is owned by each connection
-				if (answer != null && session != null) {
-					this.answerSender.sendMessage(session, answer);
-				} else if (session == null) {
-					ContextCreator.logger.warn("QUERY_" + msgType[1] + ": cannot send answer — session is null");
-				} else {
-					// answer is null: handler failed to produce output, send a KO fallback
-					ContextCreator.logger.warn("QUERY_" + msgType[1] + ": handler returned null answer, sending KO");
-					HashMap<String, Object> errObj = new HashMap<String, Object>();
-					errObj.put("TYPE", "ANS_" + msgType[1]);
-					errObj.put("CODE", "KO");
-					errObj.put("MSG", "Unknown query name: " + msgType[0]);
-					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
-				}
+
+			String requestedType = ApiSchemaAdapter.requestedMessageType(jsonMsg);
+			if (requestedType == null || requestedType.isEmpty()) {
+				sendBoundaryError(operation, "MISSING_MESSAGE_TYPE",
+						"TYPE (v1) or messageType (v2) is required", this.schemaVersion);
+				return;
 			}
-			else {
-				ContextCreator.logger.warn("Unknown message type: " + msgType[0]);
-				if (session != null) {
-					HashMap<String, Object> errObj = new HashMap<String, Object>();
-					errObj.put("TYPE", "ANS_error");
-					errObj.put("MSG", "Unknown message type: " + msgType[0]);
-					this.answerSender.sendMessage(session, JSONObject.toJSONString(errObj));
+
+			String[] target = resolveTarget(requestedType);
+			if (target == null) {
+				sendBoundaryError(requestedType, "UNKNOWN_MESSAGE_TYPE",
+						"Unknown message type or operation: " + requestedType, this.schemaVersion);
+				return;
+			}
+			String category = target[0];
+			operation = target[1];
+			JSONObject normalized = ApiSchemaAdapter.normalizeRequest(
+					jsonMsg, this.schemaVersion, category, operation);
+
+			if ("STEP".equals(category)) {
+				String answer = ContextCreator.stepHandler.handleMessage("STEP", normalized);
+				sendHandlerResponse(category, operation, answer);
+			} else if ("CTRL".equals(category)) {
+				String answer = ContextCreator.controlHandler.handleMessage(operation, normalized);
+				sendHandlerResponse(category, operation, answer);
+				if (answer != null && shouldSendStepAfterControl(operation, answer)) {
+					sendStepPayload(ContextCreator.getCurrentTick());
 				}
+			} else {
+				String answer = this.queryHandler.handleMessage(operation, normalized);
+				sendHandlerResponse(category, operation, answer);
 			}
 		} catch (Exception e) {
-	        ContextCreator.logger.error("Standard Exception caught: " + e.getMessage());
-	        e.printStackTrace();
-	    } catch (Throwable t) {
-	        // THIS WILL CATCH FATAL ERRORS LIKE StackOverflowError
-	        ContextCreator.logger.error("FATAL JVM ERROR: " + t.toString(), t);
-	        t.printStackTrace(); 
-	    }
+			ContextCreator.logger.error("Standard Exception caught: " + e.getMessage());
+			try {
+				sendBoundaryError(operation, "INVALID_REQUEST", e.getMessage(), this.schemaVersion);
+			} catch (IOException sendError) {
+				ContextCreator.logger.error("Could not send request error: " + sendError.getMessage());
+			}
+		} catch (Throwable t) {
+			ContextCreator.logger.error("FATAL JVM ERROR: " + t.toString(), t);
+		}
+	}
+
+	/**
+	 * Accept both prefixed v1 message types and prefix-free v2 operation names.
+	 * Handler registration resolves the category for the latter.
+	 */
+	private String[] resolveTarget(String requestedType) {
+		String category = null;
+		String operation = requestedType;
+		int separator = requestedType.indexOf('_');
+		if (separator > 0) {
+			String prefix = requestedType.substring(0, separator).toUpperCase();
+			if ("CTRL".equals(prefix) || "QUERY".equals(prefix) || "STEP".equals(prefix)) {
+				category = prefix;
+				operation = requestedType.substring(separator + 1);
+			}
+		} else if ("STEP".equalsIgnoreCase(requestedType)) {
+			category = "STEP";
+			operation = "step";
+		}
+
+		operation = ApiSchemaAdapter.dispatchOperation(operation);
+		if (category == null) {
+			if ("step".equalsIgnoreCase(operation)) category = "STEP";
+			else if (ContextCreator.controlHandler.supports(operation)) category = "CTRL";
+			else if (this.queryHandler.supports(operation)) category = "QUERY";
+			else return null;
+		}
+		if ("CTRL".equals(category) && !ContextCreator.controlHandler.supports(operation)) return null;
+		if ("QUERY".equals(category) && !this.queryHandler.supports(operation)) return null;
+		return new String[] { category, operation };
+	}
+
+	private void sendHandlerResponse(String category, String operation, String answer)
+			throws IOException {
+		if (session == null) {
+			ContextCreator.logger.warn(category + "_" + operation
+					+ ": cannot send answer, session is null");
+			return;
+		}
+		if (answer == null) {
+			ContextCreator.logger.warn(category + "_" + operation
+					+ ": handler returned null answer, sending error");
+			sendBoundaryError(operation, "HANDLER_NO_RESPONSE",
+					"Handler did not produce a response", this.schemaVersion);
+			return;
+		}
+		String response = ApiSchemaAdapter.formatResponse(
+				category, operation, answer, this.schemaVersion);
+		this.answerSender.sendMessage(session, response);
+	}
+
+	private void sendBoundaryError(String operation, String errorCode,
+			String message, int version) throws IOException {
+		if (session == null) return;
+		this.answerSender.sendMessage(session,
+				ApiSchemaAdapter.formatError(operation, errorCode, message, version));
 	}
 
 	private boolean shouldSendStepAfterControl(String controlType, String answer) {
@@ -166,32 +212,60 @@ public class Connection{
 			JSONObject jsonAns = (JSONObject) new JSONParser().parse(answer);
 			return "OK".equals(jsonAns.get("CODE"));
 		} catch (Exception e) {
-			ContextCreator.logger.warn("CTRL_" + controlType + ": could not parse answer before ready check: "
-					+ e.getMessage());
+			ContextCreator.logger.warn("CTRL_" + controlType
+					+ ": could not parse answer before ready check: " + e.getMessage());
 			return false;
 		}
 	}
-	
+
 	public void sendStepMessage(int tick) {
 		try {
-			stepSender.sendMessage(session, tick);
+			sendStepPayload(tick);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-	
+
+	private void sendStepPayload(int tick) throws IOException {
+		if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
+			stepSender.sendMessage(session, tick);
+			return;
+		}
+		HashMap<String, Object> stepMsg = new HashMap<String, Object>();
+		stepMsg.put("TYPE", "STEP");
+		stepMsg.put("TICK", tick);
+		answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
+				"STEP", "step", JSONObject.toJSONString(stepMsg), this.schemaVersion));
+	}
+
 	public void sendReadyMessage() {
 		try {
-			answerSender.sendReadyMessage(session);
+			if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
+				answerSender.sendReadyMessage(session);
+			} else {
+				HashMap<String, Object> ready = new HashMap<String, Object>();
+				ready.put("TYPE", "ANS_ready");
+				answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
+						"ANS", "ready", JSONObject.toJSONString(ready), this.schemaVersion));
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
 	}
-	
+
 	public void sendStopMessage() {
 		try {
-			answerSender.sendStopMessage(session);
+			if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
+				answerSender.sendStopMessage(session);
+			} else {
+				HashMap<String, Object> stop = new HashMap<String, Object>();
+				stop.put("TYPE", "CTRL_end");
+				stop.put("CODE", "OK");
+				answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
+						"CTRL", "end", JSONObject.toJSONString(stop), this.schemaVersion));
+			}
 		} catch (IOException e) {
 			e.printStackTrace();
-		}	}
+		}
+	}
 }
