@@ -345,6 +345,103 @@ public class Vehicle {
 	}
 
 	/**
+	 * Initialize a new one-shot trip directly at an externally authoritative
+	 * position. This bypasses departure queues and never constructs a temporary
+	 * zone-origin trip.
+	 */
+	public synchronized void initializeCoSimTripAt(Road startRoad, Lane startLane,
+			double downstreamDistance, Coordinate authoritativePose,
+			double authoritativeBearing, double authoritativeSpeed,
+			Road destinationRoad, Road requiredNextRoad, Lane requiredNextLane) {
+		if (this.onRoad || this.onLane || this.road != null || this.lane != null
+				|| this.externalRoadTransition) {
+			throw new IllegalStateException("Direct COSIM initialization requires a new, detached vehicle");
+		}
+		if (startRoad == null || startLane == null || startLane.getRoad() != startRoad
+				|| destinationRoad == null || authoritativePose == null
+				|| !Double.isFinite(authoritativePose.x)
+				|| !Double.isFinite(authoritativePose.y)
+				|| !Double.isFinite(authoritativePose.z)
+				|| !Double.isFinite(authoritativeBearing)
+				|| !Double.isFinite(authoritativeSpeed) || authoritativeSpeed < 0.0
+				|| !Double.isFinite(downstreamDistance)
+				|| downstreamDistance < 0.0
+				|| downstreamDistance > startLane.getLength()) {
+			throw new IllegalArgumentException("Invalid direct COSIM initialization state");
+		}
+
+		ArrayList<Road> initialPath;
+		if (requiredNextRoad == null) {
+			List<Road> route = RouteContext.shortestPathRoute(
+					startRoad, destinationRoad, this.rand_route_only);
+			if (route == null || route.isEmpty() || route.get(0) != startRoad) {
+				throw new IllegalArgumentException("No route from the matched road to the destination");
+			}
+			initialPath = new ArrayList<Road>(route);
+		} else {
+			if (!startRoad.getDownStreamRoads().contains(requiredNextRoad.getID())
+					|| requiredNextLane == null
+					|| requiredNextLane.getRoad() != requiredNextRoad
+					|| !startLane.getDownStreamLanes().contains(requiredNextLane.getID())) {
+				throw new IllegalArgumentException("Matched connector is not a legal lane transition");
+			}
+			List<Road> suffix = RouteContext.shortestPathRoute(
+					requiredNextRoad, destinationRoad, this.rand_route_only);
+			if (suffix == null || suffix.isEmpty() || suffix.get(0) != requiredNextRoad) {
+				throw new IllegalArgumentException("No route from the matched connector to the destination");
+			}
+			initialPath = new ArrayList<Road>(suffix.size() + 1);
+			initialPath.add(startRoad);
+			initialPath.addAll(suffix);
+		}
+
+		this.originRoad_ = startRoad;
+		this.destRoad_ = destinationRoad;
+		this.originID = startRoad.getNeighboringZone(false);
+		this.destinationID = destinationRoad.getNeighboringZone(true);
+		this.deptime = ContextCreator.getCurrentTick();
+		this.originCoord_ = new Coordinate(authoritativePose);
+		this.activityPlan.clear();
+		this.activityPlan.add(new Plan(this.destinationID,
+				destinationRoad.getID(), ContextCreator.getNextTick()));
+		this.roadPath = initialPath;
+		this.nextRoad_ = initialPath.size() > 1 ? initialPath.get(1) : null;
+		this.nextLane_ = null;
+		this.atOrigin = false;
+		this.isReachDest = false;
+		this.numTrips++;
+		this.setState(Vehicle.PRIVATE_TRIP);
+
+		try {
+			startRoad.teleportVehicle(this, startLane, downstreamDistance);
+			this.setCurrentCoord(authoritativePose);
+			this.setPreviousEpochCoord(authoritativePose);
+			this.setBearing(authoritativeBearing);
+			this.setSpeed(authoritativeSpeed);
+			if (this.nextRoad_ != null) {
+				if (requiredNextRoad != null) {
+					if (!this.assertNextLaneForExternalTransition(
+							requiredNextRoad, requiredNextLane)) {
+						throw new IllegalArgumentException(
+								"Matched connector lane is inconsistent with the initialized route");
+					}
+				} else {
+					this.assignNextLane();
+					if (this.nextLane_ == null) {
+						throw new IllegalArgumentException(
+								"Initialized route has no reachable next lane");
+					}
+				}
+			}
+			this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(this.roadPath));
+			this.setShadowImpact();
+		} catch (RuntimeException ex) {
+			if (this.onRoad || this.onLane || this.externalRoadTransition) this.leaveNetwork();
+			throw ex;
+		}
+	}
+
+	/**
 	 * Update the destination of the vehicle according to its plan, a plan is a triplet as (target zone, target location, departure time)
 	 */
 	public void setNextPlan() {
@@ -4011,6 +4108,18 @@ public class Vehicle {
 
 	public synchronized void cancelExternalRoadTransition() {
 		this.clearExternalRoadTransitionState();
+	}
+
+	public synchronized double getExternalTransitionProjectedDistance() {
+		if (!this.externalRoadTransition || this.externalTransitionTargetLane == null) {
+			return Double.NaN;
+		}
+		ExternalLaneProjection projection = this.projectExternalPoseToTargetLane();
+		if (projection != null && Double.isFinite(projection.downstreamDistance)) {
+			return projection.downstreamDistance;
+		}
+		double laneLength = this.externalTransitionTargetLane.getLength();
+		return Double.isFinite(laneLength) ? Math.max(0.0, laneLength) : Double.NaN;
 	}
 
 	private synchronized void clearExternalRoadTransitionState() {

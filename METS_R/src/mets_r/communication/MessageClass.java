@@ -102,6 +102,8 @@ public class MessageClass{
 	    double speed;
 	    String observedRoadID;
 	    Integer observedLaneID;
+	    String segmentID;
+	    String roadID;
 
 	    // Constructor
 	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
@@ -129,6 +131,22 @@ public class MessageClass{
 	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed, observedRoadID);
 	        this.observedLaneID = observedLaneID;
 	    }
+	}
+
+	class InitializeCoSimVehRequest {
+		int vehID;
+		Boolean vehType;
+		boolean transformCoord;
+		Double x;
+		Double y;
+		Double z;
+		Double bearing;
+		Double speed;
+		Double length;
+		String segmentID;
+		String roadID;
+		String destinationRoadID;
+		String destRoadID;
 	}
 	
 	class VehIDVehTypeRoad {

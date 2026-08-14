@@ -72,6 +72,8 @@ public class QueryMessageHandler extends MessageHandler {
         messageHandlers.put("onRoadVehicles", this::getOnRoadVehicles);
         messageHandlers.put("onRoadVehicle", this::getOnRoadVehicles);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
+        messageHandlers.put("getCoSimVehicle", this::getCoSimVehicle);
+        messageHandlers.put("getCoSimVeh", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
         messageHandlers.put("queryTaxi", this::getTaxi);
         messageHandlers.put("bus", this::getBus);
@@ -80,6 +82,8 @@ public class QueryMessageHandler extends MessageHandler {
         // Roads & geometry
         // =============================================================
         messageHandlers.put("road", this::getRoad);
+        messageHandlers.put("coSimRoad", this::getCoSimRoad);
+        messageHandlers.put("getCoSimRoad", this::getCoSimRoad);
         messageHandlers.put("activeRoad", this::getActiveRoad);
         messageHandlers.put("activeRoads", this::getActiveRoad);
         messageHandlers.put("enteringVehicleQueue", this::getEnteringVehicleQueue);
@@ -444,13 +448,27 @@ public class QueryMessageHandler extends MessageHandler {
 				: vehicleContext.getExternalRoadTransitionSnapshots();
 		LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot> snapshotsByVehicleID =
 				new LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot>();
-		for(Road r: ContextCreator.coSimRoads.values()) {
-			Vehicle v = r.firstVehicle();
-			while(v != null) {
-				Vehicle nextVehicle = v.macroTrailing();
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		for (Road road : roadContext.getCoSimPhysicalRoadsSnapshot()) {
+			Vehicle vehicle = road.firstVehicle();
+			while (vehicle != null) {
+				Vehicle nextVehicle = vehicle.macroTrailing();
 				mergeCoSimVehicleSnapshot(snapshotsByVehicleID,
-						v.getExternalRoadTransitionSnapshot());
-				v = nextVehicle;
+						vehicle.getExternalRoadTransitionSnapshot());
+				vehicle = nextVehicle;
+			}
+		}
+		for (ConnectorRoad connector : roadContext.getCoSimConnectorsSnapshot()) {
+			for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
+				Vehicle.ExternalRoadTransitionSnapshot snapshot =
+						vehicle.getExternalRoadTransitionSnapshot();
+				// Native vehicles can retain a connector footprint briefly after their
+				// front has joined the target lane. They remain collision participants,
+				// but they are no longer externally owned unless the target road itself
+				// is COSIM (in which case the physical-road scan already includes them).
+				if (snapshot.isPending()) {
+					mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
+				}
 			}
 		}
 		for (Vehicle.ExternalRoadTransitionSnapshot snapshot : pendingBefore) {
@@ -470,6 +488,25 @@ public class QueryMessageHandler extends MessageHandler {
 		
 		jsonObj.put("DATA", jsonData);
 		
+		return jsonObj;
+	}
+
+	public HashMap<String, Object> getCoSimRoad(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		ArrayList<Object> jsonData = new ArrayList<Object>();
+		ArrayList<String> roadIDs = new ArrayList<String>();
+		for (Road road : ContextCreator.getRoadContext().getCoSimSegmentsSnapshot()) {
+			roadIDs.add(road.getOrigID());
+			if (road instanceof ConnectorRoad) {
+				jsonData.add(connectorRoadRecord((ConnectorRoad) road));
+			} else {
+				jsonData.add(physicalRoadRecord(road));
+			}
+		}
+		jsonObj.put("id_list", roadIDs);
+		jsonObj.put("orig_id", roadIDs);
+		jsonObj.put("DATA", jsonData);
+		jsonObj.put("CODE", "OK");
 		return jsonObj;
 	}
 
@@ -689,6 +726,7 @@ public class QueryMessageHandler extends MessageHandler {
 				? vehicle.getCurrentConnector() : null;
 		if (connector != null) {
 			record.put("roadID", connector.getOrigID());
+			record.put("connectorID", connector.getOrigID());
 			record.put("lane", ConnectorRoad.NO_LANE);
 			record.put("laneID", ConnectorRoad.NO_LANE);
 			double connectorDistanceRemaining =
@@ -1048,6 +1086,8 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("down_stream_road", connector.getDownStreamRoadOrigIDs());
 		record.put("isConnector", true);
 		record.put("routingEdge", false);
+		record.put("controlType", connector.getControlType());
+		record.put("roadControlType", connector.getControlType());
 		record.put("laneID", ConnectorRoad.NO_LANE);
 		record.put("sourceRoadID", connector.getSourceRoad().getOrigID());
 		record.put("targetRoadID", connector.getTargetRoad().getOrigID());
@@ -1061,6 +1101,32 @@ public class QueryMessageHandler extends MessageHandler {
 						.getIntersectionSnapshot(connector.getIntersectionID());
 		record.put("intersectionCollision", snapshot.hasCollision());
 		record.put("intersectionStateVersion", snapshot.getVersion());
+		record.put("STATUS", "OK");
+		return record;
+	}
+
+	private HashMap<String, Object> physicalRoadRecord(Road road) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("ID", road.getOrigID());
+		record.put("roadID", road.getOrigID());
+		record.put("roadIndex", getVisualizationRoadIndex(road));
+		record.put("r_type", road.getRoadType());
+		int vehicleCount = ContextCreator.getRoadContext().getQueryableVehicleCount(road);
+		record.put("num_veh", vehicleCount);
+		record.put("nVehicles", vehicleCount);
+		record.put("isConnector", false);
+		record.put("routingEdge", true);
+		record.put("controlType", road.getControlType());
+		record.put("roadControlType", road.getControlType());
+		record.put("speed", road.calcSpeed());
+		addRoutingMetricFields(record, road);
+		record.put("flow", road.getTotalFlow());
+		record.put("energy", road.getTotalEnergy());
+		record.put("parking_capacity", road.getParkingCapacity());
+		record.put("parkingCapacity", road.getParkingCapacity());
+		record.put("parked_num", road.getParkedNum());
+		record.put("parkedNum", road.getParkedNum());
+		record.put("down_stream_road", road.getDownStreamRoadOrigIDs());
 		record.put("STATUS", "OK");
 		return record;
 	}

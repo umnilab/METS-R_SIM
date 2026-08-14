@@ -652,6 +652,18 @@ public class Road {
 		return this.nativeReleaseInProgress;
 	}
 
+	public synchronized boolean beginConnectorNativeRelease() {
+		if (this.controlType == Road.COSIM || this.nativeReleaseInProgress
+				|| this.activeExternalLaneAdmissions > 0
+				|| this.activeExternalLaneCommits > 0) return false;
+		this.nativeReleaseInProgress = true;
+		return true;
+	}
+
+	public synchronized void endConnectorNativeRelease() {
+		this.nativeReleaseInProgress = false;
+	}
+
 	public synchronized boolean beginExternalLaneCommit(Lane lane, Vehicle vehicle) {
 		if (this.nativeReleaseInProgress || lane == null || vehicle == null
 				|| this.externalLaneReservations.get(lane.getID()) != vehicle) return false;
@@ -1367,7 +1379,18 @@ public class Road {
 			return;
 		}
 
-		List<NativeReleasePlacement> placements = this.planNativeReleasePlacements(vehicles);
+		HashSet<Vehicle> retainedConnectorVehicles = new HashSet<Vehicle>();
+		ArrayList<Vehicle> vehiclesToAdapt = new ArrayList<Vehicle>();
+		for (Vehicle vehicle : vehicles) {
+			if (this.remainsOnCoSimConnectorAfterRelease(vehicle)) {
+				retainedConnectorVehicles.add(vehicle);
+			} else {
+				vehiclesToAdapt.add(vehicle);
+			}
+		}
+
+		List<NativeReleasePlacement> placements =
+				this.planNativeReleasePlacements(vehiclesToAdapt);
 		if (placements == null) {
 			ContextCreator.logger.warn("Keeping road " + this.ID
 					+ " under COSIM control because no collision-free native placement exists");
@@ -1376,7 +1399,7 @@ public class Road {
 
 		// Planning is complete before the first mutation, so a blocked release leaves
 		// COSIM membership, lane lists, reservations, and poses untouched.
-		for (Vehicle vehicle : vehicles) vehicle.removeFromCurrentLane();
+		for (Vehicle vehicle : vehiclesToAdapt) vehicle.removeFromCurrentLane();
 		for (NativeReleasePlacement placement : placements) {
 			boolean placed;
 			if (placement.externalTransition) {
@@ -1413,7 +1436,13 @@ public class Road {
 		}
 		this.lastVehicle(vehicles.get(vehicles.size() - 1));
 		synchronized (this) {
-			this.externalLaneReservations.clear();
+			for (Map.Entry<Integer, Vehicle> reservation
+					: this.externalLaneReservations.entrySet()) {
+				if (!retainedConnectorVehicles.contains(reservation.getValue())) {
+					this.externalLaneReservations.remove(
+							reservation.getKey(), reservation.getValue());
+				}
+			}
 			this.controlType = controlType;
 		}
 		} finally {
@@ -1421,6 +1450,21 @@ public class Road {
 				this.nativeReleaseInProgress = false;
 			}
 		}
+	}
+
+	private boolean remainsOnCoSimConnectorAfterRelease(Vehicle vehicle) {
+		if (vehicle == null || !vehicle.isExternalRoadTransition()) return false;
+		ConnectorRoad connector = vehicle.getCurrentConnector();
+		if (connector == null) return false;
+		Road otherRoad;
+		if (connector.getTargetRoad() == this) {
+			otherRoad = connector.getSourceRoad();
+		} else if (connector.getSourceRoad() == this) {
+			otherRoad = connector.getTargetRoad();
+		} else {
+			return false;
+		}
+		return otherRoad != this && otherRoad.getControlType() == Road.COSIM;
 	}
 
 	private List<NativeReleasePlacement> planNativeReleasePlacements(List<Vehicle> vehicles) {

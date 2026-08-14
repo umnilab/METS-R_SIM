@@ -241,7 +241,7 @@ public class RoadContext extends FacilityContext<Road> {
 							|| connector.getIntersectionID() != junction.getID()) {
 						connector = new ConnectorRoad(connectorInternalID(movementKey),
 								movementKey, sourceRoad, targetRoad, junction.getID(),
-								connectorCenterLines(sourceRoad, targetRoad));
+								connectorPaths(sourceRoad, targetRoad));
 					}
 					connectorsByMovement.put(movementKey, connector);
 					connectorsByInternalID.put(connector.getID(), connector);
@@ -308,8 +308,9 @@ public class RoadContext extends FacilityContext<Road> {
 		return ((long) sourceRoadID << 32) ^ (targetRoadID & 0xffffffffL);
 	}
 
-	private List<List<Coordinate>> connectorCenterLines(Road sourceRoad, Road targetRoad) {
-		ArrayList<List<Coordinate>> centerLines = new ArrayList<List<Coordinate>>();
+	private List<ConnectorRoad.ConnectorPath> connectorPaths(Road sourceRoad, Road targetRoad) {
+		ArrayList<ConnectorRoad.ConnectorPath> paths =
+				new ArrayList<ConnectorRoad.ConnectorPath>();
 		ArrayList<Lane> sourceLanes = new ArrayList<Lane>(sourceRoad.getLanes());
 		ArrayList<Lane> targetLanes = new ArrayList<Lane>(targetRoad.getLanes());
 		sourceLanes.sort(Comparator.comparingInt(Lane::getID));
@@ -324,16 +325,17 @@ public class RoadContext extends FacilityContext<Road> {
 				}
 				addDistinctCoordinate(line, targetLane.getStartCoord());
 				if (line.size() == 1) addDistinctCoordinate(line, targetLane.getStartCoord());
-				centerLines.add(line);
+				paths.add(new ConnectorRoad.ConnectorPath(sourceLane, targetLane, line));
 			}
 		}
-		if (centerLines.isEmpty()) {
+		if (paths.isEmpty()) {
 			ArrayList<Coordinate> fallback = new ArrayList<Coordinate>();
 			addDistinctCoordinate(fallback, sourceRoad.getEndCoord());
 			addDistinctCoordinate(fallback, targetRoad.getStartCoord());
-			centerLines.add(fallback);
+			paths.add(new ConnectorRoad.ConnectorPath(sourceRoad.firstLane(),
+					targetRoad.firstLane(), fallback));
 		}
-		return centerLines;
+		return paths;
 	}
 
 	private void addDistinctCoordinate(ArrayList<Coordinate> line, Coordinate coordinate) {
@@ -501,6 +503,32 @@ public class RoadContext extends FacilityContext<Road> {
 		ArrayList<ConnectorRoad> result =
 				new ArrayList<ConnectorRoad>(this.connectorTopology.connectorsByMovement.values());
 		result.sort(Comparator.comparing(ConnectorRoad::getOrigID));
+		return Collections.unmodifiableList(result);
+	}
+
+	public List<Road> getCoSimPhysicalRoadsSnapshot() {
+		ArrayList<Road> result = new ArrayList<Road>();
+		for (Road road : this.getAll()) {
+			if (road != null && road.getControlType() == Road.COSIM) result.add(road);
+		}
+		result.sort(Comparator.comparing(Road::getOrigID));
+		return Collections.unmodifiableList(result);
+	}
+
+	public List<ConnectorRoad> getCoSimConnectorsSnapshot() {
+		ArrayList<ConnectorRoad> result = new ArrayList<ConnectorRoad>();
+		for (ConnectorRoad connector : this.connectorTopology.connectorsByMovement.values()) {
+			if (connector != null && connector.getControlType() == Road.COSIM) result.add(connector);
+		}
+		result.sort(Comparator.comparing(ConnectorRoad::getOrigID));
+		return Collections.unmodifiableList(result);
+	}
+
+	public List<Road> getCoSimSegmentsSnapshot() {
+		ArrayList<Road> result = new ArrayList<Road>();
+		result.addAll(getCoSimPhysicalRoadsSnapshot());
+		result.addAll(getCoSimConnectorsSnapshot());
+		result.sort(Comparator.comparing(Road::getOrigID));
 		return Collections.unmodifiableList(result);
 	}
 

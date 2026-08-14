@@ -30,6 +30,7 @@ public final class ConnectorRoad extends Road {
 	private final Road targetRoad;
 	private final int intersectionID;
 	private final long movementKey;
+	private final List<ConnectorPath> paths;
 	private final List<List<Coordinate>> centerLines;
 	private final ConcurrentHashMap<Integer, Vehicle> activeVehicles =
 			new ConcurrentHashMap<Integer, Vehicle>();
@@ -38,7 +39,7 @@ public final class ConnectorRoad extends Road {
 	private volatile Set<Integer> conflictingConnectorIDs = Collections.emptySet();
 
 	ConnectorRoad(int id, long movementKey, Road sourceRoad, Road targetRoad,
-			int intersectionID, List<List<Coordinate>> centerLines) {
+			int intersectionID, List<ConnectorPath> paths) {
 		super(id);
 		if (sourceRoad == null || targetRoad == null) {
 			throw new IllegalArgumentException("Connector roads require source and target roads");
@@ -47,7 +48,10 @@ public final class ConnectorRoad extends Road {
 		this.sourceRoad = sourceRoad;
 		this.targetRoad = targetRoad;
 		this.intersectionID = intersectionID;
-		this.centerLines = immutableCenterLines(centerLines, sourceRoad, targetRoad);
+		this.paths = immutablePaths(paths, sourceRoad, targetRoad);
+		ArrayList<List<Coordinate>> centerLines = new ArrayList<List<Coordinate>>();
+		for (ConnectorPath path : this.paths) centerLines.add(path.getCenterLine());
+		this.centerLines = Collections.unmodifiableList(centerLines);
 		this.setOrigID(sourceRoad.getOrigID() + "_" + targetRoad.getOrigID());
 		this.setRoadType(sourceRoad.getRoadType());
 		this.setControlType(Road.NONE_OF_THE_ABOVE);
@@ -66,27 +70,26 @@ public final class ConnectorRoad extends Road {
 		this.setCanBeDest(false);
 	}
 
-	private Coordinate intersectionAnchor(List<Coordinate> line) {
-		if (line == null || line.isEmpty()) return new Coordinate(0.0, 0.0, 0.0);
-		return line.get(0);
-	}
-
-	private static List<List<Coordinate>> immutableCenterLines(List<List<Coordinate>> lines,
+	private static List<ConnectorPath> immutablePaths(List<ConnectorPath> paths,
 			Road sourceRoad, Road targetRoad) {
-		ArrayList<List<Coordinate>> result = new ArrayList<List<Coordinate>>();
-		if (lines != null) {
-			for (List<Coordinate> line : lines) {
-				ArrayList<Coordinate> copy = deepCopy(line);
-				if (!copy.isEmpty()) result.add(Collections.unmodifiableList(copy));
+		ArrayList<ConnectorPath> result = new ArrayList<ConnectorPath>();
+		if (paths != null) {
+			for (ConnectorPath path : paths) {
+				if (path != null && path.getCenterLine().size() >= 2) result.add(path);
 			}
 		}
 		if (result.isEmpty()) {
 			ArrayList<Coordinate> fallback = new ArrayList<Coordinate>();
 			fallback.add(sourceRoad.getEndCoord());
 			fallback.add(targetRoad.getStartCoord());
-			result.add(Collections.unmodifiableList(fallback));
+			result.add(new ConnectorPath(sourceRoad.firstLane(), targetRoad.firstLane(), fallback));
 		}
 		return Collections.unmodifiableList(result);
+	}
+
+	private Coordinate intersectionAnchor(List<Coordinate> line) {
+		if (line == null || line.isEmpty()) return new Coordinate(0.0, 0.0, 0.0);
+		return line.get(0);
 	}
 
 	private static ArrayList<Coordinate> deepCopy(List<Coordinate> coordinates) {
@@ -410,6 +413,41 @@ public final class ConnectorRoad extends Road {
 			result.add(Collections.unmodifiableList(deepCopy(line)));
 		}
 		return Collections.unmodifiableList(result);
+	}
+
+	public List<ConnectorPath> getPaths() {
+		return this.paths;
+	}
+
+	@Override
+	public int getControlType() {
+		return this.sourceRoad.getControlType() == Road.COSIM
+				|| this.targetRoad.getControlType() == Road.COSIM ? Road.COSIM
+						: Road.NONE_OF_THE_ABOVE;
+	}
+
+	public static final class ConnectorPath {
+		private final Lane sourceLane;
+		private final Lane targetLane;
+		private final List<Coordinate> centerLine;
+
+		public ConnectorPath(Lane sourceLane, Lane targetLane, List<Coordinate> centerLine) {
+			this.sourceLane = sourceLane;
+			this.targetLane = targetLane;
+			this.centerLine = Collections.unmodifiableList(deepCopy(centerLine));
+		}
+
+		public Lane getSourceLane() {
+			return this.sourceLane;
+		}
+
+		public Lane getTargetLane() {
+			return this.targetLane;
+		}
+
+		public List<Coordinate> getCenterLine() {
+			return this.centerLine;
+		}
 	}
 
 	public ArrayList<Coordinate> getRepresentativeCenterLine() {

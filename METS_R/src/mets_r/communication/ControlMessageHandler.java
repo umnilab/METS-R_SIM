@@ -53,6 +53,7 @@ import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
 import mets_r.communication.MessageClass.VehIDVehTypeRoute;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
 import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXYSpeed;
+import mets_r.communication.MessageClass.InitializeCoSimVehRequest;
 import mets_r.communication.MessageClass.AddTaxiToZone;
 import mets_r.communication.MessageClass.ChargingStationParams;
 import mets_r.communication.MessageClass.RouteNameNum;
@@ -104,8 +105,10 @@ public class ControlMessageHandler extends MessageHandler {
 		// =============================================================
 		messageHandlers.put("setCoSimRoad", this::setCoSimRoad);
 		messageHandlers.put("releaseCosimRoad", this::releaseCosimRoad);
+		messageHandlers.put("initializeCoSimVeh", this::initializeCoSimVeh);
 		messageHandlers.put("teleportCoSimVeh", this::teleportCoSimVeh);
-		messageHandlers.put("teleportTraceReplayVeh", this::teleportTraceReplayVeh);
+		messageHandlers.put("teleportTraceReplayVeh", this::teleportDigitalTwinVeh);
+		messageHandlers.put("teleportDigitalTwinVeh", this::teleportDigitalTwinVeh);
 		messageHandlers.put("enterRoadFromQueue", this::enterRoadFromQueue);
 		messageHandlers.put("allowRoadVehicleEnter", this::enterRoadFromQueue);
 		messageHandlers.put("releaseEnteringVehicle", this::enterRoadFromQueue);
@@ -115,7 +118,6 @@ public class ControlMessageHandler extends MessageHandler {
 		// =============================================================
 		messageHandlers.put("controlVeh", this::controlVeh);
 		messageHandlers.put("setAttackVehicle", this::setAttackVehicle);
-		messageHandlers.put("enterNextRoad", this::enterNextRoad);
 		messageHandlers.put("reachDest", this::reachDest);
 		messageHandlers.put("updateVehicleSensorType", this::updateVehicleSensorType);
 		messageHandlers.put("updateVehicleRoute", this::updateVehicleRoute);
@@ -563,8 +565,8 @@ public class ControlMessageHandler extends MessageHandler {
 	/**
 	 * Mark one or more roads as co-simulation roads. Vehicles on these
 	 * roads stop being stepped by METS-R's car-following logic; an
-	 * external simulator is expected to drive them via {@link #teleportCoSimVeh}
-	 * and {@link #enterNextRoad}.
+	 * external simulator is expected to drive them via
+	 * {@link #teleportCoSimVeh}, which also performs connector transitions.
 	 *
 	 * <p>Input DATA: list of original road IDs.
 	 */
@@ -624,7 +626,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return record;
 	}
 
-	private HashMap<String, Object> setCoSimRoad(JSONObject jsonMsg) {
+	private synchronized HashMap<String, Object> setCoSimRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
@@ -664,6 +666,7 @@ public class ControlMessageHandler extends MessageHandler {
 						ContextCreator.coSimRoads.put(roadID, r);
 						record2.put("ID", roadID);
 						record2.put("STATUS", "OK");
+						record2.put("connectorIDs", coSimConnectorIDsForRoad(r));
 						
 						// Also output the lane information for computing the co-simulation area
 //						ArrayList<Object> centerLines = new ArrayList<Object>();
@@ -701,7 +704,7 @@ public class ControlMessageHandler extends MessageHandler {
 	 *
 	 * <p>Input DATA: list of original road IDs.
 	 */
-	private HashMap<String, Object> releaseCosimRoad(JSONObject jsonMsg) {
+	private synchronized HashMap<String, Object> releaseCosimRoad(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if(!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
@@ -717,6 +720,19 @@ public class ControlMessageHandler extends MessageHandler {
 				for (String roadID : IDs) {
 					Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadID);
 					if (r != null) {
+						ArrayList<String> connectorIDsBefore = coSimConnectorIDsForRoad(r);
+						String connectorReleaseBlock = adaptOutgoingConnectorsForRelease(r);
+						if (connectorReleaseBlock != null) {
+							HashMap<String, Object> record2 = new HashMap<String, Object>();
+							record2.put("ID", roadID);
+							record2.put("STATUS", "KO");
+							record2.put("REASON", "CONNECTOR_RELEASE_BLOCKED");
+							record2.put("RETRYABLE", true);
+							record2.put("WARN", connectorReleaseBlock);
+							record2.put("connectorIDs", connectorIDsBefore);
+							jsonData.add(record2);
+							continue;
+						}
 						r.setControlType(Road.NONE_OF_THE_ABOVE);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("ID", roadID);
@@ -729,6 +745,9 @@ public class ControlMessageHandler extends MessageHandler {
 							// Bridge ownership ends only after the road actually accepts native control.
 							ContextCreator.coSimRoads.remove(roadID);
 							record2.put("STATUS", "OK");
+							record2.put("releasedConnectorIDs",
+									releasedConnectorIDs(connectorIDsBefore));
+							record2.put("connectorIDs", coSimConnectorIDsForRoad(r));
 						}
 						jsonData.add(record2);
 					} else {
@@ -1063,7 +1082,7 @@ public class ControlMessageHandler extends MessageHandler {
      * farthest-back best-effort location. Spatial-only conflicts are searched at
      * 0.05 m intervals, then the first free boundary is refined by bisection.
      */
-    private HashMap<String, Object> teleportTraceReplayVeh(JSONObject jsonMsg) {
+    private HashMap<String, Object> teleportDigitalTwinVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> answer = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("DATA")) {
 			answer.put("WARN", "No DATA field found in the control message");
@@ -1112,6 +1131,15 @@ public class ControlMessageHandler extends MessageHandler {
 			Road road = ContextCreator.getCityContext().findRoadWithOrigID(request.roadID);
 			if (road == null) {
 				throw new IllegalArgumentException("Road not found for ID " + request.roadID);
+			}
+			if (road.getControlType() == Road.COSIM) {
+				throw new IllegalArgumentException(
+						"Digital-twin teleport cannot target a COSIM road; use teleportCoSimVeh");
+			}
+			if (veh.isExternalRoadTransition() || veh.isOnConnector()
+					|| veh.getRoad() != null && veh.getRoad().getControlType() == Road.COSIM) {
+				throw new IllegalArgumentException(
+						"Digital-twin teleport cannot move a vehicle owned by COSIM");
 			}
 			if (request.laneID < -1 || request.laneID >= road.getNumberOfLanes()) {
 				throw new IllegalArgumentException(String.format(
@@ -1623,6 +1651,263 @@ public class ControlMessageHandler extends MessageHandler {
 			this.downstreamDistance = downstreamDistance;
 		}
 	}
+
+	/**
+	 * Create a private EV directly at an authoritative COSIM pose. The start lane
+	 * and, when applicable, connector lane pair are inferred from geometry.
+	 *
+	 * <p>Input DATA: list of {@code {vehID, x, y, z?, bearing, speed,
+	 * transformCoord?, length?, segmentID?/roadID?, destinationRoadID}}.
+	 * {@code vehType} may be omitted or {@code true}; public fleet vehicles require
+	 * their normal fleet initialization. The pose is the vehicle's front position
+	 * and is rejected, rather than shifted, when its footprint overlaps a vehicle.
+	 */
+	private synchronized HashMap<String, Object> initializeCoSimVeh(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("DATA")) {
+			jsonAns.put("WARN", "No DATA field found in the control message");
+			jsonAns.put("CODE", "KO");
+			return jsonAns;
+		}
+		ArrayList<Object> jsonData = new ArrayList<Object>();
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<InitializeCoSimVehRequest>> collectionType =
+					new TypeToken<Collection<InitializeCoSimVehRequest>>() {};
+			Collection<InitializeCoSimVehRequest> requests = gson.fromJson(
+					jsonMsg.get("DATA").toString(), collectionType.getType());
+			if (requests == null) {
+				throw new IllegalArgumentException("initializeCoSimVeh DATA must be an array");
+			}
+			for (InitializeCoSimVehRequest request : requests) {
+				if (request == null) {
+					jsonData.add(coSimTeleportFailure(-1, "INVALID_REQUEST",
+							"Initialization record must not be null"));
+					continue;
+				}
+				if (Boolean.FALSE.equals(request.vehType)) {
+					jsonData.add(coSimTeleportFailure(request.vehID,
+							"UNSUPPORTED_VEHICLE_TYPE",
+							"initializeCoSimVeh currently creates private vehicles only"));
+					continue;
+				}
+				if (ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID) != null
+						|| ContextCreator.getVehicleContext().getPublicVehicle(request.vehID) != null) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "VEHICLE_ALREADY_EXISTS",
+							"Vehicle ID is already registered"));
+					continue;
+				}
+				if (request.x == null || request.y == null || request.bearing == null
+						|| request.speed == null || !Double.isFinite(request.x)
+						|| !Double.isFinite(request.y) || !Double.isFinite(request.bearing)
+						|| request.z != null && !Double.isFinite(request.z)
+						|| !Double.isFinite(request.speed) || request.speed < 0.0) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "INVALID_POSE",
+							"x, y, bearing, and non-negative speed must be finite"));
+					continue;
+				}
+				if (!isValidOptionalVehicleLength(request.length)) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "INVALID_LENGTH",
+							invalidVehicleLengthWarning()));
+					continue;
+				}
+				String destinationID = firstNonBlank(
+						request.destinationRoadID, request.destRoadID);
+				Road destinationRoad = destinationID == null ? null
+						: ContextCreator.getCityContext().findRoadWithOrigID(destinationID);
+				if (destinationRoad == null) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "DESTINATION_ROAD_NOT_FOUND",
+							"destinationRoadID must identify a physical METS-R road"));
+					continue;
+				}
+				if (ContextCreator.getZoneContext().get(
+						destinationRoad.getNeighboringZone(true)) == null) {
+					jsonData.add(coSimTeleportFailure(request.vehID,
+							"DESTINATION_ZONE_NOT_FOUND",
+							"destinationRoadID has no METS-R destination zone"));
+					continue;
+				}
+
+				Coordinate pose = new Coordinate(request.x.doubleValue(),
+						request.y.doubleValue(), request.z == null ? 0.0 : request.z.doubleValue());
+				if (request.transformCoord) {
+					try {
+						JTS.transform(pose, pose,
+								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException ex) {
+						jsonData.add(coSimTeleportFailure(request.vehID,
+								"COORDINATE_TRANSFORM_FAILED", ex.getMessage()));
+						continue;
+					}
+				}
+				String segmentHint = firstNonBlank(request.segmentID, request.roadID);
+				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
+						null, pose, request.bearing.doubleValue(), segmentHint, true);
+				if (matches.isEmpty()) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "NO_MAP_MATCH",
+							"No controlled road, lane, or connector matches the authoritative pose"));
+					continue;
+				}
+				double vehicleLength = request.length == null
+						? GlobalVariables.DEFAULT_VEHICLE_LENGTH : request.length.doubleValue();
+				ElectricVehicle candidateVehicle = new ElectricVehicle(
+						Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE, vehicleLength);
+				if (CoSimMapMatcher.overlapsAnyVehicle(candidateVehicle, pose,
+						request.bearing.doubleValue(), null)) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "POSE_OVERLAP",
+							"Authoritative vehicle footprint overlaps an existing vehicle"));
+					continue;
+				}
+
+				ElectricVehicle vehicle = null;
+				CoSimMapMatcher.Match applied = null;
+				String lastFailure = null;
+				for (CoSimMapMatcher.Match match : matches) {
+					try {
+						initializeCoSimVehicleOnMatch(candidateVehicle, match, pose,
+								request.bearing.doubleValue(), request.speed.doubleValue(),
+								destinationRoad);
+						vehicle = candidateVehicle;
+						applied = match;
+						break;
+					} catch (RuntimeException ex) {
+						lastFailure = ex.getMessage();
+						if (candidateVehicle.isOnRoad()) candidateVehicle.leaveNetwork();
+						candidateVehicle = new ElectricVehicle(
+								Vehicle.EV, Vehicle.NONE_OF_THE_ABOVE, vehicleLength);
+					}
+				}
+				if (vehicle == null || applied == null) {
+					jsonData.add(coSimTeleportFailure(request.vehID,
+							"INITIALIZATION_FAILED", lastFailure));
+					continue;
+				}
+				ContextCreator.getVehicleContext().registerPrivateEV(request.vehID, vehicle);
+				recordCoSimTeleportSnapshot(vehicle);
+				Road startRoad = applied.isConnector()
+						? ((ConnectorRoad) applied.segment).getSourceRoad() : applied.segment;
+				Lane startLane = applied.isConnector()
+						? applied.connectorPath.getSourceLane() : applied.lane;
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", request.vehID);
+				record.put("STATUS", "OK");
+				record.put("v_type", true);
+				record.put("segmentID", applied.segment.getOrigID());
+				record.put("roadID", applied.segment.getOrigID());
+				record.put("laneID", applied.isConnector()
+						? ConnectorRoad.NO_LANE : startRoad.getLaneIndex(startLane));
+				record.put("inferredSourceLaneID", startRoad.getLaneIndex(startLane));
+				record.put("lateralError", applied.lateralDistanceMeters);
+				record.put("length", vehicle.length());
+				addExternalTransitionState(record, vehicle);
+				jsonData.add(record);
+			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception ex) {
+			ContextCreator.logger.error("Error processing initializeCoSimVeh: "
+					+ ex.toString(), ex);
+			jsonAns.put("CODE", "KO");
+			jsonAns.put("WARN", ex.getMessage());
+		}
+		return jsonAns;
+	}
+
+	private void initializeCoSimVehicleOnMatch(ElectricVehicle vehicle,
+			CoSimMapMatcher.Match match, Coordinate pose, double bearing, double speed,
+			Road destinationRoad) {
+		Road startRoad;
+		Lane startLane;
+		Road requiredNextRoad = null;
+		Lane requiredNextLane = null;
+		if (match.isConnector()) {
+			ConnectorRoad connector = (ConnectorRoad) match.segment;
+			startRoad = connector.getSourceRoad();
+			startLane = match.connectorPath.getSourceLane();
+			requiredNextRoad = connector.getTargetRoad();
+			requiredNextLane = match.connectorPath.getTargetLane();
+		} else {
+			startRoad = match.segment;
+			startLane = match.lane;
+		}
+		vehicle.initializeCoSimTripAt(startRoad, startLane,
+				match.isConnector() ? 0.0 : match.downstreamDistance,
+				pose, bearing, speed, destinationRoad, requiredNextRoad, requiredNextLane);
+		if (!match.isConnector()) return;
+		if (!vehicle.executeRoadTransition(requiredNextLane, requiredNextRoad)) {
+			vehicle.leaveNetwork();
+			throw new IllegalStateException(
+					"Connector admission was not available for the initialized pose");
+		}
+		vehicle.setCurrentCoord(pose);
+		vehicle.syncPreviousEpochCoord();
+		vehicle.setBearing(bearing);
+		vehicle.setSpeed(speed);
+	}
+
+	private ArrayList<String> coSimConnectorIDsForRoad(Road road) {
+		ArrayList<String> result = new ArrayList<String>();
+		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
+			if ((connector.getSourceRoad() == road || connector.getTargetRoad() == road)
+					&& connector.getControlType() == Road.COSIM) {
+				result.add(connector.getOrigID());
+			}
+		}
+		java.util.Collections.sort(result);
+		return result;
+	}
+
+	private ArrayList<String> releasedConnectorIDs(List<String> previouslyControlled) {
+		ArrayList<String> result = new ArrayList<String>();
+		for (String connectorID : previouslyControlled) {
+			ConnectorRoad connector = ContextCreator.getRoadContext().getConnector(connectorID);
+			if (connector != null && connector.getControlType() != Road.COSIM) {
+				result.add(connectorID);
+			}
+		}
+		return result;
+	}
+
+	private String adaptOutgoingConnectorsForRelease(Road releasingRoad) {
+		if (releasingRoad == null || releasingRoad.getControlType() != Road.COSIM) return null;
+		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
+			if (connector.getSourceRoad() != releasingRoad
+					|| connector.getTargetRoad().getControlType() == Road.COSIM) {
+				continue;
+			}
+			Road targetRoad = connector.getTargetRoad();
+			if (!targetRoad.beginConnectorNativeRelease()) {
+				return "Target road " + targetRoad.getOrigID()
+						+ " is busy adapting connector " + connector.getOrigID();
+			}
+			try {
+				for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
+					if (!vehicle.isExternalRoadTransition()) continue;
+					if (vehicle.getExternalTransitionTargetRoad() != targetRoad) {
+						return "Vehicle " + vehicle.getID()
+								+ " has inconsistent connector target state";
+					}
+					double projection = vehicle.getExternalTransitionProjectedDistance();
+					if (!Double.isFinite(projection)
+							|| !vehicle.commitExternalRoadTransitionAtClosestAvailableDistance(
+									projection)) {
+						return "No collision-free native placement is available for vehicle "
+								+ vehicle.getID() + " leaving connector " + connector.getOrigID();
+					}
+					vehicle.syncPreviousEpochCoord();
+				}
+			} finally {
+				targetRoad.endConnectorNativeRelease();
+			}
+		}
+		return null;
+	}
+
+	private static String firstNonBlank(String first, String second) {
+		if (first != null && !first.trim().isEmpty()) return first.trim();
+		if (second != null && !second.trim().isEmpty()) return second.trim();
+		return null;
+	}
     
 	/**
 	 * Teleport a co-simulation vehicle to an absolute (x, y, z) world
@@ -1631,174 +1916,215 @@ public class ControlMessageHandler extends MessageHandler {
 	 *
 	 * Input DATA: list of
 	 * {{vehID, vehType, x, y, z, bearing, speed, transformCoord,
-	 * observedRoadID?, observedLaneID?}}.
-	 * When a sparse update has already crossed a short pending target road,
-	 * observedRoadID may identify its directly planned downstream road. For a
-	 * non-pending vehicle, an observedRoadID/observedLaneID pair authoritatively
-	 * synchronizes lane membership and downstream distance on the current COSIM
-	 * road. The pair is validated against the supplied pose before any state is
-	 * changed.
+	 * segmentID?}}. Lane membership is inferred from road and connector geometry,
+	 * heading, retained membership, and the planned route. {@code segmentID},
+	 * {@code roadID}, and legacy {@code observedRoadID} are optional segment hints;
+	 * caller-provided lane IDs are ignored.
 	 */
-	private HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
+	private synchronized HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
-		if(!jsonMsg.containsKey("DATA")) { 
+		if (!jsonMsg.containsKey("DATA")) {
 			jsonAns.put("WARN", "No DATA field found in the control message");
 			jsonAns.put("CODE", "KO");
+			return jsonAns;
 		}
-		else {
-			try {
-				Gson gson = new Gson();
-				TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>> collectionType = new TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>>() {
-				};
-				Collection<VehIDVehTypeTranBearingXYSpeed> vehIDVehTypeTranBearingXYSpeeds = gson
-						.fromJson(jsonMsg.get("DATA").toString(), collectionType.getType());
-				if (vehIDVehTypeTranBearingXYSpeeds == null) {
-					throw new IllegalArgumentException("teleportCoSimVeh DATA must be an array");
-				}
-				ArrayList<Object> jsonData = new ArrayList<Object>();
-
-				for (VehIDVehTypeTranBearingXYSpeed request : vehIDVehTypeTranBearingXYSpeeds) {
-					Vehicle veh = null;
-					if (request.vehType) {
-						veh = ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID);
-					} else {
-						veh = ContextCreator.getVehicleContext().getPublicVehicle(request.vehID);
-					}
-					if (veh == null) {
-						jsonData.add(coSimTeleportFailure(request.vehID, "VEHICLE_NOT_FOUND",
-								"Vehicle not found for ID " + request.vehID));
-						continue;
-					}
-
-					double x = request.x;
-					double y = request.y;
-					double z = request.z;
-					// Transform XY coordinates if needed (Z is in meters and not transformed)
-					if (request.transformCoord) {
-						Coordinate coord = new Coordinate(x, y);
-						try {
-							JTS.transform(coord, coord,
-									SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-							x = coord.x;
-							y = coord.y;
-						} catch (TransformException e) {
-							jsonData.add(coSimTeleportFailure(request.vehID,
-									"COORDINATE_TRANSFORM_FAILED",
-									"Coordinates transformation failed, input x: " + x + " y:" + y));
-							continue;
-						}
-					}
-
-					Coordinate authoritativePose = new Coordinate(x, y, z);
-					boolean externalTransitionBeforeUpdate = veh.isExternalRoadTransition();
-					boolean onLaneBeforeUpdate = veh.isOnLane();
-					if (request.observedLaneID != null) {
-						if (externalTransitionBeforeUpdate) {
-							jsonData.add(coSimTeleportFailure(request.vehID,
-									"LANE_SYNC_DURING_TRANSITION",
-									"Cannot synchronize a current lane while a road transition is pending"));
-							continue;
-						}
-						String observedRoadID = request.observedRoadID == null
-								? null : request.observedRoadID.trim();
-						if (observedRoadID == null || observedRoadID.isEmpty()) {
-							jsonData.add(coSimTeleportFailure(request.vehID,
-									"OBSERVED_LANE_REQUIRES_ROAD",
-									"observedLaneID requires a non-blank observedRoadID"));
-							continue;
-						}
-						Road observedRoad = ContextCreator.getCityContext()
-								.findRoadWithOrigID(observedRoadID);
-						if (observedRoad == null) {
-							jsonData.add(coSimTeleportFailure(request.vehID, "OBSERVED_ROAD_NOT_FOUND",
-									"Observed road not found for ID " + observedRoadID));
-							continue;
-						}
-						int observedLaneIndex = request.observedLaneID.intValue();
-						if (observedLaneIndex < 0 || observedLaneIndex >= observedRoad.getNumberOfLanes()) {
-							jsonData.add(coSimTeleportFailure(request.vehID, "OBSERVED_LANE_NOT_FOUND",
-									"Invalid observed lane index " + observedLaneIndex + " for road "
-											+ observedRoadID));
-							continue;
-						}
-
-						Lane previousLane = veh.getLane();
-						Lane observedLane = observedRoad.getLane(observedLaneIndex);
-						try {
-							double projectedDistance = veh.synchronizeCoSimLaneObservation(
-									observedRoad, observedLane, authoritativePose,
-									request.bearing, request.speed);
-							removeVehicleFromEnteringQueues(veh);
-							recordCoSimTeleportSnapshot(veh);
-							HashMap<String, Object> record = new HashMap<String, Object>();
-							record.put("ID", request.vehID);
-							record.put("STATUS", "OK");
-							record.put("laneSynchronized", true);
-							record.put("laneChanged", previousLane != observedLane);
-							record.put("reattachedFromJunction",
-									!onLaneBeforeUpdate && veh.isOnLane());
-							record.put("roadID", observedRoadID);
-							record.put("laneID", observedLaneIndex);
-							record.put("dist", projectedDistance);
-							addExternalTransitionState(record, veh);
-							jsonData.add(record);
-						} catch (IllegalArgumentException ex) {
-							jsonData.add(coSimTeleportFailure(request.vehID,
-									"INVALID_LANE_OBSERVATION", ex.getMessage()));
-						} catch (RuntimeException ex) {
-							String failureDetail = "Unexpected lane synchronization failure for vehicle "
-									+ request.vehID + " on road " + observedRoadID + " lane "
-									+ observedLaneIndex + ": " + ex.getMessage();
-							ContextCreator.logger.error(failureDetail, ex);
-							jsonData.add(coSimTeleportFailure(request.vehID,
-									"LANE_SYNC_FAILED", failureDetail));
-						}
-						continue;
-					}
-
-					removeVehicleFromEnteringQueues(veh);
-					veh.setCurrentCoord(authoritativePose);
-					veh.setSpeed(request.speed);
-					veh.setBearing(request.bearing);
-					boolean externalTransitionCommitted = externalTransitionBeforeUpdate
-							&& veh.tryCommitExternalRoadTransition();
-					if (externalTransitionBeforeUpdate && !externalTransitionCommitted
-							&& request.observedRoadID != null
-							&& !request.observedRoadID.trim().isEmpty()) {
-						try {
-							Road observedRoad = ContextCreator.getCityContext().findRoadWithOrigID(
-									request.observedRoadID.trim());
-							externalTransitionCommitted = observedRoad != null
-									&& veh.tryCommitExternalRoadTransitionAfterSkippedTarget(observedRoad);
-						} catch (RuntimeException ex) {
-							// observedRoadID is an optional safeguard hint. A bad hint must
-							// not turn an otherwise valid pose update into a failed teleport.
-							ContextCreator.logger.warn("Ignored invalid observedRoadID for vehicle "
-									+ veh.getID() + ": " + ex.getMessage());
-						}
-					}
-					recordCoSimTeleportSnapshot(veh);
-
-						HashMap<String, Object> record2 = new HashMap<String, Object>();
-						record2.put("ID", request.vehID);
-						record2.put("STATUS", "OK");
-						if (externalTransitionBeforeUpdate) {
-							record2.put("transitionCommitted", externalTransitionCommitted);
-						}
-						addExternalTransitionState(record2, veh);
-						jsonData.add(record2);
-						continue;
-				}
-				jsonAns.put("DATA", jsonData);
-				jsonAns.put("CODE", "OK");
+		ArrayList<Object> jsonData = new ArrayList<Object>();
+		try {
+			Gson gson = new Gson();
+			TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>> collectionType =
+					new TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>>() {};
+			Collection<VehIDVehTypeTranBearingXYSpeed> requests = gson.fromJson(
+					jsonMsg.get("DATA").toString(), collectionType.getType());
+			if (requests == null) {
+				throw new IllegalArgumentException("teleportCoSimVeh DATA must be an array");
 			}
-			catch (Exception e) {
-			    // Log error and return KO in case of exception
-			    ContextCreator.logger.error("Error processing control: " + e.toString());
-			    jsonAns.put("CODE", "KO");
+			for (VehIDVehTypeTranBearingXYSpeed request : requests) {
+				Vehicle vehicle = request.vehType
+						? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehID)
+						: ContextCreator.getVehicleContext().getPublicVehicle(request.vehID);
+				if (vehicle == null) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "VEHICLE_NOT_FOUND",
+							"Vehicle not found for ID " + request.vehID));
+					continue;
+				}
+				if (!Double.isFinite(request.x) || !Double.isFinite(request.y)
+						|| !Double.isFinite(request.z) || !Double.isFinite(request.bearing)
+						|| !Double.isFinite(request.speed) || request.speed < 0.0) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "INVALID_POSE",
+							"Pose, bearing, and non-negative speed must be finite"));
+					continue;
+				}
+
+				Coordinate pose = new Coordinate(request.x, request.y, request.z);
+				if (request.transformCoord) {
+					try {
+						JTS.transform(pose, pose,
+								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+					} catch (TransformException ex) {
+						jsonData.add(coSimTeleportFailure(request.vehID,
+								"COORDINATE_TRANSFORM_FAILED", ex.getMessage()));
+						continue;
+					}
+				}
+				String segmentHint = firstNonBlank(request.segmentID,
+						firstNonBlank(request.roadID, request.observedRoadID));
+				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
+						vehicle, pose, request.bearing, segmentHint, false);
+				if (matches.isEmpty()) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "NO_MAP_MATCH",
+							"No reachable controlled road, lane, or connector matches the pose"));
+					continue;
+				}
+				if (CoSimMapMatcher.overlapsAnyVehicle(
+						vehicle, pose, request.bearing, null)) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "POSE_OVERLAP",
+							"Authoritative vehicle footprint overlaps another vehicle"));
+					continue;
+				}
+
+				CoSimMapMatcher.Match applied = null;
+				String lastFailure = null;
+				boolean transitionBefore = vehicle.isExternalRoadTransition();
+				Road roadBefore = vehicle.getRoad();
+				for (CoSimMapMatcher.Match match : matches) {
+					try {
+						applyCoSimMatch(vehicle, match, pose,
+								request.bearing, request.speed);
+						applied = match;
+						break;
+					} catch (IllegalArgumentException ex) {
+						lastFailure = ex.getMessage();
+					}
+				}
+				if (applied == null) {
+					jsonData.add(coSimTeleportFailure(request.vehID, "MAP_MATCH_REJECTED",
+							lastFailure == null ? "No inferred lane passed vehicle-state validation"
+									: lastFailure));
+					continue;
+				}
+
+				removeVehicleFromEnteringQueues(vehicle);
+				recordCoSimTeleportSnapshot(vehicle);
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("ID", request.vehID);
+				record.put("STATUS", "OK");
+				record.put("segmentID", applied.segment.getOrigID());
+				record.put("roadID", applied.segment.getOrigID());
+				record.put("laneID", applied.isConnector()
+						? ConnectorRoad.NO_LANE
+						: applied.segment.getLaneIndex(applied.lane));
+				record.put("laneInferred", true);
+				record.put("lateralError", applied.lateralDistanceMeters);
+				record.put("dist", applied.downstreamDistance);
+				record.put("transitionStarted",
+						!transitionBefore && vehicle.isExternalRoadTransition());
+				record.put("transitionCommitted",
+						(transitionBefore || applied.segment != roadBefore)
+						&& !applied.isConnector() && !vehicle.isExternalRoadTransition());
+				if (request.observedLaneID != null) {
+					record.put("providedLaneIgnored", true);
+				}
+				addExternalTransitionState(record, vehicle);
+				jsonData.add(record);
 			}
+			jsonAns.put("DATA", jsonData);
+			jsonAns.put("CODE", "OK");
+		} catch (Exception ex) {
+			ContextCreator.logger.error("Error processing teleportCoSimVeh: "
+					+ ex.toString(), ex);
+			jsonAns.put("CODE", "KO");
+			jsonAns.put("WARN", ex.getMessage());
 		}
 		return jsonAns;
+	}
+
+	private void applyCoSimMatch(Vehicle vehicle, CoSimMapMatcher.Match match,
+			Coordinate pose, double bearing, double speed) {
+		if (vehicle.isExternalRoadTransition()) {
+			if (match.segment == vehicle.getCurrentConnector()) {
+				vehicle.setCurrentCoord(pose);
+				vehicle.setBearing(bearing);
+				vehicle.setSpeed(speed);
+				return;
+			}
+			if (match.segment == vehicle.getExternalTransitionTargetRoad()
+					&& match.lane == vehicle.getExternalTransitionTargetLane()) {
+				Coordinate oldPose = new Coordinate(vehicle.getCurrentCoord());
+				double oldBearing = vehicle.getBearing();
+				double oldSpeed = vehicle.currentSpeed();
+				vehicle.setCurrentCoord(pose);
+				vehicle.setBearing(bearing);
+				vehicle.setSpeed(speed);
+				double tolerance = Math.max(2.5,
+						Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + 0.75);
+				if (!vehicle.tryCommitExternalRoadTransition(tolerance)) {
+					vehicle.setCurrentCoord(oldPose);
+					vehicle.setBearing(oldBearing);
+					vehicle.setSpeed(oldSpeed);
+					throw new IllegalArgumentException(
+							"Matched target lane could not commit its pending connector transition");
+				}
+				return;
+			}
+			throw new IllegalArgumentException(
+					"Matched segment is inconsistent with the pending connector transition");
+		}
+
+		Road currentRoad = vehicle.getRoad();
+		if (currentRoad == null || vehicle.getLane() == null) {
+			throw new IllegalArgumentException("Vehicle has no current lane-backed road state");
+		}
+		if (match.segment == currentRoad && match.lane != null) {
+			vehicle.synchronizeCoSimLaneObservation(currentRoad, match.lane,
+					pose, bearing, speed);
+			return;
+		}
+
+		ConnectorRoad connector;
+		Lane targetLane;
+		if (match.isConnector()) {
+			connector = (ConnectorRoad) match.segment;
+			if (match.connectorPath == null
+					|| match.connectorPath.getSourceLane() != vehicle.getLane()) {
+				throw new IllegalArgumentException(
+						"Matched connector is not reachable from the vehicle's inferred source lane");
+			}
+			targetLane = match.connectorPath.getTargetLane();
+		} else {
+			connector = ContextCreator.getRoadContext().getConnector(
+					currentRoad, match.segment);
+			targetLane = match.lane;
+			if (connector == null || !connectorHasLanePath(
+					connector, vehicle.getLane(), targetLane)) {
+				throw new IllegalArgumentException(
+						"Matched next road is not reachable through the current lane's connector");
+			}
+		}
+		Road targetRoad = connector.getTargetRoad();
+		if (vehicle.getNextRoad() != targetRoad
+				|| !vehicle.assertNextLaneForExternalTransition(targetRoad, targetLane)
+				|| !vehicle.executeRoadTransition(targetLane, targetRoad)) {
+			throw new IllegalArgumentException(
+					"Matched connector does not agree with the vehicle's planned next road");
+		}
+		vehicle.setCurrentCoord(pose);
+		vehicle.setBearing(bearing);
+		vehicle.setSpeed(speed);
+		if (!match.isConnector()) {
+			double tolerance = Math.max(2.5,
+					Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + 0.75);
+			vehicle.tryCommitExternalRoadTransition(tolerance);
+		}
+	}
+
+	private boolean connectorHasLanePath(ConnectorRoad connector,
+			Lane sourceLane, Lane targetLane) {
+		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
+			if (path.getSourceLane() == sourceLane && path.getTargetLane() == targetLane) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private HashMap<String, Object> coSimTeleportFailure(int vehicleID, String reason,
@@ -1926,306 +2252,6 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 	
-	/**
-	 * Ask a vehicle to enter its already-planned next road. Explicit
-	 * {@code roadID} is an assertion, not a reroute command: it must match the
-	 * vehicle's planned next road. Optional {@code laneID} is the compact lane
-	 * index on that target road and asserts the exact direct successor to use; it
-	 * never changes the route or path. A regular-to-COSIM crossing can
-	 * remain in an external-connector state until a later
-	 * {@link #teleportCoSimVeh(JSONObject)} pose reaches the exact target lane.
-	 *
-	 * <p>Input DATA: list of {@code {vehID, vehType, roadID?, laneID?}}. A missing
-	 * or blank {@code roadID} follows the existing route; a missing laneID follows
-	 * the route-prepared lane selection. A well-formed batch always returns one
-	 * record per input; record-level failures do not abort later records.
-	 */
-	private HashMap<String, Object> enterNextRoad(JSONObject jsonMsg) {
-		HashMap<String, Object> answer = new HashMap<String, Object>();
-		if (!jsonMsg.containsKey("DATA")) {
-			answer.put("WARN", "No DATA field found in the control message");
-			answer.put("CODE", "KO");
-			return answer;
-		}
-		if (ContextCreator.getVehicleContext() == null || ContextCreator.getCityContext() == null) {
-			answer.put("WARN", "enterNextRoad requires initialized vehicle and city contexts");
-			answer.put("CODE", "KO");
-			return answer;
-		}
-
-		try {
-			Gson gson = new Gson();
-			TypeToken<Collection<Object>> requestType = new TypeToken<Collection<Object>>() { };
-			Collection<Object> requests = gson.fromJson(
-					jsonMsg.get("DATA").toString(), requestType.getType());
-			if (requests == null) {
-				throw new IllegalArgumentException("enterNextRoad DATA must be an array");
-			}
-
-			ArrayList<Object> responseData = new ArrayList<Object>();
-			for (Object request : requests) {
-				responseData.add(processEnterNextRoadRequest(request));
-			}
-			answer.put("DATA", responseData);
-			answer.put("CODE", "OK");
-		} catch (Exception ex) {
-			ContextCreator.logger.error("Error processing control enterNextRoad: " + ex.getMessage(), ex);
-			answer.put("WARN", ex.getMessage());
-			answer.put("CODE", "KO");
-		}
-		return answer;
-	}
-
-	private HashMap<String, Object> processEnterNextRoadRequest(Object rawRequest) {
-		HashMap<String, Object> record = new HashMap<String, Object>();
-		try {
-			if (!(rawRequest instanceof Map<?, ?>)) {
-				throw new IllegalArgumentException("Each enterNextRoad record must be an object");
-			}
-			Map<?, ?> raw = (Map<?, ?>) rawRequest;
-			int vehicleID = requiredEnterNextRoadInteger(raw, "vehID");
-			record.put("ID", vehicleID);
-			Object vehicleTypeValue = raw.get("vehType");
-			if (!(vehicleTypeValue instanceof Boolean)) {
-				throw new IllegalArgumentException("vehType must be a boolean");
-			}
-			boolean privateVehicle = ((Boolean) vehicleTypeValue).booleanValue();
-			String explicitRoadID = optionalEnterNextRoadID(raw, "roadID");
-			Integer explicitLaneID = optionalEnterNextRoadInteger(raw, "laneID");
-			if (explicitLaneID != null) {
-				record.put("requestedLaneID", explicitLaneID);
-			}
-
-			Vehicle vehicle = privateVehicle
-					? ContextCreator.getVehicleContext().getPrivateVehicle(vehicleID)
-					: ContextCreator.getVehicleContext().getPublicVehicle(vehicleID);
-			if (vehicle == null) {
-				return enterNextRoadFailure(record, "KO", "VEHICLE_NOT_FOUND",
-						"Vehicle not found for ID " + vehicleID);
-			}
-
-			Road explicitRoad = null;
-			if (explicitRoadID != null) {
-				explicitRoad = ContextCreator.getCityContext().findRoadWithOrigID(explicitRoadID);
-				if (explicitRoad == null) {
-					return enterNextRoadFailure(record, "KO", "ROAD_NOT_FOUND",
-							"Road not found for ID " + explicitRoadID);
-				}
-			}
-
-			Vehicle.ExternalRoadTransitionSnapshot initialTransition =
-					vehicle.getExternalRoadTransitionSnapshot();
-			if (initialTransition.isPending()) {
-				Road pendingRoad = initialTransition.getTargetRoad();
-				Lane pendingLane = initialTransition.getTargetLane();
-				if (pendingRoad == null || pendingLane == null || pendingLane.getRoad() != pendingRoad) {
-					return enterNextRoadFailure(record, "KO", "INVALID_EXTERNAL_TRANSITION_STATE",
-							"Vehicle has an incomplete external connector state");
-				}
-				if (explicitRoad != null && !vehicleRoadMatches(explicitRoad, pendingRoad)) {
-					addEnterNextRoadTarget(record, pendingRoad, pendingLane);
-					return enterNextRoadFailure(record, "KO", "PENDING_TARGET_MISMATCH",
-							"Vehicle is already transitioning to " + pendingRoad.getOrigID());
-				}
-				if (explicitLaneID != null
-						&& pendingRoad.getLaneIndex(pendingLane) != explicitLaneID.intValue()) {
-					addEnterNextRoadTarget(record, pendingRoad, pendingLane);
-					return enterNextRoadFailure(record, "KO", "PENDING_TARGET_LANE_MISMATCH",
-							"Vehicle is already transitioning to lane "
-									+ pendingRoad.getLaneIndex(pendingLane));
-				}
-				if (explicitLaneID != null) record.put("laneAsserted", true);
-				record.put("STATUS", "OK");
-				record.put("transitionAccepted", true);
-				addExternalTransitionState(record, vehicle);
-				return record;
-			}
-
-			Road targetRoad = explicitRoad != null ? explicitRoad : vehicle.getNextRoad();
-			if (targetRoad == null) {
-				return enterNextRoadFailure(record, "KO", "NO_NEXT_ROAD",
-						"Vehicle has no planned next road");
-			}
-			if (vehicleRoadMatches(vehicle.getRoad(), targetRoad)) {
-				Lane currentLane = vehicle.getLane();
-				if (explicitLaneID != null
-						&& (currentLane == null
-								|| targetRoad.getLaneIndex(currentLane) != explicitLaneID.intValue())) {
-					addEnterNextRoadTarget(record, targetRoad, currentLane);
-					return enterNextRoadFailure(record, "KO", "ALREADY_ON_TARGET_LANE_MISMATCH",
-							"Vehicle is already on the requested road but not its asserted lane");
-				}
-				if (explicitLaneID != null) record.put("laneAsserted", true);
-				record.put("STATUS", "OK");
-				record.put("alreadyOnRoad", true);
-				record.put("transitionAccepted", true);
-				addEnterNextRoadTarget(record, targetRoad, vehicle.getLane());
-				addExternalTransitionState(record, vehicle);
-				return record;
-			}
-			if (explicitRoad != null && !vehicleRoadMatches(vehicle.getNextRoad(), explicitRoad)) {
-				return enterNextRoadFailure(record, "KO", "REQUESTED_ROAD_NOT_NEXT",
-						"Explicit roadID must match the vehicle's planned next road");
-			}
-
-			Road currentRoad = vehicle.getRoad();
-			Lane currentLane = vehicle.getLane();
-			if (currentRoad == null || currentLane == null) {
-				return enterNextRoadFailure(record, "KO", "NO_CURRENT_LANE",
-						"Vehicle must be on a lane before entering its next road");
-			}
-			if (vehicle.getNextLane() == null && explicitLaneID == null) {
-				vehicle.assignNextLane();
-			}
-			if (explicitRoad == null) {
-				targetRoad = vehicle.getNextRoad();
-				if (targetRoad == null) {
-					return enterNextRoadFailure(record, "KO", "NO_NEXT_ROAD",
-							"Vehicle has no planned next road after lane assignment");
-				}
-			}
-			Lane targetLane = vehicle.getNextLane();
-			if (!currentRoad.getDownStreamRoads().contains(targetRoad.getID())) {
-				return enterNextRoadFailure(record, "KO", "INVALID_TRANSITION",
-						"Requested road is not directly downstream of the current road");
-			}
-			if (explicitLaneID != null) {
-				int laneIndex = explicitLaneID.intValue();
-				if (laneIndex < 0 || laneIndex >= targetRoad.getNumberOfLanes()) {
-					return enterNextRoadFailure(record, "KO", "TARGET_LANE_NOT_FOUND",
-							"Invalid compact lane index " + laneIndex + " for target road "
-									+ targetRoad.getOrigID() + " (lanes: "
-									+ targetRoad.getNumberOfLanes() + ")");
-				}
-				Lane assertedLane = targetRoad.getLane(laneIndex);
-				addEnterNextRoadTarget(record, targetRoad, assertedLane);
-				if (!currentLane.getDownStreamLanes().contains(assertedLane.getID())) {
-					return enterNextRoadFailure(record, "KO", "ASSERTED_LANE_NOT_DIRECT_SUCCESSOR",
-							"Asserted target lane is not directly connected from the current lane");
-				}
-				if (!vehicle.assertNextLaneForExternalTransition(targetRoad, assertedLane)) {
-					return enterNextRoadFailure(record, "KO", "TARGET_LANE_ASSERTION_REJECTED",
-							"Vehicle rejected the asserted target lane without changing its route");
-				}
-				targetLane = assertedLane;
-				record.put("laneAsserted", true);
-			}
-			if (targetLane == null || targetLane.getRoad() != targetRoad
-					|| !currentLane.getDownStreamLanes().contains(targetLane.getID())) {
-				Lane routePreparedLane = targetLane;
-				targetLane = vehicle.adjustNextLaneToDirectSuccessor(targetRoad);
-				if (targetLane == null) {
-					return enterNextRoadFailure(record, "KO", "NO_DIRECT_TARGET_LANE",
-							"Planned target road has no lane directly connected from the current lane");
-				}
-				addEnterNextRoadLaneAdjustment(
-						record, routePreparedLane, targetLane);
-			} else {
-				record.put("laneAdjusted", false);
-			}
-
-			addEnterNextRoadTarget(record, targetRoad, targetLane);
-			if (targetRoad.getExternalLaneReservationBlocker(targetLane, vehicle) != null) {
-				record.put("RETRYABLE", true);
-				return enterNextRoadFailure(record, "KO", "TARGET_LANE_RESERVED",
-						"The planned target lane is reserved by another external transition");
-			}
-			boolean entered = vehicle.changeRoad(explicitLaneID != null);
-			if (entered) {
-				// A true return is this handler's ownership token for source-road
-				// accounting. Retries take the pending/already-on-road paths, while
-				// queued native transfers retain VehicleContext's existing accounting.
-				currentRoad.recordEnergyConsumption(vehicle);
-				currentRoad.recordTravelTime(vehicle);
-			}
-			Vehicle.ExternalRoadTransitionSnapshot transitionAfterEnter =
-					vehicle.getExternalRoadTransitionSnapshot();
-			if (!entered && !transitionAfterEnter.isPending()) {
-				record.put("RETRYABLE", true);
-				return enterNextRoadFailure(record, "KO", "ENTRY_BLOCKED",
-						"The planned transition is temporarily blocked");
-			}
-
-			if (transitionAfterEnter.isPending()) {
-				Road pendingRoad = transitionAfterEnter.getTargetRoad();
-				if (!vehicleRoadMatches(pendingRoad, targetRoad)) {
-					return enterNextRoadFailure(record, "KO", "TRANSITION_TARGET_MISMATCH",
-							"Vehicle entered an external connector for an unexpected road");
-				}
-				record.put("STATUS", "OK");
-				record.put("transitionAccepted", true);
-				addExternalTransitionState(record, vehicle);
-				return record;
-			}
-			if (!vehicleRoadMatches(vehicle.getRoad(), targetRoad)) {
-				return enterNextRoadFailure(record, "KO", "TRANSITION_TARGET_MISMATCH",
-						"Transition completed on an unexpected road");
-			}
-
-			record.put("STATUS", "OK");
-			record.put("transitionAccepted", true);
-			record.put("transitionCommitted", true);
-			addEnterNextRoadTarget(record, targetRoad, vehicle.getLane());
-			addExternalTransitionState(record, vehicle);
-			return record;
-		} catch (Exception ex) {
-			return enterNextRoadFailure(record, "KO", "INVALID_REQUEST", ex.getMessage());
-		}
-	}
-
-	private int requiredEnterNextRoadInteger(Map<?, ?> raw, String field) {
-		Object value = raw.get(field);
-		if (!(value instanceof Number)) {
-			throw new IllegalArgumentException(field + " must be an integer");
-		}
-		double number = ((Number) value).doubleValue();
-		if (!Double.isFinite(number) || number != Math.rint(number)
-				|| number < Integer.MIN_VALUE || number > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException(field + " must be an integer");
-		}
-		return (int) number;
-	}
-
-	private Integer optionalEnterNextRoadInteger(Map<?, ?> raw, String field) {
-		if (!raw.containsKey(field) || raw.get(field) == null) return null;
-		return Integer.valueOf(requiredEnterNextRoadInteger(raw, field));
-	}
-
-	private String optionalEnterNextRoadID(Map<?, ?> raw, String field) {
-		Object value = raw.get(field);
-		if (value == null) return null;
-		if (!(value instanceof String)) {
-			throw new IllegalArgumentException(field + " must be a string when provided");
-		}
-		String result = ((String) value).trim();
-		return result.isEmpty() ? null : result;
-	}
-
-	private HashMap<String, Object> enterNextRoadFailure(HashMap<String, Object> record,
-			String status, String reason, String warning) {
-		record.put("STATUS", status);
-		record.put("REASON", reason);
-		if (warning != null && !warning.isEmpty()) record.put("WARN", warning);
-		return record;
-	}
-
-	private void addEnterNextRoadLaneAdjustment(Map<String, Object> record,
-			Lane oldLane, Lane newLane) {
-		record.put("laneAdjusted", true);
-		addEnterNextRoadLaneMetadata(record, "old", oldLane);
-		addEnterNextRoadLaneMetadata(record, "new", newLane);
-	}
-
-	private void addEnterNextRoadLaneMetadata(Map<String, Object> record,
-			String prefix, Lane lane) {
-		Road road = lane == null ? null : lane.getRoad();
-		int laneIndex = road == null ? -1 : road.getLaneIndex(lane);
-		record.put(prefix + "LaneID", laneIndex);
-		record.put(prefix + "InternalLaneID", lane == null ? null : lane.getID());
-		record.put(prefix + "LaneOrigID", lane == null ? null : lane.getOrigID());
-		record.put(prefix + "RoadID", road == null ? null : road.getOrigID());
-	}
-
 	private void addExternalTransitionState(Map<String, Object> record, Vehicle vehicle) {
 		Vehicle.ExternalRoadTransitionSnapshot snapshot = vehicle == null
 				? null : vehicle.getExternalRoadTransitionSnapshot();
@@ -2235,6 +2261,7 @@ public class ControlMessageHandler extends MessageHandler {
 				? vehicle.getCurrentConnector() : null;
 		if (connector != null) {
 			record.put("roadID", connector.getOrigID());
+			record.put("connectorID", connector.getOrigID());
 			record.put("laneID", ConnectorRoad.NO_LANE);
 			record.put("sourceRoadID", connector.getSourceRoad().getOrigID());
 			record.put("targetRoadID", connector.getTargetRoad().getOrigID());
@@ -2248,11 +2275,11 @@ public class ControlMessageHandler extends MessageHandler {
 			return;
 		}
 		if (pending) {
-			addEnterNextRoadTarget(record, snapshot.getTargetRoad(), snapshot.getTargetLane());
+			addExternalTransitionTarget(record, snapshot.getTargetRoad(), snapshot.getTargetLane());
 		}
 	}
 
-	private void addEnterNextRoadTarget(Map<String, Object> record, Road road, Lane lane) {
+	private void addExternalTransitionTarget(Map<String, Object> record, Road road, Lane lane) {
 		if (road != null) record.put("roadID", road.getOrigID());
 		if (lane != null) {
 			int laneIndex = road == null ? -1 : road.getLaneIndex(lane);
@@ -2261,12 +2288,8 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 	}
 
-	private boolean vehicleRoadMatches(Road actualRoad, Road requestedRoad) {
-		return actualRoad != null && requestedRoad != null && actualRoad.getID() == requestedRoad.getID();
-	}
-	
 //	// Find the closest lane end coords in coSim Road, teleport the vehicle to the lane in METS-R SIM
-//	// Trigger enterNextRoad and check whether it succeed or not
+//	// Trigger the internal road-transition primitive and check whether it succeeds
 //	private HashMap<String, Object> exitCoSimRegion(JSONObject jsonMsg){
 //		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 //		if(!jsonMsg.containsKey("DATA")) { 
