@@ -9,26 +9,27 @@ import mets_r.ContextCreator.StepCommandResult;
 
 public class StepMessageHandler extends MessageHandler {
 	public String handleMessage(String msgType, JSONObject jsonMsg) {
-		int requestTick = ((Long) jsonMsg.get("TICK")).intValue();
-		int stepNum = ((Long) jsonMsg.get("NUM")).intValue();
+		int requestTick = ((Number) jsonMsg.get("tick")).intValue();
+		int stepNum = ((Number) jsonMsg.get("tickCount")).intValue();
 		stepNum = Math.max(stepNum, 1);
 
 		StepCommandResult stepCommand = ContextCreator.setNextStepCommand(requestTick, stepNum);
 		int currentTick = stepCommand.currentTick;
 
 		HashMap<String, Object> ans = new HashMap<String, Object>();
-		ans.put("TYPE", "STEP");
-		ans.put("TICK", currentTick);
-		ans.put("REQUEST_TICK", requestTick);
-		ans.put("NUM", stepNum);
+		ans.put("messageType", "step");
+		ans.put("tick", currentTick);
+		ans.put("requestTick", requestTick);
+		ans.put("tickCount", stepNum);
 
 		if (stepCommand.accepted) {
-			ans.put("CODE", "OK");
-			ans.put("ACCEPTED_NUM", stepCommand.acceptedStepNum);
-			ans.put("TARGET_TICK", stepCommand.targetTick);
+			ans.put("status", "ok");
+			ans.put("acceptedTickCount", stepCommand.acceptedStepNum);
+			ans.put("targetTick", stepCommand.targetTick);
 		} else {
-			ans.put("CODE", "KO");
-			ans.put("MSG", "STEP tick mismatch");
+			ans.put("status", "error");
+			ans.put("errorCode", "TICK_MISMATCH");
+			ans.put("message", "Step tick mismatch");
 		}
 
 		return JSONObject.toJSONString(ans);

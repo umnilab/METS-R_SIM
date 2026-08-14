@@ -1631,6 +1631,11 @@ public class Road {
 		return controlType;
 	}
 
+	/** Connector ownership changes after their external vehicles are adapted by the API. */
+	protected synchronized void setControlTypeDirect(int controlType) {
+		this.controlType = controlType;
+	}
+
 	public synchronized void recordTravelTime(Vehicle v) {
 		this.travelTimeSum += v.getLinkTravelTime();
 		this.travelTimeCount += 1;

@@ -2,7 +2,6 @@ package mets_r.communication;
 
 import java.io.IOException;
 import java.net.InetAddress;
-import java.util.HashMap;
 
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
@@ -17,11 +16,7 @@ import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 
 /**
- * WebSocket connection and wire-schema boundary.
- *
- * <p>The selected API schema is connection scoped. Existing handlers continue
- * to use the v1 representation; {@link ApiSchemaAdapter} normalizes v2 requests
- * before dispatch and serializes handler responses back to v2.</p>
+ * WebSocket connection for the single public API schema.
  */
 @WebSocket
 public class Connection {
@@ -30,8 +25,6 @@ public class Connection {
 
 	private Session session;
 	private InetAddress ip;
-	private volatile int schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
-
 	private QueryMessageHandler queryHandler;
 	private StepMessageSender stepSender;
 	private AnswerMessageSender answerSender;
@@ -50,7 +43,6 @@ public class Connection {
 		ContextCreator.logger.info(statusCode + ": " + reason);
 		ContextCreator.connection = null;
 		this.session = null;
-		this.schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
 	}
 
 	@OnWebSocketError
@@ -73,7 +65,6 @@ public class Connection {
 		this.ip = session.getRemoteAddress().getAddress();
 		ContextCreator.logger.info("Connected to " + this.ip.toString() + ".");
 		this.session = session;
-		this.schemaVersion = ApiSchemaAdapter.DEFAULT_VERSION;
 		ContextCreator.connection = this;
 	}
 
@@ -88,56 +79,44 @@ public class Connection {
 			Object parsed = new JSONParser().parse(message);
 			if (!(parsed instanceof JSONObject)) {
 				sendBoundaryError(operation, "INVALID_REQUEST",
-						"Request must be a JSON object", this.schemaVersion);
+						"Request must be a JSON object");
 				return;
 			}
 			JSONObject jsonMsg = (JSONObject) parsed;
-
-			Integer requestedVersion = ApiSchemaAdapter.requestedVersion(jsonMsg);
-			if (requestedVersion != null) {
-				if (!ApiSchemaAdapter.isSupported(requestedVersion.intValue())) {
-					sendBoundaryError(operation, "UNSUPPORTED_SCHEMA_VERSION",
-							"Supported schema versions are 1 and 2", ApiSchemaAdapter.VERSION_2);
-					return;
-				}
-				this.schemaVersion = requestedVersion.intValue();
-			}
-
-			String requestedType = ApiSchemaAdapter.requestedMessageType(jsonMsg);
+			Object messageType = jsonMsg.get("messageType");
+			String requestedType = messageType == null ? null : messageType.toString().trim();
 			if (requestedType == null || requestedType.isEmpty()) {
 				sendBoundaryError(operation, "MISSING_MESSAGE_TYPE",
-						"TYPE (v1) or messageType (v2) is required", this.schemaVersion);
+						"messageType is required");
 				return;
 			}
 
 			String[] target = resolveTarget(requestedType);
 			if (target == null) {
 				sendBoundaryError(requestedType, "UNKNOWN_MESSAGE_TYPE",
-						"Unknown message type or operation: " + requestedType, this.schemaVersion);
+						"Unknown message type: " + requestedType);
 				return;
 			}
 			String category = target[0];
 			operation = target[1];
-			JSONObject normalized = ApiSchemaAdapter.normalizeRequest(
-					jsonMsg, this.schemaVersion, category, operation);
 
 			if ("STEP".equals(category)) {
-				String answer = ContextCreator.stepHandler.handleMessage("STEP", normalized);
+				String answer = ContextCreator.stepHandler.handleMessage("step", jsonMsg);
 				sendHandlerResponse(category, operation, answer);
 			} else if ("CTRL".equals(category)) {
-				String answer = ContextCreator.controlHandler.handleMessage(operation, normalized);
+				String answer = ContextCreator.controlHandler.handleMessage(operation, jsonMsg);
 				sendHandlerResponse(category, operation, answer);
 				if (answer != null && shouldSendStepAfterControl(operation, answer)) {
 					sendStepPayload(ContextCreator.getCurrentTick());
 				}
 			} else {
-				String answer = this.queryHandler.handleMessage(operation, normalized);
+				String answer = this.queryHandler.handleMessage(operation, jsonMsg);
 				sendHandlerResponse(category, operation, answer);
 			}
 		} catch (Exception e) {
 			ContextCreator.logger.error("Standard Exception caught: " + e.getMessage());
 			try {
-				sendBoundaryError(operation, "INVALID_REQUEST", e.getMessage(), this.schemaVersion);
+				sendBoundaryError(operation, "INVALID_REQUEST", e.getMessage());
 			} catch (IOException sendError) {
 				ContextCreator.logger.error("Could not send request error: " + sendError.getMessage());
 			}
@@ -146,35 +125,15 @@ public class Connection {
 		}
 	}
 
-	/**
-	 * Accept both prefixed v1 message types and prefix-free v2 operation names.
-	 * Handler registration resolves the category for the latter.
-	 */
 	private String[] resolveTarget(String requestedType) {
-		String category = null;
-		String operation = requestedType;
-		int separator = requestedType.indexOf('_');
-		if (separator > 0) {
-			String prefix = requestedType.substring(0, separator).toUpperCase();
-			if ("CTRL".equals(prefix) || "QUERY".equals(prefix) || "STEP".equals(prefix)) {
-				category = prefix;
-				operation = requestedType.substring(separator + 1);
-			}
-		} else if ("STEP".equalsIgnoreCase(requestedType)) {
-			category = "STEP";
-			operation = "step";
+		if ("step".equals(requestedType)) return new String[] { "STEP", "step" };
+		if (ContextCreator.controlHandler.supports(requestedType)) {
+			return new String[] { "CTRL", requestedType };
 		}
-
-		operation = ApiSchemaAdapter.dispatchOperation(operation);
-		if (category == null) {
-			if ("step".equalsIgnoreCase(operation)) category = "STEP";
-			else if (ContextCreator.controlHandler.supports(operation)) category = "CTRL";
-			else if (this.queryHandler.supports(operation)) category = "QUERY";
-			else return null;
+		if (this.queryHandler.supports(requestedType)) {
+			return new String[] { "QUERY", requestedType };
 		}
-		if ("CTRL".equals(category) && !ContextCreator.controlHandler.supports(operation)) return null;
-		if ("QUERY".equals(category) && !this.queryHandler.supports(operation)) return null;
-		return new String[] { category, operation };
+		return null;
 	}
 
 	private void sendHandlerResponse(String category, String operation, String answer)
@@ -188,19 +147,22 @@ public class Connection {
 			ContextCreator.logger.warn(category + "_" + operation
 					+ ": handler returned null answer, sending error");
 			sendBoundaryError(operation, "HANDLER_NO_RESPONSE",
-					"Handler did not produce a response", this.schemaVersion);
+					"Handler did not produce a response");
 			return;
 		}
-		String response = ApiSchemaAdapter.formatResponse(
-				category, operation, answer, this.schemaVersion);
-		this.answerSender.sendMessage(session, response);
+		this.answerSender.sendMessage(session, answer);
 	}
 
+	@SuppressWarnings("unchecked")
 	private void sendBoundaryError(String operation, String errorCode,
-			String message, int version) throws IOException {
+			String message) throws IOException {
 		if (session == null) return;
-		this.answerSender.sendMessage(session,
-				ApiSchemaAdapter.formatError(operation, errorCode, message, version));
+		JSONObject result = new JSONObject();
+		result.put("messageType", operation == null ? "error" : operation);
+		result.put("status", "error");
+		result.put("errorCode", errorCode);
+		result.put("message", message == null ? "Invalid request" : message);
+		this.answerSender.sendMessage(session, JSONObject.toJSONString(result));
 	}
 
 	private boolean shouldSendStepAfterControl(String controlType, String answer) {
@@ -210,7 +172,7 @@ public class Connection {
 		}
 		try {
 			JSONObject jsonAns = (JSONObject) new JSONParser().parse(answer);
-			return "OK".equals(jsonAns.get("CODE"));
+			return "ok".equals(jsonAns.get("status"));
 		} catch (Exception e) {
 			ContextCreator.logger.warn("CTRL_" + controlType
 					+ ": could not parse answer before ready check: " + e.getMessage());
@@ -227,27 +189,12 @@ public class Connection {
 	}
 
 	private void sendStepPayload(int tick) throws IOException {
-		if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
-			stepSender.sendMessage(session, tick);
-			return;
-		}
-		HashMap<String, Object> stepMsg = new HashMap<String, Object>();
-		stepMsg.put("TYPE", "STEP");
-		stepMsg.put("TICK", tick);
-		answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
-				"STEP", "step", JSONObject.toJSONString(stepMsg), this.schemaVersion));
+		stepSender.sendMessage(session, tick);
 	}
 
 	public void sendReadyMessage() {
 		try {
-			if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
-				answerSender.sendReadyMessage(session);
-			} else {
-				HashMap<String, Object> ready = new HashMap<String, Object>();
-				ready.put("TYPE", "ANS_ready");
-				answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
-						"ANS", "ready", JSONObject.toJSONString(ready), this.schemaVersion));
-			}
+			answerSender.sendReadyMessage(session);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -255,15 +202,7 @@ public class Connection {
 
 	public void sendStopMessage() {
 		try {
-			if (this.schemaVersion == ApiSchemaAdapter.DEFAULT_VERSION) {
-				answerSender.sendStopMessage(session);
-			} else {
-				HashMap<String, Object> stop = new HashMap<String, Object>();
-				stop.put("TYPE", "CTRL_end");
-				stop.put("CODE", "OK");
-				answerSender.sendMessage(session, ApiSchemaAdapter.formatResponse(
-						"CTRL", "end", JSONObject.toJSONString(stop), this.schemaVersion));
-			}
+			answerSender.sendStopMessage(session);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}

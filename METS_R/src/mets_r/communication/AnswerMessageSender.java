@@ -9,15 +9,16 @@ public class AnswerMessageSender extends MessageSender{
 	// Format message to inform that the simulation has completed initialization
 	public void sendReadyMessage(Session session) throws IOException{
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		jsonObj.put("TYPE", "ANS_ready");
+		jsonObj.put("messageType", "ready");
+		jsonObj.put("status", "ok");
 		String message = JSONObject.toJSONString(jsonObj);
 		super.sendMessage(session, message);
 	}
 	
 	public void sendStopMessage(Session session) throws IOException{
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
-		jsonObj.put("TYPE", "CTRL_end");
-		jsonObj.put("CODE", "OK");
+		jsonObj.put("messageType", "end");
+		jsonObj.put("status", "ok");
 		String message = JSONObject.toJSONString(jsonObj);
 		super.sendMessage(session, message);
 	}

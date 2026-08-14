@@ -10,806 +10,753 @@ import com.google.gson.reflect.TypeToken;
 
 public class MessageClass{
 	class VehIDVehType {
-	    int vehID;
-	    boolean vehType;
-	
-	    // Constructor
-	    public VehIDVehType(int vehID, boolean vehType) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	    }
+	int vehicleId;
+	boolean isPrivate;
+
+	// Constructor
+	public VehIDVehType(int vehicleId, boolean isPrivate) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	}
 	}
 
 	class VehIDVehTypeAttack {
-	    int vehID;
-	    boolean vehType;
-	    boolean isAttack;
+	int vehicleId;
+	boolean isPrivate;
+	boolean attackEnabled;
 
-	    public VehIDVehTypeAttack(int vehID, boolean vehType, boolean isAttack) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.isAttack = isAttack;
-	    }
+	public VehIDVehTypeAttack(int vehicleId, boolean isPrivate, boolean attackEnabled) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.attackEnabled = attackEnabled;
 	}
-	
+	}
+
 	class VehIDVehTypeTran {
-	    int vehID;
-	    boolean vehType;
-	    boolean transformCoord;
-	
-	    // Constructor
-	    public VehIDVehTypeTran(int vehID, boolean vehType, boolean transformCoord) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.transformCoord = transformCoord;
-	    }
+	int vehicleId;
+	boolean isPrivate;
+	boolean transformCoordinates;
+
+	// Constructor
+	public VehIDVehTypeTran(int vehicleId, boolean isPrivate, boolean transformCoordinates) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.transformCoordinates = transformCoordinates;
 	}
-	
+	}
+
 	class VehIDVehTypeSensorType {
-	    int vehID;
-	    boolean vehType;
-	    int sensorType;
-	
-	    // Constructor
-	    public VehIDVehTypeSensorType(int vehID, boolean vehType, int sensorType) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.sensorType = sensorType;
-	    }
+	int vehicleId;
+	boolean isPrivate;
+	int sensorType;
+
+	// Constructor
+	public VehIDVehTypeSensorType(int vehicleId, boolean isPrivate, int sensorType) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.sensorType = sensorType;
 	}
-	
+	}
+
 	class VehIDVehTypeAcc {
-	    int vehID;
-	    boolean vehType;
-	    double acc;
-	
-	    // Constructor
-	    public VehIDVehTypeAcc(int vehID, boolean vehType, double acc) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.acc = acc;
-	    }
+	int vehicleId;
+	boolean isPrivate;
+	double acceleration;
+
+	// Constructor
+	public VehIDVehTypeAcc(int vehicleId, boolean isPrivate, double acceleration) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.acceleration = acceleration;
 	}
-	
+	}
+
 	class VehIDVehTypeTranXY {
-	    int vehID;
-	    boolean vehType;
-	    boolean transformCoord;
-	    double x;
-	    double y;
-	    double z = 0.0;
+	int vehicleId;
+	boolean isPrivate;
+	boolean transformCoordinates;
+	double x;
+	double y;
+	double z = 0.0;
 
-	    // Constructor
-	    public VehIDVehTypeTranXY(int vehID, boolean vehType, boolean transformCoord, 
-	                                          double x, double y, double z) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.transformCoord = transformCoord;
-	        this.x = x;
-	        this.y = y;
-	        this.z = z;
-	    }
+	// Constructor
+	public VehIDVehTypeTranXY(int vehicleId, boolean isPrivate, boolean transformCoordinates,
+	double x, double y, double z) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.transformCoordinates = transformCoordinates;
+	this.x = x;
+	this.y = y;
+	this.z = z;
 	}
-	
+	}
+
 	class VehIDVehTypeTranBearingXYSpeed {
-	    int vehID;
-	    boolean vehType;
-	    boolean transformCoord;
-	    double bearing;
-	    double x;
-	    double y;
-	    double z = 0.0;
-	    double speed;
-	    String observedRoadID;
-	    Integer observedLaneID;
-	    String segmentID;
-	    String roadID;
+	int vehicleId;
+	boolean isPrivate;
+	boolean transformCoordinates;
+	double bearing;
+	double x;
+	double y;
+	double z = 0.0;
+	double speed;
+	String segmentId;
+	Integer laneIndex;
 
-	    // Constructor
-	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord, 
-	                                         double bearing, double x, double y, double z, double speed) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.transformCoord = transformCoord;
-	        this.bearing = bearing;
-	        this.x = x;
-	        this.y = y;
-	        this.z = z;
-	        this.speed = speed;
-	    }
+	// Constructor
+	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
+	double bearing, double x, double y, double z, double speed) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.transformCoordinates = transformCoordinates;
+	this.bearing = bearing;
+	this.x = x;
+	this.y = y;
+	this.z = z;
+	this.speed = speed;
+	}
 
-	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord,
-	                                         double bearing, double x, double y, double z, double speed,
-	                                         String observedRoadID) {
-	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed);
-	        this.observedRoadID = observedRoadID;
-	    }
+	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
+	double bearing, double x, double y, double z, double speed,
+	String segmentId) {
+	this(vehicleId, isPrivate, transformCoordinates, bearing, x, y, z, speed);
+	this.segmentId = segmentId;
+	}
 
-	    public VehIDVehTypeTranBearingXYSpeed(int vehID, boolean vehType, boolean transformCoord,
-	                                         double bearing, double x, double y, double z, double speed,
-	                                         String observedRoadID, Integer observedLaneID) {
-	        this(vehID, vehType, transformCoord, bearing, x, y, z, speed, observedRoadID);
-	        this.observedLaneID = observedLaneID;
-	    }
+	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
+	double bearing, double x, double y, double z, double speed,
+	String segmentId, Integer laneIndex) {
+	this(vehicleId, isPrivate, transformCoordinates, bearing, x, y, z, speed, segmentId);
+	this.laneIndex = laneIndex;
+	}
 	}
 
 	class InitializeCoSimVehRequest {
-		int vehID;
-		Boolean vehType;
-		boolean transformCoord;
+		int vehicleId;
+		Boolean isPrivate;
+		boolean transformCoordinates;
 		Double x;
 		Double y;
 		Double z;
 		Double bearing;
 		Double speed;
-		Double length;
-		String segmentID;
-		String roadID;
-		String destinationRoadID;
-		String destRoadID;
+		Double vehicleLength;
+		String segmentId;
+		String destinationRoadId;
 	}
-	
+
 	class VehIDVehTypeRoad {
-	    int vehID;
-	    boolean vehType;
-	    String roadID;
+	int vehicleId;
+	boolean isPrivate;
+	String roadId;
 
-	    // Constructor
-	    public VehIDVehTypeRoad(int vehID, boolean vehType, String roadID) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.roadID = roadID;
-	    }
+	// Constructor
+	public VehIDVehTypeRoad(int vehicleId, boolean isPrivate, String roadId) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.roadId = roadId;
 	}
-	
+	}
+
 	class VehIDVehTypeRoadLaneDist {
-	    int vehID;
-	    boolean vehType;
-	    String roadID;
-	    int laneID;
-	    Double dist;
-	    Double x;
-	    Double y;
-	    boolean transformCoord;
+	int vehicleId;
+	boolean isPrivate;
+	String roadId;
+	int laneIndex;
+	Double distanceToSegmentEnd;
+	Double x;
+	Double y;
+	boolean transformCoordinates;
 
-	    // Constructor
-	    public VehIDVehTypeRoadLaneDist(int vehID, boolean vehType, String roadID, int laneID, double dist) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.roadID = roadID;
-	        this.laneID = laneID;
-	        this.dist = dist;
-	    }
-
-	    public VehIDVehTypeRoadLaneDist(int vehID, boolean vehType, String roadID, int laneID,
-		    double x, double y, boolean transformCoord) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.roadID = roadID;
-	        this.laneID = laneID;
-	        this.x = x;
-	        this.y = y;
-	        this.transformCoord = transformCoord;
-	    }
+	// Constructor
+	public VehIDVehTypeRoadLaneDist(int vehicleId, boolean isPrivate, String roadId, int laneIndex,
+			double distanceToSegmentEnd) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.roadId = roadId;
+	this.laneIndex = laneIndex;
+	this.distanceToSegmentEnd = distanceToSegmentEnd;
 	}
-	
+
+	public VehIDVehTypeRoadLaneDist(int vehicleId, boolean isPrivate, String roadId, int laneIndex,
+		double x, double y, boolean transformCoordinates) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.roadId = roadId;
+	this.laneIndex = laneIndex;
+	this.x = x;
+	this.y = y;
+	this.transformCoordinates = transformCoordinates;
+	}
+	}
+
     class VehIDOrigDestNum{
-    	int vehID;
-    	int orig;
-    	int dest;
-    	int num;
-		Double length;
-    	
-    	// Constructor
-    	public VehIDOrigDestNum(int vehID, int orig, int dest, int num) {
-			this(vehID, orig, dest, num, null);
+	int vehicleId;
+	int originZoneId;
+	int destinationZoneId;
+	int passengerCount;
+		Double vehicleLength;
+
+	// Constructor
+	public VehIDOrigDestNum(int vehicleId, int originZoneId, int destinationZoneId,
+			int passengerCount) {
+			this(vehicleId, originZoneId, destinationZoneId, passengerCount, null);
 		}
 
-		public VehIDOrigDestNum(int vehID, int orig, int dest, int num, Double length) {
-    		this.vehID = vehID;
-    		this.orig = orig;
-    		this.dest = dest;
-    		this.num = num;
-			this.length = length;
-    	}
+		public VehIDOrigDestNum(int vehicleId, int originZoneId, int destinationZoneId,
+				int passengerCount, Double vehicleLength) {
+		this.vehicleId = vehicleId;
+		this.originZoneId = originZoneId;
+		this.destinationZoneId = destinationZoneId;
+		this.passengerCount = passengerCount;
+			this.vehicleLength = vehicleLength;
+	}
     }
-    
+
     class VehIDOrigRoadDestRoadNum{
-    	int vehID;
-    	String orig;
-    	String dest;
-    	int num;
-		Double length;
-    	
-    	// Constructor
-    	public VehIDOrigRoadDestRoadNum(int vehID, String orig, String dest, int num) {
-			this(vehID, orig, dest, num, null);
+	int vehicleId;
+	String originRoadId;
+	String destinationRoadId;
+	int passengerCount;
+		Double vehicleLength;
+
+	// Constructor
+	public VehIDOrigRoadDestRoadNum(int vehicleId, String originRoadId,
+			String destinationRoadId, int passengerCount) {
+			this(vehicleId, originRoadId, destinationRoadId, passengerCount, null);
 		}
 
-		public VehIDOrigRoadDestRoadNum(int vehID, String orig, String dest, int num,
-				Double length) {
-    		this.vehID = vehID;
-    		this.orig = orig;
-    		this.dest = dest;
-    		this.num = num;
-			this.length = length;
-    	}
+		public VehIDOrigRoadDestRoadNum(int vehicleId, String originRoadId,
+				String destinationRoadId, int passengerCount, Double vehicleLength) {
+		this.vehicleId = vehicleId;
+		this.originRoadId = originRoadId;
+		this.destinationRoadId = destinationRoadId;
+		this.passengerCount = passengerCount;
+			this.vehicleLength = vehicleLength;
+	}
     }
-    
+
     // For dispatchTaxi / dispTaxiBwRoads: pair an available taxi with an
     // already-pending request (added via addTaxiRequests or addTaxiReqBwRoads).
     class VehIDReqID{
-    	int vehID;
-    	int reqID;
-		Integer originZoneID;
-    	
-    	public VehIDReqID(int vehID, int reqID) {
-    		this.vehID = vehID;
-    		this.reqID = reqID;
-		this.originZoneID = null;
-    	}
+	int vehicleId;
+	int requestId;
+		Integer originZoneId;
+
+	public VehIDReqID(int vehicleId, int requestId) {
+		this.vehicleId = vehicleId;
+		this.requestId = requestId;
+		this.originZoneId = null;
+	}
     }
-    
+
     // For assignRequestToBus: pair a bus with an already-pending bus request.
     class BusIDReqID{
-        Integer busID;
-        Integer vehID;
-        Integer reqID;
+        Integer busId;
+        Integer requestId;
 
-        public BusIDReqID(Integer busID, Integer reqID) {
-            this.busID = busID;
-            this.reqID = reqID;
+        public BusIDReqID(Integer busId, Integer requestId) {
+            this.busId = busId;
+            this.requestId = requestId;
         }
 
         public int getBusID() {
-            if (this.busID != null) return this.busID;
-            if (this.vehID != null) return this.vehID;
+            if (this.busId != null) return this.busId;
             return -1;
         }
     }
 
     // For repositionTaxi: send an idle/cruising taxi to a destination zone.
     class VehIDZoneID{
-    	int vehID;
-    	int zoneID;
-    	
-    	public VehIDZoneID(int vehID, int zoneID) {
-    		this.vehID = vehID;
-    		this.zoneID = zoneID;
-    	}
+	int vehicleId;
+	int zoneId;
+
+	public VehIDZoneID(int vehicleId, int zoneId) {
+		this.vehicleId = vehicleId;
+		this.zoneId = zoneId;
+	}
     }
 
     // For goParking: send an idle taxi to park on a target zone/road.
     class VehIDZoneRoad{
-        int vehID;
-        Integer zoneID;
-        Integer zone;
-        Integer dest;
-        Integer parkingZone;
-        String roadID;
-        String origID;
-        String orig_id;
-        String ID;
+        int vehicleId;
+        Integer zoneId;
+        String roadId;
 
-        public VehIDZoneRoad(int vehID, Integer zoneID, String roadID) {
-            this.vehID = vehID;
-            this.zoneID = zoneID;
-            this.roadID = roadID;
+        public VehIDZoneRoad(int vehicleId, Integer zoneId, String roadId) {
+            this.vehicleId = vehicleId;
+            this.zoneId = zoneId;
+            this.roadId = roadId;
         }
     }
-    
+
     /** Taxi request payload for {@code addTaxiRequests}. */
     class OriginDestNumMaxW{
-        int zoneID;
-        int dest;
-        int num;
-        int maxWaitingTime;
+        int originZoneId;
+        int destinationZoneId;
+        int passengerCount;
+        int maxWaitTicks;
 
-        public OriginDestNumMaxW(int zoneID, int dest, int num, int maxWaitingTime) {
-            this.zoneID = zoneID;
-            this.dest = dest;
-            this.num = num;
-            this.maxWaitingTime = maxWaitingTime;
+        public OriginDestNumMaxW(int originZoneId, int destinationZoneId,
+		int passengerCount, int maxWaitTicks) {
+            this.originZoneId = originZoneId;
+            this.destinationZoneId = destinationZoneId;
+            this.passengerCount = passengerCount;
+            this.maxWaitTicks = maxWaitTicks;
         }
     }
 
-    
+
     class OrigRoadDestRoadNumMaxW{
-    	String orig;
-    	String dest;
-    	int num;
-    	int maxWaitingTime;
-    	
-    	// Constructor
-    	public OrigRoadDestRoadNumMaxW(String orig, String dest, int num, int maxWaitingTime) {
-    		this.orig = orig;
-    		this.dest = dest;
-    		this.num = num;
-    		this.maxWaitingTime = maxWaitingTime;
-    	}
+	String originRoadId;
+	String destinationRoadId;
+	int passengerCount;
+	int maxWaitTicks;
+
+	// Constructor
+	public OrigRoadDestRoadNumMaxW(String originRoadId, String destinationRoadId,
+			int passengerCount, int maxWaitTicks) {
+		this.originRoadId = originRoadId;
+		this.destinationRoadId = destinationRoadId;
+		this.passengerCount = passengerCount;
+		this.maxWaitTicks = maxWaitTicks;
+	}
     }
-    
+
     class OrigRoadDestRoad {
-        String orig;
-        String dest;
+        String originRoadId;
+        String destinationRoadId;
 
         // Constructor
-        public OrigRoadDestRoad(String orig, String dest) {
-            this.orig = orig;
-            this.dest = dest;
+        public OrigRoadDestRoad(String originRoadId, String destinationRoadId) {
+            this.originRoadId = originRoadId;
+            this.destinationRoadId = destinationRoadId;
         }
     }
-    
+
     class OrigRoadDestRoadK {
-        String orig;
-        String dest;
-        int K;
+        String originRoadId;
+        String destinationRoadId;
+        int routeCount;
 
         // Constructor
-        public OrigRoadDestRoadK(String orig, String dest, int K) {
-            this.orig = orig;
-            this.dest = dest;
-            this.K = K;
+        public OrigRoadDestRoadK(String originRoadId, String destinationRoadId, int routeCount) {
+            this.originRoadId = originRoadId;
+            this.destinationRoadId = destinationRoadId;
+            this.routeCount = routeCount;
         }
     }
-    
+
     class OriginCoordDestCoordTransform {
-        double origX;
-        double origY;
-        double origZ = 0.0;
-        double destX;
-        double destY;
-        double destZ = 0.0;
-        boolean transformCoord;
+        double originX;
+        double originY;
+        double originZ = 0.0;
+        double destinationX;
+        double destinationY;
+        double destinationZ = 0.0;
+        boolean transformCoordinates;
 
         // Constructor
-        public OriginCoordDestCoordTransform(double origX, double origY, double origZ,
-                                             double destX, double destY, double destZ,
-                                             boolean transformCoord) {
-            this.origX = origX;
-            this.origY = origY;
-            this.origZ = origZ;
-            this.destX = destX;
-            this.destY = destY;
-            this.destZ = destZ;
-            this.transformCoord = transformCoord;
+        public OriginCoordDestCoordTransform(double originX, double originY, double originZ,
+                                             double destinationX, double destinationY, double destinationZ,
+                                             boolean transformCoordinates) {
+            this.originX = originX;
+            this.originY = originY;
+            this.originZ = originZ;
+            this.destinationX = destinationX;
+            this.destinationY = destinationY;
+            this.destinationZ = destinationZ;
+            this.transformCoordinates = transformCoordinates;
         }
     }
-    
+
     class OriginCoordDestCoordTransformK {
-        double origX;
-        double origY;
-        double origZ = 0.0;
-        double destX;
-        double destY;
-        double destZ = 0.0;
-        boolean transformCoord;
-        int K;
+        double originX;
+        double originY;
+        double originZ = 0.0;
+        double destinationX;
+        double destinationY;
+        double destinationZ = 0.0;
+        boolean transformCoordinates;
+        int routeCount;
 
         // Constructor
-        public OriginCoordDestCoordTransformK(double origX, double origY, double origZ,
-                                              double destX, double destY, double destZ,
-                                              boolean transformCoord, int K) {
-            this.origX = origX;
-            this.origY = origY;
-            this.origZ = origZ;
-            this.destX = destX;
-            this.destY = destY;
-            this.destZ = destZ;
-            this.transformCoord = transformCoord;
-            this.K = K;
+        public OriginCoordDestCoordTransformK(double originX, double originY, double originZ,
+                                              double destinationX, double destinationY, double destinationZ,
+                                              boolean transformCoordinates, int routeCount) {
+            this.originX = originX;
+            this.originY = originY;
+            this.originZ = originZ;
+            this.destinationX = destinationX;
+            this.destinationY = destinationY;
+            this.destinationZ = destinationZ;
+            this.transformCoordinates = transformCoordinates;
+            this.routeCount = routeCount;
         }
     }
-    
+
     class VehIDVehTypeRoute{
-    	int vehID;
-	    boolean vehType;
-	    List<String> route;
-	
-	    // Constructor
-	    public VehIDVehTypeRoute(int vehID, boolean vehType, List<String> route) {
-	        this.vehID = vehID;
-	        this.vehType = vehType;
-	        this.route = route;
-	    }
+	int vehicleId;
+	boolean isPrivate;
+	List<String> routeRoadIds;
+
+	// Constructor
+	public VehIDVehTypeRoute(int vehicleId, boolean isPrivate, List<String> routeRoadIds) {
+	this.vehicleId = vehicleId;
+	this.isPrivate = isPrivate;
+	this.routeRoadIds = routeRoadIds;
+	}
     }
-    
+
     class RoadIDWeight{
-    	String roadID;
-        double weight;
-        
+	String roadId;
+		double routingWeight;
+
         // Constructor
-	    public RoadIDWeight(String roadID, double weight) {
-	        this.roadID = roadID;
-	        this.weight = weight;
-	    }
+	public RoadIDWeight(String roadId, double routingWeight) {
+	this.roadId = roadId;
+	this.routingWeight = routingWeight;
+	}
     }
 
     class RoadIDTargetSpeed{
-	    String roadID;
-	    String origID;
-	    String orig_id;
-	    String ID;
-	    Double targetSpeed;
-	    Double target_speed;
-	    Double speed;
+	String roadId;
+	Double targetSpeed;
 
-	    public RoadIDTargetSpeed(String roadID, Double targetSpeed) {
-	        this.roadID = roadID;
-	        this.targetSpeed = targetSpeed;
-	    }
+	public RoadIDTargetSpeed(String roadId, Double targetSpeed) {
+	this.roadId = roadId;
+	this.targetSpeed = targetSpeed;
+	}
     }
 
     class RoadParkingCapacity{
-	    String roadID;
-	    String origID;
-	    String orig_id;
-	    String ID;
-	    Integer parkingCapacity;
-	    Integer parking_capacity;
-	    Integer capacity;
+	String roadId;
+	Integer parkingCapacity;
 
-	    public RoadParkingCapacity(String roadID, Integer parkingCapacity) {
-	        this.roadID = roadID;
-	        this.parkingCapacity = parkingCapacity;
-	    }
+	public RoadParkingCapacity(String roadId, Integer parkingCapacity) {
+	this.roadId = roadId;
+	this.parkingCapacity = parkingCapacity;
+	}
     }
-    
+
     class RoadIDLaneIndexTransform{
-    	String roadID;
+		String segmentId;
         int laneIndex;
-        boolean transformCoord;
-        
+        boolean transformCoordinates;
+
         // Constructor
-	    public RoadIDLaneIndexTransform(String roadID, int laneIndex, boolean transformCoord) {
-	        this.roadID = roadID;
-	        this.laneIndex = laneIndex;
-	        this.transformCoord = transformCoord;
-	    }
+	public RoadIDLaneIndexTransform(String segmentId, int laneIndex, boolean transformCoordinates) {
+	this.segmentId = segmentId;
+	this.laneIndex = laneIndex;
+	this.transformCoordinates = transformCoordinates;
+	}
     }
-    
+
     class RouteNameZonesRoadsPath{
-    	String routeName;
-    	ArrayList<Integer> zones;
-    	ArrayList<String> roads;
-    	ArrayList<List<String>> paths;
-    	
-    	// Constructor
-    	public RouteNameZonesRoadsPath(String routeName, ArrayList<Integer> zones, ArrayList<String> roads, ArrayList<List<String>> paths) {
-    		this.routeName = routeName;
-    		this.zones = zones;
-    		this.roads = roads;
-    		this.paths = paths;
-    	}
+	String routeName;
+	ArrayList<Integer> stopZoneIds;
+	ArrayList<String> stopRoadIds;
+	ArrayList<List<String>> pathRoadIds;
+
+	// Constructor
+	public RouteNameZonesRoadsPath(String routeName, ArrayList<Integer> stopZoneIds,
+			ArrayList<String> stopRoadIds, ArrayList<List<String>> pathRoadIds) {
+		this.routeName = routeName;
+		this.stopZoneIds = stopZoneIds;
+		this.stopRoadIds = stopRoadIds;
+		this.pathRoadIds = pathRoadIds;
+	}
     }
-    
+
     class RouteNameZonesRoads{
-    	String routeName;
-    	ArrayList<Integer> zones;
-    	ArrayList<String> roads;
-    	
-    	// Constructor
-    	public RouteNameZonesRoads(String routeName, ArrayList<Integer> zones, ArrayList<String> roads) {
-    		this.routeName = routeName;
-    		this.zones = zones;
-    		this.roads = roads;
-    	}
+	String routeName;
+	ArrayList<Integer> stopZoneIds;
+	ArrayList<String> stopRoadIds;
+
+	// Constructor
+	public RouteNameZonesRoads(String routeName, ArrayList<Integer> stopZoneIds,
+			ArrayList<String> stopRoadIds) {
+		this.routeName = routeName;
+		this.stopZoneIds = stopZoneIds;
+		this.stopRoadIds = stopRoadIds;
+	}
     }
-    
+
     class BusIDRouteNameZoneRoadStopIndex{
-    	int busID;
-    	String routeName;
-    	int zone;
-    	String road;
-    	int stopIndex;
-    	
-    	// Constructor
-    	public BusIDRouteNameZoneRoadStopIndex(int busID, String routeName, int zone, String road, int stopIndex) {
-    		this.routeName = routeName;
-    		this.zone = zone;
-    		this.road = road;
-    		this.stopIndex = stopIndex;
-    	}
+	int busId;
+	String routeName;
+	int stopZoneId;
+	String stopRoadId;
+	int stopIndex;
+
+	// Constructor
+	public BusIDRouteNameZoneRoadStopIndex(int busId, String routeName,
+			int stopZoneId, String stopRoadId, int stopIndex) {
+		this.busId = busId;
+		this.routeName = routeName;
+		this.stopZoneId = stopZoneId;
+		this.stopRoadId = stopRoadId;
+		this.stopIndex = stopIndex;
+	}
     }
-    
+
     class BusIDRouteNameStopIndex{
-    	int busID;
-    	String routeName;
-    	int stopIndex;
-    	
-    	// Constructor
-    	public BusIDRouteNameStopIndex(int busID, String routeName, int stopIndex) {
-    		this.routeName = routeName;
-    		this.stopIndex = stopIndex;
-    	}
+	int busId;
+	String routeName;
+	int stopIndex;
+
+	// Constructor
+	public BusIDRouteNameStopIndex(int busId, String routeName, int stopIndex) {
+		this.busId = busId;
+		this.routeName = routeName;
+		this.stopIndex = stopIndex;
+	}
     }
-    
+
     class RouteNameDepartTime{
-    	String routeName;
-    	ArrayList<Integer> departTime;
-    	
-    	// Constructor
-    	public RouteNameDepartTime(String routeName, ArrayList<Integer> departTime) {
-    		this.routeName = routeName;
-    		this.departTime = departTime;
-    	}
+	String routeName;
+	ArrayList<Integer> departureTicks;
+
+	// Constructor
+	public RouteNameDepartTime(String routeName, ArrayList<Integer> departureTicks) {
+		this.routeName = routeName;
+		this.departureTicks = departureTicks;
+	}
     }
-    
+
     class ChargerIDChargerTypeWeight{
-    	int chargerID;
-    	int chargerType;
-        double weight;
-        
+	int chargingStationId;
+	int chargerLevel;
+		double price;
+
         // Constructor
-	    public ChargerIDChargerTypeWeight(int chargerID, int chargerType, double weight) {
-	        this.chargerID = chargerID;
-	        this.chargerType = chargerType;
-	        this.weight = weight;
-	    }
+	public ChargerIDChargerTypeWeight(int chargingStationId, int chargerLevel, double price) {
+	this.chargingStationId = chargingStationId;
+	this.chargerLevel = chargerLevel;
+	this.price = price;
+	}
     }
-    
+
     // Message class for querying signal by road connection (upstream road -> downstream road)
     class UpStreamRoadDownStreamRoad {
-        String upStreamRoad;
-        String downStreamRoad;
+        String upstreamRoadId;
+        String downstreamRoadId;
 
         // Constructor
-        public UpStreamRoadDownStreamRoad(String upStreamRoad, String downStreamRoad) {
-            this.upStreamRoad = upStreamRoad;
-            this.downStreamRoad = downStreamRoad;
+        public UpStreamRoadDownStreamRoad(String upstreamRoadId, String downstreamRoadId) {
+            this.upstreamRoadId = upstreamRoadId;
+            this.downstreamRoadId = downstreamRoadId;
         }
     }
-    
+
     // Message class for updating signal phase
-    // signalID: the ID of the signal
+    // signalId: the ID of the signal
     // targetPhase: 0 (Green), 1 (Yellow), 2 (Red)
     // phaseTime: time offset in seconds from the start of the phase (optional, default 0)
     class SignalIDPhase {
-        int signalID;
-        int targetPhase;
-        int phaseTime; // optional, defaults to 0 if not provided
+        int signalId;
+        int phase;
+        int phaseOffsetSeconds;
 
         // Constructor
-        public SignalIDPhase(int signalID, int targetPhase, int phaseTime) {
-            this.signalID = signalID;
-            this.targetPhase = targetPhase;
-            this.phaseTime = phaseTime;
+        public SignalIDPhase(int signalId, int phase, int phaseOffsetSeconds) {
+            this.signalId = signalId;
+            this.phase = phase;
+            this.phaseOffsetSeconds = phaseOffsetSeconds;
         }
     }
-    
+
     // Message class for updating signal phase timing
-    // signalID: the ID of the signal
+    // signalId: the ID of the signal
     // greenTime, yellowTime, redTime: duration in seconds for each phase
     class SignalIDPhaseTiming {
-        int signalID;
-        int greenTime;
-        int yellowTime;
-        int redTime;
+        int signalId;
+        int greenSeconds;
+        int yellowSeconds;
+        int redSeconds;
 
         // Constructor
-        public SignalIDPhaseTiming(int signalID, int greenTime, int yellowTime, int redTime) {
-            this.signalID = signalID;
-            this.greenTime = greenTime;
-            this.yellowTime = yellowTime;
-            this.redTime = redTime;
+        public SignalIDPhaseTiming(int signalId, int greenSeconds, int yellowSeconds, int redSeconds) {
+            this.signalId = signalId;
+            this.greenSeconds = greenSeconds;
+            this.yellowSeconds = yellowSeconds;
+            this.redSeconds = redSeconds;
         }
     }
-    
+
     // Message class for setting a complete phase plan (phase timing + starting state)
-    // signalID: the ID of the signal
+    // signalId: the ID of the signal
     // greenTime, yellowTime, redTime: duration in seconds for each phase
     // startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
     // phaseOffset: time offset in seconds from the start of the startPhase (optional, defaults to 0)
     class SignalPhasePlan {
-        int signalID;
-        int greenTime;
-        int yellowTime;
-        int redTime;
+        int signalId;
+        int greenSeconds;
+        int yellowSeconds;
+        int redSeconds;
         int startPhase;
-        int phaseOffset; // optional, defaults to 0
+        int phaseOffsetSeconds;
 
         // Constructor
-        public SignalPhasePlan(int signalID, int greenTime, int yellowTime, int redTime, int startPhase, int phaseOffset) {
-            this.signalID = signalID;
-            this.greenTime = greenTime;
-            this.yellowTime = yellowTime;
-            this.redTime = redTime;
+        public SignalPhasePlan(int signalId, int greenSeconds, int yellowSeconds,
+		int redSeconds, int startPhase, int phaseOffsetSeconds) {
+            this.signalId = signalId;
+            this.greenSeconds = greenSeconds;
+            this.yellowSeconds = yellowSeconds;
+            this.redSeconds = redSeconds;
             this.startPhase = startPhase;
-            this.phaseOffset = phaseOffset;
+            this.phaseOffsetSeconds = phaseOffsetSeconds;
         }
     }
-    
+
     // Message class for setting phase plan with tick-level precision
-    // signalID: the ID of the signal
+    // signalId: the ID of the signal
     // greenTicks, yellowTicks, redTicks: duration in simulation ticks for each phase
     // startPhase: the phase to start from (0=Green, 1=Yellow, 2=Red)
     // tickOffset: tick offset from the start of the startPhase (optional, defaults to 0)
     class SignalPhasePlanTicks {
-        int signalID;
+        int signalId;
         int greenTicks;
         int yellowTicks;
         int redTicks;
         int startPhase;
-        int tickOffset; // optional, defaults to 0
+        int phaseOffsetTicks;
 
         // Constructor
-        public SignalPhasePlanTicks(int signalID, int greenTicks, int yellowTicks, int redTicks, int startPhase, int tickOffset) {
-            this.signalID = signalID;
+        public SignalPhasePlanTicks(int signalId, int greenTicks, int yellowTicks,
+		int redTicks, int startPhase, int phaseOffsetTicks) {
+            this.signalId = signalId;
             this.greenTicks = greenTicks;
             this.yellowTicks = yellowTicks;
             this.redTicks = redTicks;
             this.startPhase = startPhase;
-            this.tickOffset = tickOffset;
+            this.phaseOffsetTicks = phaseOffsetTicks;
         }
     }
-	
-    class ZoneParams {
-    	double x;
-    	double y;
-    	double z = 0.0;
-    	boolean transformCoord;
-    	int capacity;
-    	int type;
 
-    	public ZoneParams(double x, double y, double z, boolean transformCoord, int capacity, int type) {
-    		this.x = x;
-    		this.y = y;
-    		this.z = z;
-    		this.transformCoord = transformCoord;
-    		this.capacity = capacity;
-    		this.type = type;
-    	}
+    class ZoneParams {
+	double x;
+	double y;
+	double z = 0.0;
+	boolean transformCoordinates;
+	int capacity;
+	int zoneType;
+
+	public ZoneParams(double x, double y, double z, boolean transformCoordinates,
+			int capacity, int zoneType) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		this.transformCoordinates = transformCoordinates;
+		this.capacity = capacity;
+		this.zoneType = zoneType;
+	}
     }
 
     class ChargingStationParams {
-    	double x;
-    	double y;
-    	double z = 0.0;
-    	boolean transformCoord;
-    	int numL2;
-    	int numL3;
-    	int numBus;
-    	double priceL2;
-    	double priceL3;
+	double x;
+	double y;
+	double z = 0.0;
+	boolean transformCoordinates;
+	int level2ChargerCount;
+	int level3ChargerCount;
+	int busChargerCount;
+	double level2Price;
+	double level3Price;
 
-    	public ChargingStationParams(double x, double y, double z, boolean transformCoord, int numL2, int numL3, int numBus, double priceL2, double priceL3) {
-    		this.x = x;
-    		this.y = y;
-    		this.z = z;
-    		this.transformCoord = transformCoord;
-    		this.numL2 = numL2;
-    		this.numL3 = numL3;
-    		this.numBus = numBus;
-    		this.priceL2 = priceL2;
-    		this.priceL3 = priceL3;
-    	}
+	public ChargingStationParams(double x, double y, double z, boolean transformCoordinates, int level2ChargerCount, int level3ChargerCount, int busChargerCount, double level2Price, double level3Price) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		this.transformCoordinates = transformCoordinates;
+		this.level2ChargerCount = level2ChargerCount;
+		this.level3ChargerCount = level3ChargerCount;
+		this.busChargerCount = busChargerCount;
+		this.level2Price = level2Price;
+		this.level3Price = level3Price;
+	}
     }
 
     class RoadParams {
-        String origID;
-        String orig_id;
+        String roadId;
         ArrayList<ArrayList<Double>> centerline;
-        ArrayList<ArrayList<Double>> centerLine;
-        ArrayList<ArrayList<Double>> coords;
-        boolean transformCoord;
-        String upStreamRoadOrigID;
-        String upstreamRoadOrigID;
-        String upstream_orig_id;
-        String upstream;
-        String upStreamRoad;
-        String upstreamRoad;
-        String upStreamRoadID;
-        String upstreamRoadID;
-        ArrayList<String> upStreamRoadOrigIDs;
-        ArrayList<String> upstreamRoadOrigIDs;
-        ArrayList<String> upstream_orig_ids;
-        ArrayList<String> upstream_roads;
-        ArrayList<String> upStreamRoads;
-        ArrayList<String> upstreamRoads;
-        String downStreamRoadOrigID;
-        String downstreamRoadOrigID;
-        String downstream_orig_id;
-        String downstream;
-        String downStreamRoad;
-        String downstreamRoad;
-        String downStreamRoadID;
-        String downstreamRoadID;
-        ArrayList<String> downStreamRoadOrigIDs;
-        ArrayList<String> downstreamRoadOrigIDs;
-        ArrayList<String> downstream_orig_ids;
-        ArrayList<String> downstream_roads;
-        ArrayList<String> downStreamRoads;
-        ArrayList<String> downstreamRoads;
+        boolean transformCoordinates;
+        ArrayList<String> upstreamRoadIds;
+        ArrayList<String> downstreamRoadIds;
         Integer roadType;
-        Integer road_type;
-        Integer controlType;
-        Integer control_type;
-        Integer roadControlType;
-        Integer road_control_type;
-        Integer upStreamControlType;
-        Integer upstreamControlType;
-        Integer upstream_control_type;
-        Integer upControlType;
-        Integer up_control_type;
-        Integer downStreamControlType;
-        Integer downstreamControlType;
-        Integer downstream_control_type;
-        Integer downControlType;
-        Integer down_control_type;
-        Integer numLanes;
-        Integer num_lanes;
-        Integer laneNum;
-        Integer lane_num;
-        Integer lanes;
+        String controlMode;
+        String upstreamControlMode;
+        String downstreamControlMode;
+        Integer laneCount;
         Double laneWidth;
-        Double lane_width;
         Integer parkingCapacity;
-        Integer parking_capacity;
 
-        public RoadParams(String origID, ArrayList<ArrayList<Double>> centerline, boolean transformCoord,
-                String upStreamRoadOrigID, String downStreamRoadOrigID, Integer roadType, Integer controlType,
-                Integer upStreamControlType, Integer downStreamControlType, Integer numLanes, Double laneWidth) {
-            this.origID = origID;
+        public RoadParams(String roadId, ArrayList<ArrayList<Double>> centerline,
+		boolean transformCoordinates, ArrayList<String> upstreamRoadIds,
+		ArrayList<String> downstreamRoadIds, Integer roadType, String controlMode,
+		String upstreamControlMode, String downstreamControlMode,
+		Integer laneCount, Double laneWidth) {
+            this.roadId = roadId;
             this.centerline = centerline;
-            this.transformCoord = transformCoord;
-            this.upStreamRoadOrigID = upStreamRoadOrigID;
-            this.downStreamRoadOrigID = downStreamRoadOrigID;
+            this.transformCoordinates = transformCoordinates;
+            this.upstreamRoadIds = upstreamRoadIds;
+            this.downstreamRoadIds = downstreamRoadIds;
             this.roadType = roadType;
-            this.controlType = controlType;
-            this.upStreamControlType = upStreamControlType;
-            this.downStreamControlType = downStreamControlType;
-            this.numLanes = numLanes;
+            this.controlMode = controlMode;
+            this.upstreamControlMode = upstreamControlMode;
+            this.downstreamControlMode = downstreamControlMode;
+            this.laneCount = laneCount;
             this.laneWidth = laneWidth;
         }
     }
 
     class AddTaxiToZone {
-    	int zoneID;
-    	int num;
-		Double length;
+	int zoneId;
+	int vehicleCount;
+		Double vehicleLength;
 
-    	public AddTaxiToZone(int zoneID, int num) {
-			this(zoneID, num, null);
+	public AddTaxiToZone(int zoneId, int vehicleCount) {
+			this(zoneId, vehicleCount, null);
 		}
 
-		public AddTaxiToZone(int zoneID, int num, Double length) {
-    		this.zoneID = zoneID;
-    		this.num = num;
-			this.length = length;
-    	}
+		public AddTaxiToZone(int zoneId, int vehicleCount, Double vehicleLength) {
+		this.zoneId = zoneId;
+		this.vehicleCount = vehicleCount;
+			this.vehicleLength = vehicleLength;
+	}
     }
 
     class RouteNameNum {
-    	String routeName;
-    	int num;
-		Double length;
+	String routeName;
+	int vehicleCount;
+		Double vehicleLength;
 
-    	public RouteNameNum(String routeName, int num) {
-			this(routeName, num, null);
+	public RouteNameNum(String routeName, int vehicleCount) {
+			this(routeName, vehicleCount, null);
 		}
 
-		public RouteNameNum(String routeName, int num, Double length) {
-    		this.routeName = routeName;
-    		this.num = num;
-			this.length = length;
-    	}
+		public RouteNameNum(String routeName, int vehicleCount, Double vehicleLength) {
+		this.routeName = routeName;
+		this.vehicleCount = vehicleCount;
+			this.vehicleLength = vehicleLength;
+	}
     }
 
-    // vehType: true = private vehicle (EV/GV), false = public vehicle (taxi)
-    // chargerType: 0 = L2, 1 = L3, 2 = BUS
-    // csID: 0 = auto-select nearest/cheapest; negative integer = specific charging station ID
+    // isPrivate: true = private vehicle (EV/GV), false = public vehicle (taxi)
+    // chargerLevel: 0 = L2, 1 = L3, 2 = BUS
+    // chargingStationId: 0 = auto-select nearest/cheapest; negative integer = specific charging station ID
     class VehIDVehTypeChargerTypeCSID {
-    	int vehID;
-    	boolean vehType;
-    	int chargerType;
-    	int csID;
+	int vehicleId;
+	boolean isPrivate;
+	int chargerLevel;
+	int chargingStationId;
 
-    	public VehIDVehTypeChargerTypeCSID(int vehID, boolean vehType, int chargerType, int csID) {
-    		this.vehID = vehID;
-    		this.vehType = vehType;
-    		this.chargerType = chargerType;
-    		this.csID = csID;
-    	}
+	public VehIDVehTypeChargerTypeCSID(int vehicleId, boolean isPrivate, int chargerLevel, int chargingStationId) {
+		this.vehicleId = vehicleId;
+		this.isPrivate = isPrivate;
+		this.chargerLevel = chargerLevel;
+		this.chargingStationId = chargingStationId;
+	}
     }
 
 	public static void main(String[] args) {
@@ -819,7 +766,7 @@ public class MessageClass{
         Collection<Integer> IDs = Arrays.asList(1, 2, 3, 4, 5);
         String json = gson.toJson(IDs);  // Serialize to JSON
         System.out.println("Serialized IDs: " + json);
-        
+
         // Deserialize back to collection
         TypeToken<Collection<Integer>> collectionType = new TypeToken<Collection<Integer>>() {};
         Collection<Integer> IDs2 = gson.fromJson(json, collectionType.getType());
@@ -864,7 +811,7 @@ public class MessageClass{
         TypeToken<Collection<VehIDVehTypeAcc>> collectionType4 = new TypeToken<Collection<VehIDVehTypeAcc>>() {};
         Collection<VehIDVehTypeAcc> vehIDVehTypeAcc2 = gson.fromJson(json, collectionType4.getType());  // Deserialize
         System.out.println("Deserialized VehIDVehTypeAcc: " + vehIDVehTypeAcc2);
-        
+
         // VehIDVehTypeSensorType
         Collection<VehIDVehTypeSensorType> vehIDVehTypeSensorTypes = new ArrayList<>();
         vehIDVehTypeSensorTypes.add(messageClass.new VehIDVehTypeSensorType(0, true, 1));
@@ -877,7 +824,7 @@ public class MessageClass{
         Collection<VehIDVehTypeSensorType> vehIDVehTypeSensorTypes2 = gson.fromJson(json, collectionType5.getType());
         System.out.println("Deserialized VehIDVehTypeSensorTypes: " + vehIDVehTypeSensorTypes2);
 
-        
+
         // VehIDVehTypeTranRoadIDXY
         Collection<VehIDVehTypeTranXY> vehIDVehTypeTranXYs = new ArrayList<>();
         vehIDVehTypeTranXYs.add(messageClass.new VehIDVehTypeTranXY(0, true, true, 12.34, 56.78, 0.0));
@@ -913,7 +860,7 @@ public class MessageClass{
         TypeToken<Collection<VehIDOrigRoadDestRoadNum>> collectionType8 = new TypeToken<Collection<VehIDOrigRoadDestRoadNum>>() {};
         Collection<VehIDOrigRoadDestRoadNum> vehIDOrigRoadDestRoadNums2 = gson.fromJson(json, collectionType8.getType());
         System.out.println("Deserialized VehIDOrigRoadDestRoadNum: " + vehIDOrigRoadDestRoadNums2);
-        
+
         // OrigRoadDestRoad
         Collection<OrigRoadDestRoad> origRoadDestRoadList = new ArrayList<OrigRoadDestRoad>();
         origRoadDestRoadList.add(messageClass.new OrigRoadDestRoad("Avenue1", "Boulevard1"));
@@ -937,6 +884,6 @@ public class MessageClass{
         TypeToken<Collection<OriginCoordDestCoordTransform>> collectionType12 = new TypeToken<Collection<OriginCoordDestCoordTransform>>() {};
         Collection<OriginCoordDestCoordTransform> coordTransformList2 = gson.fromJson(json, collectionType12.getType());
         System.out.println("Deserialized OriginCoordDestCoordTransform: " + coordTransformList2);
-    
+
 	}
 }

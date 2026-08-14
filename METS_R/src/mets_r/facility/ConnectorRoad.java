@@ -178,6 +178,11 @@ public final class ConnectorRoad extends Road {
 				secondLength, secondWidth);
 	}
 
+	@Override
+	public void setControlType(int controlType) {
+		setControlTypeDirect(controlType);
+	}
+
 	public static boolean sweptFootprintsOverlap(
 			double firstPreviousFrontX, double firstPreviousFrontY,
 			double firstPreviousBearingDegrees,
