@@ -1806,12 +1806,22 @@ public class Vehicle {
 	 * so that the acceleration is computed against the correct (post-lane-change) leading vehicle.
 	 */
 	public void calcLaneChangingState(int tickcount) {
-		if (this.hasActiveConnectorReservation()) return;
 		if (this.lane == null) return;
+		boolean invalidDesiredSpeed = !Double.isFinite(this.desiredSpeed_)
+				|| this.desiredSpeed_ <= 0.0;
+		if (this.hasActiveConnectorReservation()) {
+			// Connector occupancy suppresses lane-changing decisions, but a restored
+			// zero-speed vehicle still needs a longitudinal target speed.
+			if (invalidDesiredSpeed) {
+				this.desiredSpeed_ = this.lane.getRandomFreeSpeed(
+						rand_car_follow_only.nextGaussian());
+			}
+			return;
+		}
 		if (!this.prepareLaneChangeTarget()) return;
 		if (this.lane == null || this.road == null || !this.isOnLane()) return;
 		this.cachedProjectionLane_ = null;
-		if (tickcount % 10 == 0) {
+		if (tickcount % 10 == 0 || invalidDesiredSpeed) {
 			this.desiredSpeed_ = this.lane.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
 		}
 		if (this.road.getNumberOfLanes() > 1 && this.isOnLane() && (this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH)) {
@@ -5204,6 +5214,31 @@ public class Vehicle {
 
 	public double currentSpeed() {
 		return currentSpeed_;
+	}
+
+	public double getDesiredSpeed() {
+		return this.desiredSpeed_;
+	}
+
+	public void setDesiredSpeed(double desiredSpeed) {
+		if (!Double.isFinite(desiredSpeed) || desiredSpeed < 0.0) {
+			throw new IllegalArgumentException("Desired speed must be finite and non-negative");
+		}
+		this.desiredSpeed_ = desiredSpeed;
+	}
+
+	/**
+	 * Initialize desired speed when loading a legacy snapshot that predates the
+	 * persisted field. This does not consume the car-following random stream.
+	 */
+	public void initializeDesiredSpeedAfterLegacyRestore() {
+		double fallback = Math.max(0.0, this.currentSpeed_);
+		Road speedRoad = this.lane != null ? this.lane.getRoad() : this.road;
+		if (speedRoad != null && Double.isFinite(speedRoad.getSpeedLimit())
+				&& speedRoad.getSpeedLimit() > 0.0) {
+			fallback = Math.max(fallback, speedRoad.getSpeedLimit());
+		}
+		this.desiredSpeed_ = fallback;
 	}
 	
 	/**

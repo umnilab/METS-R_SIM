@@ -271,6 +271,20 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 		return counts;
 	}
+
+	/**
+	 * Return the exact zone whose available-taxi pool contains this taxi, or
+	 * {@code null} when it is not currently available. Snapshot persistence uses
+	 * indexed membership instead of inferring availability from trip state.
+	 */
+	public synchronized Integer getAvailableTaxiZone(int taxiID) {
+		return this.availableTaxiZoneByID.get(taxiID);
+	}
+
+	/** Return the taxi's exact relocation-pool zone, or {@code null}. */
+	public synchronized Integer getRelocationTaxiZone(int taxiID) {
+		return this.relocationTaxiZoneByID.get(taxiID);
+	}
 	
 	public synchronized void addAvailableTaxi(ElectricTaxi v, int z) {
 		if (v == null) return;

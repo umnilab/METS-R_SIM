@@ -128,6 +128,7 @@ public class SnapshotUtil {
 		m.put("laneIndex", (v.getLane() != null && v.getRoad() != null) ? v.getRoad().getLaneIndex(v.getLane()) : -1);
 		m.put("distance", v.getDistanceToNextJunction());
 		m.put("speed", v.currentSpeed());
+		m.put("desiredSpeed", v.getDesiredSpeed());
 		m.put("accRate", v.currentAcc());
 		m.put("bearing", v.getBearing());
 		m.put("originID", v.getOriginID());
@@ -139,6 +140,7 @@ public class SnapshotUtil {
 		m.put("onLane", v.isOnLane());
 		m.put("movingFlag", v.getMovingFlag());
 		m.put("currentParkingRoad", v.getCurrentParkingRoad());
+		addTaxiPoolSnapshotFields(m, v);
 		addConnectorSnapshotFields(m, v.getConnectorPersistenceSnapshot());
 
 		// Origin road
@@ -252,6 +254,68 @@ public class SnapshotUtil {
 
 		return m;
 	}
+	}
+
+	private static void addTaxiPoolSnapshotFields(HashMap<String, Object> target,
+			Vehicle vehicle) {
+		if (!(vehicle instanceof ElectricTaxi)) return;
+		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
+		if (vehicleContext == null) return;
+
+		// The version distinguishes exact empty membership from a legacy snapshot.
+		target.put("taxiPoolStateVersion", 1);
+		Integer availableZone = vehicleContext.getAvailableTaxiZone(vehicle.getID());
+		if (availableZone != null) {
+			target.put("availableTaxiZoneID", availableZone);
+		}
+		Integer relocationZone = vehicleContext.getRelocationTaxiZone(vehicle.getID());
+		if (relocationZone != null) {
+			target.put("relocationTaxiZoneID", relocationZone);
+		}
+	}
+
+	private static void restoreTaxiPoolMembership(HashMap<String, Object> snapshot,
+			ElectricTaxi taxi, VehicleContext vehicleContext, int vehicleState) {
+		if (snapshot.containsKey("taxiPoolStateVersion")) {
+			int version = toInt(snapshot.get("taxiPoolStateVersion"));
+			if (version != 1) {
+				throw new IllegalStateException("Unsupported taxi pool snapshot version "
+						+ version + " for taxi " + taxi.getID());
+			}
+			if (snapshot.containsKey("availableTaxiZoneID")) {
+				vehicleContext.addAvailableTaxi(taxi,
+						toInt(snapshot.get("availableTaxiZoneID")));
+			}
+			if (snapshot.containsKey("relocationTaxiZoneID")) {
+				vehicleContext.addRelocationTaxi(taxi,
+						toInt(snapshot.get("relocationTaxiZoneID")));
+			}
+			return;
+		}
+
+		// Legacy snapshots inferred membership from operational state.
+		if (vehicleState == Vehicle.PARKING || vehicleState == Vehicle.CRUISING_TRIP) {
+			vehicleContext.addAvailableTaxi(taxi, taxi.getCurrentZone());
+		} else if (vehicleState == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
+			vehicleContext.addRelocationTaxi(taxi, taxi.getCurrentZone());
+		} else if (vehicleState == Vehicle.NONE_OF_THE_ABOVE
+				&& toBool(snapshot.get("onRoad"))
+				&& (GlobalVariables.DISPATCHING_CONTROLLED_BY_CONTROL_APIS
+						|| GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS)) {
+			// Pre-fix snapshots did not persist the pool entry created by
+			// becomeAvailableForExternalControl(). Its distinctive on-road NONE state
+			// is safe to recover only while external fleet control is enabled.
+			vehicleContext.addAvailableTaxi(taxi, taxi.getCurrentZone());
+		}
+	}
+
+	private static void restoreDesiredSpeed(HashMap<String, Object> snapshot,
+			Vehicle vehicle) {
+		if (snapshot.containsKey("desiredSpeed")) {
+			vehicle.setDesiredSpeed(toDouble(snapshot.get("desiredSpeed")));
+		} else {
+			vehicle.initializeDesiredSpeedAfterLegacyRestore();
+		}
 	}
 
 	// --------------- Zone snapshot (dynamic state only) ---------------
@@ -1200,11 +1264,7 @@ public class SnapshotUtil {
 			if (v instanceof ElectricTaxi) {
 				vc.registerTaxi((ElectricTaxi) v);
 				ElectricTaxi taxi = (ElectricTaxi) v;
-				if (vState == Vehicle.PARKING || vState == Vehicle.CRUISING_TRIP) {
-					vc.addAvailableTaxi(taxi, taxi.getCurrentZone());
-				} else if (vState == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
-					vc.addRelocationTaxi(taxi, taxi.getCurrentZone());
-				}
+				restoreTaxiPoolMembership(vs, taxi, vc, vState);
 			} else if (v instanceof ElectricBus) {
 				vc.registerBus((ElectricBus) v);
 			} else if (vs.containsKey("privateVID")) {
@@ -1243,6 +1303,7 @@ public class SnapshotUtil {
 					}
 				}
 			}
+			restoreDesiredSpeed(vs, v);
 
 			// Restore dest road
 			if (destRoad != null) {
@@ -1396,11 +1457,7 @@ public class SnapshotUtil {
 			if (v instanceof ElectricTaxi) {
 				vc.registerTaxi((ElectricTaxi) v);
 				ElectricTaxi taxi = (ElectricTaxi) v;
-				if (vState == Vehicle.PARKING || vState == Vehicle.CRUISING_TRIP) {
-					vc.addAvailableTaxi(taxi, taxi.getCurrentZone());
-				} else if (vState == Vehicle.ACCESSIBLE_RELOCATION_TRIP) {
-					vc.addRelocationTaxi(taxi, taxi.getCurrentZone());
-				}
+				restoreTaxiPoolMembership(vs, taxi, vc, vState);
 			} else if (v instanceof ElectricBus) {
 				vc.registerBus((ElectricBus) v);
 			} else if (vs.containsKey("privateVID")) {
@@ -1438,6 +1495,7 @@ public class SnapshotUtil {
 					}
 				}
 			}
+			restoreDesiredSpeed(vs, v);
 
 			if (destRoad != null) {
 				v.setDestRoad(destRoad);
