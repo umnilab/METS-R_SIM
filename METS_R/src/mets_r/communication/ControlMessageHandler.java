@@ -85,6 +85,7 @@ public class ControlMessageHandler extends MessageHandler {
 	private static final double TRACE_REPLAY_COINCIDENT_GEOMETRY_TOLERANCE_METERS = 0.001;
 	private static final double TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS = 1.0e-4;
 	private static final double TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS = 0.05;
+	private static final double COSIM_LARGE_DISPLACEMENT_WARNING_METERS = 25.0;
 	private final Object advanceCommandLock = new Object();
 	private final LinkedHashMap<String, AdvanceCommandRecord> advanceCommands =
 			new LinkedHashMap<String, AdvanceCommandRecord>();
@@ -1766,7 +1767,7 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 				String segmentHint = request.segmentId;
 				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
-						null, pose, request.bearing.doubleValue(), segmentHint, true);
+						null, pose, request.bearing.doubleValue(), segmentHint);
 				if (matches.isEmpty()) {
 					jsonData.add(coSimTeleportFailure(request.vehicleId, "NO_MAP_MATCH",
 							"No controlled road, lane, or connector matches the authoritative pose"));
@@ -1950,10 +1951,11 @@ public class ControlMessageHandler extends MessageHandler {
 	*
 	* Input DATA: list of
 	* {{vehicleId, isPrivate, x, y, z, bearing, speed, transformCoordinates,
-	* segmentId?}}. Lane membership is inferred from road and connector geometry,
-	* heading, retained membership, and the planned route. {@code segmentId},
-	* {@code roadId}, and legacy {@code observedRoadId} are optional segment hints;
-	* caller-provided lane IDs are ignored.
+	* segmentId?}}. A supplied {@code segmentId} is authoritative and must identify
+	* a controlled COSIM road or connector. When it is omitted, membership is
+	* inferred across all controlled segments without restricting the search to
+	* METS-R's retained route. Geometry and collision discrepancies are returned as
+	* warnings; caller-provided lane IDs remain ignored.
 	*/
 	private synchronized HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2000,45 +2002,70 @@ public class ControlMessageHandler extends MessageHandler {
 						continue;
 					}
 				}
-				String segmentHint = firstNonBlank(request.segmentId,
-						request.segmentId);
-				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
-						vehicle, pose, request.bearing, segmentHint, false);
-				if (matches.isEmpty()) {
-					jsonData.add(coSimTeleportFailure(request.vehicleId, "NO_MAP_MATCH",
-							"No reachable controlled road, lane, or connector matches the pose"));
+				if (!Double.isFinite(pose.x) || !Double.isFinite(pose.y)
+						|| !Double.isFinite(pose.z)) {
+					jsonData.add(coSimTeleportFailure(request.vehicleId,
+							"COORDINATE_TRANSFORM_FAILED",
+							"Coordinate transform produced a non-finite pose"));
 					continue;
 				}
-				if (CoSimMapMatcher.overlapsAnyVehicle(
-						vehicle, pose, request.bearing, null)) {
-					jsonData.add(coSimTeleportFailure(request.vehicleId, "POSE_OVERLAP",
-							"Authoritative vehicle footprint overlaps another vehicle"));
-					continue;
-				}
-
-				CoSimMapMatcher.Match applied = null;
-				String lastFailure = null;
-				boolean transitionBefore = vehicle.isExternalRoadTransition();
-				Road roadBefore = vehicle.getRoad();
-				for (CoSimMapMatcher.Match match : matches) {
-					try {
-						applyCoSimMatch(vehicle, match, pose,
-								request.bearing, request.speed);
-						applied = match;
-						break;
-					} catch (IllegalArgumentException ex) {
-						lastFailure = ex.getMessage();
+				String segmentHint = firstNonBlank(request.segmentId, null);
+				if (segmentHint != null) {
+					Road suppliedSegment =
+							ContextCreator.getRoadContext().getQueryableRoad(segmentHint);
+					if (suppliedSegment == null) {
+						jsonData.add(coSimTeleportFailure(request.vehicleId,
+								"SEGMENT_NOT_FOUND",
+								"segmentId does not identify a METS-R road or connector"));
+						continue;
+					}
+					if (suppliedSegment.getControlType() != Road.COSIM) {
+						jsonData.add(coSimTeleportFailure(request.vehicleId,
+								"SEGMENT_NOT_COSIM",
+								"segmentId must identify a currently controlled COSIM segment"));
+						continue;
 					}
 				}
-				if (applied == null) {
-					jsonData.add(coSimTeleportFailure(request.vehicleId, "MAP_MATCH_REJECTED",
-							lastFailure == null ? "No inferred lane passed vehicle-state validation"
-									: lastFailure));
+				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
+						vehicle, pose, request.bearing, segmentHint);
+				if (matches.isEmpty()) {
+					String errorCode = segmentHint == null
+							? "NO_MAP_MATCH" : "SEGMENT_GEOMETRY_UNAVAILABLE";
+					String message = segmentHint == null
+							? "No controlled road, lane, or connector can be associated with the pose"
+							: "The authoritative segment has no usable lane or connector geometry";
+					jsonData.add(coSimTeleportFailure(request.vehicleId, errorCode, message));
+					continue;
+				}
+				boolean overlapsVehicle = CoSimMapMatcher.overlapsAnyVehicle(
+						vehicle, pose, request.bearing, null);
+
+				CoSimMapMatcher.Match applied = matches.get(0);
+				Coordinate previousPose = vehicle.getCurrentCoord() == null
+						? null : new Coordinate(vehicle.getCurrentCoord());
+				boolean transitionBefore = vehicle.isExternalRoadTransition();
+				Road roadBefore = vehicle.getRoad();
+				boolean targetLaneReserved;
+				try {
+					targetLaneReserved =
+							vehicle.synchronizeAuthoritativeCoSimObservation(
+									applied.segment, applied.lane, applied.connectorPath,
+									applied.downstreamDistance, pose,
+									request.bearing, request.speed);
+				} catch (RuntimeException ex) {
+					jsonData.add(coSimTeleportFailure(request.vehicleId,
+							"MIRROR_UPDATE_FAILED", ex.getMessage()));
 					continue;
 				}
 
-				removeVehicleFromEnteringQueues(vehicle);
 				recordCoSimTeleportSnapshot(vehicle);
+				ArrayList<String> warnings = coSimObservationWarnings(
+						previousPose, pose, applied, overlapsVehicle,
+						targetLaneReserved);
+				for (String warning : warnings) {
+					ContextCreator.logger.warn("Authoritative COSIM pose vehicle="
+							+ request.vehicleId + ": " + warning);
+				}
 				HashMap<String, Object> record = new HashMap<String, Object>();
 				record.put("vehicleId", request.vehicleId);
 				record.put("status", "ok");
@@ -2047,8 +2074,12 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("laneIndex", applied.isConnector()
 						? ConnectorRoad.NO_LANE
 						: applied.segment.getLaneIndex(applied.lane));
+				record.put("segmentAuthoritative", segmentHint != null);
+				record.put("segmentInferred", segmentHint == null);
 				record.put("laneInferred", true);
 				record.put("lateralError", applied.lateralDistanceMeters);
+				record.put("headingError", applied.headingErrorDegrees);
+				record.put("endpointOvershoot", applied.endpointOvershootMeters);
 				record.put("distanceToSegmentEnd", applied.downstreamDistance);
 				record.put("transitionStarted",
 						!transitionBefore && vehicle.isExternalRoadTransition());
@@ -2057,6 +2088,9 @@ public class ControlMessageHandler extends MessageHandler {
 						&& !applied.isConnector() && !vehicle.isExternalRoadTransition());
 				if (request.laneIndex != null) {
 					record.put("providedLaneIgnored", true);
+				}
+				if (!warnings.isEmpty()) {
+					record.put("warnings", warnings);
 				}
 				addExternalTransitionState(record, vehicle);
 				jsonData.add(record);
@@ -2072,93 +2106,35 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 
-	private void applyCoSimMatch(Vehicle vehicle, CoSimMapMatcher.Match match,
-			Coordinate pose, double bearing, double speed) {
-		if (vehicle.isExternalRoadTransition()) {
-			if (match.segment == vehicle.getCurrentConnector()) {
-				vehicle.setCurrentCoord(pose);
-				vehicle.setBearing(bearing);
-				vehicle.setSpeed(speed);
-				return;
-			}
-			if (match.segment == vehicle.getExternalTransitionTargetRoad()
-					&& match.lane == vehicle.getExternalTransitionTargetLane()) {
-				Coordinate oldPose = new Coordinate(vehicle.getCurrentCoord());
-				double oldBearing = vehicle.getBearing();
-				double oldSpeed = vehicle.currentSpeed();
-				vehicle.setCurrentCoord(pose);
-				vehicle.setBearing(bearing);
-				vehicle.setSpeed(speed);
-				double tolerance = Math.max(2.5,
-						Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + 0.75);
-				if (!vehicle.tryCommitExternalRoadTransition(tolerance)) {
-					vehicle.setCurrentCoord(oldPose);
-					vehicle.setBearing(oldBearing);
-					vehicle.setSpeed(oldSpeed);
-					throw new IllegalArgumentException(
-							"Matched target lane could not commit its pending connector transition");
-				}
-				return;
-			}
-			throw new IllegalArgumentException(
-					"Matched segment is inconsistent with the pending connector transition");
-		}
-
-		Road currentRoad = vehicle.getRoad();
-		if (currentRoad == null || vehicle.getLane() == null) {
-			throw new IllegalArgumentException("Vehicle has no current lane-backed road state");
-		}
-		if (match.segment == currentRoad && match.lane != null) {
-			vehicle.synchronizeCoSimLaneObservation(currentRoad, match.lane,
-					pose, bearing, speed);
-			return;
-		}
-
-		ConnectorRoad connector;
-		Lane targetLane;
-		if (match.isConnector()) {
-			connector = (ConnectorRoad) match.segment;
-			if (match.connectorPath == null
-					|| match.connectorPath.getSourceLane() != vehicle.getLane()) {
-				throw new IllegalArgumentException(
-						"Matched connector is not reachable from the vehicle's inferred source lane");
-			}
-			targetLane = match.connectorPath.getTargetLane();
-		} else {
-			connector = ContextCreator.getRoadContext().getConnector(
-					currentRoad, match.segment);
-			targetLane = match.lane;
-			if (connector == null || !connectorHasLanePath(
-					connector, vehicle.getLane(), targetLane)) {
-				throw new IllegalArgumentException(
-						"Matched next road is not reachable through the current lane's connector");
+	private ArrayList<String> coSimObservationWarnings(
+			Coordinate previousPose, Coordinate authoritativePose,
+			CoSimMapMatcher.Match match, boolean overlapsVehicle,
+			boolean targetLaneReserved) {
+		ArrayList<String> warnings = new ArrayList<String>();
+		if (previousPose != null && authoritativePose != null) {
+			double displacement = ContextCreator.getCityContext()
+					.getDistance(previousPose, authoritativePose);
+			if (Double.isFinite(displacement)
+					&& displacement > COSIM_LARGE_DISPLACEMENT_WARNING_METERS) {
+				warnings.add("Large authoritative displacement of " + displacement
+						+ " meters was accepted");
 			}
 		}
-		Road targetRoad = connector.getTargetRoad();
-		if (vehicle.getNextRoad() != targetRoad
-				|| !vehicle.assertNextLaneForExternalTransition(targetRoad, targetLane)
-				|| !vehicle.executeRoadTransition(targetLane, targetRoad)) {
-			throw new IllegalArgumentException(
-					"Matched connector does not agree with the vehicle's planned next road");
+		if (match != null && match.hasGeometryDiscrepancy()) {
+			warnings.add("Authoritative pose disagrees with segment geometry"
+					+ " (lateralError=" + match.lateralDistanceMeters
+					+ ", headingError=" + match.headingErrorDegrees
+					+ ", endpointOvershoot=" + match.endpointOvershootMeters
+					+ "); membership was accepted");
 		}
-		vehicle.setCurrentCoord(pose);
-		vehicle.setBearing(bearing);
-		vehicle.setSpeed(speed);
-		if (!match.isConnector()) {
-			double tolerance = Math.max(2.5,
-					Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + 0.75);
-			vehicle.tryCommitExternalRoadTransition(tolerance);
+		if (overlapsVehicle) {
+			warnings.add("Authoritative vehicle footprint overlaps another mirrored vehicle");
 		}
-	}
-
-	private boolean connectorHasLanePath(ConnectorRoad connector,
-			Lane sourceLane, Lane targetLane) {
-		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
-			if (path.getSourceLane() == sourceLane && path.getTargetLane() == targetLane) {
-				return true;
-			}
+		if (match != null && match.isConnector() && !targetLaneReserved) {
+			warnings.add("Connector membership was accepted without a target-lane reservation;"
+					+ " native hand-back will retry strict placement");
 		}
-		return false;
+		return warnings;
 	}
 
 	private HashMap<String, Object> coSimTeleportFailure(int vehicleID, String reason,

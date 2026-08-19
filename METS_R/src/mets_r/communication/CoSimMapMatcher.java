@@ -21,8 +21,11 @@ import mets_r.mobility.Vehicle;
  * Deterministic map matching for lane-less co-simulation poses.
  *
  * <p>The external pose is never snapped or shifted. Geometry is used only to
- * infer METS-R membership; ambiguous candidates are resolved by heading,
- * current membership, and legal route continuity.</p>
+ * infer METS-R membership. A supplied segment is authoritative: geometry is
+ * still projected for internal lane/path bookkeeping and diagnostics, but it
+ * cannot veto the observation. Without a supplied segment, geometry determines
+ * which controlled segment owns the pose; retained topology is only a ranking
+ * preference and never a hard filter.</p>
  */
 final class CoSimMapMatcher {
 	private static final double EARTH_RADIUS_METERS = 6371008.8;
@@ -36,7 +39,7 @@ final class CoSimMapMatcher {
 	}
 
 	static List<Match> candidates(Vehicle vehicle, Coordinate pose, double bearing,
-			String segmentHint, boolean initialization) {
+			String segmentHint) {
 		if (!finitePose(pose) || !Double.isFinite(bearing)) {
 			return Collections.emptyList();
 		}
@@ -44,35 +47,26 @@ final class CoSimMapMatcher {
 		String normalizedHint = segmentHint == null ? null : segmentHint.trim();
 		if (normalizedHint != null && !normalizedHint.isEmpty()) {
 			hintedSegment = ContextCreator.getRoadContext().getQueryableRoad(normalizedHint);
-			if (hintedSegment == null) return Collections.emptyList();
+			if (hintedSegment == null || hintedSegment.getControlType() != Road.COSIM) {
+				return Collections.emptyList();
+			}
 		}
 
 		LinkedHashSet<Road> eligibleSegments = new LinkedHashSet<Road>(
 				ContextCreator.getRoadContext().getCoSimSegmentsSnapshot());
-		if (!initialization && vehicle != null) {
-			Road transitionTarget = vehicle.isExternalRoadTransition()
-					? vehicle.getExternalTransitionTargetRoad() : vehicle.getNextRoad();
-			ConnectorRoad controlledConnector = vehicle.isExternalRoadTransition()
-					? vehicle.getCurrentConnector()
-					: ContextCreator.getRoadContext().getConnector(
-							vehicle.getRoad(), transitionTarget);
-			if (transitionTarget != null && controlledConnector != null
-					&& controlledConnector.getControlType() == Road.COSIM) {
-				eligibleSegments.add(transitionTarget);
-			}
-		}
 		if (hintedSegment != null && !eligibleSegments.contains(hintedSegment)) {
 			return Collections.emptyList();
 		}
+		boolean authoritativeSegment = hintedSegment != null;
 		ArrayList<Match> matches = new ArrayList<Match>();
 		for (Road segment : eligibleSegments) {
 			if (hintedSegment != null && segment != hintedSegment) continue;
-			if (!initialization && !topologicallyReachable(vehicle, segment)) continue;
 			if (segment instanceof ConnectorRoad) {
 				addConnectorCandidates(matches, vehicle, (ConnectorRoad) segment,
-						pose, bearing, initialization);
+						pose, bearing, authoritativeSegment);
 			} else {
-				addPhysicalRoadCandidates(matches, vehicle, segment, pose, bearing);
+				addPhysicalRoadCandidates(matches, vehicle, segment, pose, bearing,
+						authoritativeSegment);
 			}
 		}
 		matches.sort(new Comparator<Match>() {
@@ -89,58 +83,43 @@ final class CoSimMapMatcher {
 	}
 
 	private static void addPhysicalRoadCandidates(List<Match> matches, Vehicle vehicle,
-			Road road, Coordinate pose, double bearing) {
+			Road road, Coordinate pose, double bearing, boolean authoritativeSegment) {
 		for (Lane lane : road.getLanes()) {
 			Projection projection = project(pose, lane.getCoords());
-			if (!usableProjection(projection, bearing)) continue;
-			double continuity = continuityBonus(vehicle, road, lane, null);
+			if (projection == null
+					|| !authoritativeSegment && !usableProjection(projection, bearing)) continue;
+			double continuity = authoritativeSegment
+					? 0.0 : continuityBonus(vehicle, road, lane, null);
+			double headingError = headingError(bearing, projection.bearing);
 			double score = projection.lateralDistanceMeters
-					+ 0.03 * headingError(bearing, projection.bearing)
+					+ 0.03 * headingError
 					+ continuity;
 			matches.add(new Match(road, lane, null, projection.downstreamDistance,
-					projection.lateralDistanceMeters, score));
+					projection.lateralDistanceMeters, headingError,
+					projection.endpointOvershootMeters, score));
 		}
 	}
 
 	private static void addConnectorCandidates(List<Match> matches, Vehicle vehicle,
-			ConnectorRoad connector, Coordinate pose, double bearing, boolean initialization) {
+			ConnectorRoad connector, Coordinate pose, double bearing,
+			boolean authoritativeSegment) {
 		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
 			// A geometry-only fallback connector is useful for visualization, but it
 			// cannot provide the lane pair required for a safe state transition.
 			if (path.getSourceLane() == null || path.getTargetLane() == null) continue;
-			if (!initialization && vehicle != null && !vehicle.isExternalRoadTransition()
-					&& vehicle.getRoad() == connector.getSourceRoad()
-					&& vehicle.getLane() != path.getSourceLane()) {
-				continue;
-			}
 			Projection projection = project(pose, path.getCenterLine());
-			if (!usableProjection(projection, bearing)) continue;
-			double continuity = continuityBonus(vehicle, connector, null, path);
+			if (projection == null
+					|| !authoritativeSegment && !usableProjection(projection, bearing)) continue;
+			double continuity = authoritativeSegment
+					? 0.0 : continuityBonus(vehicle, connector, null, path);
+			double headingError = headingError(bearing, projection.bearing);
 			double score = projection.lateralDistanceMeters
-					+ 0.03 * headingError(bearing, projection.bearing)
+					+ 0.03 * headingError
 					+ continuity;
 			matches.add(new Match(connector, null, path, projection.downstreamDistance,
-					projection.lateralDistanceMeters, score));
+					projection.lateralDistanceMeters, headingError,
+					projection.endpointOvershootMeters, score));
 		}
-	}
-
-	private static boolean topologicallyReachable(Vehicle vehicle, Road segment) {
-		if (vehicle == null) return false;
-		if (vehicle.isExternalRoadTransition()) {
-			if (segment == vehicle.getCurrentConnector()) return true;
-			return segment == vehicle.getExternalTransitionTargetRoad();
-		}
-		Road current = vehicle.getRoad();
-		if (current == null) return false;
-		if (segment == current) return true;
-		Road next = vehicle.getNextRoad();
-		if (segment instanceof ConnectorRoad) {
-			ConnectorRoad connector = (ConnectorRoad) segment;
-			return connector.getSourceRoad() == current
-					&& connector.getTargetRoad() == next;
-		}
-		return segment == next
-				&& ContextCreator.getRoadContext().getConnector(current, segment) != null;
 	}
 
 	private static double continuityBonus(Vehicle vehicle, Road segment, Lane lane,
@@ -163,12 +142,15 @@ final class CoSimMapMatcher {
 
 	private static boolean usableProjection(Projection projection, double observedBearing) {
 		if (projection == null) return false;
-		double lateralTolerance = Math.max(MIN_LATERAL_TOLERANCE_METERS,
-				Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + MAP_SLACK_METERS);
-		return projection.lateralDistanceMeters <= lateralTolerance
+		return projection.lateralDistanceMeters <= lateralToleranceMeters()
 				&& projection.endpointOvershootMeters <= ENDPOINT_TOLERANCE_METERS
 				&& headingError(observedBearing, projection.bearing)
 						<= MAX_HEADING_ERROR_DEGREES;
+	}
+
+	private static double lateralToleranceMeters() {
+		return Math.max(MIN_LATERAL_TOLERANCE_METERS,
+				Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5 + MAP_SLACK_METERS);
 	}
 
 	private static Projection project(Coordinate pose, List<Coordinate> line) {
@@ -298,16 +280,30 @@ final class CoSimMapMatcher {
 		final ConnectorRoad.ConnectorPath connectorPath;
 		final double downstreamDistance;
 		final double lateralDistanceMeters;
+		final double headingErrorDegrees;
+		final double endpointOvershootMeters;
 		final double score;
 
 		Match(Road segment, Lane lane, ConnectorRoad.ConnectorPath connectorPath,
-				double downstreamDistance, double lateralDistanceMeters, double score) {
+				double downstreamDistance, double lateralDistanceMeters,
+				double headingErrorDegrees, double endpointOvershootMeters, double score) {
 			this.segment = segment;
 			this.lane = lane;
 			this.connectorPath = connectorPath;
 			this.downstreamDistance = downstreamDistance;
 			this.lateralDistanceMeters = lateralDistanceMeters;
+			this.headingErrorDegrees = headingErrorDegrees;
+			this.endpointOvershootMeters = endpointOvershootMeters;
 			this.score = score;
+		}
+
+		boolean hasGeometryDiscrepancy() {
+			return !Double.isFinite(this.lateralDistanceMeters)
+					|| this.lateralDistanceMeters > lateralToleranceMeters()
+					|| !Double.isFinite(this.headingErrorDegrees)
+					|| this.headingErrorDegrees > MAX_HEADING_ERROR_DEGREES
+					|| !Double.isFinite(this.endpointOvershootMeters)
+					|| this.endpointOvershootMeters > ENDPOINT_TOLERANCE_METERS;
 		}
 
 		boolean isConnector() {

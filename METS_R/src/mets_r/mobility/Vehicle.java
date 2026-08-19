@@ -3618,10 +3618,14 @@ public class Vehicle {
 		}
 		if (externalTransition) {
 			if (this.lane != null || externalSourceRoad != connector.getSourceRoad()
-					|| externalTargetRoad != connector.getTargetRoad()
-					|| !externalTargetRoad.tryReserveExternalLane(targetLane, this)) {
+					|| externalTargetRoad != connector.getTargetRoad()) {
 				throw new IllegalStateException("Cannot restore external connector state for vehicle "
 						+ this.getID());
+			}
+			if (!externalTargetRoad.tryReserveExternalLane(targetLane, this)) {
+				ContextCreator.logger.warn("Restored authoritative connector state for vehicle "
+						+ this.getID() + " without a target-lane reservation; native hand-back "
+						+ "will retry the reservation.");
 			}
 		} else if (this.lane != targetLane) {
 			throw new IllegalStateException("Saved connector lane does not match vehicle "
@@ -4038,7 +4042,10 @@ public class Vehicle {
 		Road targetRoad = this.externalTransitionTargetRoad;
 		Lane originalTargetLane = this.externalTransitionTargetLane;
 		boolean alternateLane = releaseLane != originalTargetLane;
-		if (alternateLane
+		boolean releaseLaneAlreadyReserved =
+				targetRoad.hasExternalLaneReservation(releaseLane, this);
+		boolean acquiredReleaseReservation = !releaseLaneAlreadyReserved;
+		if (acquiredReleaseReservation
 				&& !targetRoad.tryReserveExternalLaneForNativeRelease(releaseLane, this)) {
 			return false;
 		}
@@ -4048,7 +4055,9 @@ public class Vehicle {
 		double laneLength = targetLane.getLength();
 		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
 			this.externalTransitionTargetLane = originalTargetLane;
-			if (alternateLane) targetRoad.releaseExternalLaneReservation(releaseLane, this);
+			if (acquiredReleaseReservation) {
+				targetRoad.releaseExternalLaneReservation(releaseLane, this);
+			}
 			return false;
 		}
 		double candidate = Math.max(0.0, Math.min(laneLength, preferredDownstreamDistance));
@@ -4085,7 +4094,9 @@ public class Vehicle {
 			candidate = shiftedCandidate;
 		}
 		this.externalTransitionTargetLane = originalTargetLane;
-		if (alternateLane) targetRoad.releaseExternalLaneReservation(releaseLane, this);
+		if (acquiredReleaseReservation) {
+			targetRoad.releaseExternalLaneReservation(releaseLane, this);
+		}
 		return false;
 	}
 
@@ -4359,6 +4370,144 @@ public class Vehicle {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * Rebind METS-R's mirrored membership to an externally authoritative COSIM
+	 * observation. Previous route and connector state are deliberately not used
+	 * as admission criteria. Geometry supplies only the lane/path and linked-list
+	 * distance needed by METS-R bookkeeping; the supplied pose, bearing, and speed
+	 * are retained exactly.
+	 *
+	 * @return true when a connector observation also acquired its target-lane
+	 *         reservation, or for every physical-road observation
+	 */
+	public synchronized boolean synchronizeAuthoritativeCoSimObservation(
+			Road observedSegment, Lane observedLane,
+			ConnectorRoad.ConnectorPath observedConnectorPath,
+			double projectedDownstreamDistance, Coordinate authoritativePose,
+			double authoritativeBearing, double authoritativeSpeed) {
+		if (observedSegment == null || observedSegment.getControlType() != Road.COSIM) {
+			throw new IllegalArgumentException(
+					"Authoritative observation requires a controlled COSIM segment");
+		}
+		if (authoritativePose == null || !Double.isFinite(authoritativePose.x)
+				|| !Double.isFinite(authoritativePose.y)
+				|| !Double.isFinite(authoritativePose.z)
+				|| !Double.isFinite(authoritativeBearing)
+				|| !Double.isFinite(authoritativeSpeed)
+				|| authoritativeSpeed < 0.0) {
+			throw new IllegalArgumentException(
+					"Authoritative observation requires a finite pose, bearing, and non-negative speed");
+		}
+		if (!Double.isFinite(projectedDownstreamDistance)) {
+			throw new IllegalArgumentException(
+					"Authoritative observation has no finite segment projection");
+		}
+
+		ConnectorRoad connector = observedSegment instanceof ConnectorRoad
+				? (ConnectorRoad) observedSegment : null;
+		Lane targetLane;
+		Road mirroredRoad;
+		if (connector == null) {
+			if (observedLane == null || observedLane.getRoad() != observedSegment) {
+				throw new IllegalArgumentException(
+						"Authoritative physical-road observation requires a lane on that road");
+			}
+			targetLane = observedLane;
+			mirroredRoad = observedSegment;
+		} else {
+			if (observedConnectorPath == null
+					|| !connector.getPaths().contains(observedConnectorPath)
+					|| observedConnectorPath.getSourceLane() == null
+					|| observedConnectorPath.getTargetLane() == null
+					|| observedConnectorPath.getSourceLane().getRoad()
+							!= connector.getSourceRoad()
+					|| observedConnectorPath.getTargetLane().getRoad()
+							!= connector.getTargetRoad()) {
+				throw new IllegalArgumentException(
+						"Authoritative connector observation requires a valid connector path");
+			}
+			targetLane = observedConnectorPath.getTargetLane();
+			mirroredRoad = connector.getTargetRoad();
+		}
+
+		double laneLength = targetLane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0
+				|| targetLane.getCoords() == null || targetLane.getCoords().size() < 2) {
+			throw new IllegalArgumentException(
+					"Authoritative segment has no usable target-lane geometry");
+		}
+		double mirroredDistance = Math.max(0.0,
+				Math.min(laneLength, projectedDownstreamDistance));
+
+		// CARLA owns the route while this API is active. Remove every retained
+		// route/connector assertion before rebuilding current membership.
+		this.clearShadowImpact();
+		if (this.externalRoadTransition) {
+			this.clearExternalRoadTransitionState();
+		} else if (this.currentConnector != null) {
+			this.clearNativeConnectorMembership();
+		}
+		this.removeFromCurrentLane();
+		this.removeFromCurrentRoad();
+		ContextCreator.getRoadContext().removeVehicleFromEnteringQueues(this);
+		this.roadPath = null;
+		this.nextRoad_ = null;
+		this.nextLane_ = null;
+		this.Nshadow = 0;
+		this.futureRoutingRoad = new ArrayList<Road>();
+		this.distToTravel_ = 0.0;
+		this.distToTravelReferenceDistance_ = 0.0;
+		this.atOrigin = false;
+		this.isReachDest = false;
+		this.stuckTime = 0;
+		this.accRate_ = 0.0;
+		this.accDecided_ = false;
+		this.accPlan_.clear();
+		this.resetLaneChangeRuntimeState();
+
+		if (connector == null) {
+			mirroredRoad.teleportVehicle(this, targetLane, mirroredDistance);
+			this.setCurrentCoord(new Coordinate(authoritativePose));
+			this.setPreviousEpochCoord(authoritativePose);
+			this.bearing_ = authoritativeBearing;
+			this.currentSpeed_ = authoritativeSpeed;
+			return true;
+		}
+
+		this.appendToRoadForTeleport(mirroredRoad);
+		this.currentConnector = connector;
+		this.connectorFrontCleared = false;
+		this.externalRoadTransition = true;
+		this.externalTransitionSourceRoad = connector.getSourceRoad();
+		this.externalTransitionTargetRoad = connector.getTargetRoad();
+		this.externalTransitionTargetLane = targetLane;
+		this.onLane = false;
+		this.distance_ = 0.0;
+		this.nextDistance_ = 0.0;
+		this.currentSegmentIdx_ = 0;
+		this.currentLaneSlope_ = 0.0;
+		this.coordMap.clear();
+		this.coordMap.add(new Coordinate(authoritativePose));
+		this.setCurrentCoord(new Coordinate(authoritativePose));
+		this.setPreviousEpochCoord(authoritativePose);
+		this.bearing_ = authoritativeBearing;
+		this.currentSpeed_ = authoritativeSpeed;
+
+		boolean targetLaneReserved =
+				mirroredRoad.tryReserveExternalLane(targetLane, this);
+		ContextCreator.getRoadContext()
+				.mirrorAuthoritativeConnectorVehicle(connector, this);
+		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
+		if (vehicleContext != null) {
+			vehicleContext.registerExternalRoadTransition(this);
+		}
+		this.advanceInMacroList();
+		this.retreatInMacroList();
+		ContextCreator.getRoadContext()
+				.updateConnectorVehicleState(connector, this);
+		return targetLaneReserved;
 	}
 
 	/**

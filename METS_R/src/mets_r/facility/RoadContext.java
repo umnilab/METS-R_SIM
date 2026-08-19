@@ -600,6 +600,36 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
+	/**
+	 * Mirror an externally authoritative connector observation without applying
+	 * native admission or conflict gates. CARLA already owns movement at this
+	 * boundary; the runtime state is bookkeeping for queries, visualization, and
+	 * collision diagnostics only.
+	 */
+	public void mirrorAuthoritativeConnectorVehicle(ConnectorRoad connector,
+			Vehicle vehicle) {
+		this.connectorTopologyLock.readLock().lock();
+		try {
+			if (connector == null || vehicle == null) {
+				throw new IllegalArgumentException("Connector and vehicle are required");
+			}
+			IntersectionRuntime runtime = this.connectorTopology.intersectionRuntimes
+					.get(connector.getIntersectionID());
+			if (runtime == null) {
+				throw new IllegalStateException("Missing intersection runtime for connector "
+						+ connector.getOrigID());
+			}
+			boolean added = runtime.restoreAdmission(connector, vehicle, true,
+					ContextCreator.getCurrentTick());
+			if (added) {
+				adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), 1);
+			}
+			this.activeIntersectionIDs.put(connector.getIntersectionID(), Boolean.TRUE);
+		} finally {
+			this.connectorTopologyLock.readLock().unlock();
+		}
+	}
+
 	/** Rebuild derived counts and collision state after all saved vehicles return. */
 	public void finishConnectorStateRestore() {
 		rebuildActiveIntersectionIndexes();
@@ -1237,14 +1267,14 @@ public class RoadContext extends FacilityContext<Road> {
 			connector.updateVehicle(vehicle, tick);
 		}
 
-		synchronized void restoreAdmission(ConnectorRoad connector, Vehicle vehicle,
+		synchronized boolean restoreAdmission(ConnectorRoad connector, Vehicle vehicle,
 				boolean hiddenTargetVehicle, int tick) {
 			if (connector == null || vehicle == null || !this.connectors.contains(connector)) {
 				throw new IllegalArgumentException("Saved connector admission does not match topology");
 			}
 			Admission existing = this.activeAdmissionByVehicle.get(vehicle.getID());
 			if (existing != null) {
-				if (existing.vehicle == vehicle && existing.connector == connector) return;
+				if (existing.vehicle == vehicle && existing.connector == connector) return false;
 				throw new IllegalStateException("Duplicate saved connector vehicle ID "
 						+ vehicle.getID());
 			}
@@ -1254,6 +1284,7 @@ public class RoadContext extends FacilityContext<Road> {
 			if (hiddenTargetVehicle) this.hiddenTargetVehicleIDs.add(vehicle.getID());
 			this.activeCollisionVehicleIDs.remove(vehicle.getID());
 			this.recentlyDepartedStates.remove(vehicle.getID());
+			return true;
 		}
 
 		synchronized boolean revealTargetVehicle(ConnectorRoad connector, Vehicle vehicle) {

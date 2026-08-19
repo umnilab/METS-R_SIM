@@ -8,21 +8,15 @@ import mets_r.facility.Lane;
 import mets_r.facility.Road;
 import mets_r.facility.Signal;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
@@ -41,9 +35,6 @@ import org.opengis.referencing.operation.MathTransform;
 import org.opengis.referencing.operation.MathTransformFactory;
 import org.opengis.referencing.operation.TransformException;
 import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 
@@ -59,11 +50,6 @@ import com.vividsolutions.jts.geom.Coordinate;
 
 public class SumoXML {
 	private static final double MIN_CONTROL_POINT_SEPARATION_METERS = 0.001;
-	private static final double XODR_DIRECT_BOUNDARY_TOLERANCE_METERS = 0.25;
-	private static final double XODR_CORRECTION_TOLERANCE_METERS = 0.25;
-	private static final double XODR_CONNECTOR_LENGTH_METERS = 0.10;
-	private static final double XODR_PROPOSAL_CONFLICT_TOLERANCE_METERS = 0.02;
-	private static final double XODR_BOUNDARY_EPSILON_METERS = 1.0e-4;
 	private static final double MIN_CONTROL_POINT_SEPARATION_SQUARED =
 			MIN_CONTROL_POINT_SEPARATION_METERS * MIN_CONTROL_POINT_SEPARATION_METERS;
 
@@ -166,8 +152,6 @@ public class SumoXML {
 		LinkedHashMap<String, String> internalFromLaneConnections;  
 		LinkedHashMap<String, String> internalToLaneConnections; 
 		LinkedHashMap<String, List<String>> internalFromToLaneConnections;
-		LinkedHashMap<String, InternalLaneMovement> directViaMovements;
-		LinkedHashMap<String, Double> internalLaneLengthMap;
 		
 		Road currentRoad;
 		Junction currentJunction;
@@ -591,690 +575,6 @@ public class SumoXML {
 			}
 		}
 
-
-		private class OpenDriveMap {
-			private final LinkedHashMap<Integer, Element> roads =
-					new LinkedHashMap<Integer, Element>();
-
-			OpenDriveMap(Document document) {
-				for (Element road : directChildren(document.getDocumentElement(), "road")) {
-					roads.put(Integer.parseInt(road.getAttribute("id")), road);
-				}
-			}
-
-			boolean containsRoad(int roadID) {
-				return roads.containsKey(roadID);
-			}
-
-			double roadLength(int roadID) {
-				Element road = roads.get(roadID);
-				return road == null ? Double.NaN
-						: Double.parseDouble(road.getAttribute("length"));
-			}
-
-			ArrayList<Integer> laneIDsAt(int roadID, double s, int expectedSign) {
-				ArrayList<Integer> result = new ArrayList<Integer>();
-				Element road = roads.get(roadID);
-				if (road == null) return result;
-				Element lanesElement = directChild(road, "lanes");
-				Element section = recordAt(
-						directChildren(lanesElement, "laneSection"), s, "s");
-				if (section == null) return result;
-				Element side = directChild(section, expectedSign > 0 ? "left" : "right");
-				if (side == null) return result;
-				for (Element lane : directChildren(side, "lane")) {
-					int laneID = Integer.parseInt(lane.getAttribute("id"));
-					if (laneID * expectedSign > 0
-						&& "driving".equalsIgnoreCase(lane.getAttribute("type"))) {
-					result.add(laneID);
-				}
-				}
-				Collections.sort(result);
-				return result;
-			}
-
-			Coordinate laneCenter(int roadID, int laneID, double s) {
-				Element road = roads.get(roadID);
-				if (road == null) return null;
-				double roadLength = Double.parseDouble(road.getAttribute("length"));
-				s = Math.max(0.0, Math.min(s, roadLength));
-
-				Element lanesElement = directChild(road, "lanes");
-				Element section = recordAt(
-						directChildren(lanesElement, "laneSection"), s, "s");
-				if (section == null) return null;
-				double sectionS = attributeDouble(section, "s", 0.0);
-				double sectionOffset = s - sectionS;
-				Element side = directChild(section, laneID > 0 ? "left" : "right");
-				if (side == null) return null;
-
-				Element targetLane = null;
-				double innerWidth = 0.0;
-				for (Element lane : directChildren(side, "lane")) {
-					int candidateID = Integer.parseInt(lane.getAttribute("id"));
-					if (candidateID == laneID) targetLane = lane;
-					else if (candidateID * laneID > 0
-							&& Math.abs(candidateID) < Math.abs(laneID)) {
-						innerWidth += laneWidth(lane, sectionOffset);
-					}
-				}
-				if (targetLane == null) return null;
-
-				Element laneOffsetRecord = recordAt(
-						directChildren(lanesElement, "laneOffset"), s, "s");
-				double laneOffset = polynomialAt(
-						laneOffsetRecord,
-						laneOffsetRecord == null ? 0.0
-								: s - attributeDouble(laneOffsetRecord, "s", 0.0));
-				double targetWidth = laneWidth(targetLane, sectionOffset);
-				double lateral = laneOffset + Math.copySign(
-						innerWidth + targetWidth / 2.0, laneID);
-
-				double[] reference = referencePose(road, s);
-				Element elevationProfile = directChild(road, "elevationProfile");
-				Element elevationRecord = recordAt(
-						directChildren(elevationProfile, "elevation"), s, "s");
-				double elevation = polynomialAt(
-						elevationRecord,
-						elevationRecord == null ? 0.0
-								: s - attributeDouble(elevationRecord, "s", 0.0));
-				Element lateralProfile = directChild(road, "lateralProfile");
-				Element superelevationRecord = recordAt(
-						directChildren(lateralProfile, "superelevation"), s, "s");
-				double roll = polynomialAt(
-						superelevationRecord,
-						superelevationRecord == null ? 0.0
-								: s - attributeDouble(superelevationRecord, "s", 0.0));
-				double horizontalLateral = lateral * Math.cos(roll);
-				return new Coordinate(
-						reference[0] - Math.sin(reference[2]) * horizontalLateral,
-						reference[1] + Math.cos(reference[2]) * horizontalLateral,
-						elevation + lateral * Math.sin(roll));
-			}
-
-			private double laneWidth(Element lane, double sectionOffset) {
-				Element width = recordAt(
-						directChildren(lane, "width"), sectionOffset, "sOffset");
-				if (width == null) return 0.0;
-				return Math.max(0.0, polynomialAt(width,
-						sectionOffset - attributeDouble(width, "sOffset", 0.0)));
-			}
-
-			private double[] referencePose(Element road, double s) {
-				Element planView = directChild(road, "planView");
-				Element geometry = recordAt(
-						directChildren(planView, "geometry"), s, "s");
-				if (geometry == null) {
-					throw new IllegalArgumentException("OpenDRIVE road "
-							+ road.getAttribute("id")
-							+ " has no plan-view geometry at s=" + s);
-				}
-				double geometryS = attributeDouble(geometry, "s", 0.0);
-				double length = attributeDouble(geometry, "length", 0.0);
-				double delta = Math.max(0.0, Math.min(s - geometryS, length));
-				double x = attributeDouble(geometry, "x", 0.0);
-				double y = attributeDouble(geometry, "y", 0.0);
-				double heading = attributeDouble(geometry, "hdg", 0.0);
-				if (directChild(geometry, "line") != null) {
-					return new double[] {
-							x + delta * Math.cos(heading),
-							y + delta * Math.sin(heading),
-							heading
-					};
-				}
-				Element arc = directChild(geometry, "arc");
-				if (arc != null) {
-					double curvature = attributeDouble(arc, "curvature", 0.0);
-					if (Math.abs(curvature) <= 1.0e-15) {
-						return new double[] {
-								x + delta * Math.cos(heading),
-								y + delta * Math.sin(heading),
-								heading
-						};
-					}
-					double endHeading = heading + curvature * delta;
-					return new double[] {
-							x + (Math.sin(endHeading) - Math.sin(heading)) / curvature,
-							y - (Math.cos(endHeading) - Math.cos(heading)) / curvature,
-							endHeading
-					};
-				}
-				Element spiral = directChild(geometry, "spiral");
-				if (spiral != null) {
-					double curvatureStart = attributeDouble(
-							spiral, "curvStart", 0.0);
-					double curvatureEnd = attributeDouble(
-							spiral, "curvEnd", curvatureStart);
-					if (delta <= 0.0 || length <= 0.0) {
-						return new double[] {x, y, heading};
-					}
-					double curvatureRate =
-							(curvatureEnd - curvatureStart) / length;
-					int steps = Math.max(8, (int) Math.ceil(delta / 0.5));
-					if ((steps & 1) != 0) steps++;
-					double step = delta / steps;
-					double integralX = 0.0;
-					double integralY = 0.0;
-					for (int i = 0; i <= steps; i++) {
-						double distance = i * step;
-						double tangent = heading
-								+ curvatureStart * distance
-								+ 0.5 * curvatureRate * distance * distance;
-						int weight = (i == 0 || i == steps)
-								? 1 : ((i & 1) == 0 ? 2 : 4);
-						integralX += weight * Math.cos(tangent);
-						integralY += weight * Math.sin(tangent);
-					}
-					integralX *= step / 3.0;
-					integralY *= step / 3.0;
-					double endHeading = heading
-							+ curvatureStart * delta
-							+ 0.5 * curvatureRate * delta * delta;
-					return new double[] {
-							x + integralX, y + integralY, endHeading
-					};
-				}
-				Element poly3 = directChild(geometry, "poly3");
-				if (poly3 != null) {
-					double localX = delta;
-					double localY = polynomialAt(poly3, delta);
-					double b = attributeDouble(poly3, "b", 0.0);
-					double c = attributeDouble(poly3, "c", 0.0);
-					double d = attributeDouble(poly3, "d", 0.0);
-					double localHeading = Math.atan2(
-							b + 2.0 * c * delta + 3.0 * d * delta * delta,
-							1.0);
-					return new double[] {
-							x + localX * Math.cos(heading)
-								- localY * Math.sin(heading),
-							y + localX * Math.sin(heading)
-								+ localY * Math.cos(heading),
-							heading + localHeading
-					};
-				}
-				Element paramPoly3 = directChild(geometry, "paramPoly3");
-				if (paramPoly3 != null) {
-					boolean normalized = !"arcLength".equalsIgnoreCase(
-							paramPoly3.getAttribute("pRange"));
-					double parameter = normalized && length > 0.0
-							? delta / length : delta;
-					double aU = attributeDouble(paramPoly3, "aU", 0.0);
-					double bU = attributeDouble(paramPoly3, "bU", 0.0);
-					double cU = attributeDouble(paramPoly3, "cU", 0.0);
-					double dU = attributeDouble(paramPoly3, "dU", 0.0);
-					double aV = attributeDouble(paramPoly3, "aV", 0.0);
-					double bV = attributeDouble(paramPoly3, "bV", 0.0);
-					double cV = attributeDouble(paramPoly3, "cV", 0.0);
-					double dV = attributeDouble(paramPoly3, "dV", 0.0);
-					double localX = aU + parameter
-							* (bU + parameter * (cU + parameter * dU));
-					double localY = aV + parameter
-							* (bV + parameter * (cV + parameter * dV));
-					double derivativeX = bU + 2.0 * cU * parameter
-							+ 3.0 * dU * parameter * parameter;
-					double derivativeY = bV + 2.0 * cV * parameter
-							+ 3.0 * dV * parameter * parameter;
-					double localHeading =
-							Math.abs(derivativeX) + Math.abs(derivativeY) <= 1.0e-15
-									? 0.0 : Math.atan2(derivativeY, derivativeX);
-					return new double[] {
-							x + localX * Math.cos(heading)
-								- localY * Math.sin(heading),
-							y + localX * Math.sin(heading)
-								+ localY * Math.cos(heading),
-							heading + localHeading
-					};
-				}
-				Element primitive = firstElementChild(geometry);
-				throw new IllegalArgumentException("Unsupported OpenDRIVE geometry "
-						+ (primitive == null ? "missing" : primitive.getTagName())
-						+ " on road " + road.getAttribute("id")
-						+ "; automatic alignment supports line, arc, spiral, "
-						+ "poly3, and paramPoly3");
-			}
-		}
-
-		private class XodrLaneMatch {
-			final Coordinate exactRaw;
-			final Coordinate insideTransformed;
-			final double oldErrorMeters;
-
-			XodrLaneMatch(Coordinate exactRaw, Coordinate insideTransformed,
-					double oldErrorMeters) {
-				this.exactRaw = exactRaw;
-				this.insideTransformed = insideTransformed;
-				this.oldErrorMeters = oldErrorMeters;
-			}
-		}
-
-		private class XodrCorrection {
-			final Coordinate sourcePoint;
-			final Coordinate targetPoint;
-			final boolean needsCorrection;
-
-			XodrCorrection(Coordinate sourcePoint, Coordinate targetPoint,
-					boolean needsCorrection) {
-				this.sourcePoint = sourcePoint;
-				this.targetPoint = targetPoint;
-				this.needsCorrection = needsCorrection;
-			}
-		}
-
-		private class InternalLaneMovement {
-			final String sourceLaneID;
-			final String targetLaneID;
-			final String internalLaneID;
-			XodrCorrection correction;
-			boolean direct;
-
-			InternalLaneMovement(String sourceLaneID, String targetLaneID,
-					String internalLaneID) {
-				this.sourceLaneID = sourceLaneID;
-				this.targetLaneID = targetLaneID;
-				this.internalLaneID = internalLaneID;
-			}
-		}
-
-		private ArrayList<Element> directChildren(Element parent, String tagName) {
-			ArrayList<Element> result = new ArrayList<Element>();
-			if (parent == null) return result;
-			NodeList children = parent.getChildNodes();
-			for (int i = 0; i < children.getLength(); i++) {
-				Node node = children.item(i);
-				if (node.getNodeType() == Node.ELEMENT_NODE
-						&& (tagName == null || tagName.equals(node.getNodeName()))) {
-					result.add((Element) node);
-				}
-			}
-			return result;
-		}
-
-		private Element directChild(Element parent, String tagName) {
-			ArrayList<Element> children = directChildren(parent, tagName);
-			return children.isEmpty() ? null : children.get(0);
-		}
-
-		private Element firstElementChild(Element parent) {
-			ArrayList<Element> children = directChildren(parent, null);
-			return children.isEmpty() ? null : children.get(0);
-		}
-
-		private double attributeDouble(Element element, String name,
-				double defaultValue) {
-			if (element == null || !element.hasAttribute(name)
-					|| element.getAttribute(name).length() == 0) {
-				return defaultValue;
-			}
-			return Double.parseDouble(element.getAttribute(name));
-		}
-
-		private Element recordAt(List<Element> records, double position,
-				String positionAttribute) {
-			Element selected = null;
-			double selectedPosition = -Double.MAX_VALUE;
-			for (Element record : records) {
-				double recordPosition = attributeDouble(
-						record, positionAttribute, 0.0);
-				if (recordPosition <= position + 1.0e-9
-						&& recordPosition >= selectedPosition) {
-					selected = record;
-					selectedPosition = recordPosition;
-				}
-			}
-			return selected;
-		}
-
-		private double polynomialAt(Element record, double delta) {
-			if (record == null) return 0.0;
-			double a = attributeDouble(record, "a", 0.0);
-			double b = attributeDouble(record, "b", 0.0);
-			double c = attributeDouble(record, "c", 0.0);
-			double d = attributeDouble(record, "d", 0.0);
-			return a + delta * (b + delta * (c + delta * d));
-		}
-
-		private File findCompanionOpenDriveFile() {
-			File networkFile = new File(SumoXML.this.xml_file).getAbsoluteFile();
-			File directory = networkFile.getParentFile();
-			if (directory == null || !directory.isDirectory()) return null;
-			String networkName = networkFile.getName();
-			String lowerName = networkName.toLowerCase(Locale.ROOT);
-			String expectedName;
-			if (lowerName.endsWith(".net.xml")) {
-				expectedName = networkName.substring(
-						0, networkName.length() - ".net.xml".length()) + ".xodr";
-			} else {
-				int extension = networkName.lastIndexOf('.');
-				expectedName = (extension < 0
-						? networkName : networkName.substring(0, extension)) + ".xodr";
-			}
-
-			ArrayList<File> candidates = new ArrayList<File>();
-			File exact = null;
-			File[] siblings = directory.listFiles();
-			if (siblings == null) return null;
-			for (File sibling : siblings) {
-				if (!sibling.isFile()
-						|| !sibling.getName().toLowerCase(Locale.ROOT).endsWith(".xodr")) {
-					continue;
-				}
-				candidates.add(sibling);
-				if (sibling.getName().equalsIgnoreCase(expectedName)) exact = sibling;
-			}
-			if (exact != null) return exact;
-			if (candidates.size() == 1) return candidates.get(0);
-			if (candidates.isEmpty()) return null;
-			StringBuilder names = new StringBuilder();
-			for (File candidate : candidates) {
-				if (names.length() > 0) names.append(", ");
-				names.append(candidate.getName());
-			}
-			throw new IllegalArgumentException("Cannot choose an OpenDRIVE companion for "
-					+ networkFile + ": found " + names
-					+ ". Rename the matching file to share the SUMO basename.");
-		}
-
-		private OpenDriveMap loadOpenDrive(File xodrFile) throws Exception {
-			DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-			factory.setFeature(
-					"http://apache.org/xml/features/disallow-doctype-decl", true);
-			factory.setFeature(
-					"http://xml.org/sax/features/external-general-entities", false);
-			factory.setFeature(
-					"http://xml.org/sax/features/external-parameter-entities", false);
-			factory.setFeature(
-					"http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-			factory.setXIncludeAware(false);
-			factory.setExpandEntityReferences(false);
-			DocumentBuilder builder = factory.newDocumentBuilder();
-			return new OpenDriveMap(builder.parse(xodrFile));
-		}
-
-		private Coordinate transformOpenDriveCoordinate(
-				Coordinate raw, String description) {
-			Coordinate transformed = copyCoordinate(raw);
-			try {
-				JTS.transform(raw, transformed, transform);
-			} catch (TransformException e) {
-				throw new IllegalArgumentException(
-						"Failed to transform OpenDRIVE " + description, e);
-			}
-			if (!Double.isFinite(transformed.x)
-					|| !Double.isFinite(transformed.y)
-					|| !Double.isFinite(transformed.z)) {
-				throw new IllegalArgumentException(
-						"OpenDRIVE " + description
-						+ " transformed to a non-finite coordinate");
-			}
-			return transformed;
-		}
-
-		private double rawDistance2D(Coordinate first, Coordinate second) {
-			return Math.hypot(first.x - second.x, first.y - second.y);
-		}
-
-		private double boundaryS(double length, boolean negative, boolean source) {
-			if (source) {
-				return negative ? length - XODR_BOUNDARY_EPSILON_METERS
-						: XODR_BOUNDARY_EPSILON_METERS;
-			}
-			return negative ? XODR_BOUNDARY_EPSILON_METERS
-					: length - XODR_BOUNDARY_EPSILON_METERS;
-		}
-
-		private double insideS(double length, boolean negative, boolean source) {
-			double halfSpan = Math.min(XODR_CONNECTOR_LENGTH_METERS / 2.0,
-					Math.max(XODR_BOUNDARY_EPSILON_METERS, length / 4.0));
-			if (source) return negative ? length - halfSpan : halfSpan;
-			return negative ? halfSpan : length - halfSpan;
-		}
-
-		private XodrLaneMatch matchOpenDriveBoundary(
-				OpenDriveMap xodr, Lane sumoLane, int roadID,
-				boolean negative, boolean source) {
-			double length = xodr.roadLength(roadID);
-			if (!Double.isFinite(length)) return null;
-			int expectedSign = negative ? -1 : 1;
-			double boundaryS = boundaryS(length, negative, source);
-			Coordinate oldPoint = source
-					? sumoLane.getEndCoord() : sumoLane.getStartCoord();
-			XodrLaneMatch best = null;
-			int bestLaneID = 0;
-			for (int laneID : xodr.laneIDsAt(roadID, boundaryS, expectedSign)) {
-				Coordinate exactRaw = xodr.laneCenter(roadID, laneID, boundaryS);
-				if (exactRaw == null) continue;
-				Coordinate exactTransformed = transformOpenDriveCoordinate(
-						exactRaw, "road " + roadID + " lane " + laneID + " boundary");
-				double error = geographicDistanceMeters(oldPoint, exactTransformed);
-				if (best == null || error < best.oldErrorMeters
-						|| (error == best.oldErrorMeters && laneID < bestLaneID)) {
-					Coordinate insideRaw = xodr.laneCenter(
-							roadID, laneID, insideS(length, negative, source));
-					if (insideRaw == null) continue;
-					Coordinate insideTransformed = transformOpenDriveCoordinate(
-							insideRaw, "road " + roadID + " lane " + laneID + " interior");
-					best = new XodrLaneMatch(
-							copyCoordinate(exactRaw), insideTransformed, error);
-					bestLaneID = laneID;
-				}
-			}
-			return best;
-		}
-
-		private Integer numericOpenDriveRoadID(String sumoRoadID) {
-			if (sumoRoadID == null || !sumoRoadID.matches("-?\\d+")) return null;
-			try {
-				return Math.abs(Integer.parseInt(sumoRoadID));
-			} catch (NumberFormatException e) {
-				return null;
-			}
-		}
-
-		private XodrCorrection evaluateOpenDriveMovement(
-				OpenDriveMap xodr, InternalLaneMovement movement,
-				Map<String, XodrLaneMatch> sourceMatchCache,
-				Map<String, XodrLaneMatch> targetMatchCache,
-				Set<String> missingSourceMatches,
-				Set<String> missingTargetMatches) {
-			String sourceRoadName = laneRoadMap.get(movement.sourceLaneID);
-			String targetRoadName = laneRoadMap.get(movement.targetLaneID);
-			Integer sourceRoadID = numericOpenDriveRoadID(sourceRoadName);
-			Integer targetRoadID = numericOpenDriveRoadID(targetRoadName);
-			if (sourceRoadID == null || targetRoadID == null
-					|| !xodr.containsRoad(sourceRoadID)
-					|| !xodr.containsRoad(targetRoadID)
-					|| !laneIDMap.containsKey(movement.sourceLaneID)
-					|| !laneIDMap.containsKey(movement.targetLaneID)) {
-				return null;
-			}
-			Lane sourceLane = lanes.get(laneIDMap.get(movement.sourceLaneID));
-			Lane targetLane = lanes.get(laneIDMap.get(movement.targetLaneID));
-			if (sourceLane == null || targetLane == null) return null;
-
-			XodrLaneMatch sourceMatch = sourceMatchCache.get(movement.sourceLaneID);
-			if (sourceMatch == null
-					&& !missingSourceMatches.contains(movement.sourceLaneID)) {
-				sourceMatch = matchOpenDriveBoundary(
-						xodr, sourceLane, sourceRoadID,
-						sourceRoadName.startsWith("-"), true);
-				if (sourceMatch == null) {
-					missingSourceMatches.add(movement.sourceLaneID);
-				} else {
-					sourceMatchCache.put(movement.sourceLaneID, sourceMatch);
-				}
-			}
-			XodrLaneMatch targetMatch = targetMatchCache.get(movement.targetLaneID);
-			if (targetMatch == null
-					&& !missingTargetMatches.contains(movement.targetLaneID)) {
-				targetMatch = matchOpenDriveBoundary(
-						xodr, targetLane, targetRoadID,
-						targetRoadName.startsWith("-"), false);
-				if (targetMatch == null) {
-					missingTargetMatches.add(movement.targetLaneID);
-				} else {
-					targetMatchCache.put(movement.targetLaneID, targetMatch);
-				}
-			}
-			if (sourceMatch == null || targetMatch == null
-					|| rawDistance2D(sourceMatch.exactRaw, targetMatch.exactRaw)
-							> XODR_DIRECT_BOUNDARY_TOLERANCE_METERS) {
-				return null;
-			}
-			double connectorLength = internalLaneLengthMap.containsKey(
-					movement.internalLaneID)
-							? internalLaneLengthMap.get(movement.internalLaneID) : 0.0;
-			boolean needsCorrection = Math.max(connectorLength,
-					Math.max(sourceMatch.oldErrorMeters, targetMatch.oldErrorMeters))
-							> XODR_CORRECTION_TOLERANCE_METERS;
-			return new XodrCorrection(
-					sourceMatch.insideTransformed,
-					targetMatch.insideTransformed,
-					needsCorrection);
-		}
-
-		private ArrayList<InternalLaneMovement> internalLaneMovements() {
-			LinkedHashMap<String, InternalLaneMovement> movements =
-					new LinkedHashMap<String, InternalLaneMovement>();
-			movements.putAll(directViaMovements);
-			for (String internalLane : internalFromLaneConnections.keySet()) {
-				String sourceLane = internalFromLaneConnections.get(internalLane);
-				ArrayList<String> targetLanes = new ArrayList<String>();
-				if (internalToLaneConnections.containsKey(internalLane)) {
-					targetLanes.add(internalToLaneConnections.get(internalLane));
-				} else if (internalFromToLaneConnections.containsKey(internalLane)) {
-					targetLanes.addAll(findEndLane(
-							internalFromToLaneConnections.get(internalLane)));
-				}
-				for (String targetLane : targetLanes) {
-					String key = sourceLane + "\u0000" + targetLane;
-					if (!movements.containsKey(key)) {
-						movements.put(key, new InternalLaneMovement(
-								sourceLane, targetLane, internalLane));
-					}
-				}
-			}
-			return new ArrayList<InternalLaneMovement>(movements.values());
-		}
-
-		private void proposeLanePoint(Map<String, Coordinate> proposals,
-				Set<String> conflicts, String laneID, Coordinate point) {
-			Coordinate existing = proposals.get(laneID);
-			if (existing != null
-					&& geographicDistanceMeters(existing, point)
-							> XODR_PROPOSAL_CONFLICT_TOLERANCE_METERS) {
-				conflicts.add(laneID);
-				return;
-			}
-			if (existing == null) proposals.put(laneID, copyCoordinate(point));
-		}
-
-		private void replaceLaneEndpoint(
-				String laneOrigID, Coordinate point, boolean sourceEndpoint) {
-			Integer laneID = laneIDMap.get(laneOrigID);
-			Lane lane = laneID == null ? null : lanes.get(laneID);
-			if (lane == null) {
-				throw new IllegalArgumentException(
-						"Cannot align missing SUMO lane " + laneOrigID);
-			}
-			ArrayList<Coordinate> laneCoords = lane.getCoords();
-			if (laneCoords.isEmpty()) {
-				throw new IllegalArgumentException(
-						"Cannot align empty SUMO lane " + laneOrigID);
-			}
-			int index = sourceEndpoint ? laneCoords.size() - 1 : 0;
-			laneCoords.set(index, copyCoordinate(point));
-			ArrayList<Coordinate> cleaned = cleanTransformedLaneControlPoints(
-					laneCoords, laneOrigID);
-			if (cleaned.size() < 2 || !hasUsableLaneControlSegment(cleaned)) {
-				throw new IllegalArgumentException(
-						"XODR alignment made SUMO lane " + laneOrigID
-						+ " geometrically degenerate");
-			}
-			lane.setCoords(cleaned);
-		}
-
-		private void alignLaneGeometryWithCompanionOpenDrive() {
-			File xodrFile = findCompanionOpenDriveFile();
-			if (xodrFile == null) return;
-			try {
-				OpenDriveMap xodr = loadOpenDrive(xodrFile);
-				ArrayList<InternalLaneMovement> movements = internalLaneMovements();
-				LinkedHashMap<String, Coordinate> sourceProposals =
-						new LinkedHashMap<String, Coordinate>();
-				LinkedHashMap<String, Coordinate> targetProposals =
-						new LinkedHashMap<String, Coordinate>();
-				Set<String> unsafeSources = new HashSet<String>();
-				Set<String> unsafeTargets = new HashSet<String>();
-				Map<String, XodrLaneMatch> sourceMatchCache =
-						new HashMap<String, XodrLaneMatch>();
-				Map<String, XodrLaneMatch> targetMatchCache =
-						new HashMap<String, XodrLaneMatch>();
-				Set<String> missingSourceMatches = new HashSet<String>();
-				Set<String> missingTargetMatches = new HashSet<String>();
-				int directMovements = 0;
-
-				for (InternalLaneMovement movement : movements) {
-					movement.correction = evaluateOpenDriveMovement(
-							xodr, movement, sourceMatchCache, targetMatchCache,
-							missingSourceMatches, missingTargetMatches);
-					movement.direct = movement.correction != null;
-					if (!movement.direct) continue;
-					directMovements++;
-					proposeLanePoint(sourceProposals, unsafeSources,
-							movement.sourceLaneID, movement.correction.sourcePoint);
-					proposeLanePoint(targetProposals, unsafeTargets,
-							movement.targetLaneID, movement.correction.targetPoint);
-				}
-				for (InternalLaneMovement movement : movements) {
-					if (movement.direct) continue;
-					if (sourceProposals.containsKey(movement.sourceLaneID)) {
-						unsafeSources.add(movement.sourceLaneID);
-					}
-					if (targetProposals.containsKey(movement.targetLaneID)) {
-						unsafeTargets.add(movement.targetLaneID);
-					}
-				}
-
-				LinkedHashMap<String, Coordinate> activeSources =
-						new LinkedHashMap<String, Coordinate>();
-				LinkedHashMap<String, Coordinate> activeTargets =
-						new LinkedHashMap<String, Coordinate>();
-				int correctedMovements = 0;
-				for (InternalLaneMovement movement : movements) {
-					if (!movement.direct || !movement.correction.needsCorrection
-							|| unsafeSources.contains(movement.sourceLaneID)
-							|| unsafeTargets.contains(movement.targetLaneID)) {
-						continue;
-					}
-					correctedMovements++;
-					activeSources.put(movement.sourceLaneID,
-							movement.correction.sourcePoint);
-					activeTargets.put(movement.targetLaneID,
-							movement.correction.targetPoint);
-				}
-				for (Map.Entry<String, Coordinate> entry : activeSources.entrySet()) {
-					replaceLaneEndpoint(entry.getKey(), entry.getValue(), true);
-				}
-				for (Map.Entry<String, Coordinate> entry : activeTargets.entrySet()) {
-					replaceLaneEndpoint(entry.getKey(), entry.getValue(), false);
-				}
-				if (!activeSources.isEmpty() || !activeTargets.isEmpty()) {
-					refreshRoadCenterlinesFromLanes();
-				}
-				System.out.println("Automatic XODR alignment used "
-						+ xodrFile.getAbsolutePath() + ": internal movements="
-						+ movements.size() + ", direct=" + directMovements
-						+ ", corrected=" + correctedMovements
-						+ ", source lanes=" + activeSources.size()
-						+ ", target lanes=" + activeTargets.size() + ".");
-			} catch (Exception e) {
-				throw new IllegalArgumentException(
-						"Failed to align SUMO network " + SumoXML.this.xml_file
-						+ " with companion OpenDRIVE map "
-						+ xodrFile.getAbsolutePath(), e);
-			}
-		}
-
 		private Map<String, String> parseProjParameters(String proj4) {
 			Map<String, String> result = new HashMap<String, String>();
 			if(proj4 == null) {
@@ -1369,8 +669,6 @@ public class SumoXML {
 			internalFromLaneConnections = new LinkedHashMap<String, String>();
 			internalToLaneConnections = new LinkedHashMap<String, String>();
 			internalFromToLaneConnections = new LinkedHashMap<String, List<String>>();
-			internalLaneLengthMap = new LinkedHashMap<String, Double>();
-			directViaMovements = new LinkedHashMap<String, InternalLaneMovement>();
 			
 			roadLane = new LinkedHashMap<Integer, List<Integer>>();
 			signals = new LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>>();
@@ -1521,11 +819,6 @@ public class SumoXML {
 				if(inInternalRoad) {
 					laneRoadMap.put(attributes.getValue("id"), currentRoadID);
 					isInternalLaneMap.put(attributes.getValue("id"), true);
-					String internalLength = attributes.getValue("length");
-					if (internalLength != null) {
-						internalLaneLengthMap.put(attributes.getValue("id"),
-								Double.parseDouble(internalLength));
-					}
 				}
 			}
 			
@@ -1594,14 +887,6 @@ public class SumoXML {
 				if(isInternalRoadMap.containsKey(from_road) && isInternalRoadMap.containsKey(to_road)) {
 				
 					if((!isInternalRoadMap.get(from_road)) && (!isInternalRoadMap.get(to_road))) { // Case 1, both from road and end road are not internal
-						String viaLane = attributes.getValue("via");
-						if (viaLane != null
-								&& Boolean.TRUE.equals(isInternalLaneMap.get(viaLane))) {
-							String movementKey = from_lane + "\u0000" + to_lane;
-							directViaMovements.put(movementKey,
-									new InternalLaneMovement(
-											from_lane, to_lane, viaLane));
-						}
 						// find out the junction id, update the road connection and lane connection
 						if(laneIDMap.containsKey(from_lane) && laneIDMap.containsKey(to_lane)) {
 							String via_junction = incLaneJunctionMap.get(from_lane);
@@ -1855,7 +1140,6 @@ public class SumoXML {
 					}
 				}
 
-				alignLaneGeometryWithCompanionOpenDrive();
 				prescanTransitionControlPoints();
 				if (removedCoincidentLaneControlPoints > 0 || zeroLengthLaneShapes > 0) {
 					ContextCreator.logger.info("SUMO lane control-point cleanup removed "
@@ -1891,13 +1175,12 @@ public class SumoXML {
 	}
 	
 	public static void main(String[] args) {
-//		SumoXML sxml = new SumoXML("data/Birmingham/facility/road/birmingham.net.xml");
+		SumoXML sxml = new SumoXML("data/Birmingham/facility/road/birmingham.net.xml");
 //		SumoXML sxml = new SumoXML("data/UA/facility/road/nema.net.xml");
 //		SumoXML sxml = new SumoXML("data/study_region.net.xml");
 //		SumoXML sxml = new SumoXML("data/IN/facility/road/indianametsr.net.xml");
-		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");
+//		SumoXML sxml = new SumoXML("data/CARLA/Town05/facility/road/Town05.net.xml");
 		sxml.print();
 	}
 	
 }
-
