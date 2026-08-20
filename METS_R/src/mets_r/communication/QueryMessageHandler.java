@@ -1046,10 +1046,34 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("length", connector.getLength());
 		record.put("downstreamIds", connector.getDownStreamRoadOrigIDs());
 		record.put("controlMode", controlModeName(connector.getControlType()));
+		record.put("configuredControlMode",
+				controlModeName(connector.getConfiguredControlType()));
 		record.put("laneIndex", null);
 		record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
 		record.put("targetRoadId", connector.getTargetRoad().getOrigID());
 		record.put("intersectionId", connector.getIntersectionID());
+		record.put("aliases", new ArrayList<String>(connector.getAliases()));
+		ArrayList<Object> paths = new ArrayList<Object>();
+		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
+			HashMap<String, Object> pathRecord = new HashMap<String, Object>();
+			pathRecord.put("sourceLaneId", path.getSourceLane() == null
+					? null : path.getSourceLane().getOrigID());
+			pathRecord.put("targetLaneId", path.getTargetLane() == null
+					? null : path.getTargetLane().getOrigID());
+			pathRecord.put("viaLaneIds", path.getViaLaneIDs());
+			pathRecord.put("explicitGeometry", path.hasExplicitGeometry());
+			pathRecord.put("declaredLength", Double.isFinite(path.getDeclaredLength())
+					? path.getDeclaredLength() : null);
+			pathRecord.put("speed", Double.isFinite(path.getSpeed())
+					? path.getSpeed() : null);
+			pathRecord.put("direction", path.getDirection());
+			pathRecord.put("state", path.getState());
+			pathRecord.put("trafficLightId", path.getTrafficLightID());
+			pathRecord.put("linkIndex", path.getLinkIndex());
+			pathRecord.put("parameters", path.getParameters());
+			paths.add(pathRecord);
+		}
+		record.put("paths", paths);
 		record.put("conflictingConnectorIds",
 				connectorOrigIDs(connector.getConflictingConnectorIDs()));
 		RoadContext.IntersectionSnapshot snapshot =

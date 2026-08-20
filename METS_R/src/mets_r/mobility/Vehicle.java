@@ -1902,7 +1902,7 @@ public class Vehicle {
 		if (this.nextRoad_ != null && this.road != null && this.road.getID() != this.nextRoad_.getID()) {
 			Junction nextJunction = this.nextJunction();
 			
-			if (nextJunction != null && nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) > 0) { // edge case 1: brake for the red light
+			if (requiresPhysicalStop(nextJunction)) { // edge case 1: brake for an active control
 				double decTime = this.currentSpeed_ / comfortableDec;
 				if (this.distance_ <= 0.5 * this.currentSpeed_ * decTime) {
 					return  (Math.max(effMaxDec, - 0.5 * (this.currentSpeed_ * this.currentSpeed_ / this.distance_)));
@@ -1924,6 +1924,20 @@ public class Vehicle {
 		} else { // decelerate if it exceeds the desired speed
 			return Math.max(effNormalDec, (this.desiredSpeed_ - this.currentSpeed_) / GlobalVariables.SIMULATION_STEP_SIZE);
 		}
+	}
+
+	private boolean requiresPhysicalStop(Junction junction) {
+		if (junction == null || this.road == null || this.nextRoad_ == null) return false;
+		int fromRoadID = this.road.getID();
+		int toRoadID = this.nextRoad_.getID();
+		if (junction.getMandatoryStopDelay(fromRoadID, toRoadID) > this.stuckTime) {
+			return true;
+		}
+		if (junction.getControlType() == Junction.StaticSignal
+				|| junction.getControlType() == Junction.DynamicSignal) {
+			return junction.getSignalState(fromRoadID, toRoadID) > Signal.Yellow;
+		}
+		return false;
 	}
 	
 	/**
@@ -3177,6 +3191,11 @@ public class Vehicle {
 				// conflict, reservation, and entrance-gap gates below.
 				return false;
 			}
+			ConnectorRoad plannedConnector = ContextCreator.getRoadContext()
+					.getConnector(this.road, this.nextRoad_);
+			ConnectorRoad.MovementPriority movementPriority = plannedConnector == null
+					? ConnectorRoad.MovementPriority.UNKNOWN
+					: plannedConnector.getMovementPriority(this.lane, this.nextLane_);
 			Junction nextJunction = this.nextJunction();
 			Signal signal = null;
 			boolean movable = false;
@@ -3185,7 +3204,12 @@ public class Vehicle {
 			} else { // nextRoad data is consistent
 				switch(nextJunction.getControlType()) {
 					case Junction.NoControl:
+					case Junction.Yield:
 						movable = true;
+						break;
+					case Junction.Priority:
+						movable = movementPriority
+								!= ConnectorRoad.MovementPriority.BLOCKED;
 						break;
 					case Junction.DynamicSignal:
 						signal = nextJunction.getSignal(this.road.getID(), this.nextRoad_.getID());
@@ -3198,11 +3222,8 @@ public class Vehicle {
 							movable = true;
 						break;
 					case Junction.StopSign:
-						if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
-							movable = true;
-						break;
-					case Junction.Yield:
-						if(nextJunction.getDelay(this.road.getID(), this.nextRoad_.getID()) <= this.stuckTime)
+						if(nextJunction.getMandatoryStopDelay(this.road.getID(),
+								this.nextRoad_.getID()) <= this.stuckTime)
 							movable = true;
 						break;
 					default:
@@ -3221,9 +3242,17 @@ public class Vehicle {
 			}
 
 			Vehicle conflictBlocker = null;
-			boolean conflictFree = true;
-			if(!sourceRoadControlledByCosim) {
-				conflictBlocker = this.nextRoad_.enterRoadConflictBlocker(this.road, this);
+			if (!sourceRoadControlledByCosim && plannedConnector != null) {
+				conflictBlocker = ContextCreator.getRoadContext()
+						.priorityMovementBlocker(plannedConnector, this, movementPriority);
+			}
+			boolean conflictFree = conflictBlocker == null;
+			boolean connectorAdmissionOwnsConflicts = plannedConnector != null
+					&& GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK;
+			if(!sourceRoadControlledByCosim && conflictFree
+					&& !connectorAdmissionOwnsConflicts) {
+				conflictBlocker = this.nextRoad_.enterRoadConflictBlocker(
+						this.road, this, movementPriority);
 				conflictFree = conflictBlocker == null;
 			}
 			if(!conflictFree) {

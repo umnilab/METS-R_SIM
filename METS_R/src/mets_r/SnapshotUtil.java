@@ -2,6 +2,8 @@ package mets_r;
 
 import java.io.*;
 import java.nio.file.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.*;
 import java.util.zip.*;
 
@@ -24,10 +26,65 @@ import mets_r.mobility.*;
 public class SnapshotUtil {
 
 	private static final Gson gson = new GsonBuilder().serializeSpecialFloatingPointValues().create();
+	private static final int SNAPSHOT_FORMAT_VERSION = 2;
+	private static final String SNAPSHOT_FORMAT_VERSION_KEY = "snapshotFormatVersion";
+	private static final String CONNECTOR_SCHEMA_VERSION_KEY = "connectorTopologySchemaVersion";
+	private static final String NETWORK_FILE_KEY = "networkFile";
+	private static final String NETWORK_SHA256_KEY = "networkSha256";
+	private static final String SWEPT_COLLISION_CHECK_KEY = "intersectionSweptCollisionCheck";
 	private static boolean lastLoadFastRestore = false;
 
 	public static boolean wasLastLoadFastRestore() {
 		return lastLoadFastRestore;
+	}
+
+	private static Path resolveNetworkPath(String configuredPath) throws IOException {
+		if (configuredPath == null || configuredPath.trim().isEmpty()) {
+			throw new IOException("NETWORK_FILE is empty");
+		}
+		Path path = Paths.get(configuredPath.trim());
+		if (!path.isAbsolute()) {
+			path = Paths.get(System.getProperty("user.dir")).resolve(path);
+		}
+		path = path.normalize();
+		if (!Files.isRegularFile(path)) {
+			throw new IOException("Network file does not exist: " + path);
+		}
+		return path;
+	}
+
+	static String sha256NetworkFile(String configuredPath) throws IOException {
+		MessageDigest digest;
+		try {
+			digest = MessageDigest.getInstance("SHA-256");
+		} catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException("SHA-256 is unavailable", e);
+		}
+		Path path = resolveNetworkPath(configuredPath);
+		try (InputStream input = Files.newInputStream(path)) {
+			byte[] buffer = new byte[64 * 1024];
+			int count;
+			while ((count = input.read(buffer)) >= 0) {
+				if (count > 0) digest.update(buffer, 0, count);
+			}
+		}
+		StringBuilder result = new StringBuilder(64);
+		for (byte value : digest.digest()) {
+			result.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+		}
+		return result.toString();
+	}
+
+	private static void putNetworkTopologyState(HashMap<String, Object> globalState)
+			throws IOException {
+		globalState.put(SNAPSHOT_FORMAT_VERSION_KEY, SNAPSHOT_FORMAT_VERSION);
+		globalState.put(CONNECTOR_SCHEMA_VERSION_KEY,
+				RoadContext.CONNECTOR_TOPOLOGY_SCHEMA_VERSION);
+		globalState.put(NETWORK_FILE_KEY, GlobalVariables.NETWORK_FILE);
+		globalState.put(NETWORK_SHA256_KEY,
+				sha256NetworkFile(GlobalVariables.NETWORK_FILE));
+		globalState.put(SWEPT_COLLISION_CHECK_KEY,
+				GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK);
 	}
 
 	public static class SimulationSnapshot {
@@ -548,6 +605,12 @@ public class SnapshotUtil {
 		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
 		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
 		putBackgroundTrafficState(globalState);
+		try {
+			putNetworkTopologyState(globalState);
+		} catch (IOException e) {
+			ContextCreator.logger.warn("Tick-0 snapshot cannot fingerprint the network: "
+					+ e.getMessage());
+		}
 		snapshot.globalState = globalState;
 
 		snapshot.vehicleSnapshots = new ArrayList<>();
@@ -602,8 +665,95 @@ public class SnapshotUtil {
 				&& sameIDs(snapshot.signalSnapshots, ContextCreator.getSignalContext().getIDList());
 	}
 
+	private static String currentTopologyMismatchReason(
+			HashMap<String, Object> globalState) throws IOException {
+		if (globalState == null
+				|| !globalState.containsKey(CONNECTOR_SCHEMA_VERSION_KEY)
+				|| !globalState.containsKey(NETWORK_SHA256_KEY)
+				|| !globalState.containsKey(SWEPT_COLLISION_CHECK_KEY)) {
+			return "snapshot predates topology fingerprints";
+		}
+		int savedSchema = toInt(globalState.get(CONNECTOR_SCHEMA_VERSION_KEY));
+		if (savedSchema != RoadContext.CONNECTOR_TOPOLOGY_SCHEMA_VERSION) {
+			return "connector schema " + savedSchema + " differs from runtime schema "
+					+ RoadContext.CONNECTOR_TOPOLOGY_SCHEMA_VERSION;
+		}
+		String savedPath = normalizedConfiguredPath(globalState.get(NETWORK_FILE_KEY));
+		String currentPath = normalizedConfiguredPath(GlobalVariables.NETWORK_FILE);
+		if (savedPath.isEmpty() || !savedPath.equals(currentPath)) {
+			return "configured network path differs";
+		}
+		String savedHash = String.valueOf(globalState.get(NETWORK_SHA256_KEY));
+		String currentHash = sha256NetworkFile(GlobalVariables.NETWORK_FILE);
+		if (!savedHash.equalsIgnoreCase(currentHash)) {
+			return "network SHA-256 differs";
+		}
+		boolean savedSweptCollision =
+				toBool(globalState.get(SWEPT_COLLISION_CHECK_KEY));
+		if (savedSweptCollision
+				!= GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+			return "intersection conflict configuration differs";
+		}
+		return null;
+	}
+
+	private static String normalizedConfiguredPath(Object path) {
+		return path == null ? "" : path.toString().trim().replace('\\', '/');
+	}
+
+	private static void prepareNetworkForFullReload(
+			HashMap<String, Object> globalState) throws IOException {
+		GlobalVariables.reloadNetworkConfig();
+		if (globalState == null) {
+			throw new IOException("Snapshot global state is unavailable");
+		}
+		if (globalState.containsKey(SNAPSHOT_FORMAT_VERSION_KEY)
+				&& toInt(globalState.get(SNAPSHOT_FORMAT_VERSION_KEY))
+						> SNAPSHOT_FORMAT_VERSION) {
+			throw new IOException("Snapshot format "
+					+ toInt(globalState.get(SNAPSHOT_FORMAT_VERSION_KEY))
+					+ " is newer than supported format " + SNAPSHOT_FORMAT_VERSION);
+		}
+		if (!globalState.containsKey(CONNECTOR_SCHEMA_VERSION_KEY)
+				|| !globalState.containsKey(NETWORK_SHA256_KEY)) {
+			ContextCreator.logger.warn("Legacy snapshot has no network fingerprint; "
+					+ "performing a full network rebuild without content validation.");
+			return;
+		}
+		int savedSchema = toInt(globalState.get(CONNECTOR_SCHEMA_VERSION_KEY));
+		if (savedSchema != RoadContext.CONNECTOR_TOPOLOGY_SCHEMA_VERSION) {
+			throw new IOException("Snapshot connector schema " + savedSchema
+					+ " is incompatible with runtime schema "
+					+ RoadContext.CONNECTOR_TOPOLOGY_SCHEMA_VERSION);
+		}
+		String savedPath = normalizedConfiguredPath(globalState.get(NETWORK_FILE_KEY));
+		String configuredPath = normalizedConfiguredPath(GlobalVariables.NETWORK_FILE);
+		if (!savedPath.isEmpty() && !savedPath.equals(configuredPath)) {
+			throw new IOException("Snapshot network path " + savedPath
+					+ " does not match restored Data.properties path " + configuredPath);
+		}
+		String savedHash = String.valueOf(globalState.get(NETWORK_SHA256_KEY));
+		String configuredHash = sha256NetworkFile(GlobalVariables.NETWORK_FILE);
+		if (!savedHash.equalsIgnoreCase(configuredHash)) {
+			throw new IOException("Network file SHA-256 does not match the snapshot: "
+					+ GlobalVariables.NETWORK_FILE);
+		}
+		if (globalState.containsKey(SWEPT_COLLISION_CHECK_KEY)
+				&& toBool(globalState.get(SWEPT_COLLISION_CHECK_KEY))
+						!= GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+			throw new IOException("Restored intersection conflict configuration "
+					+ "does not match the snapshot");
+		}
+	}
+
 	private static boolean canRestoreToCurrentFacilities(SimulationSnapshot snapshot) {
 		try {
+			String topologyMismatch =
+					currentTopologyMismatchReason(snapshot.globalState);
+			if (topologyMismatch != null) {
+				ContextCreator.logger.info("Fast load disabled: " + topologyMismatch);
+				return false;
+			}
 			return ContextCreator.getRoadContext() != null
 					&& ContextCreator.getLaneContext() != null
 					&& ContextCreator.getZoneContext() != null
@@ -826,6 +976,7 @@ public class SnapshotUtil {
 		globalState.put("zoneNum", ContextCreator.getZoneContext().ZONE_NUM);
 		globalState.put("hubIndexes", new ArrayList<Integer>(ContextCreator.getZoneContext().HUB_INDEXES));
 		putBackgroundTrafficState(globalState);
+		putNetworkTopologyState(globalState);
 
 		// 2. Collect all vehicle snapshots
 		ArrayList<HashMap<String, Object>> vehicleSnapshots = new ArrayList<>();
@@ -1051,6 +1202,7 @@ public class SnapshotUtil {
 			ContextCreator.logger.warn("Fast load requested but saved facilities do not match current contexts; "
 					+ "falling back to full network reload.");
 		}
+		prepareNetworkForFullReload(globalState);
 
 		boolean useSharedRestorePath = !Boolean.getBoolean("metsr.snapshot.legacyLoadRestore");
 		if (useSharedRestorePath) {
@@ -1664,6 +1816,12 @@ public class SnapshotUtil {
 			if (savedOrigID != null && !connector.getOrigID().equals(savedOrigID.toString())) {
 				throw new IllegalStateException("Saved connector ID does not match rebuilt topology for vehicle "
 						+ vehicle.getID());
+			}
+			if (vs.containsKey("connectorIntersectionID")
+					&& connector.getIntersectionID()
+							!= toInt(vs.get("connectorIntersectionID"))) {
+				throw new IllegalStateException("Saved connector intersection does not match "
+						+ "rebuilt topology for vehicle " + vehicle.getID());
 			}
 			Lane targetLane = ContextCreator.getLaneContext().get(
 					toInt(vs.get("connectorTargetLaneID")));

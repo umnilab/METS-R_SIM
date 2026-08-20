@@ -149,6 +149,35 @@ public class GlobalVariables {
 		BT_START_HOUR = loadIntConfig("BT_START_HOUR", 0);
 	}
 
+	/**
+	 * Re-read every setting that determines rebuilt network facilities or
+	 * connector conflict topology. Snapshot load calls this only on the full
+	 * rebuild path; fast restore deliberately keeps the already-built facilities.
+	 */
+	public static void reloadNetworkConfig() {
+		config = null;
+		ROADS_SHAPEFILE = loadConfig("ROADS_SHAPEFILE");
+		ROADS_CSV = loadConfig("ROADS_CSV");
+		LANES_SHAPEFILE = loadConfig("LANES_SHAPEFILE");
+		LANES_CSV = loadConfig("LANES_CSV");
+		NETWORK_FILE = loadConfig("NETWORK_FILE");
+		ZONES_SHAPEFILE = loadConfig("ZONES_SHAPEFILE");
+		ZONES_CSV = loadConfig("ZONES_CSV");
+		CHARGER_SHAPEFILE = loadConfig("CHARGER_SHAPEFILE");
+		CHARGER_CSV = loadConfig("CHARGER_CSV");
+		INITIAL_X = Double.valueOf(loadConfig("INITIAL_X"));
+		INITIAL_Y = Double.valueOf(loadConfig("INITIAL_Y"));
+		ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK =
+				loadBooleanConfig("ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK", true);
+		STREET_SPEED = Float.valueOf(loadConfig("STREET_SPEED"));
+		HIGHWAY_SPEED = Float.valueOf(loadConfig("HIGHWAY_SPEED"));
+		BRIDGE_SPEED = Float.valueOf(loadConfig("BRIDGE_SPEED"));
+		TUNNEL_SPEED = Float.valueOf(loadConfig("TUNNEL_SPEED"));
+		DRIVEWAY_SPEED = Float.valueOf(loadConfig("DRIVEWAY_SPEED"));
+		RAMP_SPEED = Float.valueOf(loadConfig("RAMP_SPEED"));
+		UTURN_SPEED = Float.valueOf(loadConfig("UTURN_SPEED"));
+	}
+
 	public static void restoreBackgroundTrafficConfig(String eventFile, String stdFile, int startHour) {
 		if (startHour < 0) {
 			throw new IllegalArgumentException("BT_START_HOUR must be non-negative: " + startHour);

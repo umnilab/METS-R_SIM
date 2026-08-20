@@ -41,6 +41,8 @@ import repast.simphony.space.gis.ShapefileLoader;
  **/
 
 public class RoadContext extends FacilityContext<Road> {
+	/** Bump when persisted connector identities or topology semantics change. */
+	public static final int CONNECTOR_TOPOLOGY_SCHEMA_VERSION = 1;
 	private static final double EARTH_RADIUS_METERS = 6371008.8;
 	private static final double INTERSECTION_CLEARANCE_MARGIN_METERS = 0.25;
 	private static final double SAME_CONNECTOR_HEADWAY_FACTOR = 1.2;
@@ -193,10 +195,13 @@ public class RoadContext extends FacilityContext<Road> {
 				new LinkedHashMap<Integer, ConnectorRoad>();
 		LinkedHashMap<String, ConnectorRoad> connectorsByOrigID =
 				new LinkedHashMap<String, ConnectorRoad>();
+		LinkedHashMap<String, ConnectorRoad> connectorsByAlias =
+				new LinkedHashMap<String, ConnectorRoad>();
 		LinkedHashMap<Integer, LinkedHashSet<ConnectorRoad>> mutableByIntersection =
 				new LinkedHashMap<Integer, LinkedHashSet<ConnectorRoad>>();
 		LinkedHashMap<Integer, Integer> intersectionByConnectorID =
 				new LinkedHashMap<Integer, Integer>();
+		int explicitConnectorCount = 0;
 
 		for (Junction junction : junctions) {
 			if (junction == null) continue;
@@ -218,13 +223,23 @@ public class RoadContext extends FacilityContext<Road> {
 					long movementKey = movementKey(sourceRoad.getID(), targetRoad.getID());
 					if (connectorsByMovement.containsKey(movementKey)) continue;
 
-					String connectorOrigID =
-							sourceRoad.getOrigID() + "_" + targetRoad.getOrigID();
+					ConnectorDefinition definition =
+							connectorDefinition(sourceRoad, targetRoad);
+					String connectorOrigID = definition.origID;
 					if (physicalOrigIDs.contains(connectorOrigID)) {
 						throw new IllegalStateException("Connector ID " + connectorOrigID
 								+ " collides with a physical road original ID");
 					}
-					ConnectorRoad displayCollision = connectorsByOrigID.get(connectorOrigID);
+					LinkedHashSet<String> usableAliases =
+							new LinkedHashSet<String>(definition.aliases);
+					for (String alias : new ArrayList<String>(usableAliases)) {
+						if (physicalOrigIDs.contains(alias) && !connectorOrigID.equals(alias)) {
+							ContextCreator.logger.warn("Ignoring connector alias " + alias
+									+ " because it collides with a physical road ID");
+							usableAliases.remove(alias);
+						}
+					}
+					ConnectorRoad displayCollision = connectorsByAlias.get(connectorOrigID);
 					if (displayCollision != null
 							&& displayCollision.getMovementKey() != movementKey) {
 						throw new IllegalStateException("Ambiguous connector ID "
@@ -238,14 +253,31 @@ public class RoadContext extends FacilityContext<Road> {
 					if (connector == null
 							|| connector.getSourceRoad() != sourceRoad
 							|| connector.getTargetRoad() != targetRoad
-							|| connector.getIntersectionID() != junction.getID()) {
+							|| connector.getIntersectionID() != junction.getID()
+							|| !connectorOrigID.equals(connector.getOrigID())
+							|| !usableAliases.equals(connector.getAliases())
+							|| definition.configuredControlType
+									!= connector.getConfiguredControlType()) {
 						connector = new ConnectorRoad(connectorInternalID(movementKey),
-								movementKey, sourceRoad, targetRoad, junction.getID(),
-								connectorPaths(sourceRoad, targetRoad));
+								movementKey, sourceRoad, targetRoad, junction.getID(), connectorOrigID,
+								usableAliases, definition.configuredControlType, definition.paths);
 					}
+					if (definition.loadedFromNetXML) explicitConnectorCount++;
 					connectorsByMovement.put(movementKey, connector);
 					connectorsByInternalID.put(connector.getID(), connector);
 					connectorsByOrigID.put(connectorOrigID, connector);
+					for (String alias : connector.getAliases()) {
+						ConnectorRoad aliasCollision = connectorsByAlias.get(alias);
+						if (aliasCollision != null && aliasCollision != connector) {
+							throw new IllegalStateException("Ambiguous connector alias " + alias
+									+ " for movements "
+									+ aliasCollision.getSourceRoad().getOrigID() + " -> "
+									+ aliasCollision.getTargetRoad().getOrigID() + " and "
+									+ sourceRoad.getOrigID() + " -> " + targetRoad.getOrigID());
+						}
+						connectorsByAlias.put(alias, connector);
+					}
+					connectorsByAlias.put(connectorOrigID, connector);
 					intersectionByConnectorID.put(connector.getID(), junction.getID());
 					mutableByIntersection.computeIfAbsent(junction.getID(),
 							id -> new LinkedHashSet<ConnectorRoad>()).add(connector);
@@ -279,12 +311,13 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 
 		this.connectorTopology = new ConnectorTopology(connectorsByMovement,
-				connectorsByInternalID, connectorsByOrigID, intersectionByConnectorID,
-				connectorsByIntersection, intersectionRuntimes);
+				connectorsByInternalID, connectorsByOrigID, connectorsByAlias,
+				intersectionByConnectorID, connectorsByIntersection, intersectionRuntimes);
 		rebuildActiveIntersectionIndexes();
 		ContextCreator.logger.info("Initialized " + connectorsByMovement.size()
 				+ " connector roads across " + connectorsByIntersection.size()
-				+ " intersections.");
+				+ " intersections; " + explicitConnectorCount
+				+ " use SUMO net.xml connector definitions.");
 		} finally {
 			this.connectorTopologyLock.writeLock().unlock();
 		}
@@ -308,7 +341,93 @@ public class RoadContext extends FacilityContext<Road> {
 		return ((long) sourceRoadID << 32) ^ (targetRoadID & 0xffffffffL);
 	}
 
-	private List<ConnectorRoad.ConnectorPath> connectorPaths(Road sourceRoad, Road targetRoad) {
+	private ConnectorDefinition connectorDefinition(Road sourceRoad, Road targetRoad) {
+		String inferredID = sourceRoad.getOrigID() + "_" + targetRoad.getOrigID();
+		ArrayList<SumoXML.ConnectorPathData> explicitData =
+				new ArrayList<SumoXML.ConnectorPathData>();
+		String networkFile = GlobalVariables.NETWORK_FILE;
+		if (networkFile != null && networkFile.toLowerCase().endsWith(".xml")) {
+			explicitData.addAll(SumoXML.getData(networkFile).getConnectorPaths(
+					sourceRoad.getID(), targetRoad.getID()));
+		}
+		if (explicitData.isEmpty()) {
+			LinkedHashSet<String> aliases = new LinkedHashSet<String>();
+			aliases.add(inferredID);
+			return new ConnectorDefinition(inferredID, aliases,
+					inferredConnectorPaths(sourceRoad, targetRoad), false);
+		}
+
+		ArrayList<ConnectorRoad.ConnectorPath> paths =
+				new ArrayList<ConnectorRoad.ConnectorPath>();
+		LinkedHashSet<String> aliases = new LinkedHashSet<String>();
+		LinkedHashSet<String> explicitConnectorIDs = new LinkedHashSet<String>();
+		int configuredControlType = Road.NONE_OF_THE_ABOVE;
+		aliases.add(inferredID);
+		for (SumoXML.ConnectorPathData data : explicitData) {
+			Lane sourceLane = ContextCreator.getLaneContext().get(data.getSourceLaneID());
+			Lane targetLane = ContextCreator.getLaneContext().get(data.getTargetLaneID());
+			if (sourceLane == null || targetLane == null
+					|| sourceLane.getRoad() != sourceRoad
+					|| targetLane.getRoad() != targetRoad) continue;
+			ArrayList<Coordinate> line = data.hasExplicitGeometry()
+					? new ArrayList<Coordinate>(data.getCenterLine())
+					: inferredConnectorLine(sourceLane, targetLane);
+			paths.add(new ConnectorRoad.ConnectorPath(sourceLane, targetLane, line,
+					data.getViaLaneIDs(), data.getParameters(), data.getDirection(),
+					data.getState(), data.getTrafficLightID(), data.getLinkIndex(),
+					data.getDeclaredLength(), data.getSpeed(), data.hasExplicitGeometry()));
+			aliases.addAll(data.getViaLaneIDs());
+			String connectorID = normalizedConnectorMetadata(
+					data.getParameter("metsr.connectorId"));
+			if (connectorID != null) explicitConnectorIDs.add(connectorID);
+			String carlaSegmentID = normalizedConnectorMetadata(
+					data.getParameter("carla.segmentId"));
+			if (carlaSegmentID != null) aliases.add(carlaSegmentID);
+			String controlType = normalizedConnectorMetadata(
+					data.getParameter("metsr.controlType"));
+			if (controlType != null && ("COSIM".equalsIgnoreCase(controlType)
+					|| Integer.toString(Road.COSIM).equals(controlType))) {
+				configuredControlType = Road.COSIM;
+			}
+		}
+		if (paths.isEmpty()) {
+			return new ConnectorDefinition(inferredID, aliases,
+					inferredConnectorPaths(sourceRoad, targetRoad), false);
+		}
+		aliases.addAll(explicitConnectorIDs);
+		String connectorID = explicitConnectorIDs.size() == 1
+				? explicitConnectorIDs.iterator().next() : inferredID;
+		if (explicitConnectorIDs.size() > 1) {
+			ContextCreator.logger.warn("SUMO movement " + sourceRoad.getOrigID()
+					+ " -> " + targetRoad.getOrigID()
+					+ " declares multiple metsr.connectorId values "
+					+ explicitConnectorIDs + "; using " + inferredID
+					+ " as the grouped connector ID and retaining all values as aliases.");
+		}
+		aliases.add(connectorID);
+		return new ConnectorDefinition(connectorID, aliases, paths,
+				configuredControlType, true);
+	}
+
+	private String normalizedConnectorMetadata(String value) {
+		if (value == null) return null;
+		String normalized = value.trim();
+		return normalized.isEmpty() ? null : normalized;
+	}
+
+	private ArrayList<Coordinate> inferredConnectorLine(Lane sourceLane,
+			Lane targetLane) {
+		ArrayList<Coordinate> line = new ArrayList<Coordinate>();
+		addDistinctCoordinate(line, sourceLane.getEndCoord());
+		for (Coordinate coordinate : sourceLane.getTurningCoords(targetLane.getID())) {
+			addDistinctCoordinate(line, coordinate);
+		}
+		addDistinctCoordinate(line, targetLane.getStartCoord());
+		return line;
+	}
+
+	private List<ConnectorRoad.ConnectorPath> inferredConnectorPaths(
+			Road sourceRoad, Road targetRoad) {
 		ArrayList<ConnectorRoad.ConnectorPath> paths =
 				new ArrayList<ConnectorRoad.ConnectorPath>();
 		ArrayList<Lane> sourceLanes = new ArrayList<Lane>(sourceRoad.getLanes());
@@ -336,6 +455,31 @@ public class RoadContext extends FacilityContext<Road> {
 					targetRoad.firstLane(), fallback));
 		}
 		return paths;
+	}
+
+	private static final class ConnectorDefinition {
+		final String origID;
+		final Set<String> aliases;
+		final List<ConnectorRoad.ConnectorPath> paths;
+		final int configuredControlType;
+		final boolean loadedFromNetXML;
+
+		ConnectorDefinition(String origID, Set<String> aliases,
+				List<ConnectorRoad.ConnectorPath> paths, boolean loadedFromNetXML) {
+			this(origID, aliases, paths, Road.NONE_OF_THE_ABOVE, loadedFromNetXML);
+		}
+
+		ConnectorDefinition(String origID, Set<String> aliases,
+				List<ConnectorRoad.ConnectorPath> paths, int configuredControlType,
+				boolean loadedFromNetXML) {
+			this.origID = origID;
+			this.aliases = Collections.unmodifiableSet(
+					new LinkedHashSet<String>(aliases));
+			this.paths = Collections.unmodifiableList(
+					new ArrayList<ConnectorRoad.ConnectorPath>(paths));
+			this.configuredControlType = configuredControlType;
+			this.loadedFromNetXML = loadedFromNetXML;
+		}
 	}
 
 	private void addDistinctCoordinate(ArrayList<Coordinate> line, Coordinate coordinate) {
@@ -464,7 +608,7 @@ public class RoadContext extends FacilityContext<Road> {
 
 	public ConnectorRoad getConnector(String connectorOrigID) {
 		if (connectorOrigID == null) return null;
-		return this.connectorTopology.connectorsByOrigID.get(connectorOrigID);
+		return this.connectorTopology.connectorsByAlias.get(connectorOrigID);
 	}
 
 	public Road getQueryableRoad(String origID) {
@@ -573,6 +717,47 @@ public class RoadContext extends FacilityContext<Road> {
 		if (admission == IntersectionRuntime.BLOCKED) return false;
 		this.activeIntersectionIDs.put(connector.getIntersectionID(), Boolean.TRUE);
 		return true;
+		} finally {
+			this.connectorTopologyLock.readLock().unlock();
+		}
+	}
+
+	/**
+	 * Return an approaching vehicle on a conflicting SUMO-major movement when the
+	 * requested movement is SUMO-minor. Occupied connectors are handled separately
+	 * by tryEnterConnector; this check supplies the advance yield behavior.
+	 */
+	public Vehicle priorityMovementBlocker(ConnectorRoad connector, Vehicle vehicle,
+			ConnectorRoad.MovementPriority movementPriority) {
+		if (!GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
+				|| connector == null || vehicle == null
+				|| movementPriority != ConnectorRoad.MovementPriority.MINOR) {
+			return null;
+		}
+		this.connectorTopologyLock.readLock().lock();
+		try {
+			for (int conflictingID : connector.getConflictingConnectorIDs()) {
+				ConnectorRoad other = this.connectorTopology.connectorsByInternalID
+						.get(conflictingID);
+				if (other == null || !connector.conflictsWith(other)) continue;
+				Road sourceRoad = other.getSourceRoad();
+				Vehicle candidate = sourceRoad.prevFirstVehicle();
+				if (candidate == null || candidate == vehicle
+						|| candidate.getID() == vehicle.getID()
+						|| !candidate.wasPreviouslyOnRoad(sourceRoad)
+						|| !candidate.aboutToEnterRoad(other.getTargetRoad())) {
+					continue;
+				}
+				ConnectorRoad.MovementPriority otherPriority =
+						other.getMovementPriority(candidate.getLane(), null);
+				if (otherPriority == ConnectorRoad.MovementPriority.UNKNOWN) {
+					otherPriority = other.getMovementPriority();
+				}
+				if (otherPriority == ConnectorRoad.MovementPriority.MAJOR) {
+					return candidate;
+				}
+			}
+			return null;
 		} finally {
 			this.connectorTopologyLock.readLock().unlock();
 		}
@@ -1044,6 +1229,7 @@ public class RoadContext extends FacilityContext<Road> {
 		final Map<Long, ConnectorRoad> connectorsByMovement;
 		final Map<Integer, ConnectorRoad> connectorsByInternalID;
 		final Map<String, ConnectorRoad> connectorsByOrigID;
+		final Map<String, ConnectorRoad> connectorsByAlias;
 		final Map<Integer, Integer> intersectionByConnectorID;
 		final Map<Integer, Set<ConnectorRoad>> connectorsByIntersectionID;
 		final Map<Integer, IntersectionRuntime> intersectionRuntimes;
@@ -1051,6 +1237,7 @@ public class RoadContext extends FacilityContext<Road> {
 		ConnectorTopology(Map<Long, ConnectorRoad> connectorsByMovement,
 				Map<Integer, ConnectorRoad> connectorsByInternalID,
 				Map<String, ConnectorRoad> connectorsByOrigID,
+				Map<String, ConnectorRoad> connectorsByAlias,
 				Map<Integer, Integer> intersectionByConnectorID,
 				Map<Integer, Set<ConnectorRoad>> connectorsByIntersectionID,
 				Map<Integer, IntersectionRuntime> intersectionRuntimes) {
@@ -1060,6 +1247,8 @@ public class RoadContext extends FacilityContext<Road> {
 					new LinkedHashMap<Integer, ConnectorRoad>(connectorsByInternalID));
 			this.connectorsByOrigID = Collections.unmodifiableMap(
 					new LinkedHashMap<String, ConnectorRoad>(connectorsByOrigID));
+			this.connectorsByAlias = Collections.unmodifiableMap(
+					new LinkedHashMap<String, ConnectorRoad>(connectorsByAlias));
 			this.intersectionByConnectorID = Collections.unmodifiableMap(
 					new LinkedHashMap<Integer, Integer>(intersectionByConnectorID));
 			this.connectorsByIntersectionID = Collections.unmodifiableMap(
@@ -1074,6 +1263,7 @@ public class RoadContext extends FacilityContext<Road> {
 			return new ConnectorTopology(
 					Collections.<Long, ConnectorRoad>emptyMap(),
 					Collections.<Integer, ConnectorRoad>emptyMap(),
+					Collections.<String, ConnectorRoad>emptyMap(),
 					Collections.<String, ConnectorRoad>emptyMap(),
 					Collections.<Integer, Integer>emptyMap(),
 					Collections.<Integer, Set<ConnectorRoad>>emptyMap(),

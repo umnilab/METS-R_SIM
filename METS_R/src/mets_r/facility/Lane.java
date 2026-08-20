@@ -1,6 +1,7 @@
 package mets_r.facility;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
@@ -35,6 +36,7 @@ public class Lane {
 	
 	private HashMap<Integer, ArrayList<Coordinate>> turningCoords;
 	private HashMap<Integer, Double> turningDists;
+	private HashSet<Integer> explicitTurningTargets;
 	
 	private int road; // ID of the road who contains this lane
 	
@@ -55,6 +57,7 @@ public class Lane {
 		this.downStreamLanes = new ArrayList<Integer>();
 		this.turningCoords = new HashMap<Integer, ArrayList<Coordinate>>();
 		this.turningDists = new HashMap<Integer, Double>();
+		this.explicitTurningTargets = new HashSet<Integer>();
 	}
 
 	public int getID() {
@@ -122,6 +125,18 @@ public class Lane {
 	
 	public void setTurningCoords(int targetLaneID, ArrayList<Coordinate> turningCoords) {
 		this.turningCoords.put(targetLaneID, turningCoords);
+		this.explicitTurningTargets.remove(targetLaneID);
+	}
+
+	/** Store connector geometry loaded directly from the network source. */
+	public void setExplicitTurningCoords(int targetLaneID,
+			ArrayList<Coordinate> turningCoords) {
+		this.turningCoords.put(targetLaneID, turningCoords);
+		this.explicitTurningTargets.add(targetLaneID);
+	}
+
+	public boolean hasExplicitTurningCoords(int targetLaneID) {
+		return this.explicitTurningTargets.contains(targetLaneID);
 	}
 	
 	public ArrayList<ArrayList<Double>> getXYList(){

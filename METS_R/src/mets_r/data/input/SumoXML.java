@@ -14,8 +14,10 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParser;
@@ -53,6 +55,10 @@ public class SumoXML {
 	private static final double MIN_CONTROL_POINT_SEPARATION_SQUARED =
 			MIN_CONTROL_POINT_SEPARATION_METERS * MIN_CONTROL_POINT_SEPARATION_METERS;
 
+	private static long connectorPathKey(int sourceRoadID, int targetRoadID) {
+		return ((long) sourceRoadID << 32) ^ (targetRoadID & 0xffffffffL);
+	}
+
 	public double x_offs = 0;
 	public double y_offs = 0;
 	public ArrayList<Double> boundary;
@@ -63,6 +69,123 @@ public class SumoXML {
 	public MathTransform transform;
 	
 	public static SumoXML data = null;
+
+	private static ArrayList<Coordinate> copyCoordinates(List<Coordinate> source) {
+		ArrayList<Coordinate> result = new ArrayList<Coordinate>();
+		if (source == null) return result;
+		for (Coordinate coordinate : source) {
+			if (coordinate == null) continue;
+			result.add(new Coordinate(coordinate.x, coordinate.y,
+					Double.isNaN(coordinate.z) ? 0.0 : coordinate.z));
+		}
+		return result;
+	}
+
+	/** One SUMO lane belonging to an {@code edge function="internal"}. */
+	public static final class InternalLaneData {
+		private final String edgeID;
+		private final String laneID;
+		private final double declaredLength;
+		private final double speed;
+		private final List<Coordinate> shape;
+
+		InternalLaneData(String edgeID, String laneID, double declaredLength,
+				double speed, List<Coordinate> shape) {
+			this.edgeID = edgeID;
+			this.laneID = laneID;
+			this.declaredLength = declaredLength;
+			this.speed = speed;
+			this.shape = Collections.unmodifiableList(copyCoordinates(shape));
+		}
+
+		public String getEdgeID() { return this.edgeID; }
+		public String getLaneID() { return this.laneID; }
+		public double getDeclaredLength() { return this.declaredLength; }
+		public double getSpeed() { return this.speed; }
+		public List<Coordinate> getShape() {
+			return Collections.unmodifiableList(copyCoordinates(this.shape));
+		}
+	}
+
+	/**
+	 * Explicit lane-to-lane connector definition recovered from a SUMO
+	 * {@code connection} and its internal {@code via} lane chain.
+	 */
+	public static final class ConnectorPathData {
+		private final int sourceRoadID;
+		private final int targetRoadID;
+		private final int sourceLaneID;
+		private final int targetLaneID;
+		private final int junctionID;
+		private final String sourceRoadOrigID;
+		private final String targetRoadOrigID;
+		private final String sourceLaneOrigID;
+		private final String targetLaneOrigID;
+		private final List<String> viaLaneIDs;
+		private final List<Coordinate> centerLine;
+		private final Map<String, String> parameters;
+		private final String direction;
+		private final String state;
+		private final String trafficLightID;
+		private final Integer linkIndex;
+		private final double declaredLength;
+		private final double speed;
+		private final boolean explicitGeometry;
+
+		ConnectorPathData(int sourceRoadID, int targetRoadID, int sourceLaneID,
+				int targetLaneID, int junctionID, String sourceRoadOrigID,
+				String targetRoadOrigID, String sourceLaneOrigID,
+				String targetLaneOrigID, List<String> viaLaneIDs,
+				List<Coordinate> centerLine, Map<String, String> parameters,
+				String direction, String state, String trafficLightID,
+				Integer linkIndex, double declaredLength, double speed,
+				boolean explicitGeometry) {
+			this.sourceRoadID = sourceRoadID;
+			this.targetRoadID = targetRoadID;
+			this.sourceLaneID = sourceLaneID;
+			this.targetLaneID = targetLaneID;
+			this.junctionID = junctionID;
+			this.sourceRoadOrigID = sourceRoadOrigID;
+			this.targetRoadOrigID = targetRoadOrigID;
+			this.sourceLaneOrigID = sourceLaneOrigID;
+			this.targetLaneOrigID = targetLaneOrigID;
+			this.viaLaneIDs = Collections.unmodifiableList(
+					new ArrayList<String>(viaLaneIDs));
+			this.centerLine = Collections.unmodifiableList(copyCoordinates(centerLine));
+			this.parameters = Collections.unmodifiableMap(
+					new LinkedHashMap<String, String>(parameters));
+			this.direction = direction;
+			this.state = state;
+			this.trafficLightID = trafficLightID;
+			this.linkIndex = linkIndex;
+			this.declaredLength = declaredLength;
+			this.speed = speed;
+			this.explicitGeometry = explicitGeometry;
+		}
+
+		public int getSourceRoadID() { return this.sourceRoadID; }
+		public int getTargetRoadID() { return this.targetRoadID; }
+		public int getSourceLaneID() { return this.sourceLaneID; }
+		public int getTargetLaneID() { return this.targetLaneID; }
+		public int getJunctionID() { return this.junctionID; }
+		public String getSourceRoadOrigID() { return this.sourceRoadOrigID; }
+		public String getTargetRoadOrigID() { return this.targetRoadOrigID; }
+		public String getSourceLaneOrigID() { return this.sourceLaneOrigID; }
+		public String getTargetLaneOrigID() { return this.targetLaneOrigID; }
+		public List<String> getViaLaneIDs() { return this.viaLaneIDs; }
+		public List<Coordinate> getCenterLine() {
+			return Collections.unmodifiableList(copyCoordinates(this.centerLine));
+		}
+		public Map<String, String> getParameters() { return this.parameters; }
+		public String getParameter(String key) { return this.parameters.get(key); }
+		public String getDirection() { return this.direction; }
+		public String getState() { return this.state; }
+		public String getTrafficLightID() { return this.trafficLightID; }
+		public Integer getLinkIndex() { return this.linkIndex; }
+		public double getDeclaredLength() { return this.declaredLength; }
+		public double getSpeed() { return this.speed; }
+		public boolean hasExplicitGeometry() { return this.explicitGeometry; }
+	}
 	
 	public SumoXML(String xml_file) {
 		
@@ -116,6 +239,19 @@ public class SumoXML {
 	public List<List<Integer>>  getRoadConnection(int junction_id) {
 		return this.handler.getRoadConnection(junction_id);
 	}
+
+	public Map<String, InternalLaneData> getInternalLanes() {
+		return this.handler.getInternalLanes();
+	}
+
+	public List<ConnectorPathData> getConnectorPaths() {
+		return this.handler.getConnectorPaths();
+	}
+
+	public List<ConnectorPathData> getConnectorPaths(int sourceRoadID,
+			int targetRoadID) {
+		return this.handler.getConnectorPaths(sourceRoadID, targetRoadID);
+	}
 	
 	private class SumoXMLHandler extends DefaultHandler{
 		double x_offs = 0;
@@ -152,6 +288,11 @@ public class SumoXML {
 		LinkedHashMap<String, String> internalFromLaneConnections;  
 		LinkedHashMap<String, String> internalToLaneConnections; 
 		LinkedHashMap<String, List<String>> internalFromToLaneConnections;
+		LinkedHashMap<String, InternalLaneData> internalLanes;
+		ArrayList<RawConnection> rawConnections;
+		ArrayList<ConnectorPathData> connectorPaths;
+		Map<Long, List<ConnectorPathData>> connectorPathsByMovement;
+		RawConnection currentConnection;
 		
 		Road currentRoad;
 		Junction currentJunction;
@@ -190,6 +331,48 @@ public class SumoXML {
 		public LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>> getSignal() {return signals;}
 		public LinkedHashMap<Integer, List<List<Integer>>>  getRoadConnection() {return roadConnections;}
 		public List<List<Integer>>  getRoadConnection(int junction_id) {return roadConnections.get(junction_id);}
+		public Map<String, InternalLaneData> getInternalLanes() {
+			return Collections.unmodifiableMap(
+					new LinkedHashMap<String, InternalLaneData>(internalLanes));
+		}
+		public List<ConnectorPathData> getConnectorPaths() {
+			return Collections.unmodifiableList(
+					new ArrayList<ConnectorPathData>(connectorPaths));
+		}
+		public List<ConnectorPathData> getConnectorPaths(int sourceRoadID,
+				int targetRoadID) {
+			List<ConnectorPathData> paths = connectorPathsByMovement.get(
+					connectorPathKey(sourceRoadID, targetRoadID));
+			return paths == null ? Collections.<ConnectorPathData>emptyList() : paths;
+		}
+
+		private class RawConnection {
+			final String fromRoadID;
+			final String toRoadID;
+			final String fromLaneID;
+			final String toLaneID;
+			final String viaLaneID;
+			final String direction;
+			final String state;
+			final String trafficLightID;
+			final Integer linkIndex;
+			final LinkedHashMap<String, String> parameters =
+					new LinkedHashMap<String, String>();
+
+			RawConnection(Attributes attributes) {
+				this.fromRoadID = attributes.getValue("from");
+				this.toRoadID = attributes.getValue("to");
+				this.fromLaneID = this.fromRoadID + "_" + attributes.getValue("fromLane");
+				this.toLaneID = this.toRoadID + "_" + attributes.getValue("toLane");
+				this.viaLaneID = attributes.getValue("via");
+				this.direction = attributes.getValue("dir");
+				this.state = attributes.getValue("state");
+				this.trafficLightID = attributes.getValue("tl");
+				String rawLinkIndex = attributes.getValue("linkIndex");
+				this.linkIndex = rawLinkIndex == null || rawLinkIndex.trim().isEmpty()
+						? null : Integer.valueOf(rawLinkIndex);
+			}
+		}
 		
 		public int generateLaneID(int roadID, String strLaneID) {
 			//translate string lane ID to integer one
@@ -216,13 +399,14 @@ public class SumoXML {
 		}
 		
 		public int deduceJunctionType(String junctionType) {
+			if (junctionType == null) return Junction.NoControl;
 			switch(junctionType) {
 				case "traffic_light":
 					return Junction.StaticSignal;
 				case "rail_crossing":
 					return Junction.StopSign;
 				case "priority":
-					return Junction.Yield;
+					return Junction.Priority;
 				default:
 					return Junction.NoControl;
 			}
@@ -656,6 +840,198 @@ public class SumoXML {
 			}
 			return null;
 		}
+
+		private double attributeDouble(Attributes attributes, String name,
+				double defaultValue) {
+			String value = attributes.getValue(name);
+			return value == null || value.trim().isEmpty()
+					? defaultValue : Double.parseDouble(value);
+		}
+
+		private ArrayList<Coordinate> parseInternalLaneShape(Attributes attributes) {
+			ArrayList<Coordinate> parsed = new ArrayList<Coordinate>();
+			String laneShape = attributes.getValue("shape");
+			if (laneShape == null || laneShape.trim().isEmpty()) return parsed;
+			for (String oneCoord : laneShape.trim().split(" +")) {
+				String[] parts = oneCoord.split(",");
+				Coordinate coordinate = new Coordinate(
+						Double.parseDouble(parts[0]) - x_offs,
+						Double.parseDouble(parts[1]) - y_offs,
+						parts.length > 2 ? Double.parseDouble(parts[2]) : 0.0);
+				parsed.add(coordinate);
+			}
+			String laneID = attributes.getValue("id");
+			parsed = cleanLaneControlPoints(parsed, laneID);
+			for (Coordinate coordinate : parsed) {
+				try {
+					JTS.transform(coordinate, coordinate, transform);
+				} catch (TransformException e) {
+					throw new IllegalArgumentException(
+							"Failed to transform SUMO internal lane " + laneID, e);
+				}
+				if (!Double.isFinite(coordinate.x) || !Double.isFinite(coordinate.y)
+						|| !Double.isFinite(coordinate.z)) {
+					throw new IllegalArgumentException("SUMO internal lane " + laneID
+							+ " transformed to a non-finite coordinate");
+				}
+			}
+			return cleanTransformedLaneControlPoints(parsed, laneID);
+		}
+
+		private void addDistinctConnectorCoordinate(ArrayList<Coordinate> line,
+				Coordinate coordinate) {
+			if (coordinate == null) return;
+			Coordinate copy = copyCoordinate(coordinate);
+			if (!line.isEmpty() && geographicDistanceMeters(line.get(line.size() - 1), copy)
+					<= MIN_CONTROL_POINT_SEPARATION_METERS) {
+				return;
+			}
+			line.add(copy);
+		}
+
+		private double connectorLineDistance(List<Coordinate> line) {
+			double distance = 0.0;
+			for (int i = 0; i < line.size() - 1; i++) {
+				double horizontal = geographicDistanceMeters(line.get(i), line.get(i + 1));
+				double dz = zOrZero(line.get(i + 1)) - zOrZero(line.get(i));
+				distance += Math.sqrt(horizontal * horizontal + dz * dz);
+			}
+			return distance;
+		}
+
+		private boolean resolveViaChain(String internalLaneID, String targetLaneID,
+				Set<String> visited, ArrayList<String> result) {
+			if (internalLaneID == null || internalLaneID.trim().isEmpty()
+					|| !internalLanes.containsKey(internalLaneID)
+					|| !visited.add(internalLaneID)) return false;
+			result.add(internalLaneID);
+
+			for (RawConnection connection : rawConnections) {
+				if (!internalLaneID.equals(connection.fromLaneID)
+						|| !targetLaneID.equals(connection.toLaneID)) continue;
+				if (connection.viaLaneID == null
+						|| connection.viaLaneID.trim().isEmpty()) return true;
+				if (resolveViaChain(connection.viaLaneID, targetLaneID,
+						visited, result)) return true;
+			}
+
+			for (RawConnection connection : rawConnections) {
+				if (!internalLaneID.equals(connection.fromLaneID)) continue;
+				String nextInternal = connection.viaLaneID;
+				if ((nextInternal == null || nextInternal.trim().isEmpty())
+						&& Boolean.TRUE.equals(isInternalRoadMap.get(connection.toRoadID))) {
+					nextInternal = connection.toLaneID;
+				}
+				if (resolveViaChain(nextInternal, targetLaneID, visited, result)) return true;
+			}
+
+			result.remove(result.size() - 1);
+			visited.remove(internalLaneID);
+			return false;
+		}
+
+		private ArrayList<String> resolvedViaLaneIDs(RawConnection root) {
+			ArrayList<String> result = new ArrayList<String>();
+			if (root.viaLaneID == null || root.viaLaneID.trim().isEmpty()) return result;
+			if (!resolveViaChain(root.viaLaneID, root.toLaneID,
+					new LinkedHashSet<String>(), result)) {
+				result.clear();
+				if (internalLanes.containsKey(root.viaLaneID)) result.add(root.viaLaneID);
+			}
+			return result;
+		}
+
+		private void rebuildConnectorPathIndex() {
+			LinkedHashMap<Long, ArrayList<ConnectorPathData>> mutableIndex =
+					new LinkedHashMap<Long, ArrayList<ConnectorPathData>>();
+			for (ConnectorPathData path : connectorPaths) {
+				long movementKey = connectorPathKey(
+						path.getSourceRoadID(), path.getTargetRoadID());
+				mutableIndex.computeIfAbsent(movementKey,
+						key -> new ArrayList<ConnectorPathData>()).add(path);
+			}
+			LinkedHashMap<Long, List<ConnectorPathData>> immutableIndex =
+					new LinkedHashMap<Long, List<ConnectorPathData>>();
+			for (Map.Entry<Long, ArrayList<ConnectorPathData>> entry
+					: mutableIndex.entrySet()) {
+				immutableIndex.put(entry.getKey(),
+						Collections.unmodifiableList(entry.getValue()));
+			}
+			connectorPathsByMovement = Collections.unmodifiableMap(immutableIndex);
+		}
+
+		private void buildExplicitConnectorPaths() {
+			connectorPaths.clear();
+			LinkedHashSet<String> seen = new LinkedHashSet<String>();
+			int explicitGeometryCount = 0;
+			for (RawConnection root : rawConnections) {
+				if (Boolean.TRUE.equals(isInternalRoadMap.get(root.fromRoadID))
+						|| Boolean.TRUE.equals(isInternalRoadMap.get(root.toRoadID))) continue;
+				Integer sourceRoadID = roadIDMap.get(root.fromRoadID);
+				Integer targetRoadID = roadIDMap.get(root.toRoadID);
+				Integer sourceLaneID = laneIDMap.get(root.fromLaneID);
+				Integer targetLaneID = laneIDMap.get(root.toLaneID);
+				if (sourceRoadID == null || targetRoadID == null
+						|| sourceLaneID == null || targetLaneID == null) continue;
+				String key = root.fromLaneID + "\u0000" + root.toLaneID
+						+ "\u0000" + (root.viaLaneID == null ? "" : root.viaLaneID);
+				if (!seen.add(key)) continue;
+
+				Lane sourceLane = lanes.get(sourceLaneID);
+				Lane targetLane = lanes.get(targetLaneID);
+				if (sourceLane == null || targetLane == null) continue;
+				ArrayList<String> viaLaneIDs = resolvedViaLaneIDs(root);
+				ArrayList<Coordinate> centerLine = new ArrayList<Coordinate>();
+				addDistinctConnectorCoordinate(centerLine, sourceLane.getEndCoord());
+				double declaredLength = 0.0;
+				boolean hasDeclaredLength = false;
+				double speed = Double.POSITIVE_INFINITY;
+				boolean explicitGeometry = false;
+				for (String viaLaneID : viaLaneIDs) {
+					InternalLaneData internalLane = internalLanes.get(viaLaneID);
+					if (internalLane == null) continue;
+					List<Coordinate> shape = internalLane.getShape();
+					if (shape.size() >= 2) explicitGeometry = true;
+					for (Coordinate coordinate : shape) {
+						addDistinctConnectorCoordinate(centerLine, coordinate);
+					}
+					if (Double.isFinite(internalLane.getDeclaredLength())
+							&& internalLane.getDeclaredLength() >= 0.0) {
+						declaredLength += internalLane.getDeclaredLength();
+						hasDeclaredLength = true;
+					}
+					if (Double.isFinite(internalLane.getSpeed())
+							&& internalLane.getSpeed() >= 0.0) {
+						speed = Math.min(speed, internalLane.getSpeed());
+					}
+				}
+				addDistinctConnectorCoordinate(centerLine, targetLane.getStartCoord());
+				if (centerLine.size() < 2) continue;
+
+				String junctionOrigID = incLaneJunctionMap.get(root.fromLaneID);
+				Integer junctionID = junctionIDMap.get(junctionOrigID);
+				ConnectorPathData path = new ConnectorPathData(
+						sourceRoadID, targetRoadID, sourceLaneID, targetLaneID,
+						junctionID == null ? -1 : junctionID.intValue(),
+						root.fromRoadID, root.toRoadID, root.fromLaneID,
+						root.toLaneID, viaLaneIDs, centerLine, root.parameters,
+						root.direction, root.state, root.trafficLightID,
+						root.linkIndex, hasDeclaredLength ? declaredLength : Double.NaN,
+						Double.isFinite(speed) ? speed : Double.NaN, explicitGeometry);
+				connectorPaths.add(path);
+				if (explicitGeometry) {
+					sourceLane.setExplicitTurningCoords(targetLaneID,
+							new ArrayList<Coordinate>(centerLine));
+					sourceLane.setTurningDist(targetLaneID,
+							connectorLineDistance(centerLine));
+					explicitGeometryCount++;
+				}
+			}
+			rebuildConnectorPathIndex();
+			ContextCreator.logger.info("Loaded " + connectorPaths.size()
+					+ " SUMO connector paths; " + explicitGeometryCount
+					+ " use explicit internal-lane geometry.");
+		}
 		
 		@Override
 		public void startDocument() {
@@ -669,6 +1045,11 @@ public class SumoXML {
 			internalFromLaneConnections = new LinkedHashMap<String, String>();
 			internalToLaneConnections = new LinkedHashMap<String, String>();
 			internalFromToLaneConnections = new LinkedHashMap<String, List<String>>();
+			internalLanes = new LinkedHashMap<String, InternalLaneData>();
+			rawConnections = new ArrayList<RawConnection>();
+			connectorPaths = new ArrayList<ConnectorPathData>();
+			connectorPathsByMovement = Collections.emptyMap();
+			currentConnection = null;
 			
 			roadLane = new LinkedHashMap<Integer, List<Integer>>();
 			signals = new LinkedHashMap<Integer, LinkedHashMap<Integer, Signal>>();
@@ -800,7 +1181,7 @@ public class SumoXML {
 						}
 				    }
 					    currentLane.setCoords(coords);
-					    
+
 					    intLaneJunctionMap.put(attributes.getValue("id"), currentFromJunctionID);
 					    incLaneJunctionMap.put(attributes.getValue("id"), currentToJunctionID);
 					    
@@ -813,12 +1194,18 @@ public class SumoXML {
 					    nLane++;
 					    lanes.put(currentLane.getID(), currentLane);
 					    currentRoad.addLane(currentLane, 0); // Add lane to the road, lane from the rightmost to the centeriod.
-					}
-				    
+				}
+
 				}
 				if(inInternalRoad) {
-					laneRoadMap.put(attributes.getValue("id"), currentRoadID);
-					isInternalLaneMap.put(attributes.getValue("id"), true);
+					String internalLaneID = attributes.getValue("id");
+					laneRoadMap.put(internalLaneID, currentRoadID);
+					isInternalLaneMap.put(internalLaneID, true);
+					internalLanes.put(internalLaneID, new InternalLaneData(
+							currentRoadID, internalLaneID,
+							attributeDouble(attributes, "length", Double.NaN),
+							attributeDouble(attributes, "speed", Double.NaN),
+							parseInternalLaneShape(attributes)));
 				}
 			}
 			
@@ -829,7 +1216,6 @@ public class SumoXML {
 					// Generate specific type of junction
 					currentJunction = new Junction(junction_id);
 					int junction_type = deduceJunctionType(attributes.getValue("type"));
-					currentJunction.setControlType(junction_id);
 					currentJunction.setControlType(junction_type);
 					
 			Coordinate coord = new Coordinate();
@@ -878,6 +1264,7 @@ public class SumoXML {
 			
 			// handle the connection, note SUMO can include repetitive road connection to encode lane connection
 			if (qName.equalsIgnoreCase("connection")) {
+				currentConnection = new RawConnection(attributes);
 				String from_road = attributes.getValue("from");
 				String to_road = attributes.getValue("to");
 
@@ -943,6 +1330,12 @@ public class SumoXML {
 				}
 						
 			}
+
+			if (qName.equalsIgnoreCase("param") && currentConnection != null) {
+				String key = attributes.getValue("key");
+				String value = attributes.getValue("value");
+				if (key != null && value != null) currentConnection.parameters.put(key, value);
+			}
 			
 		}
 		public void endElement(
@@ -974,6 +1367,11 @@ public class SumoXML {
 			
 			if (qName.equalsIgnoreCase("edge") && inInternalRoad) {
 				inInternalRoad = false;
+			}
+
+			if (qName.equalsIgnoreCase("connection") && currentConnection != null) {
+				rawConnections.add(currentConnection);
+				currentConnection = null;
 			}
 			
 			if (qName.equalsIgnoreCase("tlLogic") && inSignal) {
@@ -1140,6 +1538,7 @@ public class SumoXML {
 					}
 				}
 
+				buildExplicitConnectorPaths();
 				prescanTransitionControlPoints();
 				if (removedCoincidentLaneControlPoints > 0 || zeroLengthLaneShapes > 0) {
 					ContextCreator.logger.info("SUMO lane control-point cleanup removed "

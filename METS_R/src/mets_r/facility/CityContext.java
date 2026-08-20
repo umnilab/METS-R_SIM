@@ -213,6 +213,7 @@ public class CityContext extends DefaultContext<Object> {
 	
 	// Calculate the turning coords and length based on two connected lanes
 	private void initializeLaneTurningCurves(Lane lane1, Lane lane2) {
+		if (lane1.hasExplicitTurningCoords(lane2.getID())) return;
 		ArrayList<Coordinate> lane1Coords = lane1.getCoords();
 		ArrayList<Coordinate> lane2Coords = lane2.getCoords();
 		ArrayList<Coordinate> coords = new ArrayList<Coordinate>();
@@ -902,6 +903,13 @@ public class CityContext extends DefaultContext<Object> {
 				
 			}
 		}
+
+		// Keep routing delay estimates separate from mandatory physical stops.
+		// In particular, yield and SUMO priority movements may proceed immediately
+		// when connector admission says the movement is safe.
+		for (Junction junction : junctionContext.getAll()) {
+			initializeJunctionMovementDelays(junction);
+		}
 		
 		// Add upstream roads
 		for (Road r : ContextCreator.getRoadContext().getAll()) {
@@ -1251,12 +1259,14 @@ public class CityContext extends DefaultContext<Object> {
 		junction.addUpStreamRoad(fromRoad.getID());
 		junction.addDownStreamRoad(toRoad.getID());
 
-		int delay = delayForControl(junction, fromRoad);
+		int delay = routingDelayForControl(junction, fromRoad, toRoad);
 		Signal signal = junction.getSignal(fromRoad.getID(), toRoad.getID());
 		if (signal != null) {
 			delay = signal.getDelay();
 		}
 		junction.setDelay(fromRoad.getID(), toRoad.getID(), delay);
+		junction.setMandatoryStopDelay(fromRoad.getID(), toRoad.getID(),
+				mandatoryStopDelayForControl(junction));
 		addTransitionEdge(fromRoad, toRoad, delay);
 		connectLanes(fromRoad, toRoad);
 	}
@@ -1271,7 +1281,28 @@ public class CityContext extends DefaultContext<Object> {
 		return angleDiff > 0 ? 2 : 1;
 	}
 
-	private int delayForControl(Junction junction, Road fromRoad) {
+	private void initializeJunctionMovementDelays(Junction junction) {
+		if (junction == null) return;
+		for (int fromRoadID : junction.getUpStreamRoads()) {
+			Road fromRoad = ContextCreator.getRoadContext().get(fromRoadID);
+			if (fromRoad == null) continue;
+			for (int toRoadID : fromRoad.getDownStreamRoads()) {
+				Road toRoad = ContextCreator.getRoadContext().get(toRoadID);
+				if (toRoad == null || toRoad.getUpStreamJunction() != junction.getID()) {
+					continue;
+				}
+				junction.setDelay(fromRoadID, toRoadID,
+						routingDelayForControl(junction, fromRoad, toRoad));
+				junction.setMandatoryStopDelay(fromRoadID, toRoadID,
+						mandatoryStopDelayForControl(junction));
+			}
+		}
+	}
+
+	private int routingDelayForControl(Junction junction, Road fromRoad,
+			Road toRoad) {
+		Signal signal = junction.getSignal(fromRoad.getID(), toRoad.getID());
+		if (signal != null) return signal.getDelay();
 		if (junction.getControlType() == Junction.StopSign) {
 			return (int) Math.ceil(3 / GlobalVariables.SIMULATION_STEP_SIZE);
 		}
@@ -1279,6 +1310,11 @@ public class CityContext extends DefaultContext<Object> {
 			return (int) Math.ceil(3 / GlobalVariables.SIMULATION_STEP_SIZE);
 		}
 		return 0;
+	}
+
+	private int mandatoryStopDelayForControl(Junction junction) {
+		return junction.getControlType() == Junction.StopSign
+				? (int) Math.ceil(3 / GlobalVariables.SIMULATION_STEP_SIZE) : 0;
 	}
 
 	private void addTransitionEdge(Road fromRoad, Road toRoad, int weight) {

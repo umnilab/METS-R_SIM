@@ -15,6 +15,7 @@ public class Junction {
 	public final static int StopSign = 2;
 	public final static int StaticSignal = 3;
 	public final static int DynamicSignal = 4; // Placeholder for intelligent signal control 
+	public final static int Priority = 5;
 	
 	/* Private variables */
 	private int ID;
@@ -22,9 +23,14 @@ public class Junction {
 	private ArrayList<Integer> upStreamRoads;
 	private ArrayList<Integer> downStreamRoads;
 	
-	// Key1: Map<Road1_ID, Key 2: Road2_ID>; 
-	// Value: Seconds for vehicle to wait before the junction 
+	// Key1: Map<Road1_ID, Key 2: Road2_ID>;
+	// Value: estimated routing delay in simulation ticks. This is deliberately
+	// separate from mandatoryStopDelay: routing costs must not force a vehicle to
+	// stop at a yield or priority movement.
 	private Map<Integer, Map<Integer, Integer>> delay;
+	// Value: minimum stationary time in simulation ticks required before the
+	// movement may enter the junction (for example, a stop sign).
+	private Map<Integer, Map<Integer, Integer>> mandatoryStopDelay;
 	// Value: Signal
 	private Map<Integer, Map<Integer, Signal>> signals;
 	private int controlType;
@@ -34,6 +40,7 @@ public class Junction {
 		this.upStreamRoads = new ArrayList<Integer>();
 		this.downStreamRoads = new ArrayList<Integer>();
 		this.delay = new HashMap<Integer, Map<Integer, Integer>>();
+		this.mandatoryStopDelay = new HashMap<Integer, Map<Integer, Integer>>();
 		this.signals = new HashMap<Integer, Map<Integer, Signal>>();
 		this.controlType = Junction.NoControl; // no control by default
 	}
@@ -112,6 +119,34 @@ public class Junction {
 			Map<Integer, Integer> tmpDelay = new HashMap<Integer,Integer>();
 			tmpDelay.put(downStreamRoadID, delay);
 			this.delay.put(upStreamRoadID, tmpDelay);
+		}
+	}
+
+	public int getMandatoryStopDelay(int upStreamRoadID, int downStreamRoadID) {
+		if (this.mandatoryStopDelay.containsKey(upStreamRoadID)) {
+			Map<Integer, Integer> downstreamDelays =
+					this.mandatoryStopDelay.get(upStreamRoadID);
+			if (downstreamDelays.containsKey(downStreamRoadID)) {
+				return downstreamDelays.get(downStreamRoadID);
+			}
+		}
+		return 0;
+	}
+
+	public Map<Integer, Map<Integer, Integer>> getMandatoryStopDelay() {
+		return this.mandatoryStopDelay;
+	}
+
+	public void setMandatoryStopDelay(int upStreamRoadID, int downStreamRoadID,
+			int delayTicks) {
+		int normalizedDelay = Math.max(0, delayTicks);
+		if (this.mandatoryStopDelay.containsKey(upStreamRoadID)) {
+			this.mandatoryStopDelay.get(upStreamRoadID)
+					.put(downStreamRoadID, normalizedDelay);
+		} else {
+			Map<Integer, Integer> downstreamDelays = new HashMap<Integer, Integer>();
+			downstreamDelays.put(downStreamRoadID, normalizedDelay);
+			this.mandatoryStopDelay.put(upStreamRoadID, downstreamDelays);
 		}
 	}
 	

@@ -1704,20 +1704,53 @@ public class Road {
 	}
 
 	public Vehicle enterRoadConflictBlocker(Road usroad, Vehicle enteringVehicle) {
+		 return this.enterRoadConflictBlocker(usroad, enteringVehicle,
+				 ConnectorRoad.MovementPriority.UNKNOWN);
+	}
+
+	public Vehicle enterRoadConflictBlocker(Road usroad, Vehicle enteringVehicle,
+			ConnectorRoad.MovementPriority enteringPriority) {
 		 Junction prevJunction = ContextCreator.getJunctionContext().get(this.getUpStreamJunction());
-		 for(Road r: this.upStreamRoads) {
-			 if(this.isSameRoad(r, usroad)) break;
+		 int enteringIndex = this.upStreamRoadIndex(usroad);
+		 for(int roadIndex = 0; roadIndex < this.upStreamRoads.size(); roadIndex++) {
+			 Road r = this.upStreamRoads.get(roadIndex);
+			 if(this.isSameRoad(r, usroad)) continue;
 			 if(r.prevFirstVehicle()!= null) {
 				Vehicle v = r.prevFirstVehicle();
 				if(this.isSameVehicle(v, enteringVehicle)) continue;
 				if(!v.wasPreviouslyOnRoad(r)) continue;
 				if(prevJunction != null && v.aboutToEnterRoad(this)
-						&& this.isConflictVehicleMovable(prevJunction, r, v)) {
+						&& this.isConflictVehicleMovable(prevJunction, r, v)
+						&& this.otherMovementOutranks(r, v, enteringPriority,
+								roadIndex, enteringIndex)) {
 					return v;
 				}
 			 }
 		 }
 		 return null;
+	}
+
+	private int upStreamRoadIndex(Road road) {
+		for (int i = 0; i < this.upStreamRoads.size(); i++) {
+			if (this.isSameRoad(this.upStreamRoads.get(i), road)) return i;
+		}
+		return this.upStreamRoads.size();
+	}
+
+	private boolean otherMovementOutranks(Road otherSource, Vehicle otherVehicle,
+			ConnectorRoad.MovementPriority enteringPriority, int otherIndex,
+			int enteringIndex) {
+		ConnectorRoad otherConnector = ContextCreator.getRoadContext()
+				.getConnector(otherSource, this);
+		ConnectorRoad.MovementPriority otherPriority = otherConnector == null
+				? ConnectorRoad.MovementPriority.UNKNOWN
+				: otherConnector.getMovementPriority(otherVehicle.getLane(), null);
+		if (otherPriority == ConnectorRoad.MovementPriority.BLOCKED) return false;
+		if (enteringPriority == ConnectorRoad.MovementPriority.MAJOR
+				&& otherPriority == ConnectorRoad.MovementPriority.MINOR) return false;
+		if (enteringPriority == ConnectorRoad.MovementPriority.MINOR
+				&& otherPriority == ConnectorRoad.MovementPriority.MAJOR) return true;
+		return otherIndex < enteringIndex;
 	}
 
 	private boolean isSameRoad(Road r1, Road r2) {
@@ -1741,9 +1774,11 @@ public class Road {
 			case Junction.StaticSignal:
 				return prevJunction.getSignalState(upstreamRoad.getID(), this.getID()) <= Signal.Yellow;
 			case Junction.StopSign:
-				return prevJunction.getDelay(upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
+				return prevJunction.getMandatoryStopDelay(
+						upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
 			case Junction.Yield:
-				return prevJunction.getDelay(upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
+			case Junction.Priority:
+				return true;
 			default:
 				return true;
 		}
