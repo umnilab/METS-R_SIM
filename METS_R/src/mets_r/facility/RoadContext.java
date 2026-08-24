@@ -42,7 +42,7 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class RoadContext extends FacilityContext<Road> {
 	/** Bump when persisted connector identities or topology semantics change. */
-	public static final int CONNECTOR_TOPOLOGY_SCHEMA_VERSION = 1;
+	public static final int CONNECTOR_TOPOLOGY_SCHEMA_VERSION = 2;
 	private static final double EARTH_RADIUS_METERS = 6371008.8;
 	private static final double INTERSECTION_CLEARANCE_MARGIN_METERS = 0.25;
 	private static final double SAME_CONNECTOR_HEADWAY_FACTOR = 1.2;
@@ -342,7 +342,8 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	private ConnectorDefinition connectorDefinition(Road sourceRoad, Road targetRoad) {
-		String inferredID = sourceRoad.getOrigID() + "_" + targetRoad.getOrigID();
+		String inferredID = ConnectorRoad.buildOrigID(
+				sourceRoad.getOrigID(), targetRoad.getOrigID());
 		ArrayList<SumoXML.ConnectorPathData> explicitData =
 				new ArrayList<SumoXML.ConnectorPathData>();
 		String networkFile = GlobalVariables.NETWORK_FILE;
@@ -360,7 +361,6 @@ public class RoadContext extends FacilityContext<Road> {
 		ArrayList<ConnectorRoad.ConnectorPath> paths =
 				new ArrayList<ConnectorRoad.ConnectorPath>();
 		LinkedHashSet<String> aliases = new LinkedHashSet<String>();
-		LinkedHashSet<String> explicitConnectorIDs = new LinkedHashSet<String>();
 		int configuredControlType = Road.NONE_OF_THE_ABOVE;
 		aliases.add(inferredID);
 		for (SumoXML.ConnectorPathData data : explicitData) {
@@ -373,13 +373,19 @@ public class RoadContext extends FacilityContext<Road> {
 					? new ArrayList<Coordinate>(data.getCenterLine())
 					: inferredConnectorLine(sourceLane, targetLane);
 			paths.add(new ConnectorRoad.ConnectorPath(sourceLane, targetLane, line,
-					data.getViaLaneIDs(), data.getParameters(), data.getDirection(),
+					data.getViaLaneIDs(), data.getInternalEdgeIDs(),
+					data.getParameters(), data.getDirection(),
 					data.getState(), data.getTrafficLightID(), data.getLinkIndex(),
 					data.getDeclaredLength(), data.getSpeed(), data.hasExplicitGeometry()));
 			aliases.addAll(data.getViaLaneIDs());
-			String connectorID = normalizedConnectorMetadata(
+			aliases.addAll(data.getInternalEdgeIDs());
+			String configuredConnectorID = normalizedConnectorMetadata(
 					data.getParameter("metsr.connectorId"));
-			if (connectorID != null) explicitConnectorIDs.add(connectorID);
+			if (configuredConnectorID != null && !inferredID.equals(configuredConnectorID)) {
+				throw new IllegalStateException("SUMO movement " + sourceRoad.getOrigID()
+						+ " -> " + targetRoad.getOrigID() + " declares connector ID "
+						+ configuredConnectorID + " but the required ID is " + inferredID);
+			}
 			String carlaSegmentID = normalizedConnectorMetadata(
 					data.getParameter("carla.segmentId"));
 			if (carlaSegmentID != null) aliases.add(carlaSegmentID);
@@ -394,18 +400,7 @@ public class RoadContext extends FacilityContext<Road> {
 			return new ConnectorDefinition(inferredID, aliases,
 					inferredConnectorPaths(sourceRoad, targetRoad), false);
 		}
-		aliases.addAll(explicitConnectorIDs);
-		String connectorID = explicitConnectorIDs.size() == 1
-				? explicitConnectorIDs.iterator().next() : inferredID;
-		if (explicitConnectorIDs.size() > 1) {
-			ContextCreator.logger.warn("SUMO movement " + sourceRoad.getOrigID()
-					+ " -> " + targetRoad.getOrigID()
-					+ " declares multiple metsr.connectorId values "
-					+ explicitConnectorIDs + "; using " + inferredID
-					+ " as the grouped connector ID and retaining all values as aliases.");
-		}
-		aliases.add(connectorID);
-		return new ConnectorDefinition(connectorID, aliases, paths,
+		return new ConnectorDefinition(inferredID, aliases, paths,
 				configuredControlType, true);
 	}
 

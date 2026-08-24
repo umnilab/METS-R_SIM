@@ -3340,9 +3340,9 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Start or complete a road transition. Any boundary touching a CoSim road
-	 * hands connector motion to the external simulator: the vehicle becomes a
-	 * target-road macro member immediately, but joins the target lane only after
+	 * Start or complete a road transition. A connector owned by CoSim hands its
+	 * motion to the external simulator: the vehicle becomes a target-road macro
+	 * member immediately, but joins the target lane only after
 	 * {@link #tryCommitExternalRoadTransition()} observes an external pose on it.
 	 *
 	 * @return true when the transition was accepted; false when its target-lane
@@ -3375,8 +3375,7 @@ public class Vehicle {
 		}
 		boolean transitioned = false;
 		try {
-			if (sourceRoad.getControlType() == Road.COSIM
-					|| targetRoad.getControlType() == Road.COSIM) {
+			if (connector.getControlType() == Road.COSIM) {
 				transitioned = this.beginExternalRoadTransition(
 						sourceRoad, targetLane, targetRoad);
 				if (transitioned) {

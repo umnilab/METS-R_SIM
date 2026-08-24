@@ -724,6 +724,8 @@ public class QueryMessageHandler extends MessageHandler {
 		if (connector != null) {
 			record.put("segmentId", connector.getOrigID());
 			record.put("segmentType", "connector");
+			record.put("connectorId", connector.getOrigID());
+			record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 			record.put("laneIndex", null);
 			double connectorDistanceRemaining =
 					vehicle.getEstimatedConnectorDistanceRemaining();
@@ -1052,6 +1054,7 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
 		record.put("targetRoadId", connector.getTargetRoad().getOrigID());
 		record.put("intersectionId", connector.getIntersectionID());
+		record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 		record.put("aliases", new ArrayList<String>(connector.getAliases()));
 		ArrayList<Object> paths = new ArrayList<Object>();
 		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
@@ -1061,6 +1064,7 @@ public class QueryMessageHandler extends MessageHandler {
 			pathRecord.put("targetLaneId", path.getTargetLane() == null
 					? null : path.getTargetLane().getOrigID());
 			pathRecord.put("viaLaneIds", path.getViaLaneIDs());
+			pathRecord.put("internalEdgeIds", path.getInternalEdgeIDs());
 			pathRecord.put("explicitGeometry", path.hasExplicitGeometry());
 			pathRecord.put("declaredLength", Double.isFinite(path.getDeclaredLength())
 					? path.getDeclaredLength() : null);

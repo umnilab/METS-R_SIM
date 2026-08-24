@@ -122,6 +122,7 @@ public class SumoXML {
 		private final String sourceLaneOrigID;
 		private final String targetLaneOrigID;
 		private final List<String> viaLaneIDs;
+		private final List<String> internalEdgeIDs;
 		private final List<Coordinate> centerLine;
 		private final Map<String, String> parameters;
 		private final String direction;
@@ -136,6 +137,7 @@ public class SumoXML {
 				int targetLaneID, int junctionID, String sourceRoadOrigID,
 				String targetRoadOrigID, String sourceLaneOrigID,
 				String targetLaneOrigID, List<String> viaLaneIDs,
+				List<String> internalEdgeIDs,
 				List<Coordinate> centerLine, Map<String, String> parameters,
 				String direction, String state, String trafficLightID,
 				Integer linkIndex, double declaredLength, double speed,
@@ -151,6 +153,8 @@ public class SumoXML {
 			this.targetLaneOrigID = targetLaneOrigID;
 			this.viaLaneIDs = Collections.unmodifiableList(
 					new ArrayList<String>(viaLaneIDs));
+			this.internalEdgeIDs = Collections.unmodifiableList(
+					new ArrayList<String>(internalEdgeIDs));
 			this.centerLine = Collections.unmodifiableList(copyCoordinates(centerLine));
 			this.parameters = Collections.unmodifiableMap(
 					new LinkedHashMap<String, String>(parameters));
@@ -173,6 +177,7 @@ public class SumoXML {
 		public String getSourceLaneOrigID() { return this.sourceLaneOrigID; }
 		public String getTargetLaneOrigID() { return this.targetLaneOrigID; }
 		public List<String> getViaLaneIDs() { return this.viaLaneIDs; }
+		public List<String> getInternalEdgeIDs() { return this.internalEdgeIDs; }
 		public List<Coordinate> getCenterLine() {
 			return Collections.unmodifiableList(copyCoordinates(this.centerLine));
 		}
@@ -981,6 +986,7 @@ public class SumoXML {
 				Lane targetLane = lanes.get(targetLaneID);
 				if (sourceLane == null || targetLane == null) continue;
 				ArrayList<String> viaLaneIDs = resolvedViaLaneIDs(root);
+				ArrayList<String> internalEdgeIDs = new ArrayList<String>();
 				ArrayList<Coordinate> centerLine = new ArrayList<Coordinate>();
 				addDistinctConnectorCoordinate(centerLine, sourceLane.getEndCoord());
 				double declaredLength = 0.0;
@@ -990,6 +996,12 @@ public class SumoXML {
 				for (String viaLaneID : viaLaneIDs) {
 					InternalLaneData internalLane = internalLanes.get(viaLaneID);
 					if (internalLane == null) continue;
+					String internalEdgeID = internalLane.getEdgeID();
+					if (internalEdgeID != null && !internalEdgeID.trim().isEmpty()
+							&& (internalEdgeIDs.isEmpty() || !internalEdgeID.equals(
+									internalEdgeIDs.get(internalEdgeIDs.size() - 1)))) {
+						internalEdgeIDs.add(internalEdgeID);
+					}
 					List<Coordinate> shape = internalLane.getShape();
 					if (shape.size() >= 2) explicitGeometry = true;
 					for (Coordinate coordinate : shape) {
@@ -1014,7 +1026,8 @@ public class SumoXML {
 						sourceRoadID, targetRoadID, sourceLaneID, targetLaneID,
 						junctionID == null ? -1 : junctionID.intValue(),
 						root.fromRoadID, root.toRoadID, root.fromLaneID,
-						root.toLaneID, viaLaneIDs, centerLine, root.parameters,
+						root.toLaneID, viaLaneIDs, internalEdgeIDs, centerLine,
+						root.parameters,
 						root.direction, root.state, root.trafficLightID,
 						root.linkIndex, hasDeclaredLength ? declaredLength : Double.NaN,
 						Double.isFinite(speed) ? speed : Double.NaN, explicitGeometry);

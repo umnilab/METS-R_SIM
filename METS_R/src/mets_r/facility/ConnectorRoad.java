@@ -1,5 +1,6 @@
 package mets_r.facility;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -43,6 +44,7 @@ public final class ConnectorRoad extends Road {
 	private final long movementKey;
 	private final List<ConnectorPath> paths;
 	private final List<List<Coordinate>> centerLines;
+	private final List<String> internalEdgeIDs;
 	private final Set<String> aliases;
 	private final int configuredControlType;
 	private final ConcurrentHashMap<Integer, Vehicle> activeVehicles =
@@ -54,7 +56,7 @@ public final class ConnectorRoad extends Road {
 	ConnectorRoad(int id, long movementKey, Road sourceRoad, Road targetRoad,
 			int intersectionID, List<ConnectorPath> paths) {
 		this(id, movementKey, sourceRoad, targetRoad, intersectionID,
-				sourceRoad.getOrigID() + "_" + targetRoad.getOrigID(),
+				buildOrigID(sourceRoad.getOrigID(), targetRoad.getOrigID()),
 				Collections.<String>emptySet(), Road.NONE_OF_THE_ABOVE, paths);
 	}
 
@@ -78,6 +80,12 @@ public final class ConnectorRoad extends Road {
 		this.intersectionID = intersectionID;
 		this.configuredControlType = configuredControlType;
 		this.paths = immutablePaths(paths, sourceRoad, targetRoad);
+		LinkedHashSet<String> connectorInternalEdgeIDs = new LinkedHashSet<String>();
+		for (ConnectorPath path : this.paths) {
+			connectorInternalEdgeIDs.addAll(path.getInternalEdgeIDs());
+		}
+		this.internalEdgeIDs = Collections.unmodifiableList(
+				new ArrayList<String>(connectorInternalEdgeIDs));
 		LinkedHashSet<String> connectorAliases = new LinkedHashSet<String>();
 		if (aliases != null) {
 			for (String alias : aliases) {
@@ -88,7 +96,7 @@ public final class ConnectorRoad extends Road {
 		ArrayList<List<Coordinate>> centerLines = new ArrayList<List<Coordinate>>();
 		for (ConnectorPath path : this.paths) centerLines.add(path.getCenterLine());
 		this.centerLines = Collections.unmodifiableList(centerLines);
-		String fallbackOrigID = sourceRoad.getOrigID() + "_" + targetRoad.getOrigID();
+		String fallbackOrigID = buildOrigID(sourceRoad.getOrigID(), targetRoad.getOrigID());
 		this.setOrigID(connectorOrigID == null || connectorOrigID.trim().isEmpty()
 				? fallbackOrigID : connectorOrigID.trim());
 		this.setRoadType(sourceRoad.getRoadType());
@@ -118,6 +126,35 @@ public final class ConnectorRoad extends Road {
 		this.updateTravelTimeEstimation();
 		this.setCanBeOrigin(false);
 		this.setCanBeDest(false);
+	}
+
+	/** Stable, namespaced identity for one source-road to target-road movement. */
+	public static String buildOrigID(String sourceRoadOrigID, String targetRoadOrigID) {
+		return "cont/" + encodeOrigIDComponent(sourceRoadOrigID) + "/"
+				+ encodeOrigIDComponent(targetRoadOrigID);
+	}
+
+	private static String encodeOrigIDComponent(String value) {
+		if (value == null) {
+			throw new IllegalArgumentException("Connector road IDs must not be null");
+		}
+		StringBuilder encoded = new StringBuilder();
+		for (byte raw : value.getBytes(StandardCharsets.UTF_8)) {
+			int b = raw & 0xff;
+			boolean unreserved = b >= 'a' && b <= 'z'
+					|| b >= 'A' && b <= 'Z'
+					|| b >= '0' && b <= '9'
+					|| b == '-' || b == '.' || b == '_' || b == '~';
+			if (unreserved) {
+				encoded.append((char) b);
+			} else {
+				encoded.append('%');
+				String hex = Integer.toHexString(b).toUpperCase(java.util.Locale.ROOT);
+				if (hex.length() == 1) encoded.append('0');
+				encoded.append(hex);
+			}
+		}
+		return encoded.toString();
 	}
 
 	private static List<ConnectorPath> immutablePaths(List<ConnectorPath> paths,
@@ -466,6 +503,10 @@ public final class ConnectorRoad extends Road {
 		return this.aliases;
 	}
 
+	public List<String> getInternalEdgeIDs() {
+		return this.internalEdgeIDs;
+	}
+
 	public int getConfiguredControlType() {
 		return this.configuredControlType;
 	}
@@ -547,7 +588,6 @@ public final class ConnectorRoad extends Road {
 	public int getControlType() {
 		return this.configuredControlType == Road.COSIM
 				|| super.getControlType() == Road.COSIM
-				|| this.sourceRoad.getControlType() == Road.COSIM
 				|| this.targetRoad.getControlType() == Road.COSIM ? Road.COSIM
 						: Road.NONE_OF_THE_ABOVE;
 	}
@@ -557,6 +597,7 @@ public final class ConnectorRoad extends Road {
 		private final Lane targetLane;
 		private final List<Coordinate> centerLine;
 		private final List<String> viaLaneIDs;
+		private final List<String> internalEdgeIDs;
 		private final Map<String, String> parameters;
 		private final String direction;
 		private final String state;
@@ -568,12 +609,14 @@ public final class ConnectorRoad extends Road {
 
 		public ConnectorPath(Lane sourceLane, Lane targetLane, List<Coordinate> centerLine) {
 			this(sourceLane, targetLane, centerLine, Collections.<String>emptyList(),
+					Collections.<String>emptyList(),
 					Collections.<String, String>emptyMap(), null, null, null, null,
 					Double.NaN, Double.NaN, false);
 		}
 
 		public ConnectorPath(Lane sourceLane, Lane targetLane, List<Coordinate> centerLine,
-				List<String> viaLaneIDs, Map<String, String> parameters,
+				List<String> viaLaneIDs, List<String> internalEdgeIDs,
+				Map<String, String> parameters,
 				String direction, String state, String trafficLightID, Integer linkIndex,
 				double declaredLength, double speed, boolean explicitGeometry) {
 			this.sourceLane = sourceLane;
@@ -581,6 +624,8 @@ public final class ConnectorRoad extends Road {
 			this.centerLine = Collections.unmodifiableList(deepCopy(centerLine));
 			this.viaLaneIDs = Collections.unmodifiableList(new ArrayList<String>(
 					viaLaneIDs == null ? Collections.<String>emptyList() : viaLaneIDs));
+			this.internalEdgeIDs = Collections.unmodifiableList(new ArrayList<String>(
+					internalEdgeIDs == null ? Collections.<String>emptyList() : internalEdgeIDs));
 			this.parameters = Collections.unmodifiableMap(new LinkedHashMap<String, String>(
 					parameters == null ? Collections.<String, String>emptyMap() : parameters));
 			this.direction = direction;
@@ -605,6 +650,7 @@ public final class ConnectorRoad extends Road {
 		}
 
 		public List<String> getViaLaneIDs() { return this.viaLaneIDs; }
+		public List<String> getInternalEdgeIDs() { return this.internalEdgeIDs; }
 		public Map<String, String> getParameters() { return this.parameters; }
 		public String getParameter(String key) { return this.parameters.get(key); }
 		public String getDirection() { return this.direction; }

@@ -687,10 +687,11 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 						// Publish bridge ownership only after the road accepts the takeover.
 						ContextCreator.coSimRoads.put(roadId, r);
-						refreshRelatedConnectorControlModes(r);
+						refreshInboundConnectorControlModes(r);
 						record2.put("roadId", roadId);
 						record2.put("status", "ok");
 						record2.put("connectorIds", coSimConnectorIDsForRoad(r));
+						record2.put("connectors", coSimConnectorRecordsForRoad(r));
 
 						// Also output the lane information for computing the co-simulation area
 //						ArrayList<Object> centerLines = new ArrayList<Object>();
@@ -744,19 +745,8 @@ public class ControlMessageHandler extends MessageHandler {
 				for (String roadId : IDs) {
 					Road r = ContextCreator.getCityContext().findRoadWithOrigID(roadId);
 					if (r != null) {
-						ArrayList<String> connectorIDsBefore = coSimConnectorIDsForRoad(r);
-						String connectorReleaseBlock = adaptRelatedConnectorsForRelease(r);
-						if (connectorReleaseBlock != null) {
-							HashMap<String, Object> record2 = new HashMap<String, Object>();
-							record2.put("roadId", roadId);
-							record2.put("status", "error");
-							record2.put("errorCode", "CONNECTOR_RELEASE_BLOCKED");
-							record2.put("retryable", true);
-							record2.put("message", connectorReleaseBlock);
-							record2.put("connectorIds", connectorIDsBefore);
-							jsonData.add(record2);
-							continue;
-						}
+						ArrayList<ConnectorRoad> connectorsBefore = coSimConnectorsForRoad(r);
+//						ArrayList<String> connectorIDsBefore = connectorIDs(connectorsBefore);
 						r.setControlType(Road.NONE_OF_THE_ABOVE);
 						HashMap<String, Object> record2 = new HashMap<String, Object>();
 						record2.put("roadId", roadId);
@@ -768,11 +758,14 @@ public class ControlMessageHandler extends MessageHandler {
 						} else {
 							// Bridge ownership ends only after the road actually accepts native control.
 							ContextCreator.coSimRoads.remove(roadId);
-							refreshRelatedConnectorControlModes(r);
+							refreshInboundConnectorControlModes(r);
 							record2.put("status", "ok");
 							record2.put("releasedConnectorIds",
-									releasedConnectorIDs(connectorIDsBefore));
+									releasedConnectorIDs(connectorsBefore));
+							record2.put("releasedConnectors",
+									releasedConnectorRecords(connectorsBefore));
 							record2.put("connectorIds", coSimConnectorIDsForRoad(r));
+							record2.put("connectors", coSimConnectorRecordsForRoad(r));
 						}
 						jsonData.add(record2);
 					} else {
@@ -1818,6 +1811,13 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("status", "ok");
 				record.put("isPrivate", true);
 				record.put("segmentId", applied.segment.getOrigID());
+				record.put("segmentType", applied.isConnector() ? "connector" : "road");
+				if (segmentHint != null) record.put("observedSegmentId", segmentHint);
+				if (applied.isConnector()) {
+					ConnectorRoad connector = (ConnectorRoad) applied.segment;
+					record.put("connectorId", connector.getOrigID());
+					record.put("internalEdgeIds", connector.getInternalEdgeIDs());
+				}
 				record.put("laneIndex", applied.isConnector()
 						? null : startRoad.getLaneIndex(startLane));
 				record.put("inferredSourceLaneIndex", startRoad.getLaneIndex(startLane));
@@ -1869,73 +1869,86 @@ public class ControlMessageHandler extends MessageHandler {
 		vehicle.setSpeed(speed);
 	}
 
-	private ArrayList<String> coSimConnectorIDsForRoad(Road road) {
-		ArrayList<String> result = new ArrayList<String>();
+	private ArrayList<ConnectorRoad> coSimConnectorsForRoad(Road road) {
+		ArrayList<ConnectorRoad> result = new ArrayList<ConnectorRoad>();
 		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
-			if ((connector.getSourceRoad() == road || connector.getTargetRoad() == road)
+			if (connector.getTargetRoad() == road
 					&& connector.getControlType() == Road.COSIM) {
-				result.add(connector.getOrigID());
+				result.add(connector);
+			}
+		}
+		result.sort((a, b) -> a.getOrigID().compareTo(b.getOrigID()));
+		return result;
+	}
+
+	private ArrayList<String> connectorIDs(Collection<ConnectorRoad> connectors) {
+		ArrayList<String> result = new ArrayList<String>();
+		if (connectors != null) {
+			for (ConnectorRoad connector : connectors) {
+				if (connector != null) result.add(connector.getOrigID());
 			}
 		}
 		java.util.Collections.sort(result);
 		return result;
 	}
 
-	private ArrayList<String> releasedConnectorIDs(List<String> previouslyControlled) {
-		ArrayList<String> result = new ArrayList<String>();
-		for (String connectorID : previouslyControlled) {
-			ConnectorRoad connector = ContextCreator.getRoadContext().getConnector(connectorID);
-			if (connector != null && connector.getControlType() != Road.COSIM) {
-				result.add(connectorID);
+	private ArrayList<String> coSimConnectorIDsForRoad(Road road) {
+		return connectorIDs(coSimConnectorsForRoad(road));
+	}
+
+	private HashMap<String, Object> connectorControlRecord(ConnectorRoad connector) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("connectorId", connector.getOrigID());
+		record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
+		record.put("targetRoadId", connector.getTargetRoad().getOrigID());
+		record.put("internalEdgeIds", connector.getInternalEdgeIDs());
+		record.put("controlMode", controlModeName(connector.getControlType()));
+		return record;
+	}
+
+	private ArrayList<Object> connectorRecords(Collection<ConnectorRoad> connectors) {
+		ArrayList<Object> result = new ArrayList<Object>();
+		if (connectors != null) {
+			ArrayList<ConnectorRoad> ordered = new ArrayList<ConnectorRoad>(connectors);
+			ordered.sort((a, b) -> a.getOrigID().compareTo(b.getOrigID()));
+			for (ConnectorRoad connector : ordered) {
+				if (connector != null) result.add(connectorControlRecord(connector));
 			}
 		}
 		return result;
 	}
 
-	private void refreshRelatedConnectorControlModes(Road road) {
-		if (road == null) return;
-		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
-			if (connector.getSourceRoad() != road && connector.getTargetRoad() != road) continue;
-			boolean coSimOwned = connector.getSourceRoad().getControlType() == Road.COSIM
-					|| connector.getTargetRoad().getControlType() == Road.COSIM;
-			connector.setControlType(coSimOwned ? Road.COSIM : Road.NONE_OF_THE_ABOVE);
-		}
+	private ArrayList<Object> coSimConnectorRecordsForRoad(Road road) {
+		return connectorRecords(coSimConnectorsForRoad(road));
 	}
 
-	private String adaptRelatedConnectorsForRelease(Road releasingRoad) {
-		if (releasingRoad == null || releasingRoad.getControlType() != Road.COSIM) return null;
-		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
-			if (connector.getSourceRoad() != releasingRoad
-					&& connector.getTargetRoad() != releasingRoad) continue;
-			Road otherRoad = connector.getSourceRoad() == releasingRoad
-					? connector.getTargetRoad() : connector.getSourceRoad();
-			if (otherRoad.getControlType() == Road.COSIM) continue;
-			Road targetRoad = connector.getTargetRoad();
-			if (!targetRoad.beginConnectorNativeRelease()) {
-				return "Target road " + targetRoad.getOrigID()
-						+ " is busy adapting connector " + connector.getOrigID();
-			}
-			try {
-				for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
-					if (!vehicle.isExternalRoadTransition()) continue;
-					if (vehicle.getExternalTransitionTargetRoad() != targetRoad) {
-						return "Vehicle " + vehicle.getID()
-								+ " has inconsistent connector target state";
-					}
-					double projection = vehicle.getExternalTransitionProjectedDistance();
-					if (!Double.isFinite(projection)
-							|| !vehicle.commitExternalRoadTransitionAtClosestAvailableDistance(
-									projection)) {
-						return "No collision-free native placement is available for vehicle "
-								+ vehicle.getID() + " leaving connector " + connector.getOrigID();
-					}
-					vehicle.syncPreviousEpochCoord();
-				}
-			} finally {
-				targetRoad.endConnectorNativeRelease();
+	private ArrayList<String> releasedConnectorIDs(List<ConnectorRoad> previouslyControlled) {
+		ArrayList<ConnectorRoad> released = new ArrayList<ConnectorRoad>();
+		for (ConnectorRoad connector : previouslyControlled) {
+			if (connector != null && connector.getControlType() != Road.COSIM) {
+				released.add(connector);
 			}
 		}
-		return null;
+		return connectorIDs(released);
+	}
+
+	private ArrayList<Object> releasedConnectorRecords(List<ConnectorRoad> previouslyControlled) {
+		ArrayList<ConnectorRoad> released = new ArrayList<ConnectorRoad>();
+		for (ConnectorRoad connector : previouslyControlled) {
+			if (connector != null && connector.getControlType() != Road.COSIM) {
+				released.add(connector);
+			}
+		}
+		return connectorRecords(released);
+	}
+
+	private void refreshInboundConnectorControlModes(Road road) {
+		if (road == null) return;
+		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
+			if (connector.getTargetRoad() != road) continue;
+			boolean coSimOwned = connector.getTargetRoad().getControlType() == Road.COSIM;
+			connector.setControlType(coSimOwned ? Road.COSIM : Road.NONE_OF_THE_ABOVE);
+		}
 	}
 
 	private static String firstNonBlank(String first, String second) {
@@ -1952,7 +1965,8 @@ public class ControlMessageHandler extends MessageHandler {
 	* Input DATA: list of
 	* {{vehicleId, isPrivate, x, y, z, bearing, speed, transformCoordinates,
 	* segmentId?}}. A supplied {@code segmentId} is authoritative and must identify
-	* a controlled COSIM road or connector. When it is omitted, membership is
+	* a controlled COSIM road, connector, or one of a connector's SUMO via-lane or
+	* internal-edge aliases. When it is omitted, membership is
 	* inferred across all controlled segments without restricting the search to
 	* METS-R's retained route. Geometry and collision discrepancies are returned as
 	* warnings; caller-provided lane IDs remain ignored.
@@ -2071,6 +2085,13 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("status", "ok");
 				record.put("segmentId", applied.segment.getOrigID());
 				record.put("roadId", applied.segment.getOrigID());
+				record.put("segmentType", applied.isConnector() ? "connector" : "road");
+				if (segmentHint != null) record.put("observedSegmentId", segmentHint);
+				if (applied.isConnector()) {
+					ConnectorRoad connector = (ConnectorRoad) applied.segment;
+					record.put("connectorId", connector.getOrigID());
+					record.put("internalEdgeIds", connector.getInternalEdgeIDs());
+				}
 				record.put("laneIndex", applied.isConnector()
 						? ConnectorRoad.NO_LANE
 						: applied.segment.getLaneIndex(applied.lane));
@@ -2272,6 +2293,7 @@ public class ControlMessageHandler extends MessageHandler {
 		if (connector != null) {
 			record.put("roadId", connector.getOrigID());
 			record.put("connectorId", connector.getOrigID());
+			record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 			record.put("laneIndex", ConnectorRoad.NO_LANE);
 			record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
 			record.put("targetRoadId", connector.getTargetRoad().getOrigID());

@@ -1456,15 +1456,11 @@ public class Road {
 		if (vehicle == null || !vehicle.isExternalRoadTransition()) return false;
 		ConnectorRoad connector = vehicle.getCurrentConnector();
 		if (connector == null) return false;
-		Road otherRoad;
-		if (connector.getTargetRoad() == this) {
-			otherRoad = connector.getSourceRoad();
-		} else if (connector.getSourceRoad() == this) {
-			otherRoad = connector.getTargetRoad();
-		} else {
-			return false;
-		}
-		return otherRoad != this && otherRoad.getControlType() == Road.COSIM;
+		if (connector.getSourceRoad() != this && connector.getTargetRoad() != this) return false;
+		if (connector.getConfiguredControlType() == Road.COSIM) return true;
+		Road connectorTarget = connector.getTargetRoad();
+		return connectorTarget != this
+				&& connectorTarget.getControlType() == Road.COSIM;
 	}
 
 	private List<NativeReleasePlacement> planNativeReleasePlacements(List<Vehicle> vehicles) {
