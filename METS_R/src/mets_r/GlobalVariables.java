@@ -482,7 +482,8 @@ public class GlobalVariables {
 	
 	
 	// Addressing the gridlock in the parallel mode
-	public static int MAX_STUCK_TIME = (int) (Integer.valueOf(loadConfig("MAX_STUCK_TIME"))/SIMULATION_STEP_SIZE);
+	public static int MAX_ROAD_TRAVERSAL_PATIENCE = (int) (Integer
+			.valueOf(loadConfig("MAX_ROAD_TRAVERSAL_PATIENCE"))/SIMULATION_STEP_SIZE);
 	public static boolean DEBUG_STUCK_VEHICLE = Boolean.valueOf(loadConfig("DEBUG_STUCK_VEHICLE"));
 	public static int DEBUG_STUCK_VEHICLE_MIN_TIME = (int) (Integer
 			.valueOf(loadConfig("DEBUG_STUCK_VEHICLE_MIN_TIME"))/SIMULATION_STEP_SIZE);

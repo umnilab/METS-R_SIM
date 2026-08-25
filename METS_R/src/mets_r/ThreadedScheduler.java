@@ -6,10 +6,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.concurrent.Phaser;
 
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
+import mets_r.facility.RoadContext;
 import mets_r.facility.Signal;
 import mets_r.facility.Zone;
 
@@ -17,14 +18,18 @@ import mets_r.facility.Zone;
 public class ThreadedScheduler {
 	private final ExecutorService executor;
 	private final int nPartitions;
+	private final int workerCount;
 	private final boolean profilingEnabled;
-	private final Future<?>[] futures;
+	private final Phaser workerBarrier;
+	private final Throwable[] workerFailures;
 	private final RoadPartitionTask[] roadPart1Tasks;
 	private final RoadPartitionTask[] roadPart2Tasks;
 	private final IntersectionPartitionTask[] intersectionTasks;
 	private final ZonePartitionTask[] zonePart2Tasks;
 	private final ChargingPartitionTask[] chargingPart1Tasks;
 	private final SignalPartitionTask[] signalTasks;
+	private volatile Runnable[] activeTasks;
+	private volatile boolean workersShutdown;
 
 	private volatile String activeStage = "idle";
 	private volatile int activeStageTick = -1;
@@ -51,12 +56,15 @@ public class ThreadedScheduler {
 	private volatile long zoneStepCount;
 	private volatile long signalStepCount;
 	private volatile long chargingStepCount;
+	private volatile RoadMetricsSnapshot latestRoadMetricsSnapshot;
 
 	public ThreadedScheduler(int nThreads) {
-		this.executor = Executors.newFixedThreadPool(Math.max(1, nThreads));
 		this.nPartitions = Math.max(1, GlobalVariables.N_Partition);
+		this.workerCount = Math.min(Math.max(1, nThreads), this.nPartitions);
+		this.executor = Executors.newFixedThreadPool(this.workerCount);
 		this.profilingEnabled = GlobalVariables.ENABLE_SCHEDULER_PROFILING;
-		this.futures = new Future<?>[this.nPartitions];
+		this.workerBarrier = new Phaser(this.workerCount + 1);
+		this.workerFailures = new Throwable[this.workerCount];
 		this.roadPart1Tasks = new RoadPartitionTask[this.nPartitions];
 		this.roadPart2Tasks = new RoadPartitionTask[this.nPartitions];
 		this.intersectionTasks = GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
@@ -74,6 +82,9 @@ public class ThreadedScheduler {
 			this.zonePart2Tasks[i] = new ZonePartitionTask(i);
 			this.chargingPart1Tasks[i] = new ChargingPartitionTask(i);
 			this.signalTasks[i] = new SignalPartitionTask(i);
+		}
+		for (int i = 0; i < this.workerCount; i++) {
+			this.executor.execute(new PersistentPartitionWorker(i));
 		}
 	}
 
@@ -95,6 +106,7 @@ public class ThreadedScheduler {
 		this.zoneStepCount = 0L;
 		this.signalStepCount = 0L;
 		this.chargingStepCount = 0L;
+		this.latestRoadMetricsSnapshot = null;
 	}
 
 	private boolean claimRoadTick() {
@@ -199,6 +211,8 @@ public class ThreadedScheduler {
 
 	public void paraRoadStep() {
 		if (!claimRoadTick()) return;
+		int currentTick = ContextCreator.getCurrentTick();
+		boolean collectRoadMetrics = isRoadMetricsTick(currentTick);
 		long partitionStart = profileStart();
 		ArrayList<ArrayList<Road>> partitions = getRoadStepPartitions();
 		this.activeRoadPartitionNanos += elapsed(partitionStart);
@@ -241,6 +255,10 @@ public class ThreadedScheduler {
 			endStage("vehicle.globalTransfers");
 		}
 
+		if (collectRoadMetrics) {
+			this.latestRoadMetricsSnapshot = collectRoadMetricsForTick(currentTick);
+		}
+
 		if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
 			stageStart = profileStart();
 			beginStage("intersection.collision");
@@ -270,6 +288,67 @@ public class ThreadedScheduler {
 			this.activeRoadRefreshNanos += elapsed(refreshStart);
 		}
 		if (this.profilingEnabled) this.roadStepCount++;
+	}
+
+	/** Return the active-road metrics accumulated by the partition workers. */
+	public RoadMetricsSnapshot getRoadMetricsSnapshot(int currentTick) {
+		RoadMetricsSnapshot snapshot = this.latestRoadMetricsSnapshot;
+		if (snapshot != null && snapshot.tick == currentTick) return snapshot;
+		return collectRoadMetricsForTick(currentTick);
+	}
+
+	private RoadMetricsSnapshot collectRoadMetricsForTick(int currentTick) {
+		ArrayList<ArrayList<Road>> partitions = ContextCreator.partitioner
+				.getActiveRoadPartitions(ContextCreator.getRoadContext(), currentTick);
+		for (int i = 0; i < this.nPartitions; i++) {
+			List<Road> roads = i < partitions.size() ? partitions.get(i)
+					: Collections.<Road>emptyList();
+			this.roadPart1Tasks[i].setRoads(roads);
+			this.roadPart1Tasks[i].setMetricCollection(ContextCreator.agg_logger != null);
+		}
+		return collectRoadMetricsNow(currentTick);
+	}
+
+	private RoadMetricsSnapshot collectRoadMetricsNow(int currentTick) {
+		try {
+			submitAndAwait(this.roadPart1Tasks);
+			this.latestRoadMetricsSnapshot = mergeRoadMetrics(currentTick, this.roadPart1Tasks);
+			return this.latestRoadMetricsSnapshot;
+		} catch (Exception ex) {
+			ContextCreator.logger.error("ThreadedScheduler road.metrics failed", ex);
+			return RoadMetricsSnapshot.empty(currentTick);
+		} finally {
+			for (RoadPartitionTask task : this.roadPart1Tasks) {
+				task.clearMetricCollection();
+			}
+		}
+	}
+
+	/** Fallback for explicitly single-threaded runs; still scans active roads only. */
+	public static RoadMetricsSnapshot collectActiveRoadMetricsSequential(int currentTick) {
+		RoadMetricsAccumulator metrics = new RoadMetricsAccumulator();
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext != null) {
+			for (Road road : roadContext.getActiveRoadsSnapshot()) {
+				metrics.add(road, roadContext, ContextCreator.agg_logger != null);
+			}
+		}
+		return RoadMetricsSnapshot.from(currentTick, metrics);
+	}
+
+	private static boolean isRoadMetricsTick(int currentTick) {
+		int interval = GlobalVariables.METRICS_DISPLAY_INTERVAL;
+		return (GlobalVariables.ENABLE_AGGREGATE_WRITE || GlobalVariables.ENABLE_METRICS_DISPLAY)
+				&& interval > 0 && currentTick >= 0 && currentTick % interval == 0;
+	}
+
+	private static RoadMetricsSnapshot mergeRoadMetrics(int currentTick,
+			RoadPartitionTask[] tasks) {
+		RoadMetricsAccumulator merged = new RoadMetricsAccumulator();
+		for (RoadPartitionTask task : tasks) {
+			merged.merge(task.getMetrics());
+		}
+		return RoadMetricsSnapshot.from(currentTick, merged);
 	}
 
 	private ArrayList<ArrayList<Road>> getRoadStepPartitions() {
@@ -355,42 +434,70 @@ public class ThreadedScheduler {
 		if (this.profilingEnabled) this.signalStepCount++;
 	}
 
-	private void submitAndAwait(Runnable[] tasks) throws Exception {
-		int submitted = 0;
-		Exception failure = null;
-		boolean interrupted = false;
-		try {
-			try {
-				for (; submitted < this.nPartitions; submitted++) {
-					this.futures[submitted] = this.executor.submit(tasks[submitted]);
-				}
-			} catch (RuntimeException ex) {
-				failure = ex;
-			}
-			for (int i = 0; i < submitted; i++) {
-				boolean complete = false;
-				while (!complete) {
-					try {
-						this.futures[i].get();
-						complete = true;
-					} catch (InterruptedException ex) {
-						interrupted = true;
-						if (failure == null) failure = ex;
-					} catch (Exception ex) {
-						if (failure == null) failure = ex;
-						complete = true;
-					}
-				}
-			}
-		} finally {
-			for (int i = 0; i < submitted; i++) this.futures[i] = null;
-			if (interrupted) Thread.currentThread().interrupt();
+	private synchronized void submitAndAwait(Runnable[] tasks) throws Exception {
+		if (this.workersShutdown) throw new IllegalStateException();
+		if (tasks == null || tasks.length < this.nPartitions) {
+			throw new IllegalArgumentException();
 		}
-		if (failure != null) throw failure;
+		boolean interrupted = Thread.interrupted();
+		for (int i = 0; i < this.workerCount; i++) this.workerFailures[i] = null;
+		this.activeTasks = tasks;
+		this.workerBarrier.arriveAndAwaitAdvance();
+		this.workerBarrier.arriveAndAwaitAdvance();
+		this.activeTasks = null;
+		interrupted |= Thread.interrupted();
+		if (interrupted) {
+			Thread.currentThread().interrupt();
+			throw new InterruptedException();
+		}
+		throwWorkerFailure();
 	}
 
-	public void shutdownScheduler() {
+	private void throwWorkerFailure() throws Exception {
+		for (int i = 0; i < this.workerCount; i++) {
+			Throwable failure = this.workerFailures[i];
+			if (failure instanceof Exception) throw (Exception) failure;
+			if (failure instanceof Error) throw (Error) failure;
+			if (failure != null) throw new RuntimeException(failure);
+		}
+	}
+
+	public synchronized void shutdownScheduler() {
+		if (this.workersShutdown) return;
+		this.workersShutdown = true;
+		this.activeTasks = null;
+		this.workerBarrier.arriveAndAwaitAdvance();
+		this.workerBarrier.arriveAndAwaitAdvance();
 		this.executor.shutdown();
+	}
+
+	private final class PersistentPartitionWorker implements Runnable {
+		private final int workerID;
+
+		PersistentPartitionWorker(int workerID) {
+			this.workerID = workerID;
+		}
+
+		public void run() {
+			while (true) {
+				workerBarrier.arriveAndAwaitAdvance();
+				if (workersShutdown) {
+					workerBarrier.arriveAndAwaitAdvance();
+					return;
+				}
+				Runnable[] tasks = activeTasks;
+				Throwable failure = null;
+				for (int i = this.workerID; i < nPartitions; i += workerCount) {
+					try {
+						tasks[i].run();
+					} catch (Throwable ex) {
+						if (failure == null) failure = ex;
+					}
+				}
+				workerFailures[this.workerID] = failure;
+				workerBarrier.arriveAndAwaitAdvance();
+			}
+		}
 	}
 
 	public void reportTime() {
@@ -403,6 +510,9 @@ public class ThreadedScheduler {
 		private final int partitionID;
 		private final boolean part1;
 		private List<Road> roads = Collections.emptyList();
+		private boolean collectLinkMetrics;
+		private boolean metricsOnly;
+		private RoadMetricsAccumulator metrics;
 
 		RoadPartitionTask(int partitionID, boolean part1) {
 			this.partitionID = partitionID;
@@ -411,7 +521,34 @@ public class ThreadedScheduler {
 
 		void setRoads(List<Road> roads) { this.roads = roads; }
 
+		void setMetricCollection(boolean collectLinkMetrics) {
+			this.collectLinkMetrics = collectLinkMetrics;
+			this.metricsOnly = true;
+			this.metrics = new RoadMetricsAccumulator();
+		}
+
+		void clearMetricCollection() {
+			this.collectLinkMetrics = false;
+			this.metricsOnly = false;
+			this.metrics = null;
+		}
+
+		RoadMetricsAccumulator getMetrics() { return this.metrics; }
+
 		public void run() {
+			if (this.metricsOnly) {
+				RoadContext roadContext = ContextCreator.getRoadContext();
+				for (Road road : this.roads) {
+					try {
+						this.metrics.add(road, roadContext, this.collectLinkMetrics);
+					} catch (Throwable ex) {
+						int roadID = road == null ? -1 : road.getID();
+						ContextCreator.logger.error("road.metrics partition " + this.partitionID
+								+ " failed on road " + roadID, ex);
+					}
+				}
+				return;
+			}
 			for (Road road : this.roads) {
 				try {
 					if (this.part1) road.stepPart1(); else road.stepPart2();
@@ -423,6 +560,67 @@ public class ThreadedScheduler {
 							+ " vehicles=" + vehicleCount, ex);
 				}
 			}
+		}
+	}
+
+	private static final class RoadMetricsAccumulator {
+		int vehicleOnRoad;
+		final ArrayList<RoadMetricRecord> roadRecords = new ArrayList<RoadMetricRecord>();
+
+		void add(Road road, RoadContext roadContext, boolean collectLinkMetrics) {
+			if (road == null || roadContext == null) return;
+			if (collectLinkMetrics) {
+				int currentFlow = road.getAndResetCurrentFlow();
+				if (currentFlow > 0) {
+					this.roadRecords.add(new RoadMetricRecord(road.getID(), currentFlow,
+							road.calcSpeed(), road.getAndResetCurrentEnergy()));
+				}
+			}
+			if (!road.hasActiveVehicles()) return;
+			this.vehicleOnRoad += roadContext.getQueryableVehicleCount(road);
+		}
+
+		void merge(RoadMetricsAccumulator other) {
+			if (other == null) return;
+			this.vehicleOnRoad += other.vehicleOnRoad;
+			this.roadRecords.addAll(other.roadRecords);
+		}
+	}
+
+	public static final class RoadMetricRecord {
+		public final int roadID;
+		public final int currentFlow;
+		public final double speed;
+		public final double currentEnergy;
+
+		private RoadMetricRecord(int roadID, int currentFlow, double speed,
+				double currentEnergy) {
+			this.roadID = roadID;
+			this.currentFlow = currentFlow;
+			this.speed = speed;
+			this.currentEnergy = currentEnergy;
+		}
+	}
+
+	public static final class RoadMetricsSnapshot {
+		public final int tick;
+		public final int vehicleOnRoad;
+		public final List<RoadMetricRecord> roadRecords;
+
+		private RoadMetricsSnapshot(int tick, RoadMetricsAccumulator metrics) {
+			this.tick = tick;
+			this.vehicleOnRoad = metrics.vehicleOnRoad;
+			metrics.roadRecords.sort((a, b) -> Integer.compare(a.roadID, b.roadID));
+			this.roadRecords = Collections.unmodifiableList(
+					new ArrayList<RoadMetricRecord>(metrics.roadRecords));
+		}
+
+		private static RoadMetricsSnapshot from(int tick, RoadMetricsAccumulator metrics) {
+			return new RoadMetricsSnapshot(tick, metrics);
+		}
+
+		private static RoadMetricsSnapshot empty(int tick) {
+			return new RoadMetricsSnapshot(tick, new RoadMetricsAccumulator());
 		}
 	}
 

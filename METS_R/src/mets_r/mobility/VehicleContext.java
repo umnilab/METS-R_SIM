@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -22,6 +23,9 @@ import repast.simphony.space.gis.Geography;
 public class VehicleContext extends DefaultContext<Vehicle> {
 	private static final Comparator<ElectricTaxi> TAXI_ID_ORDER =
 			Comparator.comparingInt(ElectricTaxi::getID);
+	private static final Comparator<Vehicle> VEHICLE_ID_ORDER =
+			Comparator.comparingInt(Vehicle::getID);
+	private static final int RECOVERY_PATH_CACHE_MAX_ENTRIES = 16384;
 
 	// For taxi/ride-hailing operation
 	private Map<Integer, TreeSet<ElectricTaxi>> availableTaxiMap;
@@ -44,6 +48,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	ConcurrentLinkedQueue<Vehicle> allTransferringVehicles;
 	ConcurrentLinkedQueue<Vehicle> allArrivingVehicles;
+	private ConcurrentLinkedQueue<Vehicle> deferredRoadRecoveryVehicles;
+	private ArrayList<Vehicle> transferringVehicleBuffer;
+	private ArrayList<Vehicle> arrivingVehicleBuffer;
+	private ArrayList<Vehicle> deferredRoadRecoveryBuffer;
+	private Map<Long, List<Road>> recoveryPathCache;
+	private int recoveryPathCacheEpoch;
 	private ConcurrentHashMap<Integer, Vehicle> externalRoadTransitionMap;
 
 	public VehicleContext() {
@@ -95,6 +105,19 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		
 		allTransferringVehicles = new ConcurrentLinkedQueue<Vehicle>();
 		allArrivingVehicles = new ConcurrentLinkedQueue<Vehicle>();
+		deferredRoadRecoveryVehicles = new ConcurrentLinkedQueue<Vehicle>();
+		transferringVehicleBuffer = new ArrayList<Vehicle>();
+		arrivingVehicleBuffer = new ArrayList<Vehicle>();
+		deferredRoadRecoveryBuffer = new ArrayList<Vehicle>();
+		recoveryPathCache = new LinkedHashMap<Long, List<Road>>(256, 0.75f, true) {
+			private static final long serialVersionUID = 1L;
+
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<Long, List<Road>> eldest) {
+				return size() > RECOVERY_PATH_CACHE_MAX_ENTRIES;
+			}
+		};
+		recoveryPathCacheEpoch = Integer.MIN_VALUE;
 		externalRoadTransitionMap = new ConcurrentHashMap<Integer, Vehicle>();
 	}
 
@@ -719,8 +742,19 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public void executeGlobalTransfers() {
-		List<Vehicle> sortedTransfers = drainVehicleQueue(this.allTransferringVehicles);
-	    sortedTransfers.sort(Comparator.comparingInt(Vehicle::getID));
+		ArrayList<Vehicle> sortedTransfers = this.transferringVehicleBuffer;
+		ArrayList<Vehicle> sortedArrivals = this.arrivingVehicleBuffer;
+		ArrayList<Vehicle> sortedRecoveries = this.deferredRoadRecoveryBuffer;
+		try {
+			drainVehicleQueue(this.deferredRoadRecoveryVehicles, sortedRecoveries);
+			sortedRecoveries.sort(VEHICLE_ID_ORDER);
+			this.refreshRecoveryPathCacheForTick(ContextCreator.getCurrentTick());
+			for (Vehicle vehicle : sortedRecoveries) {
+				vehicle.performDeferredRoadRecovery(this.recoveryPathCache);
+			}
+
+			drainVehicleQueue(this.allTransferringVehicles, sortedTransfers);
+			sortedTransfers.sort(VEHICLE_ID_ORDER);
 	    
 	    for (Vehicle currentVehicle: sortedTransfers) {
 	        if (currentVehicle.isExternalRoadTransition()) {
@@ -750,20 +784,41 @@ public class VehicleContext extends DefaultContext<Vehicle> {
             }
 	    }
 	    
-	    List<Vehicle> sortedArrivals = drainVehicleQueue(this.allArrivingVehicles);
-	    sortedArrivals.sort(Comparator.comparingInt(Vehicle::getID));
+	    drainVehicleQueue(this.allArrivingVehicles, sortedArrivals);
+	    sortedArrivals.sort(VEHICLE_ID_ORDER);
 	    
 	    for (Vehicle currentVehicle: sortedArrivals) {
 	    	currentVehicle.reachDest();
 	    }
+		} finally {
+			sortedRecoveries.clear();
+			sortedTransfers.clear();
+			sortedArrivals.clear();
+		}
 	}
 
-	private List<Vehicle> drainVehicleQueue(ConcurrentLinkedQueue<Vehicle> queue) {
-		ArrayList<Vehicle> vehicles = new ArrayList<Vehicle>();
+	private void refreshRecoveryPathCacheForTick(int tick) {
+		if (GlobalVariables.K_SHORTEST_PATH) {
+			if (!this.recoveryPathCache.isEmpty()) {
+				this.recoveryPathCache.clear();
+			}
+			return;
+		}
+		int refreshInterval = Math.max(1,
+				GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL);
+		int epoch = Math.floorDiv(Math.max(0, tick), refreshInterval);
+		if (epoch != this.recoveryPathCacheEpoch) {
+			this.recoveryPathCache.clear();
+			this.recoveryPathCacheEpoch = epoch;
+		}
+	}
+
+	private void drainVehicleQueue(ConcurrentLinkedQueue<Vehicle> queue,
+			ArrayList<Vehicle> vehicles) {
+		vehicles.clear();
 		for (Vehicle v = queue.poll(); v != null; v = queue.poll()) {
 			vehicles.add(v);
 		}
-		return vehicles;
 	}
 	
 	public void addArrivalVehicles(Vehicle v) {
@@ -777,9 +832,10 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		if (v != null && v.isExternalRoadTransition()) {
 			return;
 		}
-		if (v != null && v.getRoad() != null) {
-			ContextCreator.getRoadContext().markRoadActive(v.getRoad());
-		}
 		this.allTransferringVehicles.add(v);
+	}
+
+	public void addDeferredRoadRecovery(Vehicle vehicle) {
+		if (vehicle != null) this.deferredRoadRecoveryVehicles.add(vehicle);
 	}
 }

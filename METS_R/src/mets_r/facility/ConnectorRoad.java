@@ -13,17 +13,16 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
+import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.mobility.Vehicle;
 
 /**
- * Queryable road facade for one legal movement through an intersection.
+ * A real, schedulable road segment for one legal movement through an intersection.
  *
- * <p>A connector deliberately has no {@link Lane}. Native vehicle physics keeps
- * using the destination lane's linked lists, while this facade supplies explicit
- * connector identity, geometry, membership, and intersection ownership. It is
- * stored in RoadContext's connector indexes, not in the physical road dictionary
- * used by routing and Repast scheduling.</p>
+ * <p>Each legal source-lane to target-lane path is represented by one connector
+ * lane. Connectors stay outside the routing graph, but participate in the same
+ * partitioned road stepping and linked-list physics as physical roads.</p>
  */
 public final class ConnectorRoad extends Road {
 	public static final int NO_LANE = -1;
@@ -43,6 +42,8 @@ public final class ConnectorRoad extends Road {
 	private final int intersectionID;
 	private final long movementKey;
 	private final List<ConnectorPath> paths;
+	private final Map<Integer, Lane> lanesByPathID;
+	private final Map<Integer, ConnectorPath> pathsByLaneID;
 	private final List<List<Coordinate>> centerLines;
 	private final List<String> internalEdgeIDs;
 	private final Set<String> aliases;
@@ -79,7 +80,14 @@ public final class ConnectorRoad extends Road {
 		this.targetRoad = targetRoad;
 		this.intersectionID = intersectionID;
 		this.configuredControlType = configuredControlType;
+		String fallbackOrigID = buildOrigID(sourceRoad.getOrigID(), targetRoad.getOrigID());
+		String resolvedOrigID = connectorOrigID == null || connectorOrigID.trim().isEmpty()
+				? fallbackOrigID : connectorOrigID.trim();
+		this.setOrigID(resolvedOrigID);
 		this.paths = immutablePaths(paths, sourceRoad, targetRoad);
+		this.lanesByPathID = new LinkedHashMap<Integer, Lane>();
+		this.pathsByLaneID = new LinkedHashMap<Integer, ConnectorPath>();
+		validatePathAliases(this.paths, resolvedOrigID);
 		LinkedHashSet<String> connectorInternalEdgeIDs = new LinkedHashSet<String>();
 		for (ConnectorPath path : this.paths) {
 			connectorInternalEdgeIDs.addAll(path.getInternalEdgeIDs());
@@ -96,9 +104,6 @@ public final class ConnectorRoad extends Road {
 		ArrayList<List<Coordinate>> centerLines = new ArrayList<List<Coordinate>>();
 		for (ConnectorPath path : this.paths) centerLines.add(path.getCenterLine());
 		this.centerLines = Collections.unmodifiableList(centerLines);
-		String fallbackOrigID = buildOrigID(sourceRoad.getOrigID(), targetRoad.getOrigID());
-		this.setOrigID(connectorOrigID == null || connectorOrigID.trim().isEmpty()
-				? fallbackOrigID : connectorOrigID.trim());
 		this.setRoadType(sourceRoad.getRoadType());
 		this.setControlType(Road.NONE_OF_THE_ABOVE);
 		this.setUpStreamJunction(intersectionID);
@@ -117,6 +122,20 @@ public final class ConnectorRoad extends Road {
 			if (Double.isFinite(path.getSpeed()) && path.getSpeed() >= 0.0) {
 				explicitSpeed = Math.min(explicitSpeed, path.getSpeed());
 			}
+
+			Lane connectorLane = new ConnectorLane(
+					connectorLaneID(id, path.getConnectorPathID()), this);
+			connectorLane.setOrigID(resolvedOrigID + "/" + path.getConnectorPathID());
+			connectorLane.setRoad(id);
+			connectorLane.setCoords(deepCopy(line));
+			connectorLane.setLength(pathLength);
+			connectorLane.setSpeed(Double.isFinite(path.getSpeed()) && path.getSpeed() >= 0.0
+					? path.getSpeed() : this.getSpeedLimit());
+			if (path.getSourceLane() != null) connectorLane.addUpStreamLane(path.getSourceLane().getID());
+			if (path.getTargetLane() != null) connectorLane.addDownStreamLane(path.getTargetLane().getID());
+			this.addLane(connectorLane);
+			this.lanesByPathID.put(path.getConnectorPathID(), connectorLane);
+			this.pathsByLaneID.put(connectorLane.getID(), path);
 		}
 		this.setLength(maxLength);
 		this.setCoords(new ArrayList<Coordinate>(this.centerLines.get(0)));
@@ -124,8 +143,26 @@ public final class ConnectorRoad extends Road {
 			this.setSpeedLimit(Math.min(this.getSpeedLimit(), explicitSpeed));
 		}
 		this.updateTravelTimeEstimation();
-		this.setCanBeOrigin(false);
+		this.setCanBeOrigin(true);
 		this.setCanBeDest(false);
+	}
+
+	private static int connectorLaneID(int connectorID, int pathID) {
+		return Integer.MIN_VALUE + (-connectorID - 2) * 1024 + Math.max(0, pathID);
+	}
+
+	private static final class ConnectorLane extends Lane {
+		private final ConnectorRoad connector;
+
+		ConnectorLane(int id, ConnectorRoad connector) {
+			super(id);
+			this.connector = connector;
+		}
+
+		@Override
+		public Road getRoad() {
+			return this.connector;
+		}
 	}
 
 	/** Stable, namespaced identity for one source-road to target-road movement. */
@@ -162,7 +199,14 @@ public final class ConnectorRoad extends Road {
 		ArrayList<ConnectorPath> result = new ArrayList<ConnectorPath>();
 		if (paths != null) {
 			for (ConnectorPath path : paths) {
-				if (path != null && path.getCenterLine().size() >= 2) result.add(path);
+				if (path == null || path.getCenterLine().isEmpty()) continue;
+				if (path.getCenterLine().size() == 1) {
+					ArrayList<Coordinate> zeroLengthLine = deepCopy(path.getCenterLine());
+					zeroLengthLine.add(new Coordinate(zeroLengthLine.get(0)));
+					result.add(path.withCenterLine(zeroLengthLine));
+				} else {
+					result.add(path);
+				}
 			}
 		}
 		if (result.isEmpty()) {
@@ -171,7 +215,49 @@ public final class ConnectorRoad extends Road {
 			fallback.add(targetRoad.getStartCoord());
 			result.add(new ConnectorPath(sourceRoad.firstLane(), targetRoad.firstLane(), fallback));
 		}
-		return Collections.unmodifiableList(result);
+		result.sort(new Comparator<ConnectorPath>() {
+			@Override
+			public int compare(ConnectorPath first, ConnectorPath second) {
+				int comparison = laneIdentity(first.getSourceLane(), "source")
+						.compareTo(laneIdentity(second.getSourceLane(), "source"));
+				if (comparison != 0) return comparison;
+				comparison = laneIdentity(first.getTargetLane(), "target")
+						.compareTo(laneIdentity(second.getTargetLane(), "target"));
+				if (comparison != 0) return comparison;
+				comparison = String.join("\u0000", first.getViaLaneIDs())
+						.compareTo(String.join("\u0000", second.getViaLaneIDs()));
+				if (comparison != 0) return comparison;
+				return String.join("\u0000", first.getInternalEdgeIDs())
+						.compareTo(String.join("\u0000", second.getInternalEdgeIDs()));
+			}
+		});
+		ArrayList<ConnectorPath> identified = new ArrayList<ConnectorPath>();
+		for (int pathIndex = 0; pathIndex < result.size(); pathIndex++) {
+			identified.add(result.get(pathIndex).withConnectorPathID(pathIndex));
+		}
+		return Collections.unmodifiableList(identified);
+	}
+
+	private static void validatePathAliases(List<ConnectorPath> paths,
+			String connectorOrigID) {
+		for (int pathIndex = 0; pathIndex < paths.size(); pathIndex++) {
+			ConnectorPath path = paths.get(pathIndex);
+			for (String viaLaneID : path.getViaLaneIDs()) {
+				for (int previousIndex = 0; previousIndex < pathIndex; previousIndex++) {
+					if (paths.get(previousIndex).getViaLaneIDs().contains(viaLaneID)) {
+						throw new IllegalStateException("Ambiguous connector path alias "
+								+ viaLaneID + " on connector " + connectorOrigID);
+					}
+				}
+			}
+		}
+	}
+
+	private static String laneIdentity(Lane lane, String role) {
+		if (lane == null) return role + "-lane-none";
+		String origID = lane.getOrigID();
+		return origID == null || origID.trim().isEmpty()
+				? role + "-lane-id-" + lane.getID() : origID.trim();
 	}
 
 	private Coordinate intersectionAnchor(List<Coordinate> line) {
@@ -266,8 +352,36 @@ public final class ConnectorRoad extends Road {
 	}
 
 	@Override
-	public void setControlType(int controlType) {
+	public synchronized void setControlType(int controlType) {
+		boolean releasing = this.getControlType() == Road.COSIM
+				&& !this.isEffectivelyCoSim(controlType);
+		if (releasing) {
+			for (Vehicle vehicle : this.getActiveVehiclesSnapshot()) {
+				if (vehicle == null || vehicle.getCurrentConnector() != this
+						|| !vehicle.isExternalRoadTransition()) {
+					continue;
+				}
+				if (!vehicle.resumeNativeConnectorTraversal()) {
+					ContextCreator.logger.error(new StringBuilder(
+							ConnectorControlWarning.HAND_BACK_FAILED.name())
+							.append(':').append(this.getID())
+							.append('@').append(vehicle.getID()));
+					return;
+				}
+			}
+		}
 		setControlTypeDirect(controlType);
+	}
+
+	private boolean isEffectivelyCoSim(int requestedControlType) {
+		return this.configuredControlType == Road.COSIM
+				|| requestedControlType == Road.COSIM
+				|| this.sourceRoad.getControlType() == Road.COSIM
+				|| this.targetRoad.getControlType() == Road.COSIM;
+	}
+
+	private enum ConnectorControlWarning {
+		HAND_BACK_FAILED
 	}
 
 	public static boolean sweptFootprintsOverlap(
@@ -523,6 +637,70 @@ public final class ConnectorRoad extends Road {
 		return this.paths;
 	}
 
+	/** Resolve an exact SUMO via-lane alias to its connector path. */
+	public ConnectorPath getPath(String connectorPathAlias) {
+		if (connectorPathAlias == null) return null;
+		String normalizedAlias = connectorPathAlias.trim();
+		for (ConnectorPath path : this.paths) {
+			if (path.getViaLaneIDs().contains(normalizedAlias)) return path;
+		}
+		return null;
+	}
+
+	public ConnectorPath getPathByID(int connectorPathID) {
+		return connectorPathID >= 0 && connectorPathID < this.paths.size()
+				? this.paths.get(connectorPathID) : null;
+	}
+
+	public ConnectorPath getPath(Lane sourceLane, Lane targetLane) {
+		for (ConnectorPath path : this.paths) {
+			if (path.getSourceLane() == sourceLane && path.getTargetLane() == targetLane) {
+				return path;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Select a deterministic path from the vehicle's actual source lane. The
+	 * route-prepared target lane is preferred when it is reachable, but a valid
+	 * path from the actual lane wins over a stale target-lane preference.
+	 */
+	public ConnectorPath selectPath(Lane sourceLane, Lane preferredTargetLane) {
+		ConnectorPath fallback = null;
+		for (ConnectorPath path : this.paths) {
+			Lane targetLane = path.getTargetLane();
+			if (path.getSourceLane() != sourceLane || targetLane == null
+					|| targetLane.getRoad() != this.targetRoad) {
+				continue;
+			}
+			if (targetLane == preferredTargetLane) return path;
+			if (fallback == null) fallback = path;
+		}
+		return fallback;
+	}
+
+	public Lane getLane(ConnectorPath path) {
+		return path == null ? null : this.lanesByPathID.get(path.getConnectorPathID());
+	}
+
+	/**
+	 * A connector path shorter than the normal entry headway cannot safely hold
+	 * two vehicle fronts. Treat it as an atomic path: a following vehicle may
+	 * enter only after the prior vehicle's rear has released its admission.
+	 */
+	public boolean requiresClearPathAdmission(ConnectorPath path, double requiredGap) {
+		Lane connectorLane = this.getLane(path);
+		if (connectorLane == null) return true;
+		double pathLength = connectorLane.getLength();
+		return !Double.isFinite(pathLength)
+				|| pathLength + GEOMETRY_EPSILON < Math.max(0.0, requiredGap);
+	}
+
+	public ConnectorPath getPath(Lane connectorLane) {
+		return connectorLane == null ? null : this.pathsByLaneID.get(connectorLane.getID());
+	}
+
 	public static MovementPriority movementPriorityForState(String state) {
 		if (state == null || state.trim().isEmpty()) return MovementPriority.UNKNOWN;
 		switch (state.trim().charAt(0)) {
@@ -588,11 +766,13 @@ public final class ConnectorRoad extends Road {
 	public int getControlType() {
 		return this.configuredControlType == Road.COSIM
 				|| super.getControlType() == Road.COSIM
+				|| this.sourceRoad.getControlType() == Road.COSIM
 				|| this.targetRoad.getControlType() == Road.COSIM ? Road.COSIM
 						: Road.NONE_OF_THE_ABOVE;
 	}
 
 	public static final class ConnectorPath {
+		private final int connectorPathID;
 		private final Lane sourceLane;
 		private final Lane targetLane;
 		private final List<Coordinate> centerLine;
@@ -619,6 +799,17 @@ public final class ConnectorRoad extends Road {
 				Map<String, String> parameters,
 				String direction, String state, String trafficLightID, Integer linkIndex,
 				double declaredLength, double speed, boolean explicitGeometry) {
+			this(-1, sourceLane, targetLane, centerLine, viaLaneIDs, internalEdgeIDs,
+					parameters, direction, state, trafficLightID, linkIndex,
+					declaredLength, speed, explicitGeometry);
+		}
+
+		private ConnectorPath(int connectorPathID, Lane sourceLane, Lane targetLane,
+				List<Coordinate> centerLine, List<String> viaLaneIDs,
+				List<String> internalEdgeIDs, Map<String, String> parameters,
+				String direction, String state, String trafficLightID, Integer linkIndex,
+				double declaredLength, double speed, boolean explicitGeometry) {
+			this.connectorPathID = connectorPathID;
 			this.sourceLane = sourceLane;
 			this.targetLane = targetLane;
 			this.centerLine = Collections.unmodifiableList(deepCopy(centerLine));
@@ -636,6 +827,37 @@ public final class ConnectorRoad extends Road {
 			this.speed = speed;
 			this.explicitGeometry = explicitGeometry;
 		}
+
+		private ConnectorPath(int connectorPathID, ConnectorPath template) {
+			this.connectorPathID = connectorPathID;
+			this.sourceLane = template.sourceLane;
+			this.targetLane = template.targetLane;
+			this.centerLine = template.centerLine;
+			this.viaLaneIDs = template.viaLaneIDs;
+			this.internalEdgeIDs = template.internalEdgeIDs;
+			this.parameters = template.parameters;
+			this.direction = template.direction;
+			this.state = template.state;
+			this.trafficLightID = template.trafficLightID;
+			this.linkIndex = template.linkIndex;
+			this.declaredLength = template.declaredLength;
+			this.speed = template.speed;
+			this.explicitGeometry = template.explicitGeometry;
+		}
+
+		private ConnectorPath withConnectorPathID(int connectorPathID) {
+			return new ConnectorPath(connectorPathID, this);
+		}
+
+		private ConnectorPath withCenterLine(List<Coordinate> newCenterLine) {
+			return new ConnectorPath(this.connectorPathID, this.sourceLane,
+					this.targetLane, newCenterLine, this.viaLaneIDs,
+					this.internalEdgeIDs, this.parameters, this.direction, this.state,
+					this.trafficLightID, this.linkIndex, this.declaredLength,
+					this.speed, this.explicitGeometry);
+		}
+
+		public int getConnectorPathID() { return this.connectorPathID; }
 
 		public Lane getSourceLane() {
 			return this.sourceLane;
@@ -802,12 +1024,12 @@ public final class ConnectorRoad extends Road {
 
 	@Override
 	public boolean hasActiveVehicles() {
-		return !this.activeVehicles.isEmpty();
+		return !this.activeVehicles.isEmpty() || super.hasActiveVehicles();
 	}
 
 	@Override
 	public int getPendingDepartureVehicleNum() {
-		return 0;
+		return super.getPendingDepartureVehicleNum();
 	}
 
 	@Override

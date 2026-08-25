@@ -42,6 +42,11 @@ public class RouteContext {
 			ContextCreator.logger.warn("shortestPathRoute skipped because the routing engine is not initialized.");
 			return null;
 		}
+		if (destRoad instanceof ConnectorRoad) {
+			ContextCreator.logger.debug("shortestPathRoute skipped because a connector cannot be a destination: "
+					+ roadLabel(destRoad));
+			return null;
+		}
 		if (originRoad.getID() == destRoad.getID()) {
 			List<Road> sameRoadPath = new ArrayList<Road>();
 			sameRoadPath.add(originRoad);
@@ -52,6 +57,22 @@ public class RouteContext {
 					+ roadLabel(originRoad) + " originAllowed=" + originRoad.canBeOrigin()
 					+ ", destination=" + roadLabel(destRoad) + " destAllowed=" + destRoad.canBeDest());
 			return null;
+		}
+		if (originRoad instanceof ConnectorRoad) {
+			ConnectorRoad connector = (ConnectorRoad) originRoad;
+			Road targetRoad = connector.getTargetRoad();
+			List<Road> suffix;
+			if (targetRoad.getID() == destRoad.getID()) {
+				suffix = new ArrayList<Road>();
+				suffix.add(targetRoad);
+			} else {
+				suffix = shortestPathRoute(targetRoad, destRoad, rand);
+			}
+			if (suffix == null || suffix.isEmpty()) return null;
+			ArrayList<Road> connectorPath = new ArrayList<Road>(suffix.size() + 1);
+			connectorPath.add(connector);
+			connectorPath.addAll(suffix);
+			return connectorPath;
 		}
 		Node originDownStreamNode = originRoad.getDownStreamNode();
 		Node destUpStreamNode = destRoad.getUpStreamNode();
@@ -81,7 +102,30 @@ public class RouteContext {
 
 	public static List<List<Road>> kShortestPathRoute(int K, Road originRoad, Road destRoad) {
 		if (originRoad == null || destRoad == null || vbr == null) return null;
+		if (destRoad instanceof ConnectorRoad) return null;
 		if (!originRoad.canBeOrigin() || !destRoad.canBeDest()) return null;
+		if (originRoad instanceof ConnectorRoad) {
+			ConnectorRoad connector = (ConnectorRoad) originRoad;
+			Road targetRoad = connector.getTargetRoad();
+			List<List<Road>> suffixes;
+			if (targetRoad.getID() == destRoad.getID()) {
+				ArrayList<Road> suffix = new ArrayList<Road>();
+				suffix.add(targetRoad);
+				suffixes = new ArrayList<List<Road>>();
+				suffixes.add(suffix);
+			} else {
+				suffixes = kShortestPathRoute(K, targetRoad, destRoad);
+			}
+			if (suffixes == null || suffixes.isEmpty()) return suffixes;
+			ArrayList<List<Road>> connectorPaths = new ArrayList<List<Road>>(suffixes.size());
+			for (List<Road> suffix : suffixes) {
+				ArrayList<Road> connectorPath = new ArrayList<Road>(suffix.size() + 1);
+				connectorPath.add(connector);
+				connectorPath.addAll(suffix);
+				connectorPaths.add(connectorPath);
+			}
+			return connectorPaths;
+		}
 		Node originDownStreamNode = originRoad.getDownStreamNode();
 		Node destUpStreamNode = destRoad.getUpStreamNode();
 		if (originDownStreamNode == null || destUpStreamNode == null) return null;

@@ -40,6 +40,11 @@ final class CoSimMapMatcher {
 
 	static List<Match> candidates(Vehicle vehicle, Coordinate pose, double bearing,
 			String segmentHint) {
+		return candidates(vehicle, pose, bearing, segmentHint, null);
+	}
+
+	static List<Match> candidates(Vehicle vehicle, Coordinate pose, double bearing,
+			String segmentHint, Integer connectorPathHint) {
 		if (!finitePose(pose) || !Double.isFinite(bearing)) {
 			return Collections.emptyList();
 		}
@@ -58,12 +63,23 @@ final class CoSimMapMatcher {
 			return Collections.emptyList();
 		}
 		boolean authoritativeSegment = hintedSegment != null;
+		ConnectorRoad.ConnectorPath hintedConnectorPath = null;
+		if (connectorPathHint != null) {
+			if (!(hintedSegment instanceof ConnectorRoad)) return Collections.emptyList();
+			hintedConnectorPath = ((ConnectorRoad) hintedSegment)
+					.getPathByID(connectorPathHint.intValue());
+			if (hintedConnectorPath == null) return Collections.emptyList();
+		} else if (hintedSegment instanceof ConnectorRoad && normalizedHint != null) {
+			// An exact SUMO via-lane alias identifies one path even though it resolves
+			// to the movement-level connector for ownership.
+			hintedConnectorPath = ((ConnectorRoad) hintedSegment).getPath(normalizedHint);
+		}
 		ArrayList<Match> matches = new ArrayList<Match>();
 		for (Road segment : eligibleSegments) {
 			if (hintedSegment != null && segment != hintedSegment) continue;
 			if (segment instanceof ConnectorRoad) {
 				addConnectorCandidates(matches, vehicle, (ConnectorRoad) segment,
-						pose, bearing, authoritativeSegment);
+						pose, bearing, authoritativeSegment, hintedConnectorPath);
 			} else {
 				addPhysicalRoadCandidates(matches, vehicle, segment, pose, bearing,
 						authoritativeSegment);
@@ -102,8 +118,10 @@ final class CoSimMapMatcher {
 
 	private static void addConnectorCandidates(List<Match> matches, Vehicle vehicle,
 			ConnectorRoad connector, Coordinate pose, double bearing,
-			boolean authoritativeSegment) {
+			boolean authoritativeSegment,
+			ConnectorRoad.ConnectorPath hintedConnectorPath) {
 		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
+			if (hintedConnectorPath != null && path != hintedConnectorPath) continue;
 			// A geometry-only fallback connector is useful for visualization, but it
 			// cannot provide the lane pair required for a safe state transition.
 			if (path.getSourceLane() == null || path.getTargetLane() == null) continue;
@@ -126,7 +144,10 @@ final class CoSimMapMatcher {
 			ConnectorRoad.ConnectorPath path) {
 		if (vehicle == null) return 0.0;
 		if (vehicle.isExternalRoadTransition()) {
-			if (segment == vehicle.getCurrentConnector()) return -4.0;
+			if (segment == vehicle.getCurrentConnector()) {
+				return path != null && path == vehicle.getCurrentConnectorPath()
+						? -4.0 : -2.0;
+			}
 			if (segment == vehicle.getExternalTransitionTargetRoad()
 					&& lane == vehicle.getExternalTransitionTargetLane()) return -3.0;
 			return 0.0;

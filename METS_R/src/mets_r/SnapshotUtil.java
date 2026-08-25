@@ -196,6 +196,8 @@ public class SnapshotUtil {
 		m.put("onRoad", v.isOnRoad());
 		m.put("onLane", v.isOnLane());
 		m.put("movingFlag", v.getMovingFlag());
+		m.put("roadTraversalStoppedTicks", v.getRoadTraversalStoppedTicks());
+		m.put("stopLineWaitTicks", v.getStopLineWaitTicks());
 		m.put("currentParkingRoad", v.getCurrentParkingRoad());
 		addTaxiPoolSnapshotFields(m, v);
 		addConnectorSnapshotFields(m, v.getConnectorPersistenceSnapshot());
@@ -515,9 +517,17 @@ public class SnapshotUtil {
 			Vehicle.ConnectorPersistenceSnapshot connectorState) {
 		if (connectorState == null) return;
 		ConnectorRoad connector = connectorState.getConnector();
-		target.put("connectorStateVersion", 1);
+		ConnectorRoad.ConnectorPath connectorPath = connectorState.getConnectorPath();
+		target.put("connectorStateVersion", 3);
 		target.put("connectorActive", true);
 		target.put("connectorOrigID", connector.getOrigID());
+		target.put("connectorPathId", connectorPath.getConnectorPathID());
+		target.put("connectorPathSourceLaneID", connectorPath.getSourceLane().getID());
+		target.put("connectorPathTargetLaneID", connectorPath.getTargetLane().getID());
+		target.put("connectorPathViaLaneIDs",
+				new ArrayList<String>(connectorPath.getViaLaneIDs()));
+		target.put("connectorPathInternalEdgeIDs",
+				new ArrayList<String>(connectorPath.getInternalEdgeIDs()));
 		target.put("connectorSourceRoadID", connector.getSourceRoad().getID());
 		target.put("connectorTargetRoadID", connector.getTargetRoad().getID());
 		target.put("connectorIntersectionID", connector.getIntersectionID());
@@ -1436,7 +1446,7 @@ public class SnapshotUtil {
 			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
 					&& toBool(vs.get("connectorExternalTransition"));
 
-			if (wasOnRoad && roadID >= 0) {
+			if (wasOnRoad && roadID != -1) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
 					if (savedExternalConnector) {
@@ -1496,6 +1506,11 @@ public class SnapshotUtil {
 			} else if (v.isOnRoad() && destRoad != null) {
 				v.rerouteAndSetNextRoad();
 			}
+			v.restoreRoadTraversalPatience(
+					vs.containsKey("roadTraversalStoppedTicks")
+							? toInt(vs.get("roadTraversalStoppedTicks")) : 0,
+					vs.containsKey("stopLineWaitTicks")
+							? toInt(vs.get("stopLineWaitTicks")) : 0);
 		}
 //		ContextCreator.logger.info("Loaded vehicle snapshots");
 
@@ -1628,7 +1643,7 @@ public class SnapshotUtil {
 			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
 					&& toBool(vs.get("connectorExternalTransition"));
 
-			if (wasOnRoad && roadID >= 0) {
+			if (wasOnRoad && roadID != -1) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
 					if (savedExternalConnector) {
@@ -1685,6 +1700,11 @@ public class SnapshotUtil {
 			} else if (v.isOnRoad() && destRoad != null) {
 				v.rerouteAndSetNextRoad();
 			}
+			v.restoreRoadTraversalPatience(
+					vs.containsKey("roadTraversalStoppedTicks")
+							? toInt(vs.get("roadTraversalStoppedTicks")) : 0,
+					vs.containsKey("stopLineWaitTicks")
+							? toInt(vs.get("stopLineWaitTicks")) : 0);
 		}
 
 		vc.rebuildTaxiRequestMaps();
@@ -1796,7 +1816,7 @@ public class SnapshotUtil {
 		for (HashMap<String, Object> vs : vehicleSnapshots) {
 			if (!toBool(vs.get("connectorActive"))) continue;
 			int stateVersion = toInt(vs.get("connectorStateVersion"));
-			if (stateVersion != 1) {
+			if (stateVersion != 3) {
 				throw new IllegalStateException("Unsupported connector snapshot version "
 						+ stateVersion + " for vehicle " + toInt(vs.get("id")));
 			}
@@ -1817,6 +1837,25 @@ public class SnapshotUtil {
 				throw new IllegalStateException("Saved connector ID does not match rebuilt topology for vehicle "
 						+ vehicle.getID());
 			}
+			ConnectorRoad.ConnectorPath connectorPath = connector.getPathByID(
+					toInt(vs.get("connectorPathId")));
+			if (connectorPath == null) {
+				throw new IllegalStateException("Saved connector path is unavailable for vehicle "
+						+ vehicle.getID());
+			}
+			Lane sourceLane = ContextCreator.getLaneContext().get(
+					toInt(vs.get("connectorPathSourceLaneID")));
+			if (sourceLane == null || sourceLane.getRoad() != connector.getSourceRoad()
+					|| connectorPath.getSourceLane() != sourceLane
+					|| connectorPath.getTargetLane().getID()
+							!= toInt(vs.get("connectorPathTargetLaneID"))
+					|| !connectorPath.getViaLaneIDs().equals(
+							toStringList(vs.get("connectorPathViaLaneIDs")))
+					|| !connectorPath.getInternalEdgeIDs().equals(
+							toStringList(vs.get("connectorPathInternalEdgeIDs")))) {
+				throw new IllegalStateException("Saved connector path index does not match "
+						+ "rebuilt topology for vehicle " + vehicle.getID());
+			}
 			if (vs.containsKey("connectorIntersectionID")
 					&& connector.getIntersectionID()
 							!= toInt(vs.get("connectorIntersectionID"))) {
@@ -1825,7 +1864,8 @@ public class SnapshotUtil {
 			}
 			Lane targetLane = ContextCreator.getLaneContext().get(
 					toInt(vs.get("connectorTargetLaneID")));
-			if (targetLane == null || targetLane.getRoad() != connector.getTargetRoad()) {
+			if (targetLane == null || targetLane.getRoad() != connector.getTargetRoad()
+					|| connectorPath.getTargetLane() != targetLane) {
 				throw new IllegalStateException("Saved connector target lane is unavailable for vehicle "
 						+ vehicle.getID());
 			}
@@ -1851,7 +1891,7 @@ public class SnapshotUtil {
 							point.size() >= 3 ? toDouble(point.get(2)) : 0.0));
 				}
 			}
-			vehicle.restoreConnectorPersistenceState(connector,
+			vehicle.restoreConnectorPersistenceState(connector, connectorPath,
 					toBool(vs.get("connectorFrontCleared")), external,
 					externalSourceRoad, externalTargetRoad, targetLane,
 					remainingCoordinates, toDouble(vs.get("connectorDistance")),
@@ -2038,6 +2078,15 @@ public class SnapshotUtil {
 			for (Object obj : list) {
 				result.add(toInt(obj));
 			}
+		}
+		return result;
+	}
+
+	private static ArrayList<String> toStringList(Object value) {
+		ArrayList<String> result = new ArrayList<String>();
+		if (!(value instanceof List<?>)) return result;
+		for (Object item : (List<?>) value) {
+			if (item != null) result.add(item.toString());
 		}
 		return result;
 	}

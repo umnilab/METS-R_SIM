@@ -42,10 +42,9 @@ import repast.simphony.space.gis.ShapefileLoader;
 
 public class RoadContext extends FacilityContext<Road> {
 	/** Bump when persisted connector identities or topology semantics change. */
-	public static final int CONNECTOR_TOPOLOGY_SCHEMA_VERSION = 2;
+	public static final int CONNECTOR_TOPOLOGY_SCHEMA_VERSION = 6;
 	private static final double EARTH_RADIUS_METERS = 6371008.8;
 	private static final double INTERSECTION_CLEARANCE_MARGIN_METERS = 0.25;
-	private static final double SAME_CONNECTOR_HEADWAY_FACTOR = 1.2;
 	private static final int FIRST_CONNECTOR_INTERNAL_ID = -2;
 
 	private ConcurrentHashMap<Integer, Long> activeRoadIDs;
@@ -156,12 +155,26 @@ public class RoadContext extends FacilityContext<Road> {
 		return facilityIDList;
 	}
 
+	@Override
+	public Road get(int id) {
+		Road physicalRoad = super.get(id);
+		return physicalRoad != null ? physicalRoad
+				: this.connectorTopology.connectorsByInternalID.get(id);
+	}
+
+	public List<Road> getAllSteppableRoads() {
+		ArrayList<Road> roads = new ArrayList<Road>(super.getAll());
+		roads.addAll(this.connectorTopology.connectorsByInternalID.values());
+		roads.sort(Comparator.comparingInt(Road::getID));
+		return roads;
+	}
+
 	/**
 	 * Rebuild the queryable connector-road topology after junction movements and
 	 * lane turning curves have been initialized. Physical roads remain in the
-	 * FacilityContext dictionary; connector roads are published atomically in a
-	 * separate immutable topology snapshot so routing and road stepping never see
-	 * lane-less virtual roads.
+	 * FacilityContext routing dictionary; connector roads are published atomically
+	 * in a separate topology and exposed together with physical roads only to the
+	 * segment scheduler.
 	 */
 	public synchronized void rebuildConnectorTopology() {
 		this.connectorTopologyLock.writeLock().lock();
@@ -313,11 +326,33 @@ public class RoadContext extends FacilityContext<Road> {
 		this.connectorTopology = new ConnectorTopology(connectorsByMovement,
 				connectorsByInternalID, connectorsByOrigID, connectorsByAlias,
 				intersectionByConnectorID, connectorsByIntersection, intersectionRuntimes);
+		if (ContextCreator.partitioner != null) ContextCreator.partitioner.run();
 		rebuildActiveIntersectionIndexes();
+		double defaultConnectorGap = 1.2 * GlobalVariables.DEFAULT_VEHICLE_LENGTH;
+		int connectorPathCount = 0;
+		int clearPathAdmissionCount = 0;
+		int zeroLengthPathCount = 0;
+		for (ConnectorRoad connector : connectorsByMovement.values()) {
+			for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
+				connectorPathCount++;
+				Lane connectorLane = connector.getLane(path);
+				double pathLength = connectorLane == null
+						? Double.NaN : connectorLane.getLength();
+				if (connector.requiresClearPathAdmission(path, defaultConnectorGap)) {
+					clearPathAdmissionCount++;
+				}
+				if (!Double.isFinite(pathLength) || pathLength <= 1.0e-9) {
+					zeroLengthPathCount++;
+				}
+			}
+		}
 		ContextCreator.logger.info("Initialized " + connectorsByMovement.size()
 				+ " connector roads across " + connectorsByIntersection.size()
 				+ " intersections; " + explicitConnectorCount
-				+ " use SUMO net.xml connector definitions.");
+				+ " use SUMO net.xml connector definitions; " + clearPathAdmissionCount
+				+ " of " + connectorPathCount + " paths are shorter than the default "
+				+ defaultConnectorGap + " m entry gap and use clear-path admission; "
+				+ zeroLengthPathCount + " are zero-length.");
 		} finally {
 			this.connectorTopologyLock.writeLock().unlock();
 		}
@@ -418,6 +453,7 @@ public class RoadContext extends FacilityContext<Road> {
 			addDistinctCoordinate(line, coordinate);
 		}
 		addDistinctCoordinate(line, targetLane.getStartCoord());
+		ensureConnectorWaypointPair(line);
 		return line;
 	}
 
@@ -432,13 +468,7 @@ public class RoadContext extends FacilityContext<Road> {
 		for (Lane sourceLane : sourceLanes) {
 			for (Lane targetLane : targetLanes) {
 				if (!sourceLane.getDownStreamLanes().contains(targetLane.getID())) continue;
-				ArrayList<Coordinate> line = new ArrayList<Coordinate>();
-				addDistinctCoordinate(line, sourceLane.getEndCoord());
-				for (Coordinate coordinate : sourceLane.getTurningCoords(targetLane.getID())) {
-					addDistinctCoordinate(line, coordinate);
-				}
-				addDistinctCoordinate(line, targetLane.getStartCoord());
-				if (line.size() == 1) addDistinctCoordinate(line, targetLane.getStartCoord());
+				ArrayList<Coordinate> line = inferredConnectorLine(sourceLane, targetLane);
 				paths.add(new ConnectorRoad.ConnectorPath(sourceLane, targetLane, line));
 			}
 		}
@@ -446,6 +476,7 @@ public class RoadContext extends FacilityContext<Road> {
 			ArrayList<Coordinate> fallback = new ArrayList<Coordinate>();
 			addDistinctCoordinate(fallback, sourceRoad.getEndCoord());
 			addDistinctCoordinate(fallback, targetRoad.getStartCoord());
+			ensureConnectorWaypointPair(fallback);
 			paths.add(new ConnectorRoad.ConnectorPath(sourceRoad.firstLane(),
 					targetRoad.firstLane(), fallback));
 		}
@@ -489,6 +520,15 @@ public class RoadContext extends FacilityContext<Road> {
 			if (dx * dx + dy * dy + dz * dz <= 1.0e-24) return;
 		}
 		line.add(copy);
+	}
+
+	private void ensureConnectorWaypointPair(ArrayList<Coordinate> line) {
+		if (line != null && line.size() == 1) {
+			// Vehicle lane traversal needs an endpoint waypoint even when the
+			// connector has no spatial extent. A deliberate duplicate preserves
+			// the zero length while retaining the source/target lane pairing.
+			line.add(new Coordinate(line.get(0)));
+		}
 	}
 
 	private void initializeConnectorConflicts(List<ConnectorRoad> connectors,
@@ -698,61 +738,26 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	/**
-	 * Atomically reserve a connector within its owning intersection. Conflicting
-	 * connector occupancy is checked while holding only that intersection's lock.
+	 * Register connector membership after the selected ConnectorPath's ordinary
+	 * lane-headway check. Short paths use an exclusive clear-path reservation
+	 * instead. Both that reservation and optional cross-movement collision gates
+	 * are decided while holding the owning intersection's lock.
 	 */
-	public boolean tryEnterConnector(ConnectorRoad connector, Vehicle vehicle) {
+	public boolean tryEnterConnector(ConnectorRoad connector,
+			ConnectorRoad.ConnectorPath connectorPath, Vehicle vehicle,
+			boolean requireClearPath) {
 		this.connectorTopologyLock.readLock().lock();
 		try {
-		if (connector == null || vehicle == null) return false;
+		if (connector == null || connectorPath == null || vehicle == null
+				|| connector.getLane(connectorPath) == null) return false;
 		IntersectionRuntime runtime =
 				this.connectorTopology.intersectionRuntimes.get(connector.getIntersectionID());
 		if (runtime == null) return false;
-		int admission = runtime.tryAdmit(connector, vehicle, ContextCreator.getCurrentTick());
+		int admission = runtime.tryAdmit(connector, connectorPath, vehicle,
+				requireClearPath, ContextCreator.getCurrentTick());
 		if (admission == IntersectionRuntime.BLOCKED) return false;
 		this.activeIntersectionIDs.put(connector.getIntersectionID(), Boolean.TRUE);
 		return true;
-		} finally {
-			this.connectorTopologyLock.readLock().unlock();
-		}
-	}
-
-	/**
-	 * Return an approaching vehicle on a conflicting SUMO-major movement when the
-	 * requested movement is SUMO-minor. Occupied connectors are handled separately
-	 * by tryEnterConnector; this check supplies the advance yield behavior.
-	 */
-	public Vehicle priorityMovementBlocker(ConnectorRoad connector, Vehicle vehicle,
-			ConnectorRoad.MovementPriority movementPriority) {
-		if (!GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
-				|| connector == null || vehicle == null
-				|| movementPriority != ConnectorRoad.MovementPriority.MINOR) {
-			return null;
-		}
-		this.connectorTopologyLock.readLock().lock();
-		try {
-			for (int conflictingID : connector.getConflictingConnectorIDs()) {
-				ConnectorRoad other = this.connectorTopology.connectorsByInternalID
-						.get(conflictingID);
-				if (other == null || !connector.conflictsWith(other)) continue;
-				Road sourceRoad = other.getSourceRoad();
-				Vehicle candidate = sourceRoad.prevFirstVehicle();
-				if (candidate == null || candidate == vehicle
-						|| candidate.getID() == vehicle.getID()
-						|| !candidate.wasPreviouslyOnRoad(sourceRoad)
-						|| !candidate.aboutToEnterRoad(other.getTargetRoad())) {
-					continue;
-				}
-				ConnectorRoad.MovementPriority otherPriority =
-						other.getMovementPriority(candidate.getLane(), null);
-				if (otherPriority == ConnectorRoad.MovementPriority.UNKNOWN) {
-					otherPriority = other.getMovementPriority();
-				}
-				if (otherPriority == ConnectorRoad.MovementPriority.MAJOR) {
-					return candidate;
-				}
-			}
-			return null;
 		} finally {
 			this.connectorTopologyLock.readLock().unlock();
 		}
@@ -827,7 +832,8 @@ public class RoadContext extends FacilityContext<Road> {
 		if (connector == null || vehicle == null) return;
 		IntersectionRuntime runtime =
 				this.connectorTopology.intersectionRuntimes.get(connector.getIntersectionID());
-		if (runtime != null && runtime.hideTargetVehicle(connector, vehicle)) {
+		if (runtime != null && vehicle.getRoad() != connector
+				&& runtime.hideTargetVehicle(connector, vehicle)) {
 			adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), 1);
 		}
 		} finally {
@@ -1201,7 +1207,7 @@ public class RoadContext extends FacilityContext<Road> {
 		this.activeRoadIDs.clear();
 		this.enteringVehicleRoadIDs.clear();
 		this.activeRoadMarkVersion.incrementAndGet();
-		for (Road road : this.getAll()) {
+		for (Road road : this.getAllSteppableRoads()) {
 			if (road.hasActiveVehicles()) {
 				markRoadActive(road);
 			}
@@ -1340,8 +1346,14 @@ public class RoadContext extends FacilityContext<Road> {
 							: ++this.eventSequence;
 					int admissionTick = sameAdmission ? prior.admissionTick
 							: Integer.MIN_VALUE;
+					ConnectorRoad.ConnectorPath connectorPath = sameAdmission
+							? prior.connectorPath : vehicle.getCurrentConnectorPath();
+					if (connectorPath == null && vehicle.getRoad() == connector) {
+						connectorPath = connector.getPath(vehicle.getLane());
+					}
 					this.activeAdmissionByVehicle.put(vehicle.getID(),
-							new Admission(vehicle, connector, admissionSequence, admissionTick));
+							new Admission(vehicle, connector, connectorPath,
+									admissionSequence, admissionTick));
 					if ((sameAdmission
 							&& previous.hiddenTargetVehicleIDs.contains(vehicle.getID()))
 							|| (!sameAdmission && vehicle.isOnConnector())) {
@@ -1364,85 +1376,43 @@ public class RoadContext extends FacilityContext<Road> {
 					&& Double.compare(this.anchorLatitude, latitude) == 0;
 		}
 
-		synchronized int tryAdmit(ConnectorRoad connector, Vehicle vehicle, int tick) {
-			if (connector == null || vehicle == null || !this.connectors.contains(connector)) {
+		synchronized int tryAdmit(ConnectorRoad connector,
+				ConnectorRoad.ConnectorPath connectorPath, Vehicle vehicle,
+				boolean requireClearPath, int tick) {
+			if (connector == null || connectorPath == null || vehicle == null
+					|| !this.connectors.contains(connector)
+					|| connector.getLane(connectorPath) == null) {
 				return BLOCKED;
 			}
 			Admission existing = this.activeAdmissionByVehicle.get(vehicle.getID());
 			if (existing != null) {
 				return existing.vehicle == vehicle && existing.connector == connector
+						&& existing.connectorPath == connectorPath
 						? ALREADY_ADMITTED : BLOCKED;
 			}
-			if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
-					&& !this.activeCollisionVehicleIDs.isEmpty()) return BLOCKED;
-			for (Admission occupied : this.activeAdmissionByVehicle.values()) {
-				if (connector == occupied.connector) {
-					if (sameConnectorAdmissionBlocked(vehicle, occupied)) return BLOCKED;
-				} else if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
-						&& connector.conflictsWith(occupied.connector)) {
-					return BLOCKED;
+			if (requireClearPath) {
+				for (Admission occupied : this.activeAdmissionByVehicle.values()) {
+					if (occupied.connector == connector
+							&& occupied.connectorPath == connectorPath) {
+						return BLOCKED;
+					}
+				}
+			}
+			if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
+				if (!this.activeCollisionVehicleIDs.isEmpty()) return BLOCKED;
+				for (Admission occupied : this.activeAdmissionByVehicle.values()) {
+					if (connector != occupied.connector
+							&& connector.conflictsWith(occupied.connector)) {
+						return BLOCKED;
+					}
 				}
 			}
 			connector.registerVehicle(vehicle, tick);
 			this.activeAdmissionByVehicle.put(vehicle.getID(),
-					new Admission(vehicle, connector, ++this.eventSequence, tick));
+					new Admission(vehicle, connector, connectorPath,
+							++this.eventSequence, tick));
 			this.recentlyDepartedStates.remove(vehicle.getID());
 			return ADMITTED;
-		}
-
-		private boolean sameConnectorAdmissionBlocked(Vehicle incoming,
-				Admission occupied) {
-			Coordinate incomingCoordinate = incoming.getCurrentCoord();
-			if (incomingCoordinate == null
-					|| !Double.isFinite(incomingCoordinate.x)
-					|| !Double.isFinite(incomingCoordinate.y)) {
-				return true;
-			}
-
-			double anchorLon = Double.isFinite(this.anchorLongitude)
-					? this.anchorLongitude : incomingCoordinate.x;
-			double anchorLat = Double.isFinite(this.anchorLatitude)
-					? this.anchorLatitude : incomingCoordinate.y;
-			double[] incomingFront = localMeters(incomingCoordinate.x,
-					incomingCoordinate.y, anchorLon, anchorLat);
-
-			if (GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK) {
-				ConnectorRoad.ConnectorVehicleState leader =
-						occupied.connector.getVehicleState(occupied.vehicle);
-				if (leader == null || !Double.isFinite(leader.getLongitude())
-						|| !Double.isFinite(leader.getLatitude())) return true;
-				double[] leaderFront = localMeters(leader.getLongitude(),
-						leader.getLatitude(), anchorLon, anchorLat);
-				double width = Math.max(0.0, GlobalVariables.DEFAULT_VEHICLE_WIDTH)
-						+ 2.0 * INTERSECTION_CLEARANCE_MARGIN_METERS;
-				return ConnectorRoad.footprintsOverlap(
-						incomingFront[0], incomingFront[1], incoming.getBearing(),
-						incoming.length(), width,
-						leaderFront[0], leaderFront[1], leader.getBearing(),
-						leader.getLength(), width);
-			}
-
-			Coordinate leaderCoordinate = occupied.vehicle.getCurrentCoord();
-			double leaderBearingDegrees = occupied.vehicle.getBearing();
-			double leaderLength = occupied.vehicle.length();
-			if (leaderCoordinate == null
-					|| !Double.isFinite(leaderCoordinate.x)
-					|| !Double.isFinite(leaderCoordinate.y)
-					|| !Double.isFinite(leaderBearingDegrees)
-					|| !Double.isFinite(leaderLength)) return true;
-			double[] leaderFront = localMeters(leaderCoordinate.x,
-					leaderCoordinate.y, anchorLon, anchorLat);
-			double leaderBearing = Math.toRadians(leaderBearingDegrees);
-			double leaderRearX = leaderFront[0]
-					- Math.sin(leaderBearing) * Math.max(0.0, leaderLength);
-			double leaderRearY = leaderFront[1]
-					- Math.cos(leaderBearing) * Math.max(0.0, leaderLength);
-			double bumperHeadway = Math.hypot(leaderRearX - incomingFront[0],
-					leaderRearY - incomingFront[1]);
-			double requiredHeadway = SAME_CONNECTOR_HEADWAY_FACTOR
-					* Math.max(0.0, incoming.length());
-			return !Double.isFinite(bumperHeadway)
-					|| bumperHeadway < requiredHeadway;
 		}
 
 		void update(ConnectorRoad connector, Vehicle vehicle, int tick) {
@@ -1463,9 +1433,15 @@ public class RoadContext extends FacilityContext<Road> {
 				throw new IllegalStateException("Duplicate saved connector vehicle ID "
 						+ vehicle.getID());
 			}
+			ConnectorRoad.ConnectorPath connectorPath = vehicle.getCurrentConnectorPath();
+			if (connectorPath == null || connector.getLane(connectorPath) == null) {
+				throw new IllegalStateException("Saved connector vehicle " + vehicle.getID()
+						+ " has no valid connector path");
+			}
 			connector.registerVehicle(vehicle, tick);
 			this.activeAdmissionByVehicle.put(vehicle.getID(),
-					new Admission(vehicle, connector, ++this.eventSequence, tick));
+					new Admission(vehicle, connector, connectorPath,
+							++this.eventSequence, tick));
 			if (hiddenTargetVehicle) this.hiddenTargetVehicleIDs.add(vehicle.getID());
 			this.activeCollisionVehicleIDs.remove(vehicle.getID());
 			this.recentlyDepartedStates.remove(vehicle.getID());
@@ -1660,13 +1636,16 @@ public class RoadContext extends FacilityContext<Road> {
 		private static final class Admission {
 			final Vehicle vehicle;
 			final ConnectorRoad connector;
+			final ConnectorRoad.ConnectorPath connectorPath;
 			final long admissionSequence;
 			final int admissionTick;
 
-			Admission(Vehicle vehicle, ConnectorRoad connector, long admissionSequence,
-					int admissionTick) {
+			Admission(Vehicle vehicle, ConnectorRoad connector,
+					ConnectorRoad.ConnectorPath connectorPath,
+					long admissionSequence, int admissionTick) {
 				this.vehicle = vehicle;
 				this.connector = connector;
+				this.connectorPath = connectorPath;
 				this.admissionSequence = admissionSequence;
 				this.admissionTick = admissionTick;
 			}

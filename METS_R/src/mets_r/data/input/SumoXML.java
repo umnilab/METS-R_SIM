@@ -1018,6 +1018,13 @@ public class SumoXML {
 					}
 				}
 				addDistinctConnectorCoordinate(centerLine, targetLane.getStartCoord());
+				if (centerLine.size() == 1) {
+					// A connection with coincident source/target endpoints is still a
+					// real lane-to-lane movement. Preserve it as a zero-length path;
+					// dropping it here loses the lane mapping and can gridlock every
+					// vehicle whose lane is not selected by a later fallback.
+					centerLine.add(copyCoordinate(centerLine.get(0)));
+				}
 				if (centerLine.size() < 2) continue;
 
 				String junctionOrigID = incLaneJunctionMap.get(root.fromLaneID);

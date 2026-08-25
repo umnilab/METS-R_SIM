@@ -687,7 +687,7 @@ public class ControlMessageHandler extends MessageHandler {
 						}
 						// Publish bridge ownership only after the road accepts the takeover.
 						ContextCreator.coSimRoads.put(roadId, r);
-						refreshInboundConnectorControlModes(r);
+						refreshIncidentConnectorControlModes(r);
 						record2.put("roadId", roadId);
 						record2.put("status", "ok");
 						record2.put("connectorIds", coSimConnectorIDsForRoad(r));
@@ -758,7 +758,7 @@ public class ControlMessageHandler extends MessageHandler {
 						} else {
 							// Bridge ownership ends only after the road actually accepts native control.
 							ContextCreator.coSimRoads.remove(roadId);
-							refreshInboundConnectorControlModes(r);
+							refreshIncidentConnectorControlModes(r);
 							record2.put("status", "ok");
 							record2.put("releasedConnectorIds",
 									releasedConnectorIDs(connectorsBefore));
@@ -781,7 +781,7 @@ public class ControlMessageHandler extends MessageHandler {
 			}
 			catch (Exception e) {
 			// Log error and return KO in case of exception
-			ContextCreator.logger.error("Error processing control: " + e.toString());
+			ContextCreator.logger.error("Error processing releaseCoSimRoad", e);
 			jsonAns.put("status", "error");;
 			}
 		}
@@ -1675,7 +1675,9 @@ public class ControlMessageHandler extends MessageHandler {
 	* and, when applicable, connector lane pair are inferred from geometry.
 	*
 	* <p>Input DATA: list of {@code {vehicleId, x, y, z?, bearing, speed,
-	* transformCoordinates?, length?, segmentId?/roadId?, destinationRoadId}}.
+	* transformCoordinates?, length?, segmentId?/roadId?,
+	* connectorPathId? (zero-based and connector-local),
+	* destinationRoadId}}.
 	* {@code isPrivate} may be omitted or {@code true}; public fleet vehicles require
 	* their normal fleet initialization. The pose is the vehicle's front position
 	* and is rejected, rather than shifted, when its footprint overlaps a vehicle.
@@ -1760,7 +1762,8 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 				String segmentHint = request.segmentId;
 				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
-						null, pose, request.bearing.doubleValue(), segmentHint);
+						null, pose, request.bearing.doubleValue(), segmentHint,
+						request.connectorPathId);
 				if (matches.isEmpty()) {
 					jsonData.add(coSimTeleportFailure(request.vehicleId, "NO_MAP_MATCH",
 							"No controlled road, lane, or connector matches the authoritative pose"));
@@ -1816,6 +1819,8 @@ public class ControlMessageHandler extends MessageHandler {
 				if (applied.isConnector()) {
 					ConnectorRoad connector = (ConnectorRoad) applied.segment;
 					record.put("connectorId", connector.getOrigID());
+					record.put("connectorPathId",
+							applied.connectorPath.getConnectorPathID());
 					record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 				}
 				record.put("laneIndex", applied.isConnector()
@@ -1872,7 +1877,7 @@ public class ControlMessageHandler extends MessageHandler {
 	private ArrayList<ConnectorRoad> coSimConnectorsForRoad(Road road) {
 		ArrayList<ConnectorRoad> result = new ArrayList<ConnectorRoad>();
 		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
-			if (connector.getTargetRoad() == road
+			if ((connector.getSourceRoad() == road || connector.getTargetRoad() == road)
 					&& connector.getControlType() == Road.COSIM) {
 				result.add(connector);
 			}
@@ -1942,11 +1947,12 @@ public class ControlMessageHandler extends MessageHandler {
 		return connectorRecords(released);
 	}
 
-	private void refreshInboundConnectorControlModes(Road road) {
+	private void refreshIncidentConnectorControlModes(Road road) {
 		if (road == null) return;
 		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
-			if (connector.getTargetRoad() != road) continue;
-			boolean coSimOwned = connector.getTargetRoad().getControlType() == Road.COSIM;
+			if (connector.getSourceRoad() != road && connector.getTargetRoad() != road) continue;
+			boolean coSimOwned = connector.getSourceRoad().getControlType() == Road.COSIM
+					|| connector.getTargetRoad().getControlType() == Road.COSIM;
 			connector.setControlType(coSimOwned ? Road.COSIM : Road.NONE_OF_THE_ABOVE);
 		}
 	}
@@ -1964,11 +1970,13 @@ public class ControlMessageHandler extends MessageHandler {
 	*
 	* Input DATA: list of
 	* {{vehicleId, isPrivate, x, y, z, bearing, speed, transformCoordinates,
-	* segmentId?}}. A supplied {@code segmentId} is authoritative and must identify
+	* segmentId?, connectorPathId?}}. {@code connectorPathId} is a zero-based
+	* connector-local index and therefore requires a connector {@code segmentId}.
+	* A supplied {@code segmentId} is authoritative and must identify
 	* a controlled COSIM road, connector, or one of a connector's SUMO via-lane or
 	* internal-edge aliases. When it is omitted, membership is
 	* inferred across all controlled segments without restricting the search to
-	* METS-R's retained route. Geometry and collision discrepancies are returned as
+	* METS-R's retained route. Geometry discrepancies are returned as
 	* warnings; caller-provided lane IDs remain ignored.
 	*/
 	private synchronized HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
@@ -2041,7 +2049,8 @@ public class ControlMessageHandler extends MessageHandler {
 					}
 				}
 				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
-						vehicle, pose, request.bearing, segmentHint);
+						vehicle, pose, request.bearing, segmentHint,
+						request.connectorPathId);
 				if (matches.isEmpty()) {
 					String errorCode = segmentHint == null
 							? "NO_MAP_MATCH" : "SEGMENT_GEOMETRY_UNAVAILABLE";
@@ -2051,21 +2060,16 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonData.add(coSimTeleportFailure(request.vehicleId, errorCode, message));
 					continue;
 				}
-				boolean overlapsVehicle = CoSimMapMatcher.overlapsAnyVehicle(
-						vehicle, pose, request.bearing, null);
-
 				CoSimMapMatcher.Match applied = matches.get(0);
 				Coordinate previousPose = vehicle.getCurrentCoord() == null
 						? null : new Coordinate(vehicle.getCurrentCoord());
 				boolean transitionBefore = vehicle.isExternalRoadTransition();
 				Road roadBefore = vehicle.getRoad();
-				boolean targetLaneReserved;
 				try {
-					targetLaneReserved =
-							vehicle.synchronizeAuthoritativeCoSimObservation(
-									applied.segment, applied.lane, applied.connectorPath,
-									applied.downstreamDistance, pose,
-									request.bearing, request.speed);
+					vehicle.synchronizeAuthoritativeCoSimObservation(
+						applied.segment, applied.lane, applied.connectorPath,
+						applied.downstreamDistance, pose,
+						request.bearing, request.speed);
 				} catch (RuntimeException ex) {
 					jsonData.add(coSimTeleportFailure(request.vehicleId,
 							"MIRROR_UPDATE_FAILED", ex.getMessage()));
@@ -2074,8 +2078,7 @@ public class ControlMessageHandler extends MessageHandler {
 
 				recordCoSimTeleportSnapshot(vehicle);
 				ArrayList<String> warnings = coSimObservationWarnings(
-						previousPose, pose, applied, overlapsVehicle,
-						targetLaneReserved);
+						previousPose, pose, applied);
 				for (String warning : warnings) {
 					ContextCreator.logger.warn("Authoritative COSIM pose vehicle="
 							+ request.vehicleId + ": " + warning);
@@ -2090,6 +2093,8 @@ public class ControlMessageHandler extends MessageHandler {
 				if (applied.isConnector()) {
 					ConnectorRoad connector = (ConnectorRoad) applied.segment;
 					record.put("connectorId", connector.getOrigID());
+					record.put("connectorPathId",
+							applied.connectorPath.getConnectorPathID());
 					record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 				}
 				record.put("laneIndex", applied.isConnector()
@@ -2129,8 +2134,7 @@ public class ControlMessageHandler extends MessageHandler {
 
 	private ArrayList<String> coSimObservationWarnings(
 			Coordinate previousPose, Coordinate authoritativePose,
-			CoSimMapMatcher.Match match, boolean overlapsVehicle,
-			boolean targetLaneReserved) {
+			CoSimMapMatcher.Match match) {
 		ArrayList<String> warnings = new ArrayList<String>();
 		if (previousPose != null && authoritativePose != null) {
 			double displacement = ContextCreator.getCityContext()
@@ -2147,13 +2151,6 @@ public class ControlMessageHandler extends MessageHandler {
 					+ ", headingError=" + match.headingErrorDegrees
 					+ ", endpointOvershoot=" + match.endpointOvershootMeters
 					+ "); membership was accepted");
-		}
-		if (overlapsVehicle) {
-			warnings.add("Authoritative vehicle footprint overlaps another mirrored vehicle");
-		}
-		if (match != null && match.isConnector() && !targetLaneReserved) {
-			warnings.add("Connector membership was accepted without a target-lane reservation;"
-					+ " native hand-back will retry strict placement");
 		}
 		return warnings;
 	}
@@ -2298,6 +2295,14 @@ public class ControlMessageHandler extends MessageHandler {
 			record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
 			record.put("targetRoadId", connector.getTargetRoad().getOrigID());
 			record.put("intersectionId", connector.getIntersectionID());
+			ConnectorRoad.ConnectorPath connectorPath = snapshot != null
+					&& snapshot.getConnectorPath() != null
+							? snapshot.getConnectorPath() : vehicle.getCurrentConnectorPath();
+			if (connectorPath != null) {
+				record.put("connectorPathId", connectorPath.getConnectorPathID());
+				record.put("connectorPathInternalEdgeIds",
+						connectorPath.getInternalEdgeIDs());
+			}
 			if (snapshot != null && snapshot.getTargetLane() != null) {
 				record.put("transitionTargetRoadId",
 						connector.getTargetRoad().getOrigID());

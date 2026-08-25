@@ -438,14 +438,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 			scheduledActions.add(schedule.schedule(timerParaParams, tscheduler, "reportTime"));
 		}
 
-		// Full-road stepping uses a cached partition list; active-road stepping
-		// rebalances active roads every tick in ThreadedScheduler.
-		if (!GlobalVariables.ACTIVE_ROAD_STEPPING) {
-			ScheduleParameters partitionParams = ScheduleParameters.createRepeating(
-					initTick + GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL,
-					GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL, 2);
-			scheduledActions.add(schedule.schedule(partitionParams, partitioner, "check_run"));
-		}
+		// Segment membership stays fixed until the road/connector topology changes.
 	}
 
 	// Schedule the event for vehicle movements (single-thread)
@@ -454,10 +447,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 		ScheduleParameters part1Params = ScheduleParameters.createRepeating(initTick + 1, 1, 0.3);
 		ScheduleParameters part2Params = ScheduleParameters.createRepeating(initTick + 1, 1, 0.2);
 		ScheduleParameters transferParams = ScheduleParameters.createRepeating(initTick + 1, 1, 0.1);
-		for (Road r : getRoadContext().getAll()) {
+		for (Road r : getRoadContext().getAllSteppableRoads()) {
 			scheduledActions.add(schedule.schedule(part1Params, r, "stepPart1"));
 		}
-		for (Road r : getRoadContext().getAll()) {
+		for (Road r : getRoadContext().getAllSteppableRoads()) {
 			scheduledActions.add(schedule.schedule(part2Params, r, "stepPart2"));
 		}
 		scheduledActions.add(schedule.schedule(transferParams,
@@ -623,7 +616,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	public static void scheduleMetricsReporting() {
 		ISchedule schedule = RunEnvironment.getInstance().getCurrentSchedule();
 		ScheduleParameters recordRuntimeParams = ScheduleParameters.createRepeating(initTick,
-				GlobalVariables.METRICS_DISPLAY_INTERVAL, 6);
+				GlobalVariables.METRICS_DISPLAY_INTERVAL, -0.5);
 		scheduledActions.add(schedule.schedule(recordRuntimeParams, metricsReporter, "report"));
 	}
 

@@ -2,6 +2,9 @@ package mets_r;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
@@ -12,10 +15,9 @@ import mets_r.facility.Zone;
 /**
  * Lightweight deterministic partitioner for METS-R simulation agents.
  *
- * The original implementation used the bundled Galois/METIS graph partitioner.
- * Road stepping now benefits more from dynamic load balancing than from static
- * graph locality, so this class keeps the old public API while assigning work
- * with weighted greedy partitioning.
+ * Roads and connector segments receive deterministic owners. Active membership
+ * changes only filter segments into those existing owners; weighted greedy
+ * balancing changes ownership exclusively at the configured refresh interval.
  */
 public class MetisPartition {
 	private final int nPartition;
@@ -28,6 +30,7 @@ public class MetisPartition {
 	private final ArrayList<ArrayList<Road>> activeRoadPartitions;
 	private final ArrayList<RoadStepLoad> activeRoadLoads;
 	private final long[] activePartitionLoads;
+	private final Map<Integer, Integer> roadPartitionOwners;
 	private long lastActiveRoadVersion = Long.MIN_VALUE;
 	private int lastActiveRoadRebalanceTick = Integer.MIN_VALUE;
 
@@ -37,6 +40,7 @@ public class MetisPartition {
 		this.activeRoadPartitions = newRoadPartitions();
 		this.activeRoadLoads = new ArrayList<RoadStepLoad>();
 		this.activePartitionLoads = new long[this.nPartition];
+		this.roadPartitionOwners = new HashMap<Integer, Integer>();
 	}
 
 	public ArrayList<ArrayList<Road>> getPartitionedInRoads() {
@@ -49,8 +53,13 @@ public class MetisPartition {
 
 	public synchronized ArrayList<ArrayList<Road>> getActiveRoadPartitions(RoadContext roadContext, int currentTick) {
 		long activeVersion = roadContext == null ? Long.MIN_VALUE : roadContext.getActiveRoadVersion();
-		boolean periodicRebalance = lastActiveRoadRebalanceTick == Integer.MIN_VALUE
-				|| currentTick - lastActiveRoadRebalanceTick >= GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
+		int refreshInterval = GlobalVariables.SIMULATION_PARTITION_REFRESH_INTERVAL;
+		if (this.lastActiveRoadRebalanceTick == Integer.MIN_VALUE
+				|| currentTick < this.lastActiveRoadRebalanceTick) {
+			this.lastActiveRoadRebalanceTick = currentTick;
+		}
+		boolean periodicRebalance = refreshInterval > 0
+				&& currentTick - this.lastActiveRoadRebalanceTick >= refreshInterval;
 		if (activeVersion == this.lastActiveRoadVersion && !periodicRebalance) {
 			return this.activeRoadPartitions;
 		}
@@ -58,26 +67,49 @@ public class MetisPartition {
 		for (ArrayList<Road> partition : this.activeRoadPartitions) {
 			partition.clear();
 		}
-		this.activeRoadLoads.clear();
-		java.util.Arrays.fill(this.activePartitionLoads, 0L);
 		if (roadContext != null) {
-			for (Road road : roadContext.getActiveRoadsSnapshot()) {
-				if (road != null) {
-					this.activeRoadLoads.add(new RoadStepLoad(road, road.getStepLoadWeight()));
+			List<Road> activeRoads = roadContext.getActiveRoadsSnapshot();
+			if (periodicRebalance) {
+				this.activeRoadLoads.clear();
+				java.util.Arrays.fill(this.activePartitionLoads, 0L);
+				for (Road road : activeRoads) {
+					if (road != null) {
+						this.activeRoadLoads.add(new RoadStepLoad(road, road.getStepLoadWeight()));
+					}
+				}
+				this.activeRoadLoads.sort((a, b) -> {
+					int weightCompare = Integer.compare(b.weight, a.weight);
+					return weightCompare != 0 ? weightCompare
+							: Integer.compare(a.road.getID(), b.road.getID());
+				});
+				for (RoadStepLoad roadLoad : this.activeRoadLoads) {
+					int partition = lightestPartition(this.activePartitionLoads);
+					Integer previousOwner = this.roadPartitionOwners.get(roadLoad.road.getID());
+					if (previousOwner != null && previousOwner.intValue() >= 0
+							&& previousOwner.intValue() < this.nPartition
+							&& this.activePartitionLoads[previousOwner.intValue()]
+									== this.activePartitionLoads[partition]) {
+						partition = previousOwner.intValue();
+					}
+					this.activeRoadPartitions.get(partition).add(roadLoad.road);
+					this.activePartitionLoads[partition] += roadLoad.weight;
+					this.roadPartitionOwners.put(roadLoad.road.getID(), partition);
+				}
+				this.lastActiveRoadRebalanceTick = currentTick;
+			} else {
+				for (Road road : activeRoads) {
+					if (road == null) continue;
+					Integer owner = this.roadPartitionOwners.get(road.getID());
+					if (owner == null || owner.intValue() < 0
+							|| owner.intValue() >= this.nPartition) {
+						owner = Integer.valueOf(Math.floorMod(road.getID(), this.nPartition));
+						this.roadPartitionOwners.put(road.getID(), owner);
+					}
+					this.activeRoadPartitions.get(owner.intValue()).add(road);
 				}
 			}
 		}
-		this.activeRoadLoads.sort((a, b) -> {
-			int weightCompare = Integer.compare(b.weight, a.weight);
-			return weightCompare != 0 ? weightCompare : Integer.compare(a.road.getID(), b.road.getID());
-		});
-		for (RoadStepLoad roadLoad : this.activeRoadLoads) {
-			int partition = lightestPartition(this.activePartitionLoads);
-			this.activeRoadPartitions.get(partition).add(roadLoad.road);
-			this.activePartitionLoads[partition] += roadLoad.weight;
-		}
 		this.lastActiveRoadVersion = activeVersion;
-		this.lastActiveRoadRebalanceTick = currentTick;
 		return this.activeRoadPartitions;
 	}
 
@@ -175,9 +207,18 @@ public class MetisPartition {
 		run();
 	}
 
-	public void run() {
-		this.partitionedInRoads = partitionRoadsByCurrentLoad(ContextCreator.getRoadContext().getAll());
+	public synchronized void run() {
+		this.partitionedInRoads = partitionRoadsByCurrentLoad(
+				ContextCreator.getRoadContext().getAllSteppableRoads());
 		this.partitionedBwRoads = new ArrayList<Road>();
+		this.roadPartitionOwners.clear();
+		for (int partitionID = 0; partitionID < this.partitionedInRoads.size(); partitionID++) {
+			for (Road road : this.partitionedInRoads.get(partitionID)) {
+				if (road != null) this.roadPartitionOwners.put(road.getID(), partitionID);
+			}
+		}
+		this.lastActiveRoadVersion = Long.MIN_VALUE;
+		this.lastActiveRoadRebalanceTick = Integer.MIN_VALUE;
 	}
 
 	public int getBackgroundLoad(int i) {

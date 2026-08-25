@@ -285,6 +285,10 @@ public class Road {
 					currentVehicle = nextVehicle;
 					continue;
 				}
+				if (this instanceof ConnectorRoad) {
+					currentVehicle = nextVehicle;
+					continue;
+				}
 				try {
 					currentVehicle.calcLaneChangingState(tickcount);
 				} catch (Throwable ex) {
@@ -1352,8 +1356,7 @@ public class Road {
 				this.controlType = controlType;
 				return;
 			}
-			if (this.nativeReleaseInProgress || this.activeExternalLaneAdmissions > 0
-					|| this.activeExternalLaneCommits > 0) return;
+			if (this.nativeReleaseInProgress) return;
 			this.nativeReleaseInProgress = true;
 		}
 		try {
@@ -1382,7 +1385,7 @@ public class Road {
 		HashSet<Vehicle> retainedConnectorVehicles = new HashSet<Vehicle>();
 		ArrayList<Vehicle> vehiclesToAdapt = new ArrayList<Vehicle>();
 		for (Vehicle vehicle : vehicles) {
-			if (this.remainsOnCoSimConnectorAfterRelease(vehicle)) {
+			if (this.occupiesIncidentConnector(vehicle)) {
 				retainedConnectorVehicles.add(vehicle);
 			} else {
 				vehiclesToAdapt.add(vehicle);
@@ -1393,22 +1396,20 @@ public class Road {
 				this.planNativeReleasePlacements(vehiclesToAdapt);
 		if (placements == null) {
 			ContextCreator.logger.warn("Keeping road " + this.ID
-					+ " under COSIM control because no collision-free native placement exists");
+					+ " under COSIM control because no valid native lane projection exists");
 			return;
 		}
 
-		// Planning is complete before the first mutation, so a blocked release leaves
-		// COSIM membership, lane lists, reservations, and poses untouched.
-		for (Vehicle vehicle : vehiclesToAdapt) vehicle.removeFromCurrentLane();
+		// Connector occupants retain their connector representation. Physical-road
+		// occupants are mapped independently to their direct lane projections; no
+		// collision-free interval packing is attempted during hand-back.
 		for (NativeReleasePlacement placement : placements) {
-			boolean placed;
-			if (placement.externalTransition) {
-				placed = placement.vehicle.commitExternalRoadTransitionAtClosestAvailableDistance(
-						placement.lane, placement.distance);
-			} else {
-				placement.vehicle.teleportToLane(placement.lane, placement.distance);
-				placed = placement.vehicle.getLane() == placement.lane;
-			}
+			placement.vehicle.removeFromCurrentLane();
+		}
+		boolean overlapWarningRaised = false;
+		for (NativeReleasePlacement placement : placements) {
+			placement.vehicle.teleportToLane(placement.lane, placement.distance);
+			boolean placed = placement.vehicle.getLane() == placement.lane;
 			if (!placed) {
 				throw new IllegalStateException("Preplanned native placement failed for vehicle "
 						+ placement.vehicle.getID() + " on road " + this.ID);
@@ -1417,6 +1418,31 @@ public class Road {
 			// that placement as a discontinuity so the next trajectory snapshot does
 			// not interpolate a false high-speed sweep from the last external pose.
 			placement.vehicle.syncPreviousEpochCoord();
+			if (!overlapWarningRaised) {
+				double end = placement.distance
+						+ Math.max(0.0, placement.vehicle.length());
+				Vehicle other = placement.vehicle.leading();
+				if (other != null) {
+					double otherStart = other.getDistanceToNextJunction();
+					double otherEnd = otherStart + Math.max(0.0, other.length());
+					if (placement.distance >= otherEnd - 0.001
+							|| otherStart >= end - 0.001) other = null;
+				}
+				if (other == null) {
+					other = placement.vehicle.trailing();
+					if (other != null) {
+						double otherStart = other.getDistanceToNextJunction();
+						double otherEnd = otherStart + Math.max(0.0, other.length());
+						if (placement.distance >= otherEnd - 0.001
+								|| otherStart >= end - 0.001) other = null;
+					}
+				}
+				if (other != null) {
+					ContextCreator.logger.warn("OVERLAP:" + placement.vehicle.getID()
+							+ "," + other.getID() + "@" + placement.lane.getID());
+					overlapWarningRaised = true;
+				}
+			}
 		}
 
 		Collections.sort(vehicles, (a, b) -> {
@@ -1452,67 +1478,30 @@ public class Road {
 		}
 	}
 
-	private boolean remainsOnCoSimConnectorAfterRelease(Vehicle vehicle) {
-		if (vehicle == null || !vehicle.isExternalRoadTransition()) return false;
+	private boolean occupiesIncidentConnector(Vehicle vehicle) {
+		if (vehicle == null) return false;
 		ConnectorRoad connector = vehicle.getCurrentConnector();
 		if (connector == null) return false;
-		if (connector.getSourceRoad() != this && connector.getTargetRoad() != this) return false;
-		if (connector.getConfiguredControlType() == Road.COSIM) return true;
-		Road connectorTarget = connector.getTargetRoad();
-		return connectorTarget != this
-				&& connectorTarget.getControlType() == Road.COSIM;
+		return connector.getSourceRoad() == this || connector.getTargetRoad() == this;
 	}
 
 	private List<NativeReleasePlacement> planNativeReleasePlacements(List<Vehicle> vehicles) {
-		Map<Integer, ArrayList<double[]>> occupiedIntervals = new TreeMap<Integer, ArrayList<double[]>>();
 		ArrayList<NativeReleasePlacement> result = new ArrayList<NativeReleasePlacement>();
-		for (int pass = 0; pass < 2; pass++) {
-			boolean externalPass = pass == 1;
-			for (Vehicle vehicle : vehicles) {
-				if (vehicle.isExternalRoadTransition() != externalPass) continue;
-				ArrayList<NativeReleaseProjection> candidates = new ArrayList<NativeReleaseProjection>();
-				Lane reservedLane = vehicle.getExternalTransitionTargetLane();
+		for (Vehicle vehicle : vehicles) {
+				NativeReleaseProjection best = null;
 				for (Lane lane : this.lanes) {
-					if (externalPass && lane != reservedLane
-							&& (!this.isNativeReleaseLaneRouteCompatible(vehicle, lane)
-									|| this.getExternalLaneReservationBlocker(lane, vehicle) != null)) {
-						continue;
-					}
-					if (!externalPass && lane != vehicle.getLane()
-							&& this.getExternalLaneReservationBlocker(lane, vehicle) != null) {
-						continue;
-					}
-					if (externalPass
-							&& !vehicle.isExternalRoadTransitionPoseReadyForLaneEntry(lane)) {
-						continue;
-					}
-					NativeReleaseProjection projection = this.projectForNativeRelease(vehicle, lane);
-					if (projection != null) candidates.add(projection);
-				}
-				Collections.sort(candidates, (a, b) -> {
-					if (externalPass && (a.lane == reservedLane) != (b.lane == reservedLane)) {
-						return a.lane == reservedLane ? -1 : 1;
-					}
-					int byDistance = Double.compare(a.perpendicularDistance, b.perpendicularDistance);
-					return byDistance != 0 ? byDistance : Integer.compare(a.lane.getID(), b.lane.getID());
-				});
-
-				NativeReleasePlacement placement = null;
-				for (NativeReleaseProjection candidate : candidates) {
-					double available = this.findNativeReleaseDistance(candidate.lane, candidate.distance,
-							vehicle.length(), occupiedIntervals.get(candidate.lane.getID()));
-					if (Double.isFinite(available)) {
-						placement = new NativeReleasePlacement(vehicle, candidate.lane, available,
-								externalPass);
-						occupiedIntervals.computeIfAbsent(candidate.lane.getID(),
-								id -> new ArrayList<double[]>()).add(
-										new double[] { available, available + Math.max(0.0, vehicle.length()) });
-						break;
+					NativeReleaseProjection candidate =
+							this.projectForNativeRelease(vehicle, lane);
+					if (candidate != null && (best == null
+							|| candidate.perpendicularDistance < best.perpendicularDistance
+							|| (candidate.perpendicularDistance == best.perpendicularDistance
+									&& candidate.lane.getID() < best.lane.getID()))) {
+						best = candidate;
 					}
 				}
-				if (placement == null) return null;
-				result.add(placement);
-			}
+				if (best == null) return null;
+				result.add(new NativeReleasePlacement(
+						vehicle, best.lane, best.distance));
 		}
 		return result;
 	}
@@ -1565,37 +1554,6 @@ public class Road {
 				Math.max(0.0, Math.min(lane.getLength(), bestDistance)), bestPerpendicular);
 	}
 
-	private double findNativeReleaseDistance(Lane lane, double preferredDistance, double vehicleLength,
-			List<double[]> occupiedIntervals) {
-		double laneLength = lane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0) return Double.NaN;
-		double candidate = Math.max(0.0, Math.min(laneLength, preferredDistance));
-		double footprint = Math.max(0.0, vehicleLength);
-		while (candidate <= laneLength + 0.001) {
-			double shifted = candidate;
-			if (occupiedIntervals != null) {
-				for (double[] interval : occupiedIntervals) {
-					boolean overlaps = candidate < interval[1] - 0.001
-							&& interval[0] < candidate + footprint - 0.001;
-					if (overlaps) shifted = Math.max(shifted, interval[1] + 0.001);
-				}
-			}
-			if (shifted <= candidate + 1e-9) return Math.min(candidate, laneLength);
-			candidate = shifted;
-		}
-		return Double.NaN;
-	}
-
-	private boolean isNativeReleaseLaneRouteCompatible(Vehicle vehicle, Lane lane) {
-		Road followingRoad = vehicle.getNextRoad();
-		if (followingRoad == null) return true;
-		for (Integer downstreamLaneID : lane.getDownStreamLanes()) {
-			Lane downstreamLane = ContextCreator.getLaneContext().get(downstreamLaneID);
-			if (downstreamLane != null && downstreamLane.getRoad() == followingRoad) return true;
-		}
-		return false;
-	}
-
 	private static final class NativeReleaseProjection {
 		final Lane lane;
 		final double distance;
@@ -1612,14 +1570,11 @@ public class Road {
 		final Vehicle vehicle;
 		final Lane lane;
 		final double distance;
-		final boolean externalTransition;
 
-		NativeReleasePlacement(Vehicle vehicle, Lane lane, double distance,
-				boolean externalTransition) {
+		NativeReleasePlacement(Vehicle vehicle, Lane lane, double distance) {
 			this.vehicle = vehicle;
 			this.lane = lane;
 			this.distance = distance;
-			this.externalTransition = externalTransition;
 		}
 	}
 	
@@ -1691,92 +1646,4 @@ public class Road {
 		this.origID = newID;
 	}
 	
-	public boolean noEnterRoadConflict(Road usroad) {
-		 return this.enterRoadConflictBlocker(usroad) == null;
-	}
-
-	public Vehicle enterRoadConflictBlocker(Road usroad) {
-		 return this.enterRoadConflictBlocker(usroad, null);
-	}
-
-	public Vehicle enterRoadConflictBlocker(Road usroad, Vehicle enteringVehicle) {
-		 return this.enterRoadConflictBlocker(usroad, enteringVehicle,
-				 ConnectorRoad.MovementPriority.UNKNOWN);
-	}
-
-	public Vehicle enterRoadConflictBlocker(Road usroad, Vehicle enteringVehicle,
-			ConnectorRoad.MovementPriority enteringPriority) {
-		 Junction prevJunction = ContextCreator.getJunctionContext().get(this.getUpStreamJunction());
-		 int enteringIndex = this.upStreamRoadIndex(usroad);
-		 for(int roadIndex = 0; roadIndex < this.upStreamRoads.size(); roadIndex++) {
-			 Road r = this.upStreamRoads.get(roadIndex);
-			 if(this.isSameRoad(r, usroad)) continue;
-			 if(r.prevFirstVehicle()!= null) {
-				Vehicle v = r.prevFirstVehicle();
-				if(this.isSameVehicle(v, enteringVehicle)) continue;
-				if(!v.wasPreviouslyOnRoad(r)) continue;
-				if(prevJunction != null && v.aboutToEnterRoad(this)
-						&& this.isConflictVehicleMovable(prevJunction, r, v)
-						&& this.otherMovementOutranks(r, v, enteringPriority,
-								roadIndex, enteringIndex)) {
-					return v;
-				}
-			 }
-		 }
-		 return null;
-	}
-
-	private int upStreamRoadIndex(Road road) {
-		for (int i = 0; i < this.upStreamRoads.size(); i++) {
-			if (this.isSameRoad(this.upStreamRoads.get(i), road)) return i;
-		}
-		return this.upStreamRoads.size();
-	}
-
-	private boolean otherMovementOutranks(Road otherSource, Vehicle otherVehicle,
-			ConnectorRoad.MovementPriority enteringPriority, int otherIndex,
-			int enteringIndex) {
-		ConnectorRoad otherConnector = ContextCreator.getRoadContext()
-				.getConnector(otherSource, this);
-		ConnectorRoad.MovementPriority otherPriority = otherConnector == null
-				? ConnectorRoad.MovementPriority.UNKNOWN
-				: otherConnector.getMovementPriority(otherVehicle.getLane(), null);
-		if (otherPriority == ConnectorRoad.MovementPriority.BLOCKED) return false;
-		if (enteringPriority == ConnectorRoad.MovementPriority.MAJOR
-				&& otherPriority == ConnectorRoad.MovementPriority.MINOR) return false;
-		if (enteringPriority == ConnectorRoad.MovementPriority.MINOR
-				&& otherPriority == ConnectorRoad.MovementPriority.MAJOR) return true;
-		return otherIndex < enteringIndex;
-	}
-
-	private boolean isSameRoad(Road r1, Road r2) {
-		if(r1 == r2) return true;
-		if(r1 == null || r2 == null) return false;
-		return r1.getID() == r2.getID();
-	}
-
-	private boolean isSameVehicle(Vehicle v1, Vehicle v2) {
-		if(v1 == v2) return true;
-		if(v1 == null || v2 == null) return false;
-		return v1.getID() == v2.getID();
-	}
-
-	private boolean isConflictVehicleMovable(Junction prevJunction, Road upstreamRoad, Vehicle v) {
-		switch(prevJunction.getControlType()) {
-			case Junction.NoControl:
-				return true;
-			case Junction.DynamicSignal:
-				return prevJunction.getSignalState(upstreamRoad.getID(), this.getID()) <= Signal.Yellow;
-			case Junction.StaticSignal:
-				return prevJunction.getSignalState(upstreamRoad.getID(), this.getID()) <= Signal.Yellow;
-			case Junction.StopSign:
-				return prevJunction.getMandatoryStopDelay(
-						upstreamRoad.getID(), this.getID()) <= v.getStuckTime();
-			case Junction.Yield:
-			case Junction.Priority:
-				return true;
-			default:
-				return true;
-		}
-	}
 }

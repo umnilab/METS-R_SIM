@@ -4,8 +4,10 @@ import java.io.IOException;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
+import mets_r.ThreadedScheduler;
+import mets_r.ThreadedScheduler.RoadMetricRecord;
+import mets_r.ThreadedScheduler.RoadMetricsSnapshot;
 import mets_r.facility.ChargingStation;
-import mets_r.facility.Road;
 import mets_r.facility.Zone;
 import mets_r.mobility.ElectricBus;
 import mets_r.mobility.ElectricTaxi;
@@ -85,55 +87,22 @@ public class MetricsReporter {
 			}
 		}
 
-		int macroListVehicles = 0;
-		int roadsWithMismatch = 0;
-		int firstMismatchRoad = -1;
-		int firstMismatchCounter = 0;
-		int firstMismatchActual = 0;
-		for (Road r : ContextCreator.getRoadContext().getAll()) {
-			int counter = r.getVehicleNum();
-			vehicleOnRoad += counter;
-			if (aggregate != null) {
-				int currentFlow = r.getAndResetCurrentFlow();
-				if (currentFlow > 0) {
-					String roadRecord = currentTick + "," + r.getID() + "," + currentFlow + ","
-							+ r.calcSpeed() + "," + r.getAndResetCurrentEnergy();
-					try {
-						aggregate.link_logger.write(roadRecord);
-						aggregate.link_logger.newLine();
-					} catch (IOException e) {
-						ContextCreator.logger.error("Failed to write aggregate road record", e);
-					}
-				}
-			}
-
-			Vehicle current = r.firstVehicle();
-			int actual = 0;
-			int safety = 0;
-			while (current != null && safety < 100000) {
-				actual++;
-				safety++;
-				Vehicle next = current.macroTrailing();
-				if (next == current) break;
-				current = next;
-			}
-			macroListVehicles += actual;
-			if (actual != counter) {
-				roadsWithMismatch++;
-				if (firstMismatchRoad < 0) {
-					firstMismatchRoad = r.getID();
-					firstMismatchCounter = counter;
-					firstMismatchActual = actual;
+		RoadMetricsSnapshot roadMetrics = ContextCreator.tscheduler == null
+				? ThreadedScheduler.collectActiveRoadMetricsSequential(currentTick)
+				: ContextCreator.tscheduler.getRoadMetricsSnapshot(currentTick);
+		vehicleOnRoad = roadMetrics.vehicleOnRoad;
+		if (aggregate != null) {
+			for (RoadMetricRecord link : roadMetrics.roadRecords) {
+				String roadRecord = currentTick + "," + link.roadID + "," + link.currentFlow
+						+ "," + link.speed + "," + link.currentEnergy;
+				try {
+					aggregate.link_logger.write(roadRecord);
+					aggregate.link_logger.newLine();
+				} catch (IOException e) {
+					ContextCreator.logger.error("Failed to write aggregate road record", e);
 				}
 			}
 		}
-		if (roadsWithMismatch > 0) {
-			ContextCreator.logger.warn("tick=" + currentTick + " nVehicles_/macro-list mismatch on "
-					+ roadsWithMismatch + " road(s); first road=" + firstMismatchRoad + " counter="
-					+ firstMismatchCounter + " actual=" + firstMismatchActual + " (totals: counter="
-					+ vehicleOnRoad + " macro=" + macroListVehicles + ")");
-		}
-
 		int taxisOnRoad = 0;
 		for (ElectricTaxi taxi : ContextCreator.getVehicleContext().getTaxis()) {
 			if (taxi.getRoad() != null) taxisOnRoad++;

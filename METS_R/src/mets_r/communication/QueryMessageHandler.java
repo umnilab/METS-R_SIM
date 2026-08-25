@@ -77,6 +77,8 @@ public class QueryMessageHandler extends MessageHandler {
         // Roads & geometry
         // =============================================================
         messageHandlers.put("road", this::getRoad);
+		messageHandlers.put("connectorPath", this::getConnectorPath);
+		messageHandlers.put("connector_path", this::getConnectorPath);
         messageHandlers.put("coSimRoad", this::getCoSimRoad);
         messageHandlers.put("activeRoads", this::getActiveRoad);
         messageHandlers.put("enteringVehicleQueue", this::getEnteringVehicleQueue);
@@ -426,7 +428,7 @@ public class QueryMessageHandler extends MessageHandler {
 	}
 	/**
 	* Snapshot of every vehicle currently on a co-simulation road, plus vehicles
-	* still externally controlled on a connector into a native road
+	* still externally controlled on a connector touching a controlled road
 	* (i.e. roads previously marked via the {@code setCoSimRoad} control
 	* API). Used by the bridge to a CARLA / SUMO simulator.
 	*
@@ -461,11 +463,11 @@ public class QueryMessageHandler extends MessageHandler {
 			for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
 				Vehicle.ExternalRoadTransitionSnapshot snapshot =
 						vehicle.getExternalRoadTransitionSnapshot();
-				// Native vehicles can retain a connector footprint briefly after their
-				// front has joined the target lane. They remain collision participants,
-				// but they are no longer externally owned unless the target road itself
-				// is COSIM (in which case the physical-road scan already includes them).
-				if (snapshot.isPending()) {
+				// A newly controlled connector also transfers a native vehicle whose
+				// front is still inside it, even when that vehicle is macro-attached to
+				// a native target road. Rear-only connector reservations stay native.
+				// The vehicle-ID map deduplicates target-road and transition scans.
+				if (snapshot.isPending() || vehicle.isOnConnector()) {
 					mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
 				}
 			}
@@ -726,6 +728,13 @@ public class QueryMessageHandler extends MessageHandler {
 			record.put("segmentType", "connector");
 			record.put("connectorId", connector.getOrigID());
 			record.put("internalEdgeIds", connector.getInternalEdgeIDs());
+			ConnectorRoad.ConnectorPath connectorPath = vehicle.getCurrentConnectorPath();
+			if (connectorPath != null) {
+				record.put("connectorPathId", connectorPath.getConnectorPathID());
+				record.put("connectorPathInternalEdgeIds",
+						connectorPath.getInternalEdgeIDs());
+				record.put("connectorPathViaLaneIds", connectorPath.getViaLaneIDs());
+			}
 			record.put("laneIndex", null);
 			double connectorDistanceRemaining =
 					vehicle.getEstimatedConnectorDistanceRemaining();
@@ -796,6 +805,7 @@ public class QueryMessageHandler extends MessageHandler {
 		Road sourceRoad = snapshot.getSourceRoad();
 		Road targetRoad = snapshot.getTargetRoad();
 		Lane targetLane = snapshot.getTargetLane();
+		ConnectorRoad.ConnectorPath connectorPath = snapshot.getConnectorPath();
 		if (sourceRoad != null) {
 			record.put("transitionSourceRoadId", sourceRoad.getOrigID());
 		}
@@ -806,6 +816,11 @@ public class QueryMessageHandler extends MessageHandler {
 			int laneIndex = targetRoad == null ? -1 : targetRoad.getLaneIndex(targetLane);
 			if (laneIndex >= 0) record.put("transitionTargetLaneIndex", laneIndex);
 			record.put("transitionTargetInternalLaneId", targetLane.getID());
+		}
+		if (connectorPath != null) {
+			record.put("connectorPathId", connectorPath.getConnectorPathID());
+			record.put("connectorPathInternalEdgeIds", connectorPath.getInternalEdgeIDs());
+			record.put("connectorPathViaLaneIds", connectorPath.getViaLaneIDs());
 		}
 	}
 
@@ -1036,6 +1051,144 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 	}
 
+	/**
+	 * Query lane-to-lane paths belonging to a movement-level connector.
+	 *
+	 * <p>Input DATA is one record or a list of records containing required
+	 * {@code connectorId} and optional {@code connectorPathId}. Omitting the path
+	 * ID returns every path on the connector; supplying its zero-based connector-local
+	 * index returns that path and its exact {@code internalEdgeIds}.</p>
+	 */
+	public HashMap<String, Object> getConnectorPath(JSONObject jsonMsg) {
+		HashMap<String, Object> response = new HashMap<String, Object>();
+		if (!jsonMsg.containsKey("data")) {
+			response.put("status", "error");
+			response.put("errorCode", "MISSING_DATA");
+			response.put("message", "connectorPath query requires DATA with connectorId");
+			return response;
+		}
+		ArrayList<Object> data = new ArrayList<Object>();
+		try {
+			for (ConnectorPathQuery request : parseConnectorPathQueries(jsonMsg.get("data"))) {
+				if (request.connectorId == null || request.connectorId.isEmpty()) {
+					HashMap<String, Object> error = errorRecord("connectorId", null);
+					error.put("errorCode", "MISSING_CONNECTOR_ID");
+					error.put("message", "connectorId is required");
+					data.add(error);
+					continue;
+				}
+				ConnectorRoad connector = ContextCreator.getRoadContext()
+						.getConnector(request.connectorId);
+				if (connector == null) {
+					HashMap<String, Object> error = errorRecord(
+							"connectorId", request.connectorId);
+					error.put("errorCode", "CONNECTOR_NOT_FOUND");
+					data.add(error);
+					continue;
+				}
+				if (request.connectorPathId != null) {
+					ConnectorRoad.ConnectorPath path = connector.getPathByID(
+							request.connectorPathId);
+					if (path == null) {
+						HashMap<String, Object> error = errorRecord(
+								"connectorPathId", request.connectorPathId);
+						error.put("connectorId", connector.getOrigID());
+						error.put("errorCode", "CONNECTOR_PATH_NOT_FOUND");
+						data.add(error);
+						continue;
+					}
+					HashMap<String, Object> record = connectorPathRecord(connector, path);
+					record.put("status", "ok");
+					data.add(record);
+					continue;
+				}
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("connectorId", connector.getOrigID());
+				ArrayList<Object> paths = new ArrayList<Object>();
+				for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
+					paths.add(connectorPathRecord(connector, path));
+				}
+				record.put("paths", paths);
+				record.put("status", "ok");
+				data.add(record);
+			}
+			response.put("data", data);
+			response.put("status", "ok");
+		} catch (Exception ex) {
+			ContextCreator.logger.error("Error processing connectorPath query: "
+					+ ex.toString(), ex);
+			response.put("status", "error");
+			response.put("errorCode", "INVALID_QUERY");
+			response.put("message", ex.getMessage());
+		}
+		return response;
+	}
+
+	private ArrayList<ConnectorPathQuery> parseConnectorPathQueries(Object raw) {
+		ArrayList<ConnectorPathQuery> result = new ArrayList<ConnectorPathQuery>();
+		appendConnectorPathQueries(result, raw);
+		return result;
+	}
+
+	private void appendConnectorPathQueries(ArrayList<ConnectorPathQuery> result, Object raw) {
+		if (raw instanceof Collection<?>) {
+			for (Object item : (Collection<?>) raw) appendConnectorPathQueries(result, item);
+			return;
+		}
+		if (raw instanceof Map<?, ?>) {
+			Map<?, ?> record = (Map<?, ?>) raw;
+			result.add(new ConnectorPathQuery(normalizedID(record.get("connectorId")),
+					normalizedConnectorPathID(record.get("connectorPathId"))));
+			return;
+		}
+		if (raw == null) {
+			result.add(new ConnectorPathQuery(null, null));
+			return;
+		}
+		String value = raw.toString().trim();
+		if (value.startsWith("[") || value.startsWith("{")) {
+			appendConnectorPathQueries(result, new Gson().fromJson(value, Object.class));
+		} else {
+			result.add(new ConnectorPathQuery(normalizedID(value), null));
+		}
+	}
+
+	private String normalizedID(Object raw) {
+		if (raw == null) return null;
+		String value = String.valueOf(raw).trim();
+		return value.isEmpty() ? null : value;
+	}
+
+	private Integer normalizedConnectorPathID(Object raw) {
+		if (raw == null) return null;
+		String value = String.valueOf(raw).trim();
+		if (value.isEmpty()) return null;
+		try {
+			double numericValue = raw instanceof Number
+					? ((Number) raw).doubleValue() : Double.parseDouble(value);
+			if (!Double.isFinite(numericValue) || numericValue < 0.0
+					|| numericValue != Math.rint(numericValue)
+					|| numericValue > Integer.MAX_VALUE) {
+				throw new NumberFormatException();
+			}
+			return Integer.valueOf((int) numericValue);
+		} catch (NumberFormatException ex) {
+			throw new IllegalArgumentException(
+					"connectorPathId must be a non-negative integer", ex);
+		}
+	}
+
+	private static final class ConnectorPathQuery {
+		final String connectorId;
+		final Integer connectorPathId;
+
+		ConnectorPathQuery(String connectorId, Integer connectorPathId) {
+			this.connectorId = connectorId;
+			this.connectorPathId = connectorPathId;
+		}
+	}
+
 	private HashMap<String, Object> connectorRoadRecord(ConnectorRoad connector) {
 		HashMap<String, Object> record = new HashMap<String, Object>();
 		record.put("segmentId", connector.getOrigID());
@@ -1058,24 +1211,7 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("aliases", new ArrayList<String>(connector.getAliases()));
 		ArrayList<Object> paths = new ArrayList<Object>();
 		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
-			HashMap<String, Object> pathRecord = new HashMap<String, Object>();
-			pathRecord.put("sourceLaneId", path.getSourceLane() == null
-					? null : path.getSourceLane().getOrigID());
-			pathRecord.put("targetLaneId", path.getTargetLane() == null
-					? null : path.getTargetLane().getOrigID());
-			pathRecord.put("viaLaneIds", path.getViaLaneIDs());
-			pathRecord.put("internalEdgeIds", path.getInternalEdgeIDs());
-			pathRecord.put("explicitGeometry", path.hasExplicitGeometry());
-			pathRecord.put("declaredLength", Double.isFinite(path.getDeclaredLength())
-					? path.getDeclaredLength() : null);
-			pathRecord.put("speed", Double.isFinite(path.getSpeed())
-					? path.getSpeed() : null);
-			pathRecord.put("direction", path.getDirection());
-			pathRecord.put("state", path.getState());
-			pathRecord.put("trafficLightId", path.getTrafficLightID());
-			pathRecord.put("linkIndex", path.getLinkIndex());
-			pathRecord.put("parameters", path.getParameters());
-			paths.add(pathRecord);
+			paths.add(connectorPathRecord(connector, path));
 		}
 		record.put("paths", paths);
 		record.put("conflictingConnectorIds",
@@ -1086,6 +1222,33 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("intersectionCollision", snapshot.hasCollision());
 		record.put("intersectionStateVersion", snapshot.getVersion());
 		record.put("status", "ok");
+		return record;
+	}
+
+	private HashMap<String, Object> connectorPathRecord(ConnectorRoad connector,
+			ConnectorRoad.ConnectorPath path) {
+		HashMap<String, Object> record = new HashMap<String, Object>();
+		record.put("connectorId", connector.getOrigID());
+		record.put("connectorPathId", path.getConnectorPathID());
+		record.put("sourceLaneId", path.getSourceLane() == null
+				? null : path.getSourceLane().getOrigID());
+		record.put("targetLaneId", path.getTargetLane() == null
+				? null : path.getTargetLane().getOrigID());
+		record.put("sourceLaneIndex", path.getSourceLane() == null ? null
+				: connector.getSourceRoad().getLaneIndex(path.getSourceLane()));
+		record.put("targetLaneIndex", path.getTargetLane() == null ? null
+				: connector.getTargetRoad().getLaneIndex(path.getTargetLane()));
+		record.put("viaLaneIds", path.getViaLaneIDs());
+		record.put("internalEdgeIds", path.getInternalEdgeIDs());
+		record.put("explicitGeometry", path.hasExplicitGeometry());
+		record.put("declaredLength", Double.isFinite(path.getDeclaredLength())
+				? path.getDeclaredLength() : null);
+		record.put("speed", Double.isFinite(path.getSpeed()) ? path.getSpeed() : null);
+		record.put("direction", path.getDirection());
+		record.put("state", path.getState());
+		record.put("trafficLightId", path.getTrafficLightID());
+		record.put("linkIndex", path.getLinkIndex());
+		record.put("parameters", path.getParameters());
 		return record;
 	}
 

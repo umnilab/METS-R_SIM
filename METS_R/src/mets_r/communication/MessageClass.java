@@ -101,6 +101,7 @@ public class MessageClass{
 	double z = 0.0;
 	double speed;
 	String segmentId;
+	Integer connectorPathId;
 	Integer laneIndex;
 
 	// Constructor
@@ -142,6 +143,7 @@ public class MessageClass{
 		Double speed;
 		Double vehicleLength;
 		String segmentId;
+		Integer connectorPathId;
 		String destinationRoadId;
 	}
 
