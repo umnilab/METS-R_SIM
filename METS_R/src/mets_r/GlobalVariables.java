@@ -83,9 +83,14 @@ public class GlobalVariables {
 	// Whether the simulation is ran in the synchronized mode
 	public static boolean SYNCHRONIZED = loadBooleanConfig("SYNCHRONIZED", false);
 	
-	// Whether the simulation is ran in the standalone mode
-	public static boolean STANDALONE = loadBooleanConfig("STANDALONE", false);
-	public static boolean ENABLE_NETWORK = loadBooleanConfig("ENABLE_NETWORK", !STANDALONE);
+	public static boolean ENABLE_NETWORK = loadBooleanConfig("ENABLE_NETWORK", true);
+
+	public static void validateNetworkConfiguration() {
+		if (SYNCHRONIZED && !ENABLE_NETWORK) {
+			throw new IllegalStateException(
+					"Invalid configuration: SYNCHRONIZED=true requires ENABLE_NETWORK=true");
+		}
+	}
 	
 	
 	// Whether the simulation is ran with V2X enabled
