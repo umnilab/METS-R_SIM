@@ -68,6 +68,10 @@ public class Road {
 	
 	private boolean _canBeOrigin;
 	private boolean _canBeDest;
+	// Physical insertion is an endpoint concern, not a routing-topology concern.
+	// Keep it separate from _canBeOrigin so an unusable spawn shape cannot remove
+	// an otherwise valid road from routes that merely traverse it.
+	private boolean hasUsableDepartureGeometry;
 	
 	// For vehicle movement
 	private int lastUpdateHour; // To find the current hour of the simulation
@@ -86,17 +90,56 @@ public class Road {
 	private Vehicle prevFirstVehicle; // For parallel computing
 	/* One externally controlled connector may reserve each target lane. */
 	private ConcurrentHashMap<Integer, Vehicle> externalLaneReservations;
+	/* Active native lane changes reserve their target lane in stable vehicle-ID order. */
+	private TreeMap<Integer, TreeMap<Integer, Vehicle>> laneChangeReservations;
 	private volatile boolean nativeReleaseInProgress;
 	private int activeExternalLaneAdmissions;
 	private int activeExternalLaneCommits;
-	private double travelTime;
+	private static final double TRAVEL_TIME_HISTORY_HALF_LIFE_SECONDS = 900.0;
+	private static final double TRAVEL_TIME_PRIOR_SAMPLE_STRENGTH = 3.0;
+	private static final double TRAVEL_TIME_EFFECTIVE_SAMPLE_CAP = 100.0;
+	private static final double TRAVEL_TIME_MIN_LIVE_SPEED_MPS = 0.5;
+	private static final double TRAVEL_TIME_STOPPED_SPEED_MPS = 0.1;
+	private static final double TRAVEL_TIME_MAX_SECONDS = 6.0 * 60.0 * 60.0;
+	private static final double TRAVEL_TIME_PRIOR_CONFIDENCE = 0.15;
+	private static final double TRAVEL_TIME_ETA_PERCENTILE = 0.90;
+	private static final double TRAVEL_TIME_LIVE_SUPPORT_STRENGTH = 4.0;
+	private static final double TRAVEL_TIME_MAX_INCREASE_FACTOR_PER_REFRESH = 3.0;
+	private static final double TRAVEL_TIME_MAX_INCREASE_SECONDS_PER_REFRESH = 90.0;
+	private static final double TRAVEL_TIME_MAX_DECREASE_FACTOR_PER_REFRESH = 0.50;
+	private static final double TRAVEL_TIME_MAX_DECREASE_SECONDS_PER_REFRESH = 300.0;
+	private static final int TRAVEL_TIME_HISTOGRAM_BUCKETS = 64;
+	private static final double TRAVEL_TIME_HISTOGRAM_MIN_SECONDS = 0.25;
+	private static final double TRAVEL_TIME_HISTOGRAM_MAX_SECONDS = TRAVEL_TIME_MAX_SECONDS;
+	private static final double TRAVEL_TIME_HISTOGRAM_LOG_RANGE = Math.log(
+			TRAVEL_TIME_HISTOGRAM_MAX_SECONDS / TRAVEL_TIME_HISTOGRAM_MIN_SECONDS);
+
+	private volatile double travelTime;
+	private volatile double travelTimeP90;
 	private TreeMap<Integer, ArrayList<Vehicle>> departureVehMap; // Use this class to control the vehicle that entering
 	private ConcurrentLinkedQueue<Vehicle> toAddDepartureVeh; // Tree map is not thread-safe, so use this 
 	private final ArrayList<Vehicle> stepVehicleBuffer = new ArrayList<Vehicle>();
 	private final ArrayList<Vehicle> departureBuffer = new ArrayList<Vehicle>();
 	private double speedLimit_; // Speed for travel time estimation
 	private double travelTimeSum;
+	private double travelTimeSquareSum;
 	private int travelTimeCount;
+	private double completedTravelTimeMean;
+	private double completedTravelTimeVariance;
+	private double effectiveTravelTimeSampleCount;
+	private float[] completedTravelTimeHistogram;
+	private float[] pendingTravelTimeHistogram;
+	private int lastTravelTimeSampleTick;
+	private volatile int lastTravelTimeUpdateTick;
+	private volatile double travelTimeConfidence;
+	private volatile int liveTravelTimeVehicleCount;
+	private volatile int liveTravelTimeStoppedCount;
+	private volatile double liveTravelTimeLowerBound;
+	private volatile double liveTravelTimeMeanSpeed;
+	private double[] liveTravelTimeProjectionBuffer;
+	private double[] liveTravelTimeBucketBuffer;
+	/* Set once when this physical road first enters the estimator refresh set. */
+	private volatile boolean travelTimeEstimatorRegistered;
 	private double avgEnergyConsumption;
 	private double energyConsumptionSum;
 	private int energyConsumptionCount;
@@ -133,13 +176,30 @@ public class Road {
 		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
 		this.externalLaneReservations = new ConcurrentHashMap<Integer, Vehicle>();
+		this.laneChangeReservations = new TreeMap<Integer, TreeMap<Integer, Vehicle>>();
 		this.nativeReleaseInProgress = false;
 		this.activeExternalLaneAdmissions = 0;
 		this.activeExternalLaneCommits = 0;
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
+		this.travelTimeP90 = this.travelTime;
 		this.travelTimeSum = 0.0;
+		this.travelTimeSquareSum = 0.0;
 		this.travelTimeCount = 0;
+		this.completedTravelTimeMean = this.travelTime;
+		this.completedTravelTimeVariance = 0.0;
+		this.effectiveTravelTimeSampleCount = 0.0;
+		this.completedTravelTimeHistogram = null;
+		this.pendingTravelTimeHistogram = null;
+		this.lastTravelTimeSampleTick = -1;
+		this.lastTravelTimeUpdateTick = -1;
+		this.travelTimeConfidence = TRAVEL_TIME_PRIOR_CONFIDENCE;
+		this.liveTravelTimeVehicleCount = 0;
+		this.liveTravelTimeStoppedCount = 0;
+		this.liveTravelTimeLowerBound = 0.0;
+		this.liveTravelTimeMeanSpeed = 0.0;
+		this.liveTravelTimeProjectionBuffer = null;
+		this.liveTravelTimeBucketBuffer = null;
 		this.avgEnergyConsumption = 0.0;
 		this.energyConsumptionSum = 0.0;
 		this.energyConsumptionCount = 0;
@@ -150,6 +210,7 @@ public class Road {
 		
 		this._canBeDest = true;
 		this._canBeOrigin = true;
+		this.hasUsableDepartureGeometry = true;
 		
 		this.upStreamRoads = new ArrayList<Road>(); // Sort by priority
 
@@ -165,7 +226,7 @@ public class Road {
 	
 	public Road(int id, double length) {
 		this(id);
-		this.length = length;
+		this.setLength(length);
 	}
 
 	// Get the speed limit
@@ -468,7 +529,10 @@ public class Road {
 	}
 	
 	public void setUpStreamNode(Node node) {
-		this.upStreamNode = node;
+		if (this.upStreamNode != node) {
+			this.upStreamNode = node;
+			markPhysicalTopologyChanged();
+		}
 	}
 	
 	public Node getDownStreamNode() {
@@ -476,12 +540,20 @@ public class Road {
 	}
 	
 	public void setDownStreamNode(Node node) {
-		this.downStreamNode = node;
+		if (this.downStreamNode != node) {
+			this.downStreamNode = node;
+			markPhysicalTopologyChanged();
+		}
 	}
 	
-	public void setLength(double length) {
-		this.length = length;
+	public synchronized void setLength(double length) {
+		// A malformed imported / dynamically assigned length must not poison every
+		// downstream speed and routing calculation. Zero remains a valid connector
+		// length; only negative and non-finite values are normalized.
+		this.length = Double.isFinite(length) && length >= 0.0 ? length : 0.0;
+		this.resetTravelTimeEstimator();
 		this.refreshDefaultParkingCapacity();
+		markPhysicalTopologyChanged();
 	}
 
 	public double getLength() {
@@ -496,12 +568,16 @@ public class Road {
 	}
 
 	public void addDownStreamRoad(int dsRoad) {
-		if (!this.downStreamRoads.contains(dsRoad))
+		if (!this.downStreamRoads.contains(dsRoad)) {
 			this.downStreamRoads.add(dsRoad);
+			markPhysicalTopologyChanged();
+		}
 	}
 
 	public void removeDownStreamRoad(int dsRoad) {
-		this.downStreamRoads.remove(Integer.valueOf(dsRoad));
+		if (this.downStreamRoads.remove(Integer.valueOf(dsRoad))) {
+			markPhysicalTopologyChanged();
+		}
 	}
 	
 	public void addUpStreamRoad(Road usRoad, int priority) { // priority: 0 - straight, 1 - right turn, 2 - left turn
@@ -533,6 +609,17 @@ public class Road {
 	public boolean canBeDest(){
 		return this._canBeDest;
 	}
+
+	/** A physical road that can host the start of a vehicle trip. */
+	public boolean canBeTripOrigin() {
+		return !(this instanceof ConnectorRoad) && this._canBeOrigin
+				&& this.hasUsableDepartureGeometry;
+	}
+
+	/** A physical road that can host the end of a vehicle trip. */
+	public boolean canBeTripDestination() {
+		return !(this instanceof ConnectorRoad) && this._canBeDest;
+	}
 	
 	public void setCanBeOrigin(Boolean b) {
 		this._canBeOrigin = b;
@@ -540,6 +627,14 @@ public class Road {
 	
 	public void setCanBeDest(Boolean b) {
 		this._canBeDest = b;
+	}
+
+	public boolean hasUsableDepartureGeometry() {
+		return this.hasUsableDepartureGeometry;
+	}
+
+	public void setHasUsableDepartureGeometry(boolean usable) {
+		this.hasUsableDepartureGeometry = usable;
 	}
 
 	public void changeNumberOfVehicles(int nVeh) {
@@ -651,7 +746,116 @@ public class Road {
 	public synchronized int getExternalLaneReservationCount() {
 		return this.externalLaneReservations.size();
 	}
+	/** Publish an active native lane change without changing lane-list membership. */
+	public synchronized boolean registerLaneChangeReservation(Lane targetLane, Vehicle vehicle) {
+		if (targetLane == null || vehicle == null || targetLane.getRoad() != this
+				|| vehicle.getRoad() != this) return false;
+		TreeMap<Integer, Vehicle> laneReservations =
+				this.laneChangeReservations.get(targetLane.getID());
+		if (laneReservations == null) {
+			laneReservations = new TreeMap<Integer, Vehicle>();
+			this.laneChangeReservations.put(targetLane.getID(), laneReservations);
+		}
+		Vehicle existing = laneReservations.get(vehicle.getID());
+		if (existing != null && existing != vehicle) return false;
+		laneReservations.put(vehicle.getID(), vehicle);
+		return true;
+	}
 
+	/** Remove a native lane-change reservation only when owned by this vehicle. */
+	public synchronized void unregisterLaneChangeReservation(Vehicle vehicle) {
+		if (vehicle == null) return;
+		Lane targetLane = vehicle.getLaneChangeTargetLane();
+		if (targetLane != null) {
+			TreeMap<Integer, Vehicle> laneReservations =
+					this.laneChangeReservations.get(targetLane.getID());
+			if (laneReservations != null && laneReservations.get(vehicle.getID()) == vehicle) {
+				laneReservations.remove(vehicle.getID());
+				if (laneReservations.isEmpty()) this.laneChangeReservations.remove(targetLane.getID());
+				return;
+			}
+		}
+		Iterator<Map.Entry<Integer, TreeMap<Integer, Vehicle>>> iterator =
+				this.laneChangeReservations.entrySet().iterator();
+		while (iterator.hasNext()) {
+			TreeMap<Integer, Vehicle> laneReservations = iterator.next().getValue();
+			if (laneReservations.get(vehicle.getID()) == vehicle) laneReservations.remove(vehicle.getID());
+			if (laneReservations.isEmpty()) iterator.remove();
+		}
+	}
+
+	/** Nearest reserved vehicle ahead at the supplied logical target-lane station. */
+	public synchronized Vehicle findLaneChangeReservedLeader(
+			Lane targetLane, Vehicle requester, double requesterDistance) {
+		if (targetLane == null || targetLane.getRoad() != this
+				|| !Double.isFinite(requesterDistance)) return null;
+		TreeMap<Integer, Vehicle> laneReservations =
+				this.laneChangeReservations.get(targetLane.getID());
+		if (laneReservations == null) return null;
+		Vehicle best = null;
+		double bestDistance = Double.NEGATIVE_INFINITY;
+		for (Vehicle candidate : laneReservations.values()) {
+			if (candidate == null || candidate == requester) continue;
+			double candidateDistance = candidate.getLaneChangeReservedDistance(targetLane);
+			if (Double.isFinite(candidateDistance) && candidateDistance <= requesterDistance
+					&& candidateDistance > bestDistance) {
+				best = candidate;
+				bestDistance = candidateDistance;
+			}
+		}
+		return best;
+	}
+
+	/** Nearest reserved vehicle behind at the supplied logical target-lane station. */
+	public synchronized Vehicle findLaneChangeReservedLag(
+			Lane targetLane, Vehicle requester, double requesterDistance) {
+		if (targetLane == null || targetLane.getRoad() != this
+				|| !Double.isFinite(requesterDistance)) return null;
+		TreeMap<Integer, Vehicle> laneReservations =
+				this.laneChangeReservations.get(targetLane.getID());
+		if (laneReservations == null) return null;
+		Vehicle best = null;
+		double bestDistance = Double.POSITIVE_INFINITY;
+		for (Vehicle candidate : laneReservations.values()) {
+			if (candidate == null || candidate == requester) continue;
+			double candidateDistance = candidate.getLaneChangeReservedDistance(targetLane);
+			if (Double.isFinite(candidateDistance) && candidateDistance > requesterDistance
+					&& candidateDistance < bestDistance) {
+				best = candidate;
+				bestDistance = candidateDistance;
+			}
+		}
+		return best;
+	}
+
+	/** Return any other vehicle currently reserving the supplied lane. */
+	public synchronized Vehicle getLaneChangeReservationBlocker(
+			Lane targetLane, Vehicle requester) {
+		if (targetLane == null || targetLane.getRoad() != this) return null;
+		TreeMap<Integer, Vehicle> laneReservations =
+				this.laneChangeReservations.get(targetLane.getID());
+		if (laneReservations == null) return null;
+		for (Vehicle candidate : laneReservations.values()) {
+			if (candidate != null && candidate != requester) return candidate;
+		}
+		return null;
+	}
+
+	private synchronized ArrayList<Vehicle> activeLaneChangeVehicles() {
+		TreeMap<Integer, Vehicle> vehiclesByID = new TreeMap<Integer, Vehicle>();
+		for (TreeMap<Integer, Vehicle> laneReservations : this.laneChangeReservations.values()) {
+			vehiclesByID.putAll(laneReservations);
+		}
+		return new ArrayList<Vehicle>(vehiclesByID.values());
+	}
+
+	public synchronized int getLaneChangeReservationCount() {
+		int count = 0;
+		for (TreeMap<Integer, Vehicle> laneReservations : this.laneChangeReservations.values()) {
+			count += laneReservations.size();
+		}
+		return count;
+	}
 	public boolean isNativeReleaseInProgress() {
 		return this.nativeReleaseInProgress;
 	}
@@ -814,10 +1018,30 @@ public class Road {
 		this.prevFirstVehicle = null;
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
-		this.speedLimit_ = restoredSpeedLimit;
-		this.travelTime = restoredTravelTime;
+		double currentSpeedLimit = Double.isFinite(this.speedLimit_)
+				&& this.speedLimit_ >= 0.0 ? this.speedLimit_ : 0.0;
+		this.speedLimit_ = Double.isFinite(restoredSpeedLimit)
+				&& restoredSpeedLimit >= 0.0 ? restoredSpeedLimit : currentSpeedLimit;
+		double restoredFreeFlow = freeFlowTravelTime();
+		double safeRestoredTravelTime = Double.isFinite(restoredTravelTime)
+				&& restoredTravelTime >= 0.0 ? restoredTravelTime : restoredFreeFlow;
+		this.travelTime = safeRestoredTravelTime;
+		this.travelTimeP90 = safeRestoredTravelTime;
 		this.travelTimeSum = 0.0;
+		this.travelTimeSquareSum = 0.0;
 		this.travelTimeCount = 0;
+		this.completedTravelTimeMean = safeRestoredTravelTime;
+		this.completedTravelTimeVariance = 0.0;
+		this.effectiveTravelTimeSampleCount = 0.0;
+		this.completedTravelTimeHistogram = null;
+		this.pendingTravelTimeHistogram = null;
+		this.lastTravelTimeSampleTick = -1;
+		this.lastTravelTimeUpdateTick = ContextCreator.getCurrentTick();
+		this.travelTimeConfidence = TRAVEL_TIME_PRIOR_CONFIDENCE;
+		this.liveTravelTimeVehicleCount = 0;
+		this.liveTravelTimeStoppedCount = 0;
+		this.liveTravelTimeLowerBound = 0.0;
+		this.liveTravelTimeMeanSpeed = 0.0;
 		this.avgEnergyConsumption = 0.0;
 		this.energyConsumptionSum = 0.0;
 		this.energyConsumptionCount = 0;
@@ -835,6 +1059,75 @@ public class Road {
 		this.prevParkingCapacity = this.parking_capacity;
 		this.prevParkedNum = this.parked_num.get();
 		this.parkingStateDirty = true;
+	}
+
+	/** Restore the optional travel-time estimator state saved by newer snapshots. */
+	public synchronized void restoreTravelTimeEstimatorState(double restoredCompletedMean,
+			double restoredCompletedVariance, double restoredEffectiveSampleCount,
+			int restoredLastSampleTick, int restoredLastUpdateTick,
+			double restoredConfidence, int restoredLiveVehicleCount,
+			int restoredLiveStoppedCount, double restoredLiveLowerBound,
+			double restoredLiveMeanSpeed, double restoredPendingSum,
+			double restoredPendingSquareSum, int restoredPendingCount) {
+		restoreTravelTimeEstimatorState(restoredCompletedMean, restoredCompletedVariance,
+				restoredEffectiveSampleCount, restoredLastSampleTick, restoredLastUpdateTick,
+				restoredConfidence, restoredLiveVehicleCount, restoredLiveStoppedCount,
+				restoredLiveLowerBound, restoredLiveMeanSpeed, restoredPendingSum,
+				restoredPendingSquareSum, restoredPendingCount, Double.NaN, null, null);
+	}
+
+	/** Restore estimator version 2, including the ETA percentile distribution. */
+	public synchronized void restoreTravelTimeEstimatorState(double restoredCompletedMean,
+			double restoredCompletedVariance, double restoredEffectiveSampleCount,
+			int restoredLastSampleTick, int restoredLastUpdateTick,
+			double restoredConfidence, int restoredLiveVehicleCount,
+			int restoredLiveStoppedCount, double restoredLiveLowerBound,
+			double restoredLiveMeanSpeed, double restoredPendingSum,
+			double restoredPendingSquareSum, int restoredPendingCount,
+			double restoredTravelTimeP90, float[] restoredCompletedHistogram,
+			float[] restoredPendingHistogram) {
+		double prior = freeFlowTravelTime();
+		this.completedTravelTimeMean = finiteNonNegative(restoredCompletedMean,
+				Math.max(prior, this.travelTime));
+		this.completedTravelTimeVariance = finiteNonNegative(restoredCompletedVariance, 0.0);
+		this.effectiveTravelTimeSampleCount = clamp(
+				finiteNonNegative(restoredEffectiveSampleCount, 0.0),
+				0.0, TRAVEL_TIME_EFFECTIVE_SAMPLE_CAP);
+		this.lastTravelTimeSampleTick = restoredLastSampleTick;
+		this.lastTravelTimeUpdateTick = restoredLastUpdateTick;
+		this.travelTimeConfidence = clamp(finiteNonNegative(restoredConfidence,
+				TRAVEL_TIME_PRIOR_CONFIDENCE), TRAVEL_TIME_PRIOR_CONFIDENCE, 0.95);
+		this.liveTravelTimeVehicleCount = Math.max(0, restoredLiveVehicleCount);
+		this.liveTravelTimeStoppedCount = Math.min(this.liveTravelTimeVehicleCount,
+				Math.max(0, restoredLiveStoppedCount));
+		this.liveTravelTimeLowerBound = finiteNonNegative(restoredLiveLowerBound, 0.0);
+		this.liveTravelTimeMeanSpeed = finiteNonNegative(restoredLiveMeanSpeed, 0.0);
+		this.travelTimeSum = finiteNonNegative(restoredPendingSum, 0.0);
+		this.travelTimeSquareSum = finiteNonNegative(restoredPendingSquareSum, 0.0);
+		this.travelTimeCount = Math.max(0, restoredPendingCount);
+		this.pendingTravelTimeHistogram = sanitizeHistogram(restoredPendingHistogram);
+		if (this.pendingTravelTimeHistogram == null && this.travelTimeCount > 0) {
+			this.pendingTravelTimeHistogram = new float[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+			double pendingMeanSeconds = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.0001)
+					* this.travelTimeSum / this.travelTimeCount;
+			this.pendingTravelTimeHistogram[travelTimeHistogramBucket(pendingMeanSeconds)] =
+					(float) this.travelTimeCount;
+		}
+		this.completedTravelTimeHistogram = sanitizeHistogram(restoredCompletedHistogram);
+		if (this.completedTravelTimeHistogram == null
+				&& this.effectiveTravelTimeSampleCount > 0.0001) {
+			this.completedTravelTimeHistogram = new float[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+			double legacyP90 = completedP90FromMoments(this.completedTravelTimeMean,
+					this.completedTravelTimeVariance);
+			this.completedTravelTimeHistogram[travelTimeHistogramBucket(legacyP90)] =
+					(float) this.effectiveTravelTimeSampleCount;
+		}
+		this.travelTimeP90 = Math.max(this.travelTime,
+				finiteNonNegative(restoredTravelTimeP90,
+						completedP90FromMoments(this.completedTravelTimeMean,
+								this.completedTravelTimeVariance)));
+		if (this.travelTimeCount > 0) this.onTravelTimeObservationRecorded();
+		if (hasTravelTimeEstimatorEvidence()) markTravelTimeEstimatorRelevant();
 	}
 
 	/* For adaptive network partitioning */
@@ -1066,6 +1359,7 @@ public class Road {
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
 		this.externalLaneReservations.clear();
+		this.laneChangeReservations.clear();
 		if (vehicles == null) return;
 		Set<Integer> restoredVehicleIDs = new HashSet<Integer>();
 		for (Vehicle v : vehicles) {
@@ -1082,25 +1376,199 @@ public class Road {
 	}
 
 	public double calcSpeed() {
-		return  Math.max((this.length/(this.travelTime + 1)), 0.0001); // +1s to avoid divide 0
+		double currentLength = this.length;
+		double currentTravelTime = this.travelTime;
+		if (Double.isFinite(currentLength) && currentLength >= 0.0
+				&& Double.isFinite(currentTravelTime) && currentTravelTime >= 0.0) {
+			double calculatedSpeed = currentLength / Math.max(currentTravelTime, 0.0001);
+			if (Double.isFinite(calculatedSpeed)) {
+				return Math.max(calculatedSpeed, 0.0001);
+			}
+		}
+		double fallbackSpeed = Double.isFinite(this.speedLimit_)
+				&& this.speedLimit_ > 0.0 ? this.speedLimit_ : 0.0001;
+		return Math.max(fallbackSpeed, 0.0001);
 	}
 
 	/**
-	 * This function set the current travel time of the road based on historical records
-	 * 
-	 * @author Zhan & Hemant
+	 * Update the routing travel-time estimate from completed traversals and vehicles that
+	 * are still on the road. The latter are censored observations: their elapsed time is
+	 * already a lower bound on their eventual traversal time. This prevents a blocked road
+	 * with no exits from incorrectly reverting to free flow.
 	 */
 	public synchronized boolean updateTravelTimeEstimation() {
-		// for output travel times
-		double newTravelTime;
-		if(travelTimeCount > 0) {
-			newTravelTime = GlobalVariables.SIMULATION_STEP_SIZE * travelTimeSum / travelTimeCount;
-			travelTimeSum = 0.0;
-			travelTimeCount = 0;
+		return updateTravelTimeEstimationAtTick(ContextCreator.getCurrentTick());
+	}
+
+	/* Package-private clock injection keeps the estimator math independently testable. */
+	synchronized boolean updateTravelTimeEstimationAtTick(int currentTick) {
+		final double stepSize = Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.0001);
+		final double refreshSeconds = Math.max(stepSize,
+				GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL * stepSize);
+		final double elapsedUpdateSeconds = this.lastTravelTimeUpdateTick >= 0
+				? Math.max(stepSize, (currentTick - this.lastTravelTimeUpdateTick) * stepSize)
+				: refreshSeconds;
+		this.lastTravelTimeUpdateTick = currentTick;
+
+		// Old samples lose influence gradually instead of disappearing at a refresh boundary.
+		double historyDecay = Math.exp(-Math.log(2.0) * elapsedUpdateSeconds
+				/ TRAVEL_TIME_HISTORY_HALF_LIFE_SECONDS);
+		this.effectiveTravelTimeSampleCount *= historyDecay;
+		scaleHistogram(this.completedTravelTimeHistogram, historyDecay);
+
+		if (this.travelTimeCount > 0) {
+			double batchMean = stepSize * this.travelTimeSum / this.travelTimeCount;
+			double batchSecondMoment = stepSize * stepSize * this.travelTimeSquareSum
+					/ this.travelTimeCount;
+			double batchVariance = Math.max(0.0, batchSecondMoment - batchMean * batchMean);
+			double incomingWeight = Math.min(25.0, this.travelTimeCount);
+			double oldWeight = this.effectiveTravelTimeSampleCount;
+			if (oldWeight <= 0.0001 || !Double.isFinite(this.completedTravelTimeMean)) {
+				this.completedTravelTimeMean = batchMean;
+				this.completedTravelTimeVariance = batchVariance;
+				this.effectiveTravelTimeSampleCount = incomingWeight;
+			}
+			else {
+				double oldMean = this.completedTravelTimeMean;
+				double totalWeight = oldWeight + incomingWeight;
+				double combinedMean = (oldWeight * oldMean + incomingWeight * batchMean)
+						/ totalWeight;
+				double combinedVariance = (oldWeight * (this.completedTravelTimeVariance
+						+ square(oldMean - combinedMean))
+						+ incomingWeight * (batchVariance + square(batchMean - combinedMean)))
+						/ totalWeight;
+				this.completedTravelTimeMean = combinedMean;
+				this.completedTravelTimeVariance = Math.max(0.0, combinedVariance);
+				this.effectiveTravelTimeSampleCount = Math.min(
+						TRAVEL_TIME_EFFECTIVE_SAMPLE_CAP, totalWeight);
+			}
+			mergePendingTravelTimeHistogram(incomingWeight);
+			this.lastTravelTimeSampleTick = currentTick;
+		}
+		this.travelTimeSum = 0.0;
+		this.travelTimeSquareSum = 0.0;
+		this.travelTimeCount = 0;
+		this.pendingTravelTimeHistogram = null;
+
+		TravelTimeLiveEvidence liveObservations = null;
+		Iterable<Vehicle> directObservations = this.travelTimeObservationVehicles();
+		if (directObservations != null) {
+			for (Vehicle vehicle : directObservations) {
+				liveObservations = this.addTravelTimeLiveObservation(
+						liveObservations, vehicle, stepSize);
+			}
 		}
 		else {
-			newTravelTime =  this.length / this.speedLimit_;
+			Vehicle currentVehicle = this.firstVehicle();
+			int scanLimit = Math.max(16, Math.max(0, this.getVehicleNum()) + 16);
+			int scanned = 0;
+			while (currentVehicle != null && scanned < scanLimit) {
+				Vehicle nextVehicle = currentVehicle.macroTrailing();
+				liveObservations = this.addTravelTimeLiveObservation(
+						liveObservations, currentVehicle, stepSize);
+				currentVehicle = nextVehicle;
+				scanned++;
+			}
 		}
+		int liveCount = liveObservations == null ? 0 : liveObservations.liveCount;
+		int stoppedCount = liveObservations == null ? 0 : liveObservations.stoppedCount;
+		double liveSpeedSum = liveObservations == null ? 0.0 : liveObservations.liveSpeedSum;
+		double liveProjectionSum = liveObservations == null
+				? 0.0 : liveObservations.liveProjectionSum;
+		double liveElapsedMaximum = liveObservations == null
+				? 0.0 : liveObservations.liveElapsedMaximum;
+		double[] liveProjectedTravelTimes = liveObservations == null
+				? null : liveObservations.projectedTravelTimes;
+		int liveProjectionCount = liveObservations == null
+				? 0 : liveObservations.projectedCount;
+		this.liveTravelTimeVehicleCount = liveCount;
+		this.liveTravelTimeStoppedCount = stoppedCount;
+		this.liveTravelTimeLowerBound = liveElapsedMaximum;
+		this.liveTravelTimeMeanSpeed = liveCount > 0 ? liveSpeedSum / liveCount : 0.0;
+
+		double prior = freeFlowTravelTime();
+		double previousEstimate = Math.max(prior,
+				finiteNonNegative(this.travelTime, prior));
+		double historyReliability = this.effectiveTravelTimeSampleCount
+				/ (this.effectiveTravelTimeSampleCount + TRAVEL_TIME_PRIOR_SAMPLE_STRENGTH);
+		double completedMean = Math.max(prior,
+				finiteNonNegative(this.completedTravelTimeMean, prior));
+		double newTravelTime = prior + historyReliability * (completedMean - prior);
+		double liveWeight = 0.0;
+		double queueProjection = prior;
+
+		if (liveCount > 0 && liveProjectedTravelTimes != null
+				&& liveProjectionCount > 0) {
+			double stoppedFraction = (double) stoppedCount / liveCount;
+			double liveSupport = (double) liveCount
+					/ (liveCount + TRAVEL_TIME_LIVE_SUPPORT_STRENGTH);
+			double liveMeanProjection = liveProjectionSum
+					/ liveProjectionCount;
+			// Queue pressure grows smoothly with both stopped share and sample support;
+			// one stopped vehicle can no longer turn free flow into a 20x estimate.
+			queueProjection = newTravelTime
+					* (1.0 + 2.0 * stoppedFraction * liveSupport);
+			double liveEstimate = Math.max(prior,
+					Math.max(liveMeanProjection, queueProjection));
+			// A well-supported stopped queue must be able to dominate stale completed
+			// traversals. Keep freely moving censored observations conservative, but
+			// increase their reliability continuously with the stopped share. Because
+			// liveSupport is strictly below one, liveWeight remains safe for the
+			// percentile odds conversion without an artificial upper cap.
+			liveWeight = liveSupport * (0.55 + 0.45 * stoppedFraction);
+			newTravelTime = (1.0 - liveWeight) * newTravelTime + liveWeight * liveEstimate;
+		}
+
+		double maximumEstimate = Math.max(TRAVEL_TIME_MAX_SECONDS, prior * 120.0);
+		newTravelTime = clamp(finiteNonNegative(newTravelTime, prior), prior, maximumEstimate);
+		double refreshIntervals = Math.max(1.0, elapsedUpdateSeconds / refreshSeconds);
+		double maximumIncrease = Math.min(
+				previousEstimate * Math.pow(TRAVEL_TIME_MAX_INCREASE_FACTOR_PER_REFRESH,
+						refreshIntervals),
+				previousEstimate + TRAVEL_TIME_MAX_INCREASE_SECONDS_PER_REFRESH
+						* refreshIntervals);
+		double minimumDecrease = Math.max(prior, Math.max(
+				previousEstimate * Math.pow(TRAVEL_TIME_MAX_DECREASE_FACTOR_PER_REFRESH,
+						refreshIntervals),
+				previousEstimate - TRAVEL_TIME_MAX_DECREASE_SECONDS_PER_REFRESH
+						* refreshIntervals));
+		newTravelTime = clamp(newTravelTime, minimumDecrease,
+				Math.min(maximumEstimate, Math.max(prior, maximumIncrease)));
+
+		double previousP90 = Math.max(previousEstimate,
+				finiteNonNegative(this.travelTimeP90, previousEstimate));
+		double newTravelTimeP90 = weightedTravelTimePercentile(prior, liveWeight,
+				queueProjection, liveProjectedTravelTimes, liveProjectionCount,
+				TRAVEL_TIME_ETA_PERCENTILE);
+		newTravelTimeP90 = clamp(finiteNonNegative(newTravelTimeP90, newTravelTime),
+				newTravelTime, maximumEstimate);
+		double maximumP90Increase = Math.min(
+				previousP90 * Math.pow(TRAVEL_TIME_MAX_INCREASE_FACTOR_PER_REFRESH,
+						refreshIntervals),
+				previousP90 + TRAVEL_TIME_MAX_INCREASE_SECONDS_PER_REFRESH
+						* refreshIntervals);
+		double minimumP90Decrease = Math.max(newTravelTime, Math.max(
+				previousP90 * Math.pow(TRAVEL_TIME_MAX_DECREASE_FACTOR_PER_REFRESH,
+						refreshIntervals),
+				previousP90 - TRAVEL_TIME_MAX_DECREASE_SECONDS_PER_REFRESH
+						* refreshIntervals));
+		newTravelTimeP90 = clamp(newTravelTimeP90, minimumP90Decrease,
+				Math.max(minimumP90Decrease, Math.min(maximumEstimate,
+						Math.max(newTravelTime, maximumP90Increase))));
+
+		double sampleAgeSeconds = this.lastTravelTimeSampleTick < 0 ? Double.POSITIVE_INFINITY
+				: Math.max(0, currentTick - this.lastTravelTimeSampleTick) * stepSize;
+		double freshness = Double.isFinite(sampleAgeSeconds)
+				? Math.exp(-Math.log(2.0) * sampleAgeSeconds
+						/ TRAVEL_TIME_HISTORY_HALF_LIFE_SECONDS) : 0.0;
+		double coefficientOfVariation = completedMean > 0.0
+				? Math.sqrt(Math.max(0.0, this.completedTravelTimeVariance)) / completedMean : 1.0;
+		double stability = 1.0 / (1.0 + coefficientOfVariation);
+		double completedEvidence = historyReliability * freshness * stability;
+		double liveEvidence = 0.65 * liveCount / (liveCount + 3.0);
+		double combinedEvidence = 1.0 - (1.0 - completedEvidence) * (1.0 - liveEvidence);
+		this.travelTimeConfidence = clamp(TRAVEL_TIME_PRIOR_CONFIDENCE
+				+ 0.80 * combinedEvidence, TRAVEL_TIME_PRIOR_CONFIDENCE, 0.95);
 
 		double newAvgEnergyConsumption;
 		if(energyConsumptionCount > 0) {
@@ -1113,12 +1581,100 @@ public class Road {
 		}
 		this.avgEnergyConsumption = newAvgEnergyConsumption;
 		
-		if(this.travelTime == newTravelTime) {
+		boolean changed = Math.abs(this.travelTime - newTravelTime)
+				> 0.000001 * Math.max(1.0, Math.abs(this.travelTime));
+		this.travelTime = newTravelTime;
+		this.travelTimeP90 = newTravelTimeP90;
+		return changed;
+	}
+
+	/**
+	 * Optional direct source for live estimator observations. Physical roads use
+	 * their macro linked list; connector roads override this with their actual
+	 * active-vehicle collection.
+	 */
+	protected Iterable<Vehicle> travelTimeObservationVehicles() {
+		return null;
+	}
+
+	/** Connector hook used by read accessors to age skipped estimator state. */
+	protected void prepareTravelTimeEstimateForRead() {
+		// Physical roads are refreshed on the fixed network schedule.
+	}
+
+	protected boolean hasUpdatedTravelTimeEstimate() {
+		return this.lastTravelTimeUpdateTick >= 0;
+	}
+
+	/**
+	 * Apply all skipped decay in one operation when an inactive segment is next
+	 * read. The elapsed-tick calculation in the estimator preserves the same
+	 * half-life without requiring an update on every refresh boundary.
+	 */
+	protected synchronized boolean refreshTravelTimeEstimationIfStale(int currentTick) {
+		if (this.lastTravelTimeUpdateTick < 0 || currentTick <= this.lastTravelTimeUpdateTick) {
 			return false;
 		}
-		else {
-			this.travelTime = newTravelTime;
-			return true;
+		int refreshInterval = this.travelTimeRefreshIntervalTicks();
+		if (currentTick - this.lastTravelTimeUpdateTick < refreshInterval) return false;
+		return this.updateTravelTimeEstimationAtTick(currentTick);
+	}
+
+	protected int travelTimeRefreshIntervalTicks() {
+		return Math.max(1, GlobalVariables.SIMULATION_NETWORK_REFRESH_INTERVAL);
+	}
+
+	private TravelTimeLiveEvidence addTravelTimeLiveObservation(
+			TravelTimeLiveEvidence evidence, Vehicle vehicle, double stepSize) {
+		if (vehicle == null || !vehicle.isTravelTimeObservationEligible(this)) return evidence;
+		double speed = vehicle.currentSpeed();
+		if (!Double.isFinite(speed) || speed < 0.0) return evidence;
+		if (evidence == null) {
+			evidence = new TravelTimeLiveEvidence(this.liveTravelTimeProjectionBuffer);
+		}
+		evidence.liveSpeedSum += speed;
+		evidence.liveCount++;
+		if (speed <= TRAVEL_TIME_STOPPED_SPEED_MPS) evidence.stoppedCount++;
+		double elapsed = vehicle.getLinkTravelTime() * stepSize;
+		if (Double.isFinite(elapsed) && elapsed > evidence.liveElapsedMaximum) {
+			evidence.liveElapsedMaximum = elapsed;
+		}
+		double remainingDistance = Math.max(0.0,
+				vehicle.getDistanceToNextJunction());
+		double projectionSpeedFloor = Math.max(TRAVEL_TIME_MIN_LIVE_SPEED_MPS,
+				Math.min(2.0, Math.max(0.0, this.speedLimit_) * 0.20));
+		double projectedTravelTime = elapsed + remainingDistance
+				/ Math.max(speed, projectionSpeedFloor);
+		if (Double.isFinite(projectedTravelTime) && projectedTravelTime >= 0.0) {
+			evidence.addProjection(projectedTravelTime);
+			this.liveTravelTimeProjectionBuffer = evidence.projectedTravelTimes;
+			evidence.liveProjectionSum += projectedTravelTime;
+		}
+		return evidence;
+	}
+
+	private static final class TravelTimeLiveEvidence {
+		int liveCount;
+		int stoppedCount;
+		double liveSpeedSum;
+		double liveProjectionSum;
+		double liveElapsedMaximum;
+		double[] projectedTravelTimes;
+		int projectedCount;
+
+		TravelTimeLiveEvidence(double[] reusableProjectionBuffer) {
+			this.projectedTravelTimes = reusableProjectionBuffer;
+		}
+
+		void addProjection(double projection) {
+			if (this.projectedTravelTimes == null) {
+				this.projectedTravelTimes = new double[8];
+			}
+			else if (this.projectedCount >= this.projectedTravelTimes.length) {
+				this.projectedTravelTimes = Arrays.copyOf(this.projectedTravelTimes,
+						this.projectedTravelTimes.length * 2);
+			}
+			this.projectedTravelTimes[this.projectedCount++] = projection;
 		}
 	}
 	
@@ -1143,6 +1699,289 @@ public class Road {
 
 	public double getTravelTime() {
 		return this.travelTime;
+	}
+
+	/** P90 traversal time used as an upper ETA estimate, in simulation seconds. */
+	public double getTravelTimeP90() {
+		return this.travelTimeP90;
+	}
+
+	public double getTravelTimeConfidence() {
+		return this.travelTimeConfidence;
+	}
+
+	public synchronized double getTravelTimeEffectiveSampleCount() {
+		return this.effectiveTravelTimeSampleCount;
+	}
+
+	public synchronized double getTravelTimeSampleAgeSeconds() {
+		if (this.lastTravelTimeSampleTick < 0) return -1.0;
+		return Math.max(0, ContextCreator.getCurrentTick() - this.lastTravelTimeSampleTick)
+				* Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.0001);
+	}
+
+	public int getTravelTimeLiveVehicleCount() {
+		return this.liveTravelTimeVehicleCount;
+	}
+
+	public double getTravelTimeStoppedFraction() {
+		return this.liveTravelTimeVehicleCount > 0
+				? (double) this.liveTravelTimeStoppedCount / this.liveTravelTimeVehicleCount : 0.0;
+	}
+
+	public double getTravelTimeLiveLowerBound() {
+		return this.liveTravelTimeLowerBound;
+	}
+
+	public double getTravelTimeLiveMeanSpeed() {
+		return this.liveTravelTimeMeanSpeed;
+	}
+
+	public synchronized String getTravelTimeEstimateSource() {
+		boolean hasCompleted = this.effectiveTravelTimeSampleCount > 0.05;
+		boolean hasLive = this.liveTravelTimeVehicleCount > 0;
+		if (hasCompleted && hasLive) return "completed_and_live";
+		if (hasLive) return "live_censored";
+		if (hasCompleted) return "completed_history";
+		return "free_flow_prior";
+	}
+
+	public synchronized double getCompletedTravelTimeMean() {
+		return this.completedTravelTimeMean;
+	}
+
+	public synchronized double getCompletedTravelTimeVariance() {
+		return this.completedTravelTimeVariance;
+	}
+
+	public synchronized int getLastTravelTimeSampleTick() {
+		return this.lastTravelTimeSampleTick;
+	}
+
+	public synchronized int getLastTravelTimeUpdateTick() {
+		return this.lastTravelTimeUpdateTick;
+	}
+
+	public synchronized int getTravelTimeLiveStoppedCount() {
+		return this.liveTravelTimeStoppedCount;
+	}
+
+	public synchronized double getPendingTravelTimeSum() {
+		return this.travelTimeSum;
+	}
+
+	public synchronized double getPendingTravelTimeSquareSum() {
+		return this.travelTimeSquareSum;
+	}
+
+	public synchronized int getPendingTravelTimeCount() {
+		return this.travelTimeCount;
+	}
+
+	public synchronized float[] getCompletedTravelTimeHistogramSnapshot() {
+		return this.completedTravelTimeHistogram == null ? null
+				: this.completedTravelTimeHistogram.clone();
+	}
+
+	public synchronized float[] getPendingTravelTimeHistogramSnapshot() {
+		return this.pendingTravelTimeHistogram == null ? null
+				: this.pendingTravelTimeHistogram.clone();
+	}
+
+	private synchronized void resetTravelTimeEstimator() {
+		double prior = freeFlowTravelTime();
+		this.travelTime = prior;
+		this.travelTimeP90 = prior;
+		this.travelTimeSum = 0.0;
+		this.travelTimeSquareSum = 0.0;
+		this.travelTimeCount = 0;
+		this.completedTravelTimeMean = prior;
+		this.completedTravelTimeVariance = 0.0;
+		this.effectiveTravelTimeSampleCount = 0.0;
+		this.completedTravelTimeHistogram = null;
+		this.pendingTravelTimeHistogram = null;
+		this.lastTravelTimeSampleTick = -1;
+		this.lastTravelTimeUpdateTick = -1;
+		this.travelTimeConfidence = TRAVEL_TIME_PRIOR_CONFIDENCE;
+		this.liveTravelTimeVehicleCount = 0;
+		this.liveTravelTimeStoppedCount = 0;
+		this.liveTravelTimeLowerBound = 0.0;
+		this.liveTravelTimeMeanSpeed = 0.0;
+	}
+
+	synchronized boolean hasTravelTimeEstimatorEvidence() {
+		return this.effectiveTravelTimeSampleCount > 0.0 || this.travelTimeCount > 0
+				|| this.lastTravelTimeSampleTick >= 0 || this.liveTravelTimeVehicleCount > 0
+				|| this.energyConsumptionCount > 0;
+	}
+
+	private void markTravelTimeEstimatorRelevant() {
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext == null) return;
+		roadContext.markTravelTimeEstimatorRelevant(this);
+	}
+
+	boolean claimTravelTimeEstimatorRegistration() {
+		if (this.travelTimeEstimatorRegistered) return false;
+		synchronized (this) {
+			if (this.travelTimeEstimatorRegistered) return false;
+			this.travelTimeEstimatorRegistered = true;
+			return true;
+		}
+	}
+
+	void clearTravelTimeEstimatorRegistration() {
+		this.travelTimeEstimatorRegistered = false;
+	}
+
+	private void markPhysicalTopologyChanged() {
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext != null) roadContext.markPhysicalTopologyChanged(this);
+	}
+
+	private double freeFlowTravelTime() {
+		if (!Double.isFinite(this.length) || this.length <= 0.0
+				|| !Double.isFinite(this.speedLimit_) || this.speedLimit_ <= 0.0) return 0.0;
+		return this.length / this.speedLimit_;
+	}
+
+	private static double finiteNonNegative(double value, double fallback) {
+		return Double.isFinite(value) && value >= 0.0 ? value : fallback;
+	}
+
+	private static double clamp(double value, double minimum, double maximum) {
+		return Math.max(minimum, Math.min(maximum, value));
+	}
+
+	private static double square(double value) {
+		return value * value;
+	}
+
+	private static int travelTimeHistogramBucket(double seconds) {
+		if (!Double.isFinite(seconds) || seconds <= TRAVEL_TIME_HISTOGRAM_MIN_SECONDS) return 0;
+		if (seconds >= TRAVEL_TIME_HISTOGRAM_MAX_SECONDS) {
+			return TRAVEL_TIME_HISTOGRAM_BUCKETS - 1;
+		}
+		double fraction = Math.log(seconds / TRAVEL_TIME_HISTOGRAM_MIN_SECONDS)
+				/ TRAVEL_TIME_HISTOGRAM_LOG_RANGE;
+		return Math.max(0, Math.min(TRAVEL_TIME_HISTOGRAM_BUCKETS - 1,
+				(int) Math.floor(fraction * TRAVEL_TIME_HISTOGRAM_BUCKETS)));
+	}
+
+	private static double travelTimeHistogramUpperBound(int bucket) {
+		if (bucket >= TRAVEL_TIME_HISTOGRAM_BUCKETS - 1) {
+			return TRAVEL_TIME_HISTOGRAM_MAX_SECONDS;
+		}
+		return TRAVEL_TIME_HISTOGRAM_MIN_SECONDS * Math.exp(
+				TRAVEL_TIME_HISTOGRAM_LOG_RANGE * (bucket + 1)
+						/ TRAVEL_TIME_HISTOGRAM_BUCKETS);
+	}
+
+	private static void scaleHistogram(float[] histogram, double scale) {
+		if (histogram == null) return;
+		float finiteScale = (float) Math.max(0.0, finiteNonNegative(scale, 0.0));
+		for (int i = 0; i < histogram.length; i++) histogram[i] *= finiteScale;
+	}
+
+	private static double histogramWeight(float[] histogram) {
+		if (histogram == null) return 0.0;
+		double total = 0.0;
+		for (float weight : histogram) {
+			if (Float.isFinite(weight) && weight > 0.0f) total += weight;
+		}
+		return total;
+	}
+
+	private void mergePendingTravelTimeHistogram(double incomingWeight) {
+		double pendingWeight = histogramWeight(this.pendingTravelTimeHistogram);
+		if (pendingWeight <= 0.0 || incomingWeight <= 0.0) return;
+		if (this.completedTravelTimeHistogram == null) {
+			this.completedTravelTimeHistogram = new float[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+		}
+		double incomingScale = incomingWeight / pendingWeight;
+		for (int i = 0; i < TRAVEL_TIME_HISTOGRAM_BUCKETS; i++) {
+			this.completedTravelTimeHistogram[i] +=
+					(float) (this.pendingTravelTimeHistogram[i] * incomingScale);
+		}
+		double combinedWeight = histogramWeight(this.completedTravelTimeHistogram);
+		if (combinedWeight > 0.0 && this.effectiveTravelTimeSampleCount >= 0.0) {
+			scaleHistogram(this.completedTravelTimeHistogram,
+					this.effectiveTravelTimeSampleCount / combinedWeight);
+		}
+	}
+
+	private double weightedTravelTimePercentile(double prior, double liveWeight,
+			double queueProjection, double[] liveProjectedTravelTimes,
+			int liveProjectionCount, double fraction) {
+		double completedWeight = histogramWeight(this.completedTravelTimeHistogram);
+		boolean hasLive = liveWeight > 0.0 && liveProjectedTravelTimes != null
+				&& liveProjectionCount > 0;
+		if (completedWeight <= 0.0 && !hasLive) return prior;
+
+		double[] liveBucketWeights = null;
+		if (hasLive) {
+			if (this.liveTravelTimeBucketBuffer == null) {
+				this.liveTravelTimeBucketBuffer =
+						new double[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+			}
+			else {
+				Arrays.fill(this.liveTravelTimeBucketBuffer, 0.0);
+			}
+			liveBucketWeights = this.liveTravelTimeBucketBuffer;
+		}
+		double baseWeight = TRAVEL_TIME_PRIOR_SAMPLE_STRENGTH + completedWeight;
+		double totalLiveWeight = hasLive
+				? baseWeight * liveWeight / Math.max(0.0001, 1.0 - liveWeight) : 0.0;
+		if (hasLive) {
+			double perVehicleWeight = totalLiveWeight / liveProjectionCount;
+			for (int i = 0; i < liveProjectionCount; i++) {
+				double projection = liveProjectedTravelTimes[i];
+				double adjustedProjection = Math.max(queueProjection,
+						finiteNonNegative(projection, prior));
+				liveBucketWeights[travelTimeHistogramBucket(adjustedProjection)]
+						+= perVehicleWeight;
+			}
+		}
+
+		double totalWeight = baseWeight + totalLiveWeight;
+		double threshold = clamp(fraction, 0.0, 1.0) * totalWeight;
+		double cumulative = 0.0;
+		int priorBucket = travelTimeHistogramBucket(prior);
+		for (int i = 0; i < TRAVEL_TIME_HISTOGRAM_BUCKETS; i++) {
+			if (this.completedTravelTimeHistogram != null) {
+				cumulative += Math.max(0.0, this.completedTravelTimeHistogram[i]);
+			}
+			if (i == priorBucket) cumulative += TRAVEL_TIME_PRIOR_SAMPLE_STRENGTH;
+			if (liveBucketWeights != null) cumulative += liveBucketWeights[i];
+			if (cumulative + 1.0e-9 >= threshold) {
+				return travelTimeHistogramUpperBound(i);
+			}
+		}
+		return TRAVEL_TIME_HISTOGRAM_MAX_SECONDS;
+	}
+
+	private static double completedP90FromMoments(double mean, double variance) {
+		mean = finiteNonNegative(mean, 0.0);
+		variance = finiteNonNegative(variance, 0.0);
+		if (mean <= 0.0 || variance <= 0.0) return mean;
+		double logVariance = Math.log1p(variance / (mean * mean));
+		double logMean = Math.log(mean) - 0.5 * logVariance;
+		double p90 = Math.exp(logMean + 1.2815515655446004 * Math.sqrt(logVariance));
+		return finiteNonNegative(p90, mean);
+	}
+
+	private static float[] sanitizeHistogram(float[] restoredHistogram) {
+		if (restoredHistogram == null || restoredHistogram.length == 0) return null;
+		float[] result = new float[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+		boolean hasWeight = false;
+		for (int i = 0; i < Math.min(result.length, restoredHistogram.length); i++) {
+			float weight = restoredHistogram[i];
+			if (Float.isFinite(weight) && weight > 0.0f) {
+				result[i] = weight;
+				hasWeight = true;
+			}
+		}
+		return hasWeight ? result : null;
 	}
 
 	public Lane getLane(int i) {
@@ -1214,9 +2053,7 @@ public class Road {
 			lane.setSpeed(targetSpeed);
 		}
 		this.speedLimit_ = targetSpeed;
-		this.travelTime = Math.max(0.0, this.length) / targetSpeed;
-		this.travelTimeSum = 0.0;
-		this.travelTimeCount = 0;
+		resetTravelTimeEstimator();
 	}
 
 	/**
@@ -1286,6 +2123,7 @@ public class Road {
 		}
 		this.energyConsumptionSum += linkConsume;
 		this.energyConsumptionCount += 1;
+		markTravelTimeEstimatorRelevant();
 	}
 
 	public double getTotalEnergy() {
@@ -1341,6 +2179,7 @@ public class Road {
 				break;
 		}
 		this.roadType = roadType;
+		this.resetTravelTimeEstimator();
 		this.refreshDefaultParkingCapacity();
 	}
 	
@@ -1353,6 +2192,13 @@ public class Road {
 		synchronized (this) {
 			releasingCoSimControl = this.controlType == Road.COSIM && controlType != Road.COSIM;
 			if (!releasingCoSimControl) {
+				if (this.controlType != Road.COSIM && controlType == Road.COSIM) {
+					ArrayList<Vehicle> activeLaneChanges = this.activeLaneChangeVehicles();
+					for (Vehicle vehicle : activeLaneChanges) {
+						if (vehicle != null) vehicle.cancelLaneChangeForRoadLifecycle();
+					}
+					this.laneChangeReservations.clear();
+				}
 				this.controlType = controlType;
 				return;
 			}
@@ -1366,6 +2212,7 @@ public class Road {
 		}
 		if (this.getVehicleNum() == 0) {
 			this.externalLaneReservations.clear();
+			this.laneChangeReservations.clear();
 			this.controlType = controlType;
 			return;
 		}
@@ -1546,10 +2393,13 @@ public class Road {
 				bestDistance = 0.0;
 			} else {
 				bestPerpendicular = toStart;
-				bestDistance = lane.getLength();
+				bestDistance = Double.isFinite(lane.getGeometricLength())
+						? lane.getGeometricLength()
+						: lane.toGeometricDistance(lane.getLength());
 			}
 		}
 		if (!Double.isFinite(bestPerpendicular) || !Double.isFinite(bestDistance)) return null;
+		bestDistance = lane.toLogicalDistance(bestDistance);
 		return new NativeReleaseProjection(lane,
 				Math.max(0.0, Math.min(lane.getLength(), bestDistance)), bestPerpendicular);
 	}
@@ -1587,14 +2437,46 @@ public class Road {
 		this.controlType = controlType;
 	}
 
-	public synchronized void recordTravelTime(Vehicle v) {
-		this.travelTimeSum += v.getLinkTravelTime();
-		this.travelTimeCount += 1;
+	public boolean recordTravelTime(Vehicle v, long traversalEpoch,
+			double traversalTicks) {
+		if (v == null || !v.completeRoadTraversal(traversalEpoch)) return false;
+		boolean observationRecorded = false;
+		synchronized (this) {
+			if (Double.isFinite(traversalTicks) && traversalTicks > 0.0) {
+				this.travelTimeSum += traversalTicks;
+				this.travelTimeSquareSum += traversalTicks * traversalTicks;
+				this.travelTimeCount += 1;
+				observationRecorded = true;
+				if (this.pendingTravelTimeHistogram == null) {
+					this.pendingTravelTimeHistogram =
+							new float[TRAVEL_TIME_HISTOGRAM_BUCKETS];
+				}
+				double traversalSeconds = traversalTicks
+						* Math.max(GlobalVariables.SIMULATION_STEP_SIZE, 0.0001);
+				this.pendingTravelTimeHistogram[
+						travelTimeHistogramBucket(traversalSeconds)] += 1.0f;
+			}
+		}
+		if (observationRecorded) {
+			this.onTravelTimeObservationRecorded();
+			markTravelTimeEstimatorRelevant();
+		}
 		if (v.getVehicleSensorType() == Vehicle.MOBILEDEVICE && ContextCreator.kafkaManager != null) {
 			ContextCreator.kafkaManager.produceLinkTravelTime(v.getID(), v.getVehicleClass(), this.getID(),
-					v.getLinkTravelTime(), this.getLength());
+					traversalTicks, this.getLength());
 		}
-		v.resetLinkTravelTime();
+		return true;
+	}
+
+	/** Connector override marks completed observations for event-driven refresh. */
+	protected void onTravelTimeObservationRecorded() {
+		// Physical roads are already refreshed by the fixed network schedule.
+	}
+
+	/** Compatibility entry point for callers that record before changing roads. */
+	public boolean recordTravelTime(Vehicle v) {
+		if (v == null) return false;
+		return recordTravelTime(v, v.getRoadTraversalEpoch(), v.getLinkTravelTime());
 	}
 
 	public int getNeighboringZone(boolean goDest) {
@@ -1633,9 +2515,13 @@ public class Road {
 		this.downStreamJunction = downStreamJunction;
 	}
 
-	public void setSpeedLimit(double speedLimit) {
-		this.speedLimit_ = speedLimit;
+	public synchronized void setSpeedLimit(double speedLimit) {
+		this.speedLimit_ = Double.isFinite(speedLimit) && speedLimit >= 0.0
+				? speedLimit : 0.0;
+		this.resetTravelTimeEstimator();
 		this.refreshDefaultParkingCapacity();
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext != null) roadContext.markRoutingMetricChanged(this);
 	}
 	
 	public String getOrigID() {
@@ -1643,7 +2529,10 @@ public class Road {
 	}
 	
 	public void setOrigID(String newID) {
-		this.origID = newID;
+		if (newID == null ? this.origID != null : !newID.equals(this.origID)) {
+			this.origID = newID;
+			markPhysicalTopologyChanged();
+		}
 	}
 	
 }

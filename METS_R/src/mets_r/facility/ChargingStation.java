@@ -56,9 +56,9 @@ public class ChargingStation {
 	private ConcurrentLinkedQueue<ElectricVehicle> toAddChargingEV; // Pending Car queue waiting for charging (L2/L3 decided later)
 	private ConcurrentLinkedQueue<ElectricBus> toAddChargingBus; // Pending Bus queue waiting for bus charging
 	
-	private int cachedL2Capacity;
-	private int cachedL3Capacity;
-	private int cachedBusCapacity;
+	private volatile int cachedL2Capacity;
+	private volatile int cachedL3Capacity;
+	private volatile int cachedBusCapacity;
 	
 	private ArrayList<ElectricVehicle> finishedVehicleL2;
 	private ArrayList<ElectricVehicle> finishedVehicleL3;
@@ -108,10 +108,10 @@ public class ChargingStation {
 
 		processToAddEV();
 		processToAddBus();
-		updateCapacity();
 		chargeL2(); // Function 3.
 		chargeL3(); // Function 4.
 		chargeBus(); // Function 5.
+		updateCapacity();
 	}
 	
 	public void stepPart2() { //vehicle leaving the charging station
@@ -278,9 +278,9 @@ public class ChargingStation {
 				ElectricVehicle vehicleEnter = queueChargingL2.poll();
 				chargingVehicleL2.add(vehicleEnter); // the vehicle enters the charging areas.
 			}
-			for (ElectricVehicle v : queueChargingL2) {
-				v.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-			}
+		}
+		for (ElectricVehicle v : queueChargingL2) {
+			v.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		}
 	}
 
@@ -315,9 +315,9 @@ public class ChargingStation {
 				ElectricVehicle vehicleEnter = queueChargingL3.poll();
 				chargingVehicleL3.add(vehicleEnter); // the vehicle enters the charging areas.
 			}
-			for (ElectricVehicle v : queueChargingL3) {
-				v.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-			}
+		}
+		for (ElectricVehicle v : queueChargingL3) {
+			v.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		}
 	}
 
@@ -328,7 +328,7 @@ public class ChargingStation {
 			for (ElectricBus evBus : chargingBus) {
 				double maxChargingDemand = evBus.getBatteryCapacity() * ChargingThres - evBus.getBatteryLevel(); // the maximal battery
 																									// level is 250kWh
-				double C_bus = GlobalVariables.BUS_BATTERY;
+				double C_bus = evBus.getBatteryCapacity();
 				double SOC_i = evBus.getBatteryLevel() / C_bus;
 				double P = GlobalVariables.CHARGING_SPEED_BUS;
 				double t = GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL
@@ -353,29 +353,35 @@ public class ChargingStation {
 			for (int i = 0; i < addNumber; i++) {
 				ElectricBus evBus = queueChargingBus.poll();
 				chargingBus.add(evBus); // The vehicle enters the charging areas.
-				for (ElectricBus b : queueChargingBus) {
-					b.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
-				}
 			}
+		}
+		for (ElectricBus b : queueChargingBus) {
+			b.chargingWaitingTime += GlobalVariables.SIMULATION_CHARGING_STATION_REFRESH_INTERVAL;
 		}
 	}
 
 	// Estimating time of using L2, L3 charger. Unite: hour
 	public static double chargingTimeL2(ElectricVehicle ev) {
-		return (ev.getBatteryCapacity() - ev.getBatteryLevel()) / GlobalVariables.CHARGING_SPEED_L2;
+		return Math.max(0.0,
+				(ev.getBatteryCapacity() * ChargingThres - ev.getBatteryLevel())
+						/ GlobalVariables.CHARGING_SPEED_L2);
 	}
 	
 	public double waitingTimeL2() {
+		if (numL2 <= 0) return -1.0;
 		int numChargingVehicle = chargingVehicleL2.size(); // Number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL2.size(); // Number of vehicles that in the queue.
 		return (numChargingVehicle * 20.0 + numWaitingVehicle * 40.0) / (GlobalVariables.CHARGING_SPEED_L2 * numL2);
 	}
 	
     public static double chargingTimeL3(ElectricVehicle ev) {
-    	return (ev.getBatteryCapacity() - ev.getBatteryLevel()) / GlobalVariables.CHARGING_SPEED_DCFC;
+		return Math.max(0.0,
+				(ev.getBatteryCapacity() * ChargingThres - ev.getBatteryLevel())
+						/ GlobalVariables.CHARGING_SPEED_DCFC);
 	}
 	
 	public double waitingTimeL3() {
+		if (numL3 <= 0) return -1.0;
 		int numChargingVehicle = chargingVehicleL3.size(); // number of vehicles that is being charging.
 		int numWaitingVehicle = queueChargingL3.size(); // number of vehicles that in the queue.
 		// assume each charging vehicle needs 20kWh more, each waiting vehicle needs 40kWh.
@@ -406,40 +412,31 @@ public class ChargingStation {
      * @return SOC_f final state of charge [0,1]
      */
     public static double nonlinearCharging(double SOC_i, double C, double P, double t) {
-        // Remaining capacity fraction to be charged.
-        double y = 1.0 - Math.max(SOC_i, 0);
-        double beta = P / C;
-        double y2 = y * y;
-        double y3 = y2 * y;
-        double y4 = y2 * y2;
-        double beta2 = beta * beta;
-        double beta3 = beta2 * beta;
-        double beta6 = beta3 * beta3;
-        
-        // Compute A and B using y.
-        double A = (64 * y3 / 27 - 5 * y / 2) / beta3;
-        double B = Math.sqrt((320 * y4 / 9 - 1525 * y2 / 12 + 125) / beta6);
-        
-        // Compute t_star (baseline offset time based on current remaining capacity y)
-        double t_star = Math.cbrt(A + B) + Math.cbrt(A - B) + 4 * y / (3 * beta);
-        double t_total = t_star + t; // effective time after adding the incremental period
-        double tTotal2 = t_total * t_total;
-        double tStar2 = t_star * t_star;
-        
-        // Define the cumulative charging function F(t)
-        // F(t) = beta*t*(beta^2*t^2+15) / (2*beta^2*t^2+15)
-        double F_t_total = beta * t_total * (beta2 * tTotal2 + 15)
-                           / (2 * beta2 * tTotal2 + 15);
-        double F_t_star  = beta * t_star * (beta2 * tStar2 + 15)
-                           / (2 * beta2 * tStar2 + 15);
-        
-        // Compute the incremental charged fraction during time t.
-        double minDeltaSOC = 0.001 * beta; // Set the min deltaSoC to force the simulation to reach 100% in a finite and realistic time.
-        double incremental = F_t_total - F_t_star;
-        
-        // Update the final SoC ensuring it does not exceed 1.0.
-        double SOC_f = Math.min(1.0, SOC_i + y * incremental + minDeltaSOC);
-        return SOC_f;
+		double initialSOC = Math.max(0.0, Math.min(1.0, SOC_i));
+		if (!Double.isFinite(C) || !Double.isFinite(P) || !Double.isFinite(t)
+				|| C <= 0.0 || P <= 0.0 || t <= 0.0 || initialSOC >= 1.0) {
+			return initialSOC;
+		}
+		double beta = P / C;
+		double soc = initialSOC;
+		double remainingHours = t;
+		final double taperStartSOC = 0.8;
+		final double taperRateFactor = 1.0 / (1.0 - taperStartSOC);
+
+		if (soc < taperStartSOC) {
+			double hoursToTaper = (taperStartSOC - soc) / beta;
+			if (remainingHours <= hoursToTaper) {
+				return Math.min(1.0, soc + beta * remainingHours);
+			}
+			soc = taperStartSOC;
+			remainingHours -= hoursToTaper;
+		}
+
+		// dSOC/dt = factor*beta*(1-SOC), selected so the power is continuous
+		// at taperStartSOC and never exceeds the charger's rated power.
+		double remainingFraction = (1.0 - soc)
+				* Math.exp(-taperRateFactor * beta * remainingHours);
+		return Math.min(1.0, 1.0 - remainingFraction);
     }
     
     public void setClosestRoad(int r, boolean goDest) {

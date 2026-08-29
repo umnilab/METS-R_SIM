@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 
@@ -1446,7 +1447,8 @@ public class ControlMessageHandler extends MessageHandler {
 		for (int i = coords.size() - 1; i > 0; i--) {
 			Coordinate downstream = coords.get(i);
 			Coordinate upstream = coords.get(i - 1);
-			double segmentLength = ContextCreator.getCityContext().getDistance(downstream, upstream);
+			double segmentLength = lane.toLogicalDistance(
+					ContextCreator.getCityContext().getDistance(downstream, upstream));
 			if (segmentLength <= TRACE_REPLAY_DISTANCE_EPSILON) continue;
 			boolean firstUsableSegment = i == 1;
 			if (remaining < segmentLength - TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS
@@ -1610,6 +1612,7 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 
 		if (Double.isNaN(bestDistance)) bestDistance = 0.0;
+		bestDistance = lane.toLogicalDistance(bestDistance);
 		return new TraceReplayLaneProjection(
 				Math.max(0.0, Math.min(lane.getLength(), bestDistance)));
 	}
@@ -3124,7 +3127,7 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonData.add(record);
 					continue;
 				}
-				if (!targetRoad.canBeDest()) {
+				if (!targetRoad.canBeTripDestination()) {
 					record.put("status", "error");
 					record.put("message", "target road cannot be used as a parking destination");
 					jsonData.add(record);
@@ -4670,7 +4673,8 @@ public class ControlMessageHandler extends MessageHandler {
 					if(veh!= null) {
 						int rID = veh.getRouteID();
 						Road r = ContextCreator.getCityContext().findRoadWithOrigID(busIDRouteNameZoneRoadStopIndex.stopRoadId);
-						if(ContextCreator.bus_schedule.getRouteName(rID).equals(busIDRouteNameZoneRoadStopIndex.routeName) && r != null) {
+						if(Objects.equals(ContextCreator.bus_schedule.getRouteName(rID),
+								busIDRouteNameZoneRoadStopIndex.routeName) && r != null) {
 							if (veh.insertStop(busIDRouteNameZoneRoadStopIndex.stopZoneId, r, busIDRouteNameZoneRoadStopIndex.stopIndex)) {
 								HashMap<String, Object> record2 = new HashMap<String, Object>();
 							record2.put("busId", busIDRouteNameZoneRoadStopIndex.busId);
@@ -4736,7 +4740,8 @@ public class ControlMessageHandler extends MessageHandler {
 
 					if(veh!= null) {
 						int rID = veh.getRouteID();
-						if(ContextCreator.bus_schedule.getRouteName(rID).equals(busIDRouteNameStopIndex.routeName)) {
+						if(Objects.equals(ContextCreator.bus_schedule.getRouteName(rID),
+								busIDRouteNameStopIndex.routeName)) {
 							if (veh.removeStop(busIDRouteNameStopIndex.stopIndex)) {
 								HashMap<String, Object> record2 = new HashMap<String, Object>();
 							record2.put("busId", busIDRouteNameStopIndex.busId);
@@ -5086,8 +5091,8 @@ public class ControlMessageHandler extends MessageHandler {
 				ContextCreator.getZoneGeography().move(zone, geomFac.createPoint(coord));
 
 				// Find and attach the nearest departure and arrival roads
-				Road deptRoad = ContextCreator.getCityContext().findRoadAtCoordinates(coord, false);
-				Road arrRoad  = ContextCreator.getCityContext().findRoadAtCoordinates(coord, true);
+				Road deptRoad = nearestTaxiTripEndpointByFullScan(coord, false);
+				Road arrRoad = nearestTaxiTripEndpointByFullScan(coord, true);
 				if (deptRoad != null) {
 					zone.setClosestRoad(deptRoad.getID(), false);
 					zone.setDistToRoad(ContextCreator.getCityContext().getDistance(coord, deptRoad.getStartCoord()), false);
@@ -5903,11 +5908,11 @@ public class ControlMessageHandler extends MessageHandler {
 	private boolean hasAlternativeClosestRoads(Road removedRoad) {
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			if (z.getClosestRoad(false) != null && z.getClosestRoad(false) == removedRoad.getID()
-					&& ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), false, removedRoad) == null) {
+					&& nearestTaxiTripEndpointByFullScan(z.getCoord(), false, removedRoad) == null) {
 				return false;
 			}
 			if (z.getClosestRoad(true) != null && z.getClosestRoad(true) == removedRoad.getID()
-					&& ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), true, removedRoad) == null) {
+					&& nearestTaxiTripEndpointByFullScan(z.getCoord(), true, removedRoad) == null) {
 				return false;
 			}
 		}
@@ -5947,7 +5952,7 @@ public class ControlMessageHandler extends MessageHandler {
 			z.getNeighboringLinks(false).remove(Integer.valueOf(roadId));
 			z.getNeighboringLinks(true).remove(Integer.valueOf(roadId));
 			if (z.getClosestRoad(false) != null && z.getClosestRoad(false) == roadId) {
-				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), false);
+				Road alt = nearestTaxiTripEndpointByFullScan(z.getCoord(), false, removedRoad);
 				if (alt != null) {
 					z.setClosestRoad(alt.getID(), false);
 					z.setDistToRoad(ContextCreator.getCityContext().getDistance(z.getCoord(), alt.getStartCoord()), false);
@@ -5955,7 +5960,7 @@ public class ControlMessageHandler extends MessageHandler {
 				}
 			}
 			if (z.getClosestRoad(true) != null && z.getClosestRoad(true) == roadId) {
-				Road alt = ContextCreator.getCityContext().findRoadAtCoordinates(z.getCoord(), true);
+				Road alt = nearestTaxiTripEndpointByFullScan(z.getCoord(), true, removedRoad);
 				if (alt != null) {
 					z.setClosestRoad(alt.getID(), true);
 					z.setDistToRoad(ContextCreator.getCityContext().getDistance(z.getCoord(), alt.getEndCoord()), true);
@@ -6292,7 +6297,7 @@ public class ControlMessageHandler extends MessageHandler {
 		ContextCreator.getCityContext().clearRoadLookupCaches();
 
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			if (road.canBeOrigin()) {
+			if (road.canBeTripOrigin()) {
 				double dist = ContextCreator.getCityContext().getDistance(z.getCoord(), road.getStartCoord());
 				if (z.getClosestRoad(false) == null || dist < z.getDistToRoad(false)
 						|| (dist == z.getDistToRoad(false) && road.getID() < z.getClosestRoad(false))) {
@@ -6301,7 +6306,7 @@ public class ControlMessageHandler extends MessageHandler {
 					z.addNeighboringLink(road.getID(), false);
 				}
 			}
-			if (road.canBeDest()) {
+			if (road.canBeTripDestination()) {
 				double dist = ContextCreator.getCityContext().getDistance(z.getCoord(), road.getEndCoord());
 				if (z.getClosestRoad(true) == null || dist < z.getDistToRoad(true)
 						|| (dist == z.getDistToRoad(true) && road.getID() < z.getClosestRoad(true))) {
@@ -6313,7 +6318,7 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 
 		for (ChargingStation cs : ContextCreator.getChargingStationContext().getAll()) {
-			if (road.canBeOrigin()) {
+			if (road.canBeTripOrigin()) {
 				double dist = ContextCreator.getCityContext().getDistance(cs.getCoord(), road.getStartCoord());
 				if (cs.getClosestRoad(false) == null || dist < cs.getDistToRoad(false)
 						|| (dist == cs.getDistToRoad(false) && road.getID() < cs.getClosestRoad(false))) {
@@ -6321,7 +6326,7 @@ public class ControlMessageHandler extends MessageHandler {
 					cs.setDistToRoad(dist, false);
 				}
 			}
-			if (road.canBeDest()) {
+			if (road.canBeTripDestination()) {
 				double dist = ContextCreator.getCityContext().getDistance(cs.getCoord(), road.getEndCoord());
 				if (cs.getClosestRoad(true) == null || dist < cs.getDistToRoad(true)
 						|| (dist == cs.getDistToRoad(true) && road.getID() < cs.getClosestRoad(true))) {
@@ -6336,7 +6341,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private void updateRoadNeighboringZone(Road road, boolean goDest) {
-		if ((!goDest && !road.canBeOrigin()) || (goDest && !road.canBeDest())) return;
+		if (goDest ? !road.canBeTripDestination() : !road.canBeTripOrigin()) return;
 
 		Coordinate coord = goDest ? road.getEndCoord() : road.getStartCoord();
 		Zone nearestZone = nearestZoneTo(coord);
@@ -6364,7 +6369,7 @@ public class ControlMessageHandler extends MessageHandler {
 
 	private boolean isUsableRoadForFacility(Road road, boolean goDest) {
 		if (road == null || road.firstLane() == null) return false;
-		return goDest ? road.canBeDest() : road.canBeOrigin();
+		return goDest ? road.canBeTripDestination() : road.canBeTripOrigin();
 	}
 
 	private Road roadFromZoneForFacility(Zone zone, boolean goDest) {
@@ -6400,6 +6405,30 @@ public class ControlMessageHandler extends MessageHandler {
 		return nearestRoad;
 	}
 
+	private Road nearestTaxiTripEndpointByFullScan(Coordinate coord, boolean goDest) {
+		return nearestTaxiTripEndpointByFullScan(coord, goDest, null);
+	}
+
+	private Road nearestTaxiTripEndpointByFullScan(
+			Coordinate coord, boolean goDest, Road excludedRoad) {
+		if (coord == null) return null;
+		Road nearestRoad = null;
+		double nearestDistance = Double.MAX_VALUE;
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			if (road == excludedRoad
+					|| (goDest ? !road.canBeTripDestination() : !road.canBeTripOrigin())
+					|| road.firstLane() == null) continue;
+			Coordinate roadCoord = goDest ? road.getEndCoord() : road.getStartCoord();
+			double dist = ContextCreator.getCityContext().getDistance(coord, roadCoord);
+			if (dist < nearestDistance || (dist == nearestDistance && nearestRoad != null
+					&& road.getID() < nearestRoad.getID())) {
+				nearestRoad = road;
+				nearestDistance = dist;
+			}
+		}
+		return nearestRoad;
+	}
+
 	private Road resolveDynamicFacilityRoad(Coordinate coord, boolean goDest) {
 		Road road = ContextCreator.getCityContext().findRoadAtCoordinates(coord, goDest);
 		if (isUsableRoadForFacility(road, goDest)) {
@@ -6417,17 +6446,17 @@ public class ControlMessageHandler extends MessageHandler {
 		try {
 			int sampledRoadID = zone.sampleRoad(false);
 			Road sampledRoad = ContextCreator.getRoadContext().get(sampledRoadID);
-			if (isUsableRoadForFacility(sampledRoad, false)) {
+			if (sampledRoad != null && sampledRoad.canBeTripOrigin()) {
 				return sampledRoadID;
 			}
 		} catch (RuntimeException ignored) {
 			// Fall back below when a zone has no sampled departure candidates.
 		}
 		Road fallbackRoad = roadFromZoneForFacility(zone, false);
-		if (fallbackRoad != null) {
+		if (fallbackRoad != null && fallbackRoad.canBeTripOrigin()) {
 			return fallbackRoad.getID();
 		}
-		fallbackRoad = nearestRoadByFullScan(zone.getCoord(), false);
+		fallbackRoad = nearestTaxiTripEndpointByFullScan(zone.getCoord(), false);
 		return fallbackRoad == null ? -1 : fallbackRoad.getID();
 	}
 
@@ -6676,7 +6705,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private Road resolveChargingDepartureRoad(ElectricVehicle veh, Zone parkingZoneObj) {
-		if (veh.getRoad() != null && veh.getRoad().canBeOrigin()) {
+		if (veh.getRoad() != null && veh.getRoad().canBeTripOrigin()) {
 			return veh.getRoad();
 		}
 		Road fallbackDepartureRoad = null;
@@ -6735,7 +6764,7 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	private boolean isUsableDepartureRoad(Road road) {
-		return road != null && road.canBeOrigin() && road.firstLane() != null;
+		return road != null && road.canBeTripOrigin() && road.firstLane() != null;
 	}
 
 	private Road firstDepartureFallback(Road currentFallback, Road road) {

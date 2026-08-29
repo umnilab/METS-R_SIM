@@ -2,7 +2,6 @@ package mets_r.data.input;
 
 import java.io.BufferedReader;
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
 
@@ -98,11 +97,17 @@ public class TravelDemand {
 			}
 			privateEVProfileReader.close();
 			
-		} catch (IOException e) {
-			e.printStackTrace();
+		} catch (Exception e) {
 			this.privateEVTripReaderExhausted = true;
 			this.privateGVTripReaderExhausted = true;
 			this.privateDemandActive = false;
+			try {
+				if (this.privateEVProfileReader != null) this.privateEVProfileReader.close();
+			} catch (IOException closeFailure) {
+				e.addSuppressed(closeFailure);
+			}
+			closePrivateTripReaders();
+			throw new IllegalStateException("Failed to load private travel demand inputs", e);
 		}
 		
 	}
@@ -111,16 +116,19 @@ public class TravelDemand {
 	public void readPublicDemandFile() {
 		JSONParser parser = new JSONParser();
 		try {
-			Object obj = parser.parse(new FileReader(GlobalVariables.RH_DEMAND_FILE));
+			Object obj;
+			try (FileReader demandReader =
+					new FileReader(GlobalVariables.RH_DEMAND_FILE)) {
+				obj = parser.parse(demandReader);
+			}
 			JSONObject jsonObject = (JSONObject) obj;
 
 			for (String OD : (Set<String>) jsonObject.keySet()) {
-				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
-
-				String[] inds = OD.split(",");
-				int originInd = Integer.parseInt(inds[0].replace("(", "").trim()) + 1;
-				;
-				int destInd = Integer.parseInt(inds[1].replace(")", "").trim()) + 1;
+				ArrayList<Double> value = parseHourlyValues(
+						jsonObject.get(OD), OD, false);
+				int[] od = parseODKey(OD);
+				int originInd = od[0];
+				int destInd = od[1];
 
 				if (!publicTravelDemand.containsKey(originInd)) {
 					publicTravelDemand.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
@@ -129,12 +137,10 @@ public class TravelDemand {
 				publicTravelDemand.get(originInd).put(destInd, value);
 			}
 			
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
 		} catch (Exception e) {
-			e.printStackTrace();
+			throw new IllegalStateException(
+					"Failed to load ride-hailing demand from "
+							+ GlobalVariables.RH_DEMAND_FILE, e);
 		}
 	}
 	
@@ -159,9 +165,7 @@ public class TravelDemand {
 		    }
 	    }
 	    catch (IOException e) {
-	    	ContextCreator.logger.error(
-					"Fail to load the private trip demand chunk with error " + e.toString());
-	    	e.printStackTrace();
+			throw new IllegalStateException("Failed to load the private trip demand chunk", e);
 	    }
 	    
 	    hour += 1;
@@ -242,22 +246,42 @@ public class TravelDemand {
 		String[] nextLine;
 		try {
 			csvreader = new CSVReader(new FileReader(dataFile), ',');
-			boolean hasHeader = false;
+			int row = 0;
 			while ((nextLine = csvreader.readNext()) != null) {
-				// skip the first row (header)
-				if (hasHeader) {
-					hasHeader = false;
-
-				} else {
-					waitingThreshold.add((int)Double.parseDouble(nextLine[0]));
+				if (nextLine.length == 0 || nextLine[0] == null
+						|| nextLine[0].trim().isEmpty()) {
+					throw new IllegalArgumentException(
+							"Empty waiting-time value at row " + (row + 1));
+				}
+				try {
+					double threshold = Double.parseDouble(nextLine[0].trim());
+					if (!Double.isFinite(threshold) || threshold < 0.0) {
+						throw new IllegalArgumentException(
+								"Invalid waiting-time value at row " + (row + 1));
+					}
+					waitingThreshold.add((int) Math.ceil(threshold));
+				} catch (NumberFormatException nfe) {
+					if (row != 0) throw nfe;
+				}
+				row++;
+			}
+			if (waitingThreshold.size() < GlobalVariables.HOUR_OF_DEMAND) {
+				throw new IllegalArgumentException("Waiting-time input contains "
+						+ waitingThreshold.size() + " values; expected at least "
+						+ GlobalVariables.HOUR_OF_DEMAND);
+			}
+		} catch (Exception e) {
+			throw new IllegalStateException(
+					"Failed to load ride-hailing waiting times from "
+							+ GlobalVariables.RH_WAITING_TIME, e);
+		} finally {
+			if (csvreader != null) {
+				try {
+					csvreader.close();
+				} catch (IOException ignored) {
+					// The parse result or original read failure is more actionable.
 				}
 			}
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (Exception e) {
-			e.printStackTrace();
 		}
 	}
 	
@@ -265,16 +289,19 @@ public class TravelDemand {
 	public void readSharePercentFile() {
 		JSONParser parser = new JSONParser();
 		try {
-			Object obj = parser.parse(new FileReader(GlobalVariables.RH_DEMAND_FILE));
+			Object obj;
+			try (FileReader shareReader =
+					new FileReader(GlobalVariables.RH_SHARE_PERCENTAGE)) {
+				obj = parser.parse(shareReader);
+			}
 			JSONObject jsonObject = (JSONObject) obj;
 
 			for (String OD : (Set<String>) jsonObject.keySet()) {
-				ArrayList<Double> value = (ArrayList<Double>) jsonObject.get(OD);
-
-				String[] inds = OD.split(",");
-				int originInd = Integer.parseInt(inds[0].replace("(", "").trim());
-				;
-				int destInd = Integer.parseInt(inds[1].replace(")", "").trim());
+				ArrayList<Double> value = parseHourlyValues(
+						jsonObject.get(OD), OD, true);
+				int[] od = parseODKey(OD);
+				int originInd = od[0];
+				int destInd = od[1];
 
 				if (!sharePercentage.containsKey(originInd)) {
 					sharePercentage.put(originInd, new TreeMap<Integer, ArrayList<Double>>());
@@ -282,12 +309,10 @@ public class TravelDemand {
 
 				sharePercentage.get(originInd).put(destInd, value);
 			}
-		} catch (FileNotFoundException e) {
-			e.printStackTrace();
-		} catch (IOException e) {
-			e.printStackTrace();
 		} catch (Exception e) {
-			e.printStackTrace();
+			throw new IllegalStateException(
+					"Failed to load ride-sharing percentages from "
+							+ GlobalVariables.RH_SHARE_PERCENTAGE, e);
 		}
 	}
 	
@@ -347,8 +372,9 @@ public class TravelDemand {
 	public double getPublicTravelDemand(int originID, int destID, int hour) {
 		if (publicTravelDemand.containsKey(originID)) {
 			if (publicTravelDemand.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return publicTravelDemand.get(originID).get(destID).get(hour);
+				ArrayList<Double> values = publicTravelDemand.get(originID).get(destID);
+				if (hour >= 0 && hour < values.size()) {
+					return values.get(hour);
 				}
 
 			}
@@ -366,12 +392,11 @@ public class TravelDemand {
 	}
 	
 	public double getSharableRate(int originID, int destID, int hour) {
-		if (sharePercentage.containsKey(originID)) {
-			if (sharePercentage.get(originID).containsKey(destID)) {
-				if (hour < GlobalVariables.HOUR_OF_DEMAND) {
-					return sharePercentage.get(originID).get(destID).get(hour);
-				}
-
+		TreeMap<Integer, ArrayList<Double>> destinations = sharePercentage.get(originID);
+		if (destinations != null) {
+			ArrayList<Double> values = destinations.get(destID);
+			if (values != null && hour >= 0 && hour < values.size()) {
+				return values.get(hour);
 			}
 		}
 		return 0d;
@@ -382,6 +407,51 @@ public class TravelDemand {
 			return waitingThreshold.get(hour);
 		}
 		return 600;
+	}
+
+	private static int[] parseODKey(String key) {
+		if (key == null) throw new IllegalArgumentException("Null OD key");
+		String normalized = key.replace("(", "").replace(")", "");
+		String[] fields = normalized.split(",");
+		if (fields.length != 2) {
+			throw new IllegalArgumentException("Invalid OD key: " + key);
+		}
+		int origin = Integer.parseInt(fields[0].trim()) + 1;
+		int destination = Integer.parseInt(fields[1].trim()) + 1;
+		if (origin <= 0 || destination <= 0) {
+			throw new IllegalArgumentException("Invalid OD zone IDs: " + key);
+		}
+		return new int[] { origin, destination };
+	}
+
+	private static ArrayList<Double> parseHourlyValues(
+			Object rawValues, String odKey, boolean probability) {
+		if (!(rawValues instanceof List<?>)) {
+			throw new IllegalArgumentException("Hourly values are not an array for " + odKey);
+		}
+		List<?> input = (List<?>) rawValues;
+		if (input.size() < GlobalVariables.HOUR_OF_DEMAND) {
+			throw new IllegalArgumentException("OD " + odKey + " contains "
+					+ input.size() + " hourly values; expected at least "
+					+ GlobalVariables.HOUR_OF_DEMAND);
+		}
+		ArrayList<Double> values = new ArrayList<Double>(input.size());
+		for (int hour = 0; hour < input.size(); hour++) {
+			Object rawValue = input.get(hour);
+			if (!(rawValue instanceof Number)) {
+				throw new IllegalArgumentException(
+						"Non-numeric hourly value for " + odKey + " at hour " + hour);
+			}
+			double value = ((Number) rawValue).doubleValue();
+			if (!Double.isFinite(value) || value < 0.0
+					|| (probability && value > 1.0)) {
+				throw new IllegalArgumentException(
+						"Invalid hourly value for " + odKey + " at hour " + hour
+								+ ": " + value);
+			}
+			values.add(value);
+		}
+		return values;
 	}
 
 	private static class PrivateTripRecord {
@@ -408,7 +478,7 @@ public class TravelDemand {
 			if (this.privateEVTripReader != null) this.privateEVTripReader.close();
 			if (this.privateGVTripReader != null) this.privateGVTripReader.close();
 		} catch (IOException e) {
-			e.printStackTrace();
+			ContextCreator.logger.warn("Failed to close private-demand input", e);
 		}
 	}
 }

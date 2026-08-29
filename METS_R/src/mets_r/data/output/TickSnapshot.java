@@ -2,7 +2,8 @@ package mets_r.data.output;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.Map;
+import java.util.TreeMap;
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.mobility.ElectricBus;
@@ -33,13 +34,13 @@ public class TickSnapshot {
 
 	/** The collection of vehicle data gathered during this time tick. */
 	/** Consider two classes of vehicles: EV and Bus */
-	private HashMap<Integer, VehicleSnapshot> vehicles;
-	private HashMap<Integer, EVSnapshot> evs_private;
-	private HashMap<Integer, ETaxiSnapshot> evs_occupied;
-	private HashMap<Integer, ETaxiSnapshot> evs_relocation;
-	private HashMap<Integer, ETaxiSnapshot> evs_charging;
-	private HashMap<Integer, ETaxiSnapshot> evs_attack;
-	private HashMap<Integer, BusSnapshot> buses;
+	private TreeMap<Integer, VehicleSnapshot> vehicles;
+	private TreeMap<Integer, EVSnapshot> evs_private;
+	private TreeMap<Integer, ETaxiSnapshot> evs_occupied;
+	private TreeMap<Integer, ETaxiSnapshot> evs_relocation;
+	private TreeMap<Integer, ETaxiSnapshot> evs_charging;
+	private TreeMap<Integer, ETaxiSnapshot> evs_attack;
+	private TreeMap<Integer, BusSnapshot> buses;
 	private boolean frameSummaryRecorded;
 	private int matchedRequests;
 	private int matchedPassengers;
@@ -85,13 +86,13 @@ public class TickSnapshot {
 		this.tickNumber = tickNumber;
 
 		// Setup the map for holding the vehicle data
-		this.vehicles = new HashMap<Integer, VehicleSnapshot>();
-		this.buses = new HashMap<Integer, BusSnapshot>();
-		this.evs_private = new HashMap<Integer, EVSnapshot>();
-		this.evs_occupied = new HashMap<Integer, ETaxiSnapshot>();
-		this.evs_relocation = new HashMap<Integer, ETaxiSnapshot>();
-		this.evs_charging = new HashMap<Integer, ETaxiSnapshot>();
-		this.evs_attack = new HashMap<Integer, ETaxiSnapshot>();
+		this.vehicles = new TreeMap<Integer, VehicleSnapshot>();
+		this.buses = new TreeMap<Integer, BusSnapshot>();
+		this.evs_private = new TreeMap<Integer, EVSnapshot>();
+		this.evs_occupied = new TreeMap<Integer, ETaxiSnapshot>();
+		this.evs_relocation = new TreeMap<Integer, ETaxiSnapshot>();
+		this.evs_charging = new TreeMap<Integer, ETaxiSnapshot>();
+		this.evs_attack = new TreeMap<Integer, ETaxiSnapshot>();
 		this.frameSummaryRecorded = false;
 		this.roadVehicleCount = 0;
 		this.links = new ArrayList<LinkSnapshot>();
@@ -241,7 +242,7 @@ public class TickSnapshot {
 		this.addEnergy(privateDelta, taxiDelta, 0);
 	}
 
-	private void removeETaxiSnapshot(HashMap<Integer, ETaxiSnapshot> snapshots, int id) {
+	private void removeETaxiSnapshot(Map<Integer, ETaxiSnapshot> snapshots, int id) {
 		synchronized (snapshots) {
 			ETaxiSnapshot oldSnapshot = snapshots.remove(id);
 			if (oldSnapshot != null) {

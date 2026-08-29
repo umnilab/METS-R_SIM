@@ -15,9 +15,11 @@ import mets_r.routing.RouteContext;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.geotools.geometry.jts.JTS;
 import org.geotools.referencing.GeodeticCalculator;
@@ -72,6 +74,32 @@ import org.opengis.referencing.operation.TransformException;
  **/
 
 public class Vehicle {
+	/**
+	 * Result of processing a vehicle that has left its current lane geometry.
+	 * A completed source-road traversal is deliberately distinct from an already
+	 * handled arrival so callers cannot count the same arrival once per tick.
+	 */
+	public enum RoadTransitionOutcome {
+		BLOCKED(false),
+		ROAD_CHANGED(true),
+		ARRIVED(true),
+		ALREADY_ARRIVED(false);
+
+		private final boolean completesSourceTraversal;
+
+		RoadTransitionOutcome(boolean completesSourceTraversal) {
+			this.completesSourceTraversal = completesSourceTraversal;
+		}
+
+		public boolean completesSourceTraversal() {
+			return this.completesSourceTraversal;
+		}
+
+		public boolean transitioned() {
+			return this == ROAD_CHANGED;
+		}
+	}
+
 	/* Constants */
 	// VehicleType
 	public final static int GV = 0; // Private gasoline vehicle
@@ -108,9 +136,7 @@ public class Vehicle {
 	// OpenDRIVE and SUMO lane centerlines are generated independently and may
 	// differ slightly even when their lane mapping is topologically exact.
 	private static final double COSIM_LANE_OBSERVATION_MAP_SLACK_METERS = 0.75;
-	private static final double MANDATORY_LANE_CHANGE_HOLD_BUFFER_METERS = 0.1;
-	private static final double AHMED_MANDATORY_LC_HOLD_MARGIN_METERS = 0.01;
-	private static final double AHMED_EARLY_MANDATORY_LC_LENGTH_METERS = 25.0;
+	private static final double MANDATORY_LANE_CHANGE_THRESHOLD_BUFFER_METERS = 0.1;
 	private static final int RECOVERY_LOOP_LOOKAHEAD_ROADS = 4;
 	private static final double STOP_LINE_WAIT_DISTANCE_METERS = 1.0;
 	/* Constants */
@@ -215,8 +241,24 @@ public class Vehicle {
 	// Cache for lane projection (valid within a single calcState call)
 	private Lane cachedProjectionLane_ = null;
 	private double cachedProjectionDistance_ = 0;
-	private int cachedProjectionSegmentIdx_ = -1;
-	private Coordinate cachedProjectionCoord_ = null;
+	private Lane laneChangeSourceLane_;
+	private Lane laneChangeTargetLane_;
+	private double laneChangeElapsedSeconds_;
+	private double laneChangeDurationSeconds_;
+	private double laneChangeLateralDistanceMeters_;
+	private Lane.ArcGeometry laneChangeSourceGeometry_;
+	private Lane.ArcGeometry laneChangeTargetGeometry_;
+	private final LanePosition lanePositionScratchA_ = new LanePosition();
+	private final LanePosition lanePositionScratchB_ = new LanePosition();
+	private final double[] laneChangeSeparationScratch_ = new double[2];
+	private final double[] laneChangeTangentScratch_ = new double[2];
+	private final double[] laneChangeDistanceAngleScratch_ = new double[2];
+	private final Coordinate laneChangePreviousCoordScratch_ = new Coordinate();
+	private Lane mandatoryPreparationSourceLane_;
+	private Lane mandatoryPreparationTargetLane_;
+	private double mandatoryPreparationDistance_ = Double.NaN;
+	private double mandatoryRemainingManeuverDurationSeconds_ = Double.NaN;
+	private long mandatoryPreparationGeometryEpoch_ = Long.MIN_VALUE;
 	
 	// For adaptive network partitioning
 	private int Nshadow; // Number of current shadow roads in the path
@@ -235,6 +277,8 @@ public class Vehicle {
 	private int roadPatienceLastRecoveryTick = -1;
 	private boolean roadPatienceRecoveryResolved;
 	private boolean deferredRoadRecoveryQueued;
+	private final AtomicInteger transferringQueueTick_ = new AtomicInteger(Integer.MIN_VALUE);
+	private final AtomicInteger arrivalQueueTick_ = new AtomicInteger(Integer.MIN_VALUE);
 	private boolean deferredMissedLaneRecoveryRequested;
 	private boolean deferredRoadPatienceRecoveryRequested;
 	private int missedLaneRecoveryRoadID = -1;
@@ -259,6 +303,9 @@ public class Vehicle {
 	protected Road nextRoad_;
 	protected Lane nextLane_;
 	protected double linkTravelTime;
+	// Monotonic road-entry identity used to make traversal completion one-shot.
+	private long roadTraversalEpoch;
+	private long lastCompletedRoadTraversalEpoch;
 	
 	protected int numTrips; // Number of trips initialized
 	
@@ -306,6 +353,7 @@ public class Vehicle {
 		this.nextLane_ = null;
 		this.nosingFlag = false;
 		this.yieldingFlag = false;
+		this.clearLaneChangeManeuverFields();
 		this.resetLaneChangeRuntimeState();
 		this.lcSpeedGainProbabilityLeft_ = 0;
 		this.lcSpeedGainProbabilityRight_ = 0;
@@ -324,7 +372,7 @@ public class Vehicle {
 		this.externalTransitionSourceRoad = null;
 		this.externalTransitionTargetRoad = null;
 		this.externalTransitionTargetLane = null;
-		this.coordMap = new ArrayList<Coordinate>();
+		this.coordMap = new LinkedList<Coordinate>();
 		this.originCoord_ = null;
 		this.originRoad_ = null;
 		this.destRoad_ = null;
@@ -332,6 +380,8 @@ public class Vehicle {
 		this.accummulatedDistance_ = 0;
 		this.roadPath = null;
 		this.linkTravelTime = 0;
+		this.roadTraversalEpoch = 0L;
+		this.lastCompletedRoadTraversalEpoch = -1L;
 
 		// For adaptive network partitioning
 		this.Nshadow = 0;
@@ -526,8 +576,7 @@ public class Vehicle {
 	 * @return Whether the road successfully enter the road 
 	 */
 	public boolean enterNetwork(Road road) {
-		Lane firstlane = road.firstLane(); // First lane is the right lane, which is closest to the outside street
-		return enterNetwork(road, firstlane, false);
+		return enterNetwork(road, selectDepartureLane(road), false);
 	}
 	
 	/**
@@ -544,8 +593,7 @@ public class Vehicle {
 	 * explicitly released it from the road's entering queue.
 	 */
 	public boolean enterNetworkByControl(Road road) {
-		Lane firstlane = road.firstLane();
-		return enterNetwork(road, firstlane, true);
+		return enterNetwork(road, selectDepartureLane(road), true);
 	}
 
 	public boolean enterNetworkByControl(Road road, Lane lane) {
@@ -556,6 +604,7 @@ public class Vehicle {
 		// Sanity check
 		if (road == null || lane == null) return false;
 		if(lane.getRoad() != road) return false;
+		if (!isViableDepartureLane(road, lane)) return false;
 		if (road.getExternalLaneReservationBlocker(lane, this) != null) return false;
 		if (road.getControlType() == Road.COSIM && !allowCoSimEntry) return false;
 		if (!allowCoSimEntry
@@ -574,7 +623,9 @@ public class Vehicle {
 		
 		boolean canEnter = false;
 
-	    if (road.getControlType() != Road.COSIM) {
+	    if (road instanceof ConnectorRoad) {
+	        canEnter = true; // Connector admission is validated atomically below.
+	    } else if (road.getControlType() != Road.COSIM) {
 	        double gap = entranceGap(lane);
 
 	        if (gap >= 1.2 * this.length()) {
@@ -614,7 +665,8 @@ public class Vehicle {
 	            if(l.getRoad().getControlType() != Road.COSIM) {
 	            	Vehicle v = l.firstVehicle();
 	                if (v != null) {
-	                    if (v.getDistanceToNextJunction() < 0.5 * (v.currentSpeed()/ v.maxDeceleration_) * (v.currentSpeed()/ v.maxDeceleration_)) {
+	                    if (v.getDistanceToNextJunction()
+								< stoppingDistanceMeters(v.currentSpeed(), v.maxDeceleration_)) {
 	                        canEnter = false;
 	                        break;
 	                    }
@@ -626,7 +678,8 @@ public class Vehicle {
 		                Coordinate c1 = v.getCurrentCoord();
 		                Coordinate c2 = lane.getStartCoord();
 
-		                if (ContextCreator.getCityContext().getDistance(c1, c2) < 0.5 * (v.currentSpeed()/ v.maxDeceleration_) * (v.currentSpeed()/ v.maxDeceleration_)) {
+		                if (ContextCreator.getCityContext().getDistance(c1, c2)
+								< stoppingDistanceMeters(v.currentSpeed(), v.maxDeceleration_)) {
 		                    canEnter = false;
 		                    break;
 		                }
@@ -707,9 +760,17 @@ public class Vehicle {
 		else if (!sameRoad(this.road, departureRoad)) {
 			queueDepartureFromRoad(departureRoad);
 		}
-		else { // The vehicle is on road, we just need to reroute it
-			ContextCreator.getRoadContext().markRoadActive(this.road);
-			this.rerouteAndSetNextRoad(); // refresh the CoordMap
+		else { // The vehicle is on the requested road.
+			if (!this.onLane || this.lane == null) {
+				// Arrival leaves the vehicle at the downstream boundary. A new trip on
+				// the same road must start a fresh road-entry episode instead of leaving
+				// the off-lane vehicle in the transfer queue indefinitely.
+				queueDepartureFromRoad(departureRoad);
+			}
+			else {
+				ContextCreator.getRoadContext().markRoadActive(this.road);
+				this.rerouteAndSetNextRoad(); // refresh the CoordMap
+			}
 		}
 	}
 
@@ -718,20 +779,27 @@ public class Vehicle {
 			return this.road;
 		}
 		if (isDeparturableRoad(this.lastDeparturableRoad_)) {
-			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
-					+ roadLabel(this.road) + "; departing from last departurable road "
-					+ roadLabel(this.lastDeparturableRoad_) + ".");
+//			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
+//					+ roadLabel(this.road) + "; departing from last departurable road "
+//					+ roadLabel(this.lastDeparturableRoad_) + ".");
 			return this.lastDeparturableRoad_;
 		}
 		if (isDeparturableRoad(requestedRoad)) {
-			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
-					+ roadLabel(this.road) + " and has no cached departurable road; using requested road "
-					+ roadLabel(requestedRoad) + ".");
+//			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
+//					+ roadLabel(this.road) + " and has no cached departurable road; using requested road "
+//					+ roadLabel(requestedRoad) + ".");
 			return requestedRoad;
 		}
+		Road fallbackRoad = this.departurableFallbackRoad(this.road);
+		if (fallbackRoad != null) {
+//			ContextCreator.logger.warn("Vehicle " + this.getID() + " is on non-departurable road "
+//					+ roadLabel(this.road) + "; using nearby departurable road "
+//					+ roadLabel(fallbackRoad) + ".");
+			return fallbackRoad;
+		}
 		ContextCreator.logger.warn("Vehicle " + this.getID() + " is departing from non-departurable road "
-				+ roadLabel(this.road) + " and has no cached departurable road.");
-		return this.road != null ? this.road : requestedRoad;
+				+ roadLabel(this.road) + " and has no viable fallback road.");
+		return null;
 	}
 
 	private Road resolveQueuedDepartureRoad(Road requestedRoad) {
@@ -744,16 +812,54 @@ public class Vehicle {
 					+ roadLabel(this.lastDeparturableRoad_) + ".");
 			return this.lastDeparturableRoad_;
 		}
+		Road fallbackRoad = this.departurableFallbackRoad(requestedRoad);
+		if (fallbackRoad != null) {
+			ContextCreator.logger.warn("Vehicle " + this.getID() + " requested departure road "
+					+ roadLabel(requestedRoad) + " is not departurable; using nearby departurable road "
+					+ roadLabel(fallbackRoad) + ".");
+			return fallbackRoad;
+		}
 		if (requestedRoad != null) {
 			ContextCreator.logger.warn("Vehicle " + this.getID() + " requested departure road "
-					+ roadLabel(requestedRoad) + " is not departurable and no cached departurable road is available.");
+					+ roadLabel(requestedRoad) + " is not departurable and no viable fallback road is available.");
 		}
-		return requestedRoad;
+		return null;
 	}
 
 	private boolean isDeparturableRoad(Road road) {
-		return road != null && road.canBeOrigin();
+		// Connector roads are traversal-only. Treating one as a trip origin lets it
+		// overwrite lastDeparturableRoad_, but connectors are not ordinary routing-
+		// graph origins and therefore cannot safely host a queued departure.
+		return road != null && road.canBeTripOrigin() && selectDepartureLane(road) != null;
 	}
+
+	private Lane selectDepartureLane(Road road) {
+		if (road == null) return null;
+		Lane firstViable = null;
+		for (Lane candidate : road.getLanes()) {
+			if (!isViableDepartureLane(road, candidate)) continue;
+			if (firstViable == null) firstViable = candidate;
+			if (this.nextRoad_ != null && laneConnectsToRoad(candidate, this.nextRoad_)) {
+				return candidate;
+			}
+		}
+		return firstViable;
+	}
+
+	private boolean isViableDepartureLane(Road road, Lane lane) {
+		if (road == null || lane == null || lane.getRoad() != road
+				|| !lane.isDepartureGeometryUsable()) {
+			return false;
+		}
+		if (!(road instanceof ConnectorRoad) && road.getControlType() != Road.COSIM) {
+			double requiredLength = 1.2 * this.length();
+			if (!Double.isFinite(lane.getLength()) || lane.getLength() < requiredLength) {
+				return false;
+			}
+		}
+		return road.getControlType() == Road.COSIM || !lane.getDownStreamLanes().isEmpty();
+	}
+
 
 	private void updateLastDeparturableRoad(Road road) {
 		if (isDeparturableRoad(road)) {
@@ -877,7 +983,7 @@ public class Vehicle {
 		// appends its waypoints, so retaining the old coordMap would make the
 		// re-entered vehicle follow stale waypoints from the road it left.
 		if (this.coordMap == null) {
-			this.coordMap = new ArrayList<Coordinate>();
+			this.coordMap = new LinkedList<Coordinate>();
 		} else {
 			this.coordMap.clear();
 		}
@@ -887,8 +993,6 @@ public class Vehicle {
 		this.currentLaneSlope_ = 0.0;
 		this.cachedProjectionLane_ = null;
 		this.cachedProjectionDistance_ = 0.0;
-		this.cachedProjectionSegmentIdx_ = -1;
-		this.cachedProjectionCoord_ = null;
 		this.currentSpeed_ = 0.0;
 		this.roadPath = null;
 		this.Nshadow = 0;
@@ -900,10 +1004,28 @@ public class Vehicle {
 	}
 
 	private Road departurableFallbackRoad() {
-		if (isDeparturableRoad(this.lastDeparturableRoad_)) {
+		return departurableFallbackRoad(this.road);
+	}
+
+	private Road departurableFallbackRoad(Road excludedRoad) {
+		if (!sameRoad(this.lastDeparturableRoad_, excludedRoad)
+				&& isDeparturableRoad(this.lastDeparturableRoad_)) {
 			return this.lastDeparturableRoad_;
 		}
-		Road nearbyRoad = ContextCreator.getCityContext().findRoadAtCoordinates(this.getCurrentCoord(), false, this.road);
+		// A restored or externally positioned connector vehicle may not yet have a
+		// checkpoint. Its source is the only topologically valid physical road in
+		// the vehicle's past; never choose a merely nearby road from connector space.
+		if (excludedRoad instanceof ConnectorRoad) {
+			Road connectorSource = ((ConnectorRoad) excludedRoad).getSourceRoad();
+			return isDeparturableRoad(connectorSource) ? connectorSource : null;
+		}
+		Coordinate fallbackCoord = this.getCurrentCoord();
+		if (fallbackCoord == null && excludedRoad != null) {
+			fallbackCoord = excludedRoad.getStartCoord();
+		}
+		if (fallbackCoord == null) return null;
+		Road nearbyRoad = ContextCreator.getCityContext().findRoadAtCoordinates(
+				fallbackCoord, false, excludedRoad);
 		return isDeparturableRoad(nearbyRoad) ? nearbyRoad : null;
 	}
 
@@ -1224,8 +1346,10 @@ public class Vehicle {
 				if(this.roadPath == null) {
 					ContextCreator.logger.warn("Cannot find path from road " + this.road.getOrigID()
 							+ " to destination road " + this.destRoad_.getOrigID()
-							+ " for vehicle " + this.getID() + "; ending this leg without entering a bad route.");
+							+ " for vehicle " + this.getID()
+							+ "; holding at the road boundary for traversal recovery.");
 					this.nextRoad_ = null;
+					this.nextLane_ = null;
 					return;
 				}
 				else {
@@ -1251,9 +1375,10 @@ public class Vehicle {
 
 		if (this.roadPath.isEmpty()) {
 			ContextCreator.logger.warn("Routing returned an empty path for vehicle " + this.getID()
-					+ "; ending this leg without entering a bad route.");
+					+ "; holding at the road boundary for traversal recovery.");
 			this.roadPath = null;
 			this.nextRoad_ = null;
+			this.nextLane_ = null;
 			return;
 		}
 		
@@ -1439,160 +1564,471 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Compute the new distance for a vehicle to move a new lane.
-	 * Results are cached per lane within a single calcState() call.
+	 * Map the current logical downstream station to another lane on the same road.
+	 * Lane control points are used only to interpolate geometry; their spacing does
+	 * not determine longitudinal progress.
 	 */
 	public double distanceInNewLane(Lane plane) {
-		if(this.lane == plane) {
-			return this.distance_;
-		}
-		if (plane == cachedProjectionLane_) {
-			return cachedProjectionDistance_;
-		}
-		Coordinate currCoord = this.getCurrentCoord();
-	    ArrayList<Coordinate> coords = plane.getCoords();
-	    double newDistance = 0;
-	    int segIdx = -1;
-	    double projectedParam = 0.0;
-	    double projectedSegmentLen = 0.0;
-	    Coordinate projectedCoord = null;
+		if (plane == null || this.lane == null) return Double.NaN;
+		if (this.lane == plane) return this.distance_;
+		if (plane == this.cachedProjectionLane_) return this.cachedProjectionDistance_;
 
-	    for (int i = coords.size() - 1; i > 0; i--) {
-	        Coordinate a = coords.get(i);
-	        Coordinate b = coords.get(i - 1);
-
-	        double dx = a.x - b.x;
-	        double dy = a.y - b.y;
-	        double lenSq = dx * dx + dy * dy;
-	        double segmentLen = this.distance(a, b);
-
-	        if (lenSq > 0) {
-	            double apx = currCoord.x - b.x;
-	            double apy = currCoord.y - b.y;
-	            double param = (apx * dx + apy * dy) / lenSq;
-	            if (param >= 0.0 && param <= 1.0) {
-	                double projectedDistance = newDistance + (1.0 - param) * segmentLen;
-	                if (Math.abs(this.distance_ - projectedDistance) < 25.0) {
-	                    segIdx = i;
-	                    newDistance = projectedDistance;
-	                    projectedParam = param;
-	                    projectedSegmentLen = segmentLen;
-	                    projectedCoord = this.projectCoordinateOnSegment(b, a, param);
-	                    break;
-	                }
-	            }
-	        }
-	        newDistance += segmentLen;
-	    }
-	    
-	    if(segIdx < 0) { // Fallback: Pick the segment whose clamped nearest point is closest to the vehicle.
-	    	double minDist = Double.MAX_VALUE;
-	        for (int i = coords.size() - 1; i > 0; i--) {
-	            Coordinate a = coords.get(i);
-	            Coordinate b = coords.get(i - 1);
-	            double dx = a.x - b.x;
-	            double dy = a.y - b.y;
-	            double lenSq = dx * dx + dy * dy;
-	            if (lenSq > 0) {
-	                double apx = currCoord.x - b.x;
-	                double apy = currCoord.y - b.y;
-	                double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
-	                double closestX = b.x + param * dx;
-	                double closestY = b.y + param * dy;
-	                double d = Math.hypot(currCoord.x - closestX, currCoord.y - closestY);
-	                if (d < minDist) {
-	                    minDist = d;
-	                    segIdx = i;
-	                    projectedParam = param;
-	                    projectedSegmentLen = this.distance(a, b);
-	                    projectedCoord = this.projectCoordinateOnSegment(b, a, param);
-	                }
-	            }
-	        }
-	        if (segIdx >= 0) {
-		        newDistance = 0;
-		        for (int i = coords.size() - 1; i > segIdx; i--) {
-		            newDistance += this.distance(coords.get(i), coords.get(i - 1));
-		        }
-		        newDistance += (1.0 - projectedParam) * projectedSegmentLen;
-	        } else {
-	            newDistance = this.distance_;
-	        }
-	    }
-	    
-	    
-	    cachedProjectionLane_ = plane;
-	    cachedProjectionDistance_ = newDistance;
-	    cachedProjectionSegmentIdx_ = segIdx;
-	    cachedProjectionCoord_ = projectedCoord;
-	    
-	    return newDistance;
+		Lane.ArcGeometry geometry = this.buildLaneGeometry(plane);
+		double fraction = this.logicalRoadFraction(this.lane, this.distance_);
+		LanePosition position = this.lanePositionAtRoadFraction(
+				geometry, fraction, this.lanePositionScratchA_);
+		this.cachedProjectionLane_ = plane;
+		this.cachedProjectionDistance_ = position == null ? Double.NaN : position.logicalDistance;
+		return this.cachedProjectionDistance_;
 	}
 
-	private Coordinate projectCoordinateOnSegment(Coordinate upstream, Coordinate downstream, double param) {
-		double clampedParam = Math.max(0.0, Math.min(1.0, param));
-		double upstreamZ = Double.isNaN(upstream.z) ? 0.0 : upstream.z;
-		double downstreamZ = Double.isNaN(downstream.z) ? upstreamZ : downstream.z;
-		return new Coordinate(
-				upstream.x + clampedParam * (downstream.x - upstream.x),
-				upstream.y + clampedParam * (downstream.y - upstream.y),
-				upstreamZ + clampedParam * (downstreamZ - upstreamZ));
+	private double logicalRoadFraction(Lane referenceLane, double distanceToJunction) {
+		if (referenceLane == null || !Double.isFinite(distanceToJunction)) return Double.NaN;
+		double logicalLength = referenceLane.getLength();
+		if (!Double.isFinite(logicalLength) || logicalLength <= 0.0) return Double.NaN;
+		return Math.max(0.0, Math.min(1.0, distanceToJunction / logicalLength));
+	}
+
+	private Lane.ArcGeometry buildLaneGeometry(Lane geometryLane) {
+		return geometryLane == null ? null : geometryLane.getArcGeometry();
+	}
+
+	private LanePosition lanePositionAtRoadFraction(Lane.ArcGeometry geometry,
+			double downstreamFraction, LanePosition result) {
+		if (geometry == null || !Double.isFinite(downstreamFraction)) return null;
+		double logicalLength = geometry.getLane().getLength();
+		if (!Double.isFinite(logicalLength) || logicalLength <= 0.0) return null;
+		double fraction = Math.max(0.0, Math.min(1.0, downstreamFraction));
+		double fromUpstream = (1.0 - fraction) * geometry.getGeometricLength();
+		int segmentIndex = -1;
+		for (int i = 0; i < geometry.size() - 1; i++) {
+			double segmentLength = geometry.cumulativeAt(i + 1) - geometry.cumulativeAt(i);
+			if (segmentLength <= COINCIDENT_WAYPOINT_TOLERANCE_METERS) continue;
+			if (fromUpstream <= geometry.cumulativeAt(i + 1) + 1e-9) {
+				segmentIndex = i;
+				break;
+			}
+		}
+		if (segmentIndex < 0) {
+			for (int i = geometry.size() - 2; i >= 0; i--) {
+				if (geometry.cumulativeAt(i + 1) - geometry.cumulativeAt(i)
+						> COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
+					segmentIndex = i;
+					break;
+				}
+			}
+		}
+		if (segmentIndex < 0) return null;
+		double segmentLength = geometry.cumulativeAt(segmentIndex + 1)
+				- geometry.cumulativeAt(segmentIndex);
+		double param = Math.max(0.0, Math.min(1.0,
+				(fromUpstream - geometry.cumulativeAt(segmentIndex)) / segmentLength));
+		Coordinate upstream = geometry.coordinateAt(segmentIndex);
+		Coordinate downstream = geometry.coordinateAt(segmentIndex + 1);
+		double upstreamZ = Double.isFinite(upstream.z) ? upstream.z : 0.0;
+		double downstreamZ = Double.isFinite(downstream.z) ? downstream.z : upstreamZ;
+		result.logicalDistance = fraction * logicalLength;
+		result.coordinate.x = upstream.x + param * (downstream.x - upstream.x);
+		result.coordinate.y = upstream.y + param * (downstream.y - upstream.y);
+		result.coordinate.z = upstreamZ + param * (downstreamZ - upstreamZ);
+		result.segmentIndex = segmentIndex;
+		return result;
+	}
+
+	static NormalizedArcPosition interpolateNormalizedArc(ArrayList<Coordinate> coordinates,
+			double[] cumulative, double geometricLength, double downstreamFraction) {
+		if (coordinates == null || cumulative == null || coordinates.size() < 2
+				|| cumulative.length != coordinates.size() || !Double.isFinite(geometricLength)
+				|| geometricLength <= COINCIDENT_WAYPOINT_TOLERANCE_METERS
+				|| !Double.isFinite(downstreamFraction)) return null;
+		double fraction = Math.max(0.0, Math.min(1.0, downstreamFraction));
+		double fromUpstream = (1.0 - fraction) * geometricLength;
+		int segmentIndex = -1;
+		for (int i = 0; i < coordinates.size() - 1; i++) {
+			double segmentLength = cumulative[i + 1] - cumulative[i];
+			if (segmentLength <= COINCIDENT_WAYPOINT_TOLERANCE_METERS) continue;
+			if (fromUpstream <= cumulative[i + 1] + 1e-9) {
+				segmentIndex = i;
+				break;
+			}
+		}
+		if (segmentIndex < 0) {
+			for (int i = coordinates.size() - 2; i >= 0; i--) {
+				if (cumulative[i + 1] - cumulative[i]
+						> COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
+					segmentIndex = i;
+					break;
+				}
+			}
+		}
+		if (segmentIndex < 0) return null;
+		double segmentLength = cumulative[segmentIndex + 1] - cumulative[segmentIndex];
+		double param = Math.max(0.0, Math.min(1.0,
+				(fromUpstream - cumulative[segmentIndex]) / segmentLength));
+		Coordinate upstream = coordinates.get(segmentIndex);
+		Coordinate downstream = coordinates.get(segmentIndex + 1);
+		double upstreamZ = Double.isFinite(upstream.z) ? upstream.z : 0.0;
+		double downstreamZ = Double.isFinite(downstream.z) ? downstream.z : upstreamZ;
+		return new NormalizedArcPosition(new Coordinate(
+				upstream.x + param * (downstream.x - upstream.x),
+				upstream.y + param * (downstream.y - upstream.y),
+				upstreamZ + param * (downstreamZ - upstreamZ)), segmentIndex);
+	}
+
+	private double laneChangeDurationSeconds(double lateralDistanceMeters) {
+		double lateralSpeed = GlobalVariables.LANE_CHANGE_LATERAL_SPEED;
+		if (!Double.isFinite(lateralSpeed) || lateralSpeed <= 0.0) lateralSpeed = 1.0;
+		double minDuration = GlobalVariables.LANE_CHANGE_MIN_DURATION;
+		if (!Double.isFinite(minDuration) || minDuration <= 0.0) {
+			minDuration = Math.max(0.001, GlobalVariables.SIMULATION_STEP_SIZE);
+		}
+		return Math.max(minDuration, Math.max(0.0, lateralDistanceMeters) / lateralSpeed);
+	}
+
+	private double lateralDistanceAtFraction(Lane first, Lane second, double fraction) {
+		Lane.ArcGeometry firstGeometry = this.buildLaneGeometry(first);
+		Lane.ArcGeometry secondGeometry = this.buildLaneGeometry(second);
+		LanePosition firstPosition = this.lanePositionAtRoadFraction(
+				firstGeometry, fraction, this.lanePositionScratchA_);
+		LanePosition secondPosition = this.lanePositionAtRoadFraction(
+				secondGeometry, fraction, this.lanePositionScratchB_);
+		return this.lateralSeparationMeters(firstGeometry, firstPosition, secondPosition);
+	}
+
+	private double lateralSeparationMeters(Lane.ArcGeometry sourceGeometry,
+			LanePosition sourcePosition, LanePosition targetPosition) {
+		if (sourceGeometry == null || sourcePosition == null || targetPosition == null) {
+			return Double.NaN;
+		}
+		double totalSeparation = this.distance2(
+				sourcePosition.coordinate, targetPosition.coordinate,
+				this.laneChangeSeparationScratch_);
+		if (!Double.isFinite(totalSeparation) || totalSeparation <= 0.0) return Double.NaN;
+		Coordinate segmentStart = sourceGeometry.coordinateAt(sourcePosition.segmentIndex);
+		Coordinate segmentEnd = sourceGeometry.coordinateAt(sourcePosition.segmentIndex + 1);
+		double tangentLength = this.distance2(
+				segmentStart, segmentEnd, this.laneChangeTangentScratch_);
+		if (!Double.isFinite(tangentLength) || tangentLength <= 0.0
+				|| !Double.isFinite(this.laneChangeTangentScratch_[1])
+				|| !Double.isFinite(this.laneChangeSeparationScratch_[1])) {
+			return totalSeparation;
+		}
+		double bearingDifference = Math.toRadians(
+				this.laneChangeSeparationScratch_[1] - this.laneChangeTangentScratch_[1]);
+		double lateralDistance = Math.abs(totalSeparation * Math.sin(bearingDifference));
+		return Double.isFinite(lateralDistance) && lateralDistance > 0.05
+				? lateralDistance : Double.NaN;
 	}
 
 	/**
-	 * This function change the lane of a vehicle regardless it is MLC or DLC state.
-	 * The vehicle change lane when its lead and lag gaps are acceptable. This will
-	 * not change the speed of the vehicle, the information updated in this function
-	 * function is as follow: remove the vehicle from old lane and add to new lane,
-	 * re-assign the leading and trailing sequence of the vehicle, update the to-visit
-	 * coordinate sequences.
-	 * @return true if the vehicle was moved to a different lane
-	 **/
-	public boolean changeLane(Lane plane) {
-		if (this.hasActiveConnectorReservation()) return false;
-		if (plane == null) {
-			return false;
-		}
-		Lane oldLane = this.lane;
-		if (plane == oldLane) {
-			return false;
-		}
-		double newDistance = this.distanceInNewLane(plane);
-		int segIdx = (plane == cachedProjectionLane_) ? cachedProjectionSegmentIdx_ : -1;
-		Coordinate projectedCoord = (plane == cachedProjectionLane_) ? cachedProjectionCoord_ : null;
-
-		ArrayList<Coordinate> coords = plane.getCoords();
-		ArrayList<Coordinate> newCoordMap = new ArrayList<>();
-		if (segIdx > 0) {
-			for (int j = segIdx; j < coords.size(); j++) {
-				newCoordMap.add(coords.get(j));
+	 * Exact preparation boundary requested for mandatory multi-lane maneuvers:
+	 * exclusion threshold + 0.1 m + speed times every remaining maneuver duration.
+	 */
+	private double mandatoryLaneChangePreparationDistance() {
+		double preparation = GlobalVariables.NO_LANECHANGING_LENGTH
+				+ MANDATORY_LANE_CHANGE_THRESHOLD_BUFFER_METERS;
+		if (this.road == null || this.lane == null) return preparation;
+		Lane routeLane = this.targetLane();
+		if (routeLane == null || routeLane == this.lane) return preparation;
+		int currentIndex = this.road.getLaneIndex(this.lane);
+		int targetIndex = this.road.getLaneIndex(routeLane);
+		if (currentIndex < 0 || targetIndex < 0) return preparation;
+		double fraction = this.logicalRoadFraction(this.lane, this.distance_);
+		if (!Double.isFinite(fraction)) return preparation;
+		long geometryEpoch = Lane.getArcGeometryEpoch();
+		double remainingDuration = this.mandatoryRemainingManeuverDurationSeconds_;
+		boolean cached = this.mandatoryPreparationSourceLane_ == this.lane
+				&& this.mandatoryPreparationTargetLane_ == routeLane
+				&& this.mandatoryPreparationGeometryEpoch_ == geometryEpoch
+				&& Double.doubleToLongBits(this.mandatoryPreparationDistance_)
+						== Double.doubleToLongBits(this.distance_)
+				&& Double.isFinite(remainingDuration);
+		if (!cached) {
+			remainingDuration = 0.0;
+			int direction = targetIndex > currentIndex ? 1 : -1;
+			for (int index = currentIndex; index != targetIndex; index += direction) {
+				Lane from = this.road.getLane(index);
+				Lane to = this.road.getLane(index + direction);
+				double lateralDistance = this.lateralDistanceAtFraction(from, to, fraction);
+				if (!Double.isFinite(lateralDistance) || lateralDistance <= 0.0) {
+					lateralDistance = Math.max(0.1, GlobalVariables.LANE_WIDTH);
+				}
+				remainingDuration += this.laneChangeDurationSeconds(lateralDistance);
 			}
+			this.mandatoryPreparationSourceLane_ = this.lane;
+			this.mandatoryPreparationTargetLane_ = routeLane;
+			this.mandatoryPreparationDistance_ = this.distance_;
+			this.mandatoryRemainingManeuverDurationSeconds_ = remainingDuration;
+			this.mandatoryPreparationGeometryEpoch_ = geometryEpoch;
 		}
-
-		if(newCoordMap.size() == 0) {
-			return false;
-		}
-		if (projectedCoord == null) {
-			return false;
-		}
-
-		if(this.distance_ > GlobalVariables.NO_LANECHANGING_LENGTH) {
-			this.distance_ = newDistance;
-			this.setCurrentCoord(projectedCoord);
-			this.coordMap.clear();
-			this.coordMap.addAll(newCoordMap);
-			this.updateBearingAndNextDistanceToCoordMap();
-
-			this.removeFromCurrentLane();
-			this.insertToLane(plane);
-			currentSegmentIdx_ = segIdx - 1;
-			currentLaneSlope_ = plane.getSegmentSlope(currentSegmentIdx_);
-			return this.lane != oldLane && this.lane == plane;
-		}
-		return false;
+		double longitudinalSpeed = Math.max(0.0, this.currentSpeed_);
+		return preparation + longitudinalSpeed * remainingDuration;
 	}
 
+	/**
+	 * The normal route-required lane-changing boundary already includes the
+	 * configured endpoint buffer and the distance needed for the remaining
+	 * physical lateral maneuvers.
+	 */
+	private boolean isWithinNoLaneChangingArea() {
+		return this.lane != null && Double.isFinite(this.distance_)
+				&& this.distance_ <= this.mandatoryLaneChangePreparationDistance();
+	}
+
+	/**
+	 * A lane is clear only when it has no physical occupant or pending admission.
+	 * Active lane changes count as occupants even though their vehicles remain in
+	 * their source-lane lists until the physical maneuver completes.
+	 */
+	private boolean isLaneClear(Lane targetLane) {
+		Road targetRoad = targetLane == null ? null : targetLane.getRoad();
+		return targetRoad != null
+				&& targetLane.nVehicles() == 0
+				&& targetLane.firstVehicle() == null
+				&& targetLane.lastVehicle() == null
+				&& targetRoad.getExternalLaneReservationBlocker(targetLane, this) == null
+				&& targetRoad.getLaneChangeReservationBlocker(targetLane, this) == null;
+	}
+
+	/** Begin a physical lane-change maneuver; lane-list membership swaps at completion. */
+	public boolean changeLane(Lane plane) {
+		if (plane == null || this.lane == null || this.road == null || plane == this.lane
+				|| this.isLaneChanging() || !this.onLane || !this.onRoad
+				|| this.hasActiveConnectorReservation() || this.externalRoadTransition
+				|| this.road instanceof ConnectorRoad || this.road.getControlType() == Road.COSIM
+				|| plane.getRoad() != this.road
+				|| Math.abs(this.road.getLaneIndex(plane) - this.road.getLaneIndex(this.lane)) != 1) {
+			return false;
+		}
+		double fraction = this.logicalRoadFraction(this.lane, this.distance_);
+		Lane.ArcGeometry sourceGeometry = this.buildLaneGeometry(this.lane);
+		Lane.ArcGeometry targetGeometry = this.buildLaneGeometry(plane);
+		LanePosition sourcePosition = this.lanePositionAtRoadFraction(
+				sourceGeometry, fraction, this.lanePositionScratchA_);
+		LanePosition targetPosition = this.lanePositionAtRoadFraction(
+				targetGeometry, fraction, this.lanePositionScratchB_);
+		if (sourcePosition == null || targetPosition == null) return false;
+		double lateralDistance = this.lateralSeparationMeters(
+				sourceGeometry, sourcePosition, targetPosition);
+		if (!Double.isFinite(lateralDistance) || lateralDistance <= 0.0) {
+			lateralDistance = Math.max(0.1, GlobalVariables.LANE_WIDTH);
+		}
+		this.laneChangeSourceLane_ = this.lane;
+		this.laneChangeTargetLane_ = plane;
+		this.laneChangeElapsedSeconds_ = 0.0;
+		this.laneChangeLateralDistanceMeters_ = lateralDistance;
+		this.laneChangeDurationSeconds_ = this.laneChangeDurationSeconds(lateralDistance);
+		this.laneChangeSourceGeometry_ = sourceGeometry;
+		this.laneChangeTargetGeometry_ = targetGeometry;
+		if (!this.road.registerLaneChangeReservation(plane, this)) {
+			this.clearLaneChangeManeuverFields();
+			return false;
+		}
+		return true;
+	}
+
+	public boolean isLaneChanging() {
+		return this.laneChangeSourceLane_ != null && this.laneChangeTargetLane_ != null;
+	}
+
+	public Lane getLaneChangeTargetLane() {
+		return this.laneChangeTargetLane_;
+	}
+
+	public double getLaneChangeElapsedSeconds() {
+		return this.laneChangeElapsedSeconds_;
+	}
+
+	public double getLaneChangeDurationSeconds() {
+		return this.laneChangeDurationSeconds_;
+	}
+
+	public double getLaneChangeLateralDistanceMeters() {
+		return this.laneChangeLateralDistanceMeters_;
+	}
+
+	/** Logical target-lane station used by deterministic Road reservation queries. */
+	public double getLaneChangeReservedDistance(Lane requestedLane) {
+		if (!this.isLaneChanging() || requestedLane != this.laneChangeTargetLane_) return Double.NaN;
+		double fraction = this.logicalRoadFraction(this.laneChangeSourceLane_, this.distance_);
+		return Double.isFinite(fraction) ? fraction * requestedLane.getLength() : Double.NaN;
+	}
+
+	/** Distance occupied by this vehicle on a physical or reserved lane. */
+	public double getDistanceOnLaneForSafety(Lane requestedLane) {
+		if (requestedLane == null) return Double.NaN;
+		if (requestedLane == this.lane) return this.distance_;
+		return this.getLaneChangeReservedDistance(requestedLane);
+	}
+
+	public boolean restoreLaneChangeManeuver(Lane targetLane, double elapsedSeconds,
+			double durationSeconds, double lateralDistanceMeters) {
+		if (this.isLaneChanging() || targetLane == null || this.lane == null || this.road == null
+				|| targetLane.getRoad() != this.road
+				|| Math.abs(this.road.getLaneIndex(targetLane) - this.road.getLaneIndex(this.lane)) != 1
+				|| this.road instanceof ConnectorRoad || this.road.getControlType() == Road.COSIM) {
+			return false;
+		}
+		double fraction = this.logicalRoadFraction(this.lane, this.distance_);
+		Lane.ArcGeometry sourceGeometry = this.buildLaneGeometry(this.lane);
+		Lane.ArcGeometry targetGeometry = this.buildLaneGeometry(targetLane);
+		LanePosition sourcePosition = this.lanePositionAtRoadFraction(
+				sourceGeometry, fraction, this.lanePositionScratchA_);
+		LanePosition targetPosition = this.lanePositionAtRoadFraction(
+				targetGeometry, fraction, this.lanePositionScratchB_);
+		if (sourcePosition == null || targetPosition == null) return false;
+		double actualLateralDistance = this.lateralSeparationMeters(
+				sourceGeometry, sourcePosition, targetPosition);
+		if (!Double.isFinite(lateralDistanceMeters) || lateralDistanceMeters <= 0.0) {
+			lateralDistanceMeters = Double.isFinite(actualLateralDistance) && actualLateralDistance > 0.0
+					? actualLateralDistance : Math.max(0.1, GlobalVariables.LANE_WIDTH);
+		}
+		if (!Double.isFinite(durationSeconds) || durationSeconds <= 0.0) {
+			durationSeconds = this.laneChangeDurationSeconds(lateralDistanceMeters);
+		}
+		this.laneChangeSourceLane_ = this.lane;
+		this.laneChangeTargetLane_ = targetLane;
+		this.laneChangeElapsedSeconds_ = Math.max(0.0, Math.min(durationSeconds, elapsedSeconds));
+		this.laneChangeDurationSeconds_ = durationSeconds;
+		this.laneChangeLateralDistanceMeters_ = lateralDistanceMeters;
+		this.laneChangeSourceGeometry_ = sourceGeometry;
+		this.laneChangeTargetGeometry_ = targetGeometry;
+		if (!this.road.registerLaneChangeReservation(targetLane, this)) {
+			this.clearLaneChangeManeuverFields();
+			return false;
+		}
+		this.refreshActiveLaneChangePose();
+		return true;
+	}
+
+	private void refreshActiveLaneChangePose() {
+		if (!this.isLaneChanging()) return;
+		double fraction = this.logicalRoadFraction(this.laneChangeSourceLane_, this.distance_);
+		LanePosition sourcePosition = this.lanePositionAtRoadFraction(
+				this.laneChangeSourceGeometry_, fraction, this.lanePositionScratchA_);
+		LanePosition targetPosition = this.lanePositionAtRoadFraction(
+				this.laneChangeTargetGeometry_, fraction, this.lanePositionScratchB_);
+		if (sourcePosition == null || targetPosition == null) {
+			this.cancelLaneChangeManeuver();
+			return;
+		}
+		double linearProgress = this.laneChangeDurationSeconds_ <= 0.0 ? 1.0
+				: Math.max(0.0, Math.min(1.0,
+						this.laneChangeElapsedSeconds_ / this.laneChangeDurationSeconds_));
+		double progress = linearProgress * linearProgress * (3.0 - 2.0 * linearProgress);
+		this.laneChangePreviousCoordScratch_.x = this.currentCoord_.x;
+		this.laneChangePreviousCoordScratch_.y = this.currentCoord_.y;
+		this.laneChangePreviousCoordScratch_.z = this.currentCoord_.z;
+		this.setCurrentCoordInternal(
+				sourcePosition.coordinate.x + progress
+						* (targetPosition.coordinate.x - sourcePosition.coordinate.x),
+				sourcePosition.coordinate.y + progress
+						* (targetPosition.coordinate.y - sourcePosition.coordinate.y),
+				sourcePosition.coordinate.z + progress
+						* (targetPosition.coordinate.z - sourcePosition.coordinate.z));
+		double moved = this.distance2(this.laneChangePreviousCoordScratch_,
+				this.currentCoord_, this.laneChangeDistanceAngleScratch_);
+		if (moved > COINCIDENT_WAYPOINT_TOLERANCE_METERS
+				&& Double.isFinite(this.laneChangeDistanceAngleScratch_[1])) {
+			this.bearing_ = this.laneChangeDistanceAngleScratch_[1];
+		}
+		this.currentSegmentIdx_ = sourcePosition.segmentIndex;
+		this.currentLaneSlope_ = this.laneChangeSourceLane_.getSegmentSlope(sourcePosition.segmentIndex);
+	}
+
+	private double updateActiveLaneChangeByDx(double requestedDx) {
+		if (!this.isLaneChanging()) return this.updateCoordByDx(requestedDx);
+		double oldSpeed = this.currentSpeed_;
+		double step = Math.max(0.001, GlobalVariables.SIMULATION_STEP_SIZE);
+		double actualDx = Math.max(0.0, Math.min(Math.max(0.0, requestedDx), this.distance_));
+		this.accRate_ = Math.max(this.maxDeceleration_,
+				2.0 * (actualDx - oldSpeed * step) / (step * step));
+		this.currentSpeed_ = Math.max(0.0, oldSpeed + this.accRate_ * step);
+		this.distance_ = Math.max(0.0, this.distance_ - actualDx);
+		this.laneChangeElapsedSeconds_ = Math.min(this.laneChangeDurationSeconds_,
+				this.laneChangeElapsedSeconds_ + step);
+		this.refreshActiveLaneChangePose();
+		if (this.isLaneChanging()
+				&& this.laneChangeElapsedSeconds_ + 1e-9 >= this.laneChangeDurationSeconds_) {
+			this.completeLaneChangeManeuver();
+		}
+		return actualDx;
+	}
+
+	private void completeLaneChangeManeuver() {
+		if (!this.isLaneChanging() || this.road == null) return;
+		Lane targetLane = this.laneChangeTargetLane_;
+		Lane.ArcGeometry targetGeometry = this.laneChangeTargetGeometry_;
+		double fraction = this.logicalRoadFraction(this.laneChangeSourceLane_, this.distance_);
+		LanePosition targetPosition = this.lanePositionAtRoadFraction(
+				targetGeometry, fraction, this.lanePositionScratchA_);
+		if (targetPosition == null) {
+			this.cancelLaneChangeManeuver();
+			return;
+		}
+		Road currentRoad = this.road;
+		currentRoad.unregisterLaneChangeReservation(this);
+		this.clearLaneChangeManeuverFields();
+		this.removeFromCurrentLane();
+		this.installLanePosition(targetLane, targetGeometry, targetPosition);
+		this.insertToLane(targetLane);
+		this.nosingFlag = false;
+		this.lcBlockedTicks_ = 0;
+	}
+
+	private void installLanePosition(Lane targetLane, Lane.ArcGeometry geometry,
+			LanePosition position) {
+		this.distance_ = position.logicalDistance;
+		this.setCurrentCoordInternal(position.coordinate);
+		this.coordMap.clear();
+		for (int i = position.segmentIndex + 1; i < geometry.size(); i++) {
+			this.coordMap.add(new Coordinate(geometry.coordinateAt(i)));
+		}
+		if (this.coordMap.isEmpty()) this.coordMap.add(targetLane.getEndCoord());
+		this.currentSegmentIdx_ = position.segmentIndex;
+		this.currentLaneSlope_ = targetLane.getSegmentSlope(position.segmentIndex);
+		this.updateBearingAndNextDistanceToCoordMap(targetLane);
+	}
+
+	/** Cancel native lateral state before an external-control or road lifecycle change. */
+	public void cancelLaneChangeForRoadLifecycle() {
+		this.cancelLaneChangeManeuver();
+	}
+	private void cancelLaneChangeManeuver() {
+		Road currentRoad = this.road;
+		if (currentRoad != null) currentRoad.unregisterLaneChangeReservation(this);
+		this.clearLaneChangeManeuverFields();
+	}
+
+	private void clearLaneChangeManeuverFields() {
+		this.laneChangeSourceLane_ = null;
+		this.laneChangeTargetLane_ = null;
+		this.laneChangeElapsedSeconds_ = 0.0;
+		this.laneChangeDurationSeconds_ = 0.0;
+		this.laneChangeLateralDistanceMeters_ = 0.0;
+		this.laneChangeSourceGeometry_ = null;
+		this.laneChangeTargetGeometry_ = null;
+	}
+
+	static final class NormalizedArcPosition {
+		final Coordinate coordinate;
+		final int segmentIndex;
+
+		NormalizedArcPosition(Coordinate coordinate, int segmentIndex) {
+			this.coordinate = coordinate;
+			this.segmentIndex = segmentIndex;
+		}
+	}
+	private static final class LanePosition {
+		double logicalDistance;
+		final Coordinate coordinate = new Coordinate();
+		int segmentIndex;
+	}
 	private void updateBearingAndNextDistanceToCoordMap() {
+		this.updateBearingAndNextDistanceToCoordMap(this.onLane ? this.lane : null);
+	}
+
+	private void updateBearingAndNextDistanceToCoordMap(Lane distanceLane) {
 		double previousBearing = Double.isFinite(this.bearing_) ? this.bearing_ : 0.0;
 		this.bearing_ = previousBearing;
 		this.nextDistance_ = 0.0;
@@ -1605,7 +2041,8 @@ public class Vehicle {
 		double distanceToFirst =
 				ContextCreator.getCityContext().getDistance(current, this.coordMap.get(0));
 		if (Double.isFinite(distanceToFirst) && distanceToFirst >= 0.0) {
-			this.nextDistance_ = distanceToFirst;
+			this.nextDistance_ = distanceLane == null
+					? distanceToFirst : distanceLane.toLogicalDistance(distanceToFirst);
 		}
 
 		// Keep nextDistance_ tied to the first waypoint, but look past every
@@ -1635,7 +2072,7 @@ public class Vehicle {
 			ArrayList<Coordinate> coords = plane.getCoords();
 			double accDist = plane.getLength();
 			for (int i = 0; i < coords.size() - 1; i++) {
-				accDist -= distance(coords.get(i), coords.get(i+1));
+				accDist -= plane.toLogicalDistance(distance(coords.get(i), coords.get(i+1)));
 				if (this.distance_ + 1e-4 >= accDist) { // Find the first pt in CoordMap that has smaller distance_
 					for (int j = i + 1; j < coords.size(); j++) { // Add the rest coords into the CoordMap
 						coordMap.add(coords.get(j));
@@ -1648,7 +2085,7 @@ public class Vehicle {
 			if (coordMap.size() == 0) {
 				ContextCreator.logger.error("Lane changing error, could not find coordMap for the target lane:" + lane.getID() + ", accDist: " + accDist+ ", distance: "+ this.distance_);
 			}
-			this.updateBearingAndNextDistanceToCoordMap();
+			this.updateBearingAndNextDistanceToCoordMap(plane);
 			this.insertToLane(plane);
 			this.nextLane_ = null;
 		} else {
@@ -1758,7 +2195,9 @@ public class Vehicle {
 			for (int i = 0; i < coords.size() - 1; i++) {
 				Coordinate upstream = coords.get(i);
 				Coordinate downstream = coords.get(i + 1);
-				double segmentDistance = ContextCreator.getCityContext().getDistance(upstream, downstream);
+				double geometricSegmentDistance =
+						ContextCreator.getCityContext().getDistance(upstream, downstream);
+				double segmentDistance = lane.toLogicalDistance(geometricSegmentDistance);
 				if (!Double.isFinite(segmentDistance) || segmentDistance <= 1e-9) {
 					continue;
 				}
@@ -1785,7 +2224,7 @@ public class Vehicle {
 					}
 					currentSegmentIdx_ = i;
 					currentLaneSlope_ = lane.getSegmentSlope(i);
-					this.updateBearingAndNextDistanceToCoordMap();
+					this.updateBearingAndNextDistanceToCoordMap(lane);
 					positioned = true;
 					break;
 				}
@@ -1796,7 +2235,7 @@ public class Vehicle {
 				Coordinate endpoint = lane.getEndCoord();
 				this.setCurrentCoord(endpoint);
 				this.coordMap.add(endpoint);
-				this.updateBearingAndNextDistanceToCoordMap();
+				this.updateBearingAndNextDistanceToCoordMap(lane);
 				this.currentSegmentIdx_ = 0;
 				this.currentLaneSlope_ = 0.0;
 			}
@@ -1830,9 +2269,9 @@ public class Vehicle {
 		if (this.lane == null) return;
 		boolean invalidDesiredSpeed = !Double.isFinite(this.desiredSpeed_)
 				|| this.desiredSpeed_ <= 0.0;
-		if (this.hasActiveConnectorReservation()) {
-			// Connector occupancy suppresses lane-changing decisions, but a restored
-			// zero-speed vehicle still needs a longitudinal target speed.
+		if (this.hasActiveConnectorReservation() || this.isLaneChanging()) {
+			// Connector occupancy and an already active physical maneuver suppress new
+			// lane-changing decisions, but restored vehicles still need a target speed.
 			if (invalidDesiredSpeed) {
 				this.desiredSpeed_ = this.lane.getRandomFreeSpeed(
 						rand_car_follow_only.nextGaussian());
@@ -1845,7 +2284,7 @@ public class Vehicle {
 		if (tickcount % 10 == 0 || invalidDesiredSpeed) {
 			this.desiredSpeed_ = this.lane.getRandomFreeSpeed(rand_car_follow_only.nextGaussian());
 		}
-		if (this.road.getNumberOfLanes() > 1 && this.isOnLane() && (this.distance_ >= GlobalVariables.NO_LANECHANGING_LENGTH)) {
+		if (this.road.getNumberOfLanes() > 1 && this.isOnLane()) {
 			this.makeLaneChangingDecision();
 		}
 	}
@@ -1902,12 +2341,12 @@ public class Vehicle {
 			acc = 0;
 		}
 		
+		if (!Double.isFinite(acc)) {
+			ContextCreator.logger.error("Invalid planned acceleration " + acc + " for " + this);
+			acc = 0.0;
+		}
 		this.plannedAcceleration_ = acc;
 		this.hasAccelerationPlan_ = true;
-		
-		if (Double.isNaN(accRate_)) {
-			ContextCreator.logger.error("NaN acceleration rate for " + this);
-		}
 	}
 	
 	/**
@@ -2426,18 +2865,39 @@ public class Vehicle {
 	}
 	
 	/**
-	 * Get the front vehicle
-	 * @return v The front vehicle, null for no vehicle ahead
+	 * Get the closest longitudinal constraint across every lane currently occupied.
 	 */
 	public Vehicle vehicleAhead() {
-		if (leading_ != null) {
-			return leading_;
+		Vehicle best = this.leading_;
+		double bestGap = this.laneOccupancyGap(best, this.lane);
+		if (this.road != null && this.lane != null) {
+			Vehicle reservedSourceLeader = this.road.findLaneChangeReservedLeader(
+					this.lane, this, this.distance_);
+			double reservedGap = this.laneOccupancyGap(reservedSourceLeader, this.lane);
+			if (reservedGap < bestGap) {
+				best = reservedSourceLeader;
+				bestGap = reservedGap;
+			}
 		}
-		else {
-			return null;
+		if (this.isLaneChanging()) {
+			double targetDistance = this.getLaneChangeReservedDistance(this.laneChangeTargetLane_);
+			Vehicle targetLeader = this.leadVehicle(this.laneChangeTargetLane_, targetDistance);
+			double targetGap = this.laneOccupancyGap(targetLeader, this.laneChangeTargetLane_);
+			if (targetGap < bestGap) best = targetLeader;
 		}
+		return best;
 	}
-	
+
+	private double laneOccupancyGap(Vehicle front, Lane occupiedLane) {
+		if (front == null || occupiedLane == null) return Double.POSITIVE_INFINITY;
+		double ownDistance = this.getDistanceOnLaneForSafety(occupiedLane);
+		double frontDistance = front.getDistanceOnLaneForSafety(occupiedLane);
+		if (!Double.isFinite(ownDistance) || !Double.isFinite(frontDistance)) {
+			return Double.POSITIVE_INFINITY;
+		}
+		return ownDistance - frontDistance - front.length();
+	}
+
 	/**
 	 * Get the upcoming intersection
 	 */
@@ -2447,31 +2907,32 @@ public class Vehicle {
 		}
 		return ContextCreator.getJunctionContext().get(this.road.getDownStreamJunction());
 	}
-	
+
 	/**
 	 * Get the headway distance
 	 * @param front Front vehicle
-	 * @return headwayDistance 
+	 * @return headwayDistance
 	 */
 	public double gapDistance(Vehicle front) {
-		double headwayDistance;
-		if (front != null && front.getLane() != null && this.lane != null) { /* vehicle ahead */
-			if (this.lane.getID() == front.getLane().getID()) { /* same lane */
+		if (front == null) return Double.MAX_VALUE;
+		double headwayDistance = this.laneOccupancyGap(front, this.lane);
+		if (this.isLaneChanging()) {
+			headwayDistance = Math.min(headwayDistance,
+					this.laneOccupancyGap(front, this.laneChangeTargetLane_));
+		}
+		if (Double.isFinite(headwayDistance)) return Math.max(0.0, headwayDistance);
+
+		if (front.getLane() != null && this.lane != null) {
+			if (this.lane.getRoad() == front.getLane().getRoad()) {
 				headwayDistance = this.distance_ - front.getDistanceToNextJunction() - front.length();
-				
-			} else if (this.lane.getRoad() == front.getLane().getRoad()) { /* adjacent lane on same road */
-				headwayDistance = this.distance_ - front.getDistanceToNextJunction() - front.length();
-			} else { /* front vehicle is in a downstream road */
+			} else {
 				headwayDistance = this.distance_ + front.getLane().getLength()
 						- front.getDistanceToNextJunction() - front.length();
 			}
-		} else { /* no vehicle ahead. */
-			headwayDistance = Double.MAX_VALUE;
+			return Math.max(0.0, headwayDistance);
 		}
-
-		return Math.max(0.0, headwayDistance);
+		return Double.MAX_VALUE;
 	}
-	
 	/**
 	 * The Lane-Changing model for calculating the lane changing decisions
 	 */
@@ -2485,13 +2946,10 @@ public class Vehicle {
 	// Ahmed (1999) lane changing model.
 	private boolean makeAhmedLaneChangingDecision() {
 		double distanceFraction = this.distFraction();
-		double laneLength = this.lane == null ? Double.NaN : this.lane.getLength();
-		boolean shortApproach = Double.isFinite(laneLength)
-				&& laneLength <= AHMED_EARLY_MANDATORY_LC_LENGTH_METERS;
-		if (distanceFraction < 0.5 || shortApproach) {
+		if (distanceFraction < 0.5
+				|| this.distance_ <= this.mandatoryLaneChangePreparationDistance()) {
 			// Halfway to the downstream intersection, only mantatory LC allowed, check the
-			// correct lane. On a short approach this phase begins at road entry: waiting
-			// until halfway leaves too little distance for gap acceptance.
+			// correct lane.
 			if (!this.isInCorrectLane()) { // change lane if not in correct
 				// lane
 				Lane tarLane = this.tempLane();
@@ -2499,8 +2957,8 @@ public class Vehicle {
 					return this.mandatoryLC(tarLane);
 				}
 			}
-			// Do not make a discretionary change away from a route-correct lane on a
-			// short approach.
+			// Do not make a discretionary change away from a route-correct lane in the
+			// mandatory lane-changing portion of the approach.
 			return false;
 		} else if(distanceFraction < 1.0){
 			if (distanceFraction > 0.75) {
@@ -2704,6 +3162,12 @@ public class Vehicle {
 
 	private LaneChangeSafety lc2013EvaluateSafety(LaneChangeIntent intent) {
 		LaneChangeSafety safety = new LaneChangeSafety();
+		boolean routeRequired = intent.reason == LC_REASON_STRATEGIC
+				|| intent.reason == LC_REASON_REGULATORY;
+		if (routeRequired && this.isWithinNoLaneChangingArea()) {
+			safety.accepted = this.isLaneClear(intent.targetLane);
+			return safety;
+		}
 		double newDistance = this.distanceInNewLane(intent.targetLane);
 		Vehicle leadVehicle = this.leadVehicle(intent.targetLane, newDistance);
 		Vehicle lagVehicle = this.lagVehicle(intent.targetLane, newDistance);
@@ -2776,7 +3240,9 @@ public class Vehicle {
 		if (leadVehicle == null) {
 			return laneDesiredSpeed;
 		}
-		double gap = Math.max(0.0, projectedDistance - leadVehicle.distance_ - leadVehicle.length());
+		double leaderDistance = leadVehicle.getDistanceOnLaneForSafety(laneToCheck);
+		if (!Double.isFinite(leaderDistance)) leaderDistance = leadVehicle.distance_;
+		double gap = Math.max(0.0, projectedDistance - leaderDistance - leadVehicle.length());
 		double lookaheadTime = Math.max(GlobalVariables.SIMULATION_STEP_SIZE,
 				GlobalVariables.LC2013_SPEED_GAIN_LOOKAHEAD);
 		double safeSpeed = safeFollowSpeed(gap, leadVehicle.currentSpeed_, apparentDecelMagnitude(leadVehicle),
@@ -2791,16 +3257,17 @@ public class Vehicle {
 	}
 
 	private double lc2013LookaheadDistance() {
-		return Math.max(GlobalVariables.NO_LANECHANGING_LENGTH,
-				currentSpeed_ * Math.max(GlobalVariables.SIMULATION_STEP_SIZE, GlobalVariables.LC2013_LOOKAHEAD_TIME));
+		return Math.max(0.0, currentSpeed_)
+				* Math.max(GlobalVariables.SIMULATION_STEP_SIZE,
+						GlobalVariables.LC2013_LOOKAHEAD_TIME);
 	}
 
 	private double lc2013StrategicLookaheadDistance(Lane targetLane) {
-		double configured = Math.max(GlobalVariables.NO_LANECHANGING_LENGTH,
-				GlobalVariables.LC2013_STRATEGIC_LOOKAHEAD);
+		double configured = Math.max(0.0, GlobalVariables.LC2013_STRATEGIC_LOOKAHEAD);
 		double dynamic = lc2013LookaheadDistance() * Math.max(0.0, GlobalVariables.LC2013_STRATEGIC_PARAM);
 		double leftFactor = targetLane == this.leftLane() ? Math.max(0.0, GlobalVariables.LC2013_LOOKAHEAD_LEFT) : 1.0;
-		return Math.max(dynamic, configured) * leftFactor;
+		return Math.max(this.mandatoryLaneChangePreparationDistance(),
+				Math.max(dynamic, configured) * leftFactor);
 	}
 
 	private double lc2013Urgency(double lookaheadDistance) {
@@ -2961,6 +3428,8 @@ public class Vehicle {
 				}
 			}
 
+			dx = this.applyActiveLaneChangeCollisionClamp(dx);
+
 			// A planned downstream lane is a lane-changing objective, not permission
 			// to leave the actual source lane diagonally. Preserve a usable mandatory
 			// lane-changing zone and let the normal lane-changing model keep trying.
@@ -2973,8 +3442,10 @@ public class Vehicle {
 				return;
 			}
 
-			// Update vehicle coords
-			lastStepMove_ = updateCoordByDx(dx);
+			// Update longitudinal and lateral position. Active maneuvers progress even
+			// when congestion reduces longitudinal movement to zero.
+			lastStepMove_ = this.isLaneChanging()
+					? this.updateActiveLaneChangeByDx(dx) : this.updateCoordByDx(dx);
 		}
 		if (!this.isOnLane()) {
 			ContextCreator.getVehicleContext().addTransferringVehicles(this);
@@ -3042,11 +3513,25 @@ public class Vehicle {
 		this.stopLineWaitTicks += 1;
 	}
 
+	/**
+	 * Road-traversal patience may change the route only after patience is depleted
+	 * and the vehicle is frontmost on its lane. Rechecking this predicate when deferred recovery
+	 * executes prevents a queued request from acting after the vehicle moves away
+	 * or changes control state.
+	 */
+	private boolean isRoadTraversalPatienceDepletedAtLaneFront() {
+		return this.roadTraversalStoppedTicks
+				>= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE
+				&& this.road != null && !(this.road instanceof ConnectorRoad)
+				&& this.lane != null && this.lane.getRoad() == this.road
+				&& this.lane.firstVehicle() == this
+				&& !this.externalRoadTransition
+				&& this.road.getControlType() != Road.COSIM;
+	}
+
 	private void requestRoadPatienceRecoveryIfNeeded() {
-		if (this.roadTraversalStoppedTicks < GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE
-				|| this.roadPatienceRecoveryResolved || this.road == null
-				|| this.road instanceof ConnectorRoad || this.destRoad_ == null
-				|| this.externalRoadTransition || this.road.getControlType() == Road.COSIM) {
+		if (!this.isRoadTraversalPatienceDepletedAtLaneFront()
+				|| this.roadPatienceRecoveryResolved || this.destRoad_ == null) {
 			return;
 		}
 		int currentTick = ContextCreator.getCurrentTick();
@@ -3063,8 +3548,8 @@ public class Vehicle {
 		if (this.restoreLatchedRoadTraversalRecovery()) {
 			return;
 		}
-		boolean finalAttemptEligible = this.roadTraversalStoppedTicks
-				>= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE;
+		boolean finalAttemptEligible =
+				this.isRoadTraversalPatienceDepletedAtLaneFront();
 		if (this.missedLaneRecoveryInitialAttempted
 				&& (!finalAttemptEligible || this.missedLaneRecoveryFinalAttempted)) {
 			return;
@@ -3081,58 +3566,80 @@ public class Vehicle {
 		vehicleContext.addDeferredRoadRecovery(this);
 	}
 
+	boolean claimTransferringQueueForTick(int tick) {
+		return claimQueueForTick(this.transferringQueueTick_, tick);
+	}
+
+	boolean claimArrivalQueueForTick(int tick) {
+		return claimQueueForTick(this.arrivalQueueTick_, tick);
+	}
+
+	private static boolean claimQueueForTick(AtomicInteger marker, int tick) {
+		int observed = marker.get();
+		while (observed != tick) {
+			if (marker.compareAndSet(observed, tick)) return true;
+			observed = marker.get();
+		}
+		return false;
+	}
+
+	private double applyActiveLaneChangeCollisionClamp(double requestedDx) {
+		double clampedDx = Math.max(0.0, requestedDx);
+		if (this.road == null || this.lane == null) return clampedDx;
+
+		// A normal lane occupant must also respect a vehicle partially entering its
+		// lane, even though that vehicle remains linked to its own source lane.
+		Vehicle reservedSourceLeader = this.road.findLaneChangeReservedLeader(
+				this.lane, this, this.distance_);
+		clampedDx = this.clampDxAgainstLaneLeader(
+				clampedDx, this.lane, this.distance_, reservedSourceLeader);
+		if (!this.isLaneChanging()) return clampedDx;
+
+		double targetDistance = this.getLaneChangeReservedDistance(this.laneChangeTargetLane_);
+		if (!Double.isFinite(targetDistance)) return 0.0;
+		Vehicle targetLeader = this.leadVehicle(this.laneChangeTargetLane_, targetDistance);
+		return this.clampDxAgainstLaneLeader(
+				clampedDx, this.laneChangeTargetLane_, targetDistance, targetLeader);
+	}
+
+	private double clampDxAgainstLaneLeader(double requestedDx, Lane occupiedLane,
+			double ownDistance, Vehicle leader) {
+		if (leader == null || occupiedLane == null || !Double.isFinite(ownDistance)) {
+			return requestedDx;
+		}
+		double leaderDistance = leader.getDistanceOnLaneForSafety(occupiedLane);
+		if (!Double.isFinite(leaderDistance)) return requestedDx;
+		double maximumDx = Math.max(0.0,
+				ownDistance - leaderDistance - leader.length());
+		return Math.min(requestedDx, maximumDx);
+	}
 	private double applyMandatoryLaneChangeJunctionHold(double requestedDx) {
-		if (!this.hasIncompleteMandatoryLaneChange()) {
+		if (this.isLaneChanging() || !this.hasIncompleteMandatoryLaneChange()) {
 			return requestedDx;
 		}
 
 		double laneLength = this.lane.getLength();
-		double holdDistance = this.mandatoryLaneChangeHoldDistance(laneLength);
+		double holdDistance = this.mandatoryLaneChangePreparationDistance();
 		boolean noUsableLaneChangingZone = !Double.isFinite(laneLength)
-				|| laneLength <= GlobalVariables.NO_LANECHANGING_LENGTH
-				|| this.distance_ <= GlobalVariables.NO_LANECHANGING_LENGTH
-				|| this.road.getNumberOfLanes() <= 1
-				|| !this.currentRoadHasLaneConnectingTo(this.nextLane_)
-				|| !Double.isFinite(holdDistance);
+				|| !Double.isFinite(holdDistance)
+				|| this.road == null || this.road.getNumberOfLanes() <= 1
+				|| !this.currentRoadHasLaneConnectingTo(this.nextLane_);
 		if (noUsableLaneChangingZone
-				|| this.roadTraversalStoppedTicks >= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE) {
+				|| this.isRoadTraversalPatienceDepletedAtLaneFront()) {
 			this.requestMissedLaneTransitionRecovery();
 			if (!this.hasIncompleteMandatoryLaneChange()) {
 				return requestedDx;
 			}
 		}
 
-		// changeLane() uses a strict '>' test, so stop just upstream of the
-		// configured exclusion zone. On a short/impossible road recovery is retried
-		// in place instead of allowing an illegal endpoint transition.
+		// The preparation boundary is also the only hold point. It includes the
+		// configured endpoint buffer plus the longitudinal distance needed to
+		// finish every remaining lateral maneuver at the current speed.
 		if (noUsableLaneChangingZone) {
 			return 0.0;
 		}
 		double distanceUntilHold = Math.max(0.0, this.distance_ - holdDistance);
 		return Math.min(Math.max(0.0, requestedDx), distanceUntilHold);
-	}
-
-	private double mandatoryLaneChangeHoldDistance(double laneLength) {
-		double preferredHold = GlobalVariables.NO_LANECHANGING_LENGTH
-				+ MANDATORY_LANE_CHANGE_HOLD_BUFFER_METERS;
-		if ("LC2013".equals(GlobalVariables.LANE_CHANGING_MODEL)) {
-			return preferredHold;
-		}
-		if (!Double.isFinite(laneLength)) {
-			return Double.NaN;
-		}
-
-		// Ahmed only evaluates mandatory changes in the downstream half of a
-		// lane. Keep strict margins on both model boundaries: changeLane() needs
-		// distance > NO_LANECHANGING_LENGTH and Ahmed needs distFraction < 0.5.
-		double lowestUsableHold = GlobalVariables.NO_LANECHANGING_LENGTH
-				+ AHMED_MANDATORY_LC_HOLD_MARGIN_METERS;
-		double highestUsableHold = 0.5 * laneLength
-				- AHMED_MANDATORY_LC_HOLD_MARGIN_METERS;
-		if (highestUsableHold < lowestUsableHold) {
-			return Double.NaN;
-		}
-		return Math.min(preferredHold, highestUsableHold);
 	}
 
 	private boolean hasIncompleteMandatoryLaneChange() {
@@ -3213,7 +3720,7 @@ public class Vehicle {
 		if (turningDistance > 0.0 && !turningCoordinates.isEmpty()) {
 			this.distance_ = turningDistance;
 			this.coordMap.addAll(turningCoordinates);
-			this.updateBearingAndNextDistanceToCoordMap();
+			this.updateBearingAndNextDistanceToCoordMap(null);
 		}
 		else {
 			Coordinate targetCoord = plane.getStartCoord();
@@ -3229,7 +3736,7 @@ public class Vehicle {
 	 * @return 0-fail , 1-success to change the road
 	 */
 	public synchronized boolean changeRoad() {
-		return this.changeRoadInternal(false);
+		return this.changeRoadWithOutcome(false).completesSourceTraversal();
 	}
 
 	/**
@@ -3238,10 +3745,28 @@ public class Vehicle {
 	 * gridlock recovery.
 	 */
 	public synchronized boolean changeRoad(boolean exactTargetLane) {
-		return this.changeRoadInternal(exactTargetLane);
+		return this.changeRoadWithOutcome(exactTargetLane).completesSourceTraversal();
+	}
+
+	public synchronized RoadTransitionOutcome changeRoadWithOutcome() {
+		return this.changeRoadWithOutcome(false);
+	}
+
+	private RoadTransitionOutcome changeRoadWithOutcome(boolean exactTargetLane) {
+		if (this.isReachDest) {
+			this.onLane = false;
+			return RoadTransitionOutcome.ALREADY_ARRIVED;
+		}
+		boolean hadNextRoad = this.nextRoad_ != null;
+		if (!this.changeRoadInternal(exactTargetLane)) {
+			return RoadTransitionOutcome.BLOCKED;
+		}
+		return hadNextRoad ? RoadTransitionOutcome.ROAD_CHANGED
+				: RoadTransitionOutcome.ARRIVED;
 	}
 
 	private boolean changeRoadInternal(boolean exactTargetLane) {
+		if (this.isLaneChanging()) return false;
 		// This road change was already handed to the external simulator. A second
 		// transfer must not consume the following route edge while the pose is still
 		// on the connector.
@@ -3271,8 +3796,9 @@ public class Vehicle {
 					return false;
 				}
 				double requiredGap = 1.2 * this.length();
-				double targetGap = this.entranceGap(targetLane);
-				if (targetGap < requiredGap) {
+				double targetGap = Double.NaN;
+				if (!this.isLaneClear(targetLane)
+						&& (targetGap = this.receivingPathClearance(targetLane, requiredGap)) < requiredGap) {
 					logStuckTransferFailure("CONNECTOR_EXIT_HEADWAY", null, null,
 							true, true, targetLane, targetGap, requiredGap, null);
 					return false;
@@ -3362,6 +3888,13 @@ public class Vehicle {
 					plannedConnector, plannedConnectorPath);
 		}
 		else{
+			// A missing route is not an arrival. Keep the vehicle at the boundary so
+			// road-traversal patience can select a feasible successor if routing cannot
+			// be restored. Same-road trips still arrive normally.
+			if (this.destRoad_ != null && (this.road == null
+					|| this.road.getID() != this.destRoad_.getID())) {
+				return false;
+			}
 			this.reachDest();
 			return true;
 		}
@@ -3591,7 +4124,11 @@ public class Vehicle {
 	public synchronized double getEstimatedConnectorTravelTimeRemaining() {
 		if (this.currentConnector == null || !this.isOnConnector()) return 0.0;
 		double remainingDistance = this.getEstimatedConnectorDistanceRemaining();
-		double connectorLength = Math.max(0.0, this.currentConnector.getLength());
+		double selectedPathLength = this.currentConnector
+				.getPathLength(this.currentConnectorPath);
+		double connectorLength = Double.isFinite(selectedPathLength)
+				? Math.max(0.0, selectedPathLength)
+				: Math.max(0.0, this.currentConnector.getLength());
 		double connectorTravelTime = Math.max(0.0, this.currentConnector.getTravelTime());
 		if (!Double.isFinite(remainingDistance)) return Double.NaN;
 		if (connectorLength <= 0.0) return 0.0;
@@ -3632,13 +4169,37 @@ public class Vehicle {
 		if (this.roadPath == null || this.roadPath.size() < 2
 				|| ContextCreator.getRoadContext() == null) return 0.0;
 		double total = 0.0;
+		boolean skippedOccupiedConnector = false;
 		for (int i = 0; i < this.roadPath.size() - 1; i++) {
 			Road source = this.roadPath.get(i);
 			Road target = this.roadPath.get(i + 1);
 			ConnectorRoad connector = ContextCreator.getRoadContext()
 					.getConnector(source, target);
 			if (connector == null) continue;
-			double value = travelTime ? connector.getTravelTime() : connector.getLength();
+			// A native connector entry deliberately keeps roadPath at [source, target, ...].
+			// Its remaining geometry was already included above, so do not add the full
+			// source-to-target connector a second time.
+			if (!skippedOccupiedConnector && this.road == this.currentConnector
+					&& connector == this.currentConnector
+					&& source == connector.getSourceRoad()
+					&& target == connector.getTargetRoad()) {
+				skippedOccupiedConnector = true;
+				continue;
+			}
+			double value;
+			if (travelTime) {
+				value = connector.getTravelTime();
+			}
+			else {
+				ConnectorRoad.ConnectorPath selectedPath = null;
+				if (source == this.road && target == this.nextRoad_
+						&& this.lane != null) {
+					selectedPath = connector.selectPath(this.lane, this.nextLane_);
+				}
+				double selectedLength = connector.getPathLength(selectedPath);
+				value = Double.isFinite(selectedLength)
+						? selectedLength : connector.getLength();
+			}
 			if (Double.isFinite(value) && value > 0.0) total += value;
 		}
 		return total;
@@ -3929,7 +4490,7 @@ public class Vehicle {
 		}
 		this.currentSegmentIdx_ = 0;
 		this.currentLaneSlope_ = targetLane.getSegmentSlope(0);
-		this.updateBearingAndNextDistanceToCoordMap();
+		this.updateBearingAndNextDistanceToCoordMap(null);
 	}
 
 	public boolean isExternalRoadTransition() {
@@ -4974,6 +5535,7 @@ public class Vehicle {
 				|| !Double.isFinite(bestDownstreamDistance)) return null;
 
 		double laneLength = Math.max(0.0, targetLane.getLength());
+		bestDownstreamDistance = targetLane.toLogicalDistance(bestDownstreamDistance);
 		bestDownstreamDistance = Math.max(0.0, Math.min(laneLength, bestDownstreamDistance));
 		return new ExternalLaneProjection(bestDownstreamDistance, bestLateralDistance,
 				bestUpstreamOvershoot, bestDownstreamOvershoot);
@@ -5085,6 +5647,8 @@ public class Vehicle {
 		this.missedLaneRecoveryQuarantined = false;
 		this.resetRoadTraversalPatience();
 		this.road = road;
+		this.roadTraversalEpoch++;
+		this.linkTravelTime = 0.0;
 		updateLastDeparturableRoad(road);
 
 		// Append first, then let advance/retreat place the vehicle by distance.
@@ -5417,7 +5981,8 @@ public class Vehicle {
 	 * Check whether the vehicle is almost arrived 
 	 */
 	public int nearlyArrived() { // If nearly arrived then return 1 else 0
-		if (this.nextRoad_ == null) {
+		if (this.nextRoad_ == null && (this.destRoad_ == null || this.road == null
+				|| this.road.getID() == this.destRoad_.getID())) {
 			return 1;
 		} else {
 			return 0;
@@ -5504,6 +6069,7 @@ public class Vehicle {
 		this.nextLane_ = null;
 		this.nosingFlag = false;
 		this.yieldingFlag = false;
+		this.clearLaneChangeManeuverFields();
 		this.resetLaneChangeRuntimeState();
 		this.macroLeading_ = null;
 		this.macroTrailing_ = null;
@@ -5593,6 +6159,7 @@ public class Vehicle {
 	 * Remove vehicle from a lane
 	 */
 	public void removeFromCurrentLane() {
+		if (this.isLaneChanging()) this.cancelLaneChangeManeuver();
 		if (this.currentConnector != null
 				&& !this.preserveConnectorReservationOnLaneDetach) {
 			this.clearNativeConnectorMembership();
@@ -5981,8 +6548,11 @@ public class Vehicle {
 			this.nextLane_ = null;
 			return;
 		} else {
-			if(curLane == null) { // edge case, vehicle has not entered the network yet, this may occur when someone calls teleportVeh in the control APIs
-				this.nextLane_ = this.nextRoad_.getLane(0);
+			if (curLane == null) {
+				// A downstream lane cannot be selected safely until the vehicle's
+				// actual source lane is known. Normal admission and trace teleport
+				// both install that lane before preparing the route.
+				this.nextLane_ = null;
 				return;
 			}
 			else {
@@ -6039,9 +6609,12 @@ public class Vehicle {
 		this.deferredMissedLaneRecoveryRequested = false;
 
 		boolean recovered = false;
+		boolean roadPatienceAttempted = false;
 		if (roadPatienceRequested
-				&& this.roadTraversalStoppedTicks >= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE
+				&& this.isRoadTraversalPatienceDepletedAtLaneFront()
+				&& this.destRoad_ != null
 				&& !this.roadPatienceRecoveryResolved) {
+			roadPatienceAttempted = true;
 			this.roadPatienceLastRecoveryTick = ContextCreator.getCurrentTick();
 			recovered = this.installBestReroutedSuccessor(this.legalSuccessorLanes(),
 					this.nextRoad_, true, 1.2 * this.length(), recoveryPathCache);
@@ -6052,6 +6625,16 @@ public class Vehicle {
 		}
 		if (missedLaneRequested && !recovered) {
 			recovered = this.performMissedLaneTransitionRecovery(recoveryPathCache);
+		}
+		if (roadPatienceAttempted && !recovered
+				&& this.isRoadTraversalPatienceDepletedAtLaneFront()
+				&& !this.isDeparturableRoad(this.road)) {
+			// A short/non-departurable road can have only the already-planned
+			// successor. The ordinary patience reroute excludes that road, while a
+			// direct lane transition makes missed-lane recovery return immediately.
+			// Reuse the bounded fallback so such a vehicle cannot remain the
+			// permanent downstream blocker for otherwise healthy upstream lanes.
+			this.handleMissedLaneRecoveryLivenessFallback();
 		}
 		return recovered;
 	}
@@ -6086,16 +6669,16 @@ public class Vehicle {
 		}
 
 		double laneLength = this.lane.getLength();
+		double laneChangeThreshold = this.mandatoryLaneChangePreparationDistance();
 		boolean noRemainingLaneChangeOpportunity = !Double.isFinite(laneLength)
-				|| laneLength <= GlobalVariables.NO_LANECHANGING_LENGTH
-				|| this.distance_ <= GlobalVariables.NO_LANECHANGING_LENGTH
+				|| !Double.isFinite(laneChangeThreshold)
+				|| laneLength <= laneChangeThreshold
+				|| this.distance_ <= laneChangeThreshold
 				|| this.road.getNumberOfLanes() <= 1
 				|| this.nextLane_ == null
 				|| this.nextLane_.getRoad() != this.nextRoad_
-				|| !this.currentRoadHasLaneConnectingTo(this.nextLane_)
-				|| !Double.isFinite(this.mandatoryLaneChangeHoldDistance(laneLength));
-		boolean finalAttempt = this.roadTraversalStoppedTicks
-				>= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE;
+				|| !this.currentRoadHasLaneConnectingTo(this.nextLane_);
+		boolean finalAttempt = this.isRoadTraversalPatienceDepletedAtLaneFront();
 		if (!noRemainingLaneChangeOpportunity && !finalAttempt) {
 			return false;
 		}
@@ -6189,8 +6772,9 @@ public class Vehicle {
 			return;
 		}
 		this.missedLaneRecoveryFallbackHandled = true;
-		Road fallbackRoad = isDeparturableRoad(this.road)
-				? this.road : this.departurableFallbackRoad();
+		// Never restart from the same road/lane that just exhausted its patience;
+		// doing so resets the traversal timer and recreates the identical failure.
+		Road fallbackRoad = this.departurableFallbackRoad(this.road);
 		if (fallbackRoad != null) {
 			this.originRoad_ = fallbackRoad;
 			this.updateLastDeparturableRoad(fallbackRoad);
@@ -6219,6 +6803,7 @@ public class Vehicle {
 		this.trailing_ = null;
 		this.nosingFlag = false;
 		this.yieldingFlag = false;
+		this.clearLaneChangeManeuverFields();
 		this.resetLaneChangeRuntimeState();
 	}
 
@@ -6588,6 +7173,10 @@ public class Vehicle {
 		if (plane == null) {
 			return false;
 		}
+		if (this.isWithinNoLaneChangingArea()) {
+			this.nosingFlag = false;
+			return this.isLaneClear(plane) && this.changeLane(plane);
+		}
 		double newDistance = this.distanceInNewLane(plane);
 		Vehicle leadVehicle = this.leadVehicle(plane, newDistance);
 		Vehicle lagVehicle = this.lagVehicle(plane, newDistance);
@@ -6753,13 +7342,12 @@ public class Vehicle {
 	 * @return double leadGap
 	 */
 	public double leadGap(Vehicle leadVehicle, double newDistance) {
-		double leadGap = 0;
-		if (leadVehicle != null) {
-			leadGap = newDistance - leadVehicle.distance_ - leadVehicle.length(); // leadGap>=-leadVehicle.length()
-		} else {
-			leadGap = newDistance;
-		}
-		return leadGap;
+		if (leadVehicle == null) return newDistance;
+		Lane projectedLane = this.cachedProjectionLane_;
+		double leadDistance = projectedLane == null ? Double.NaN
+				: leadVehicle.getDistanceOnLaneForSafety(projectedLane);
+		if (!Double.isFinite(leadDistance)) leadDistance = leadVehicle.distance_;
+		return newDistance - leadDistance - leadVehicle.length();
 	}
 
 	/** 
@@ -6791,112 +7379,103 @@ public class Vehicle {
 	 * @return double lagGap
 	 */
 	public double lagGap(Vehicle lagVehicle, double newDistance) {
-		double lagGap = 0;
-		if (lagVehicle != null)
-			lagGap = lagVehicle.distance_ - newDistance - this.length();
-		else {
-			lagGap = this.lane.getLength() - newDistance;
+		Lane projectedLane = this.cachedProjectionLane_;
+		if (lagVehicle != null) {
+			double lagDistance = projectedLane == null ? Double.NaN
+					: lagVehicle.getDistanceOnLaneForSafety(projectedLane);
+			if (!Double.isFinite(lagDistance)) lagDistance = lagVehicle.distance_;
+			return lagDistance - newDistance - this.length();
 		}
-		return lagGap;
+		double laneLength = projectedLane == null || !Double.isFinite(projectedLane.getLength())
+				? this.lane.getLength() : projectedLane.getLength();
+		return laneLength - newDistance;
 	}
 	
-	/**
-	 * Find the lead vehicle in target lane
-	 * @param plane Target lane
-	 * @param dist The projected distance of THIS vehicle on the target lane
-     * @return Vehicle leadVehicle, or null if none exists ahead
-	 */
+	/** Find the nearest physical or reserved vehicle ahead in a target lane. */
 	public Vehicle leadVehicle(Lane plane, double dist) {
-	    
-	    // 1. First check if a macro-trailing vehicle could actually be the new leader 
-	    // due to lane projection/geometry differences.
-	    Vehicle candidate = this.macroTrailing_;
-	    while (candidate != null) {
-	        if (candidate.lane == plane) {
-	            // Found a vehicle on the target lane. Is it physically ahead of us?
-	            if (candidate.getDistanceToNextJunction() <= dist) {
-	                return candidate;
-	            } else {
-	                // We found a vehicle on the target lane, but it's behind us. 
-	                // Stop searching the trailing list.
-	                break; 
-	            }
-	        }
-	        
-	        // If the distance gets too large, we are too far behind our projected spot, 31.459 = \pi * 10 m diameter difference on a circular road
-	        if (candidate.getDistanceToNextJunction() > dist + 31.459) {
-	            break;
-	        }
-	        candidate = candidate.macroTrailing_;
-	    }
-	    
-	    // 2. Standard search: Look through macro-leading vehicles.
-	    candidate = this.macroLeading_;
-	    while (candidate != null) {
-	        if (candidate.lane == plane) {
-	            // The first vehicle we hit on the target lane that has a smaller 
-	            // (or equal) distance to the junction is our leader.
-	            if (candidate.getDistanceToNextJunction() <= dist) {
-	                return candidate;
-	            }
-	        }
-	        // Keep moving forward up the chain
-	        candidate = candidate.macroLeading_;
-	    }
-	    
-	    // 3. No vehicle found ahead on the target lane
-	    return null; 
-	}
-	
-	/**
-	 * Find lag vehicle in target lane
-	 * @param plane Target lane
-	 * @param dist The projected distance of THIS vehicle on the target lane
-     * @return Vehicle lagVehicle, or null if none exists behind
-    */
-	public Vehicle lagVehicle(Lane plane, double dist) {
-	    
-	    // 1. First check if a macro-leading vehicle could actually be the new lag vehicle 
-	    // due to lane projection/geometry differences.
-	    Vehicle candidate = this.macroLeading_;
-	    while (candidate != null) {
-	        if (candidate.lane == plane) {
-	            // Found a vehicle on the target lane. Is it physically behind us?
-	            if (candidate.getDistanceToNextJunction() > dist) {
-	                return candidate;
-	            } else {
-	                // We found a vehicle on the target lane, but it's ahead of us. 
-	                // Stop searching the leading list, as further vehicles will only be further ahead.
-	                break; 
-	            }
-	        }
-	        
-	        // If the candidate's distance becomes smaller than our projected distance, 
-	        // we are looking too far ahead in the queue to find someone behind us.
-	        if (candidate.getDistanceToNextJunction() <= dist - 31.459) {
-	            break;
-	        }
-	        candidate = candidate.macroLeading_;
-	    }
-	    
-	    // 2. Standard search: Look through macro-trailing vehicles.
-	    candidate = this.macroTrailing_;
-	    while (candidate != null) {
-	        if (candidate.lane == plane) {
-	            // The first vehicle we hit on the target lane that has a larger 
-	            // distance to the junction is our lag vehicle.
-	            if (candidate.getDistanceToNextJunction() > dist) {
-	                return candidate;
-	            }
-	        }
-	        // Keep moving backward down the chain
-	        candidate = candidate.macroTrailing_;
-	    }
-	    
-	    // 3. No vehicle found behind on the target lane
-	    return null; 
+		if (plane == null || !Double.isFinite(dist)) return null;
+		Vehicle physical = null;
+		Vehicle candidate = this.macroTrailing_;
+		while (candidate != null) {
+			if (candidate.lane == plane) {
+				if (candidate.getDistanceToNextJunction() <= dist) physical = candidate;
+				break;
+			}
+			if (candidate.getDistanceToNextJunction() > dist + 31.459) break;
+			candidate = candidate.macroTrailing_;
+		}
+		if (physical == null) {
+			candidate = this.macroLeading_;
+			while (candidate != null) {
+				if (candidate.lane == plane
+						&& candidate.getDistanceToNextJunction() <= dist) {
+					physical = candidate;
+					break;
+				}
+				candidate = candidate.macroLeading_;
+			}
+		}
+		Vehicle reserved = this.road == null ? null
+				: this.road.findLaneChangeReservedLeader(plane, this, dist);
+		return this.closerLaneLeader(physical, reserved, plane, dist);
 	}
 
+	private Vehicle closerLaneLeader(Vehicle first, Vehicle second, Lane plane, double egoDistance) {
+		if (first == null) return second;
+		if (second == null) return first;
+		double firstDistance = first.getDistanceOnLaneForSafety(plane);
+		double secondDistance = second.getDistanceOnLaneForSafety(plane);
+		if (!Double.isFinite(firstDistance)) return second;
+		if (!Double.isFinite(secondDistance)) return first;
+		boolean firstAhead = firstDistance <= egoDistance;
+		boolean secondAhead = secondDistance <= egoDistance;
+		if (!firstAhead) return secondAhead ? second : null;
+		if (!secondAhead) return first;
+		return secondDistance > firstDistance ? second : first;
+	}
+
+	/** Find the nearest physical or reserved vehicle behind in a target lane. */
+	public Vehicle lagVehicle(Lane plane, double dist) {
+		if (plane == null || !Double.isFinite(dist)) return null;
+		Vehicle physical = null;
+		Vehicle candidate = this.macroLeading_;
+		while (candidate != null) {
+			if (candidate.lane == plane) {
+				if (candidate.getDistanceToNextJunction() > dist) physical = candidate;
+				break;
+			}
+			if (candidate.getDistanceToNextJunction() <= dist - 31.459) break;
+			candidate = candidate.macroLeading_;
+		}
+		if (physical == null) {
+			candidate = this.macroTrailing_;
+			while (candidate != null) {
+				if (candidate.lane == plane
+						&& candidate.getDistanceToNextJunction() > dist) {
+					physical = candidate;
+					break;
+				}
+				candidate = candidate.macroTrailing_;
+			}
+		}
+		Vehicle reserved = this.road == null ? null
+				: this.road.findLaneChangeReservedLag(plane, this, dist);
+		return this.closerLaneLag(physical, reserved, plane, dist);
+	}
+
+	private Vehicle closerLaneLag(Vehicle first, Vehicle second, Lane plane, double egoDistance) {
+		if (first == null) return second;
+		if (second == null) return first;
+		double firstDistance = first.getDistanceOnLaneForSafety(plane);
+		double secondDistance = second.getDistanceOnLaneForSafety(plane);
+		if (!Double.isFinite(firstDistance)) return second;
+		if (!Double.isFinite(secondDistance)) return first;
+		boolean firstBehind = firstDistance > egoDistance;
+		boolean secondBehind = secondDistance > egoDistance;
+		if (!firstBehind) return secondBehind ? second : null;
+		if (!secondBehind) return first;
+		return secondDistance < firstDistance ? second : first;
+	}
 	/**
 	 * Discretionary LC model at current stage.
 	 * The DLC is implementing as follow: 1. If the vehicle is not close to downstream node
@@ -7049,9 +7628,103 @@ public class Vehicle {
 				gap = nextlane.getLength() - newleader.getDistanceToNextJunction()
 						- newleader.length();
 			} else
-				gap = 9999999; // a number large enough
+				gap = nextlane.getLength();
 		}
 		return gap;
+	}
+
+	/**
+	 * Return the usable clearance from a connector exit along the vehicle's
+	 * assigned physical-road route. An empty receiving lane contributes its full
+	 * logical length. If that is shorter than the normal admission gap, continue
+	 * through the exact connector path reachable from that lane and then through
+	 * its target lane. The scan stops at the first vehicle, external reservation,
+	 * occupied exclusive connector path, or topology mismatch, and stops
+	 * immediately once {@code requiredClearance} is available.
+	 *
+	 * <p>Reaching the end of the assigned route without an obstacle is sufficient:
+	 * a destination vehicle can finish its trip without requiring the final lane
+	 * alone to contain its full entrance headway.</p>
+	 */
+	private double receivingPathClearance(Lane receivingLane, double requiredClearance) {
+		if (receivingLane == null) return 0.0;
+		double required = Double.isFinite(requiredClearance)
+				? Math.max(0.0, requiredClearance) : 0.0;
+		if (required <= 0.0) return 0.0;
+
+		Road receivingRoad = receivingLane.getRoad();
+		if (receivingRoad == null || this.nextRoad_ == null
+				|| receivingRoad.getID() != this.nextRoad_.getID()
+				|| this.roadPath == null || this.roadPath.size() < 2
+				|| this.roadPath.get(1) == null
+				|| this.roadPath.get(1).getID() != receivingRoad.getID()) {
+			return Math.max(0.0, this.entranceGap(receivingLane));
+		}
+
+		double clearance = 0.0;
+		Lane laneToCheck = receivingLane;
+		Road roadToCheck = receivingRoad;
+		int routeIndex = 1;
+		while (laneToCheck != null && roadToCheck != null) {
+			if (roadToCheck.getExternalLaneReservationBlocker(laneToCheck, this) != null) {
+				return clearance;
+			}
+
+			Vehicle leader = laneToCheck.lastVehicle();
+			if (leader != null) {
+				double laneEntranceGap = laneToCheck.getLength()
+						- leader.getDistanceToNextJunction() - leader.length();
+				return clearance + Math.max(0.0, laneEntranceGap);
+			}
+
+			double laneLength = laneToCheck.getLength();
+			if (!Double.isFinite(laneLength) || laneLength < 0.0) return clearance;
+			clearance += laneLength;
+			if (clearance >= required) return clearance;
+
+			if (routeIndex + 1 >= this.roadPath.size()) {
+				return required;
+			}
+			Road downstreamRoad = this.roadPath.get(routeIndex + 1);
+			ConnectorRoad downstreamConnector = downstreamRoad == null
+					|| ContextCreator.getRoadContext() == null ? null
+							: ContextCreator.getRoadContext().getConnector(
+									roadToCheck, downstreamRoad);
+			ConnectorRoad.ConnectorPath downstreamPath = downstreamConnector == null
+					? null : downstreamConnector.selectPath(laneToCheck, null);
+			Lane connectorLane = downstreamConnector == null || downstreamPath == null
+					? null : downstreamConnector.getLane(downstreamPath);
+			if (connectorLane == null || downstreamPath.getTargetLane() == null
+					|| downstreamPath.getTargetLane().getRoad() != downstreamRoad) {
+				return clearance;
+			}
+
+			Vehicle connectorLeader = connectorLane.lastVehicle();
+			boolean exclusiveConnectorPath = downstreamConnector
+					.requiresClearPathAdmission(downstreamPath, required);
+			if (exclusiveConnectorPath && (connectorLeader != null
+					|| downstreamConnector.hasActiveVehicleOnPath(downstreamPath, this))) {
+				return clearance;
+			}
+			if (connectorLeader != null) {
+				double connectorEntranceGap = connectorLane.getLength()
+						- connectorLeader.getDistanceToNextJunction()
+						- connectorLeader.length();
+				return clearance + Math.max(0.0, connectorEntranceGap);
+			}
+
+			double connectorLength = connectorLane.getLength();
+			if (!Double.isFinite(connectorLength) || connectorLength < 0.0) {
+				return clearance;
+			}
+			clearance += connectorLength;
+			if (clearance >= required) return clearance;
+
+			laneToCheck = downstreamPath.getTargetLane();
+			roadToCheck = downstreamRoad;
+			routeIndex++;
+		}
+		return clearance;
 	}
 	
 	/**
@@ -7176,12 +7849,23 @@ public class Vehicle {
 				|| Double.isInfinite(currentCoord.x) || Double.isInfinite(currentCoord.y)) {
 			return this.bearing_;
 		}
-		double[] returnVals = new double[2];
-		this.distance2(new Coordinate(prevX, prevY, currentCoord.z), currentCoord, returnVals);
-		if (returnVals[0] > 0.1 && !Double.isNaN(returnVals[1]) && !Double.isInfinite(returnVals[1])) {
-			return returnVals[1];
+		this.calculator.setStartingGeographicPoint(prevX, prevY);
+		this.calculator.setDestinationGeographicPoint(currentCoord.x, currentCoord.y);
+		double distance = this.calculator.getOrthodromicDistance();
+		double azimuth = this.calculator.getAzimuth();
+		if (distance > 0.1 && Double.isFinite(azimuth)) {
+			return azimuth;
 		}
 		return this.bearing_;
+	}
+
+	static double stoppingDistanceMeters(double speed, double maxDeceleration) {
+		if (!Double.isFinite(speed) || speed <= 0.0) return 0.0;
+		double deceleration = Math.abs(maxDeceleration);
+		if (!Double.isFinite(deceleration) || deceleration <= 1.0e-9) {
+			return Double.POSITIVE_INFINITY;
+		}
+		return speed * speed / (2.0 * deceleration);
 	}
 	
 	public void setBearing(double bearing) {
@@ -7214,6 +7898,40 @@ public class Vehicle {
 		return linkTravelTime;
 	}
 
+	/** Identity of the current road-entry episode. */
+	public synchronized long getRoadTraversalEpoch() {
+		return this.roadTraversalEpoch;
+	}
+
+	/**
+	 * Mark a captured road-entry episode complete exactly once. If the vehicle has
+	 * already entered its next road, its new timer is left untouched.
+	 */
+	public synchronized boolean completeRoadTraversal(long completedEpoch) {
+		if (completedEpoch <= 0L || completedEpoch > this.roadTraversalEpoch
+				|| completedEpoch <= this.lastCompletedRoadTraversalEpoch) {
+			return false;
+		}
+		this.lastCompletedRoadTraversalEpoch = completedEpoch;
+		if (completedEpoch == this.roadTraversalEpoch) {
+			this.linkTravelTime = 0.0;
+		}
+		return true;
+	}
+
+	/**
+	 * Whether this vehicle is a genuine active observation for the supplied road.
+	 * Off-lane arrivals, queued departures, external handoffs, and dormant vehicles
+	 * remain in some linked lists temporarily but are not road traffic.
+	 */
+	public boolean isTravelTimeObservationEligible(Road observedRoad) {
+		return observedRoad != null && this.road == observedRoad
+				&& this.onRoad && this.onLane && !this.isReachDest
+				&& !this.externalRoadTransition && this.lane != null
+				&& this.lane.getRoad() == observedRoad
+				&& !this.isDormantOnRoad();
+	}
+
 	/**
 	 *  Reset link travel time once a vehicle has passed a link
 	 */
@@ -7233,11 +7951,16 @@ public class Vehicle {
 	 */
 	public List<String> getRoute(){
 		List<String> res = new ArrayList<String>();
-		if(roadPath == null) return res;
-		for(Road r: roadPath) {
+		for(Road r: this.getRoadPathSnapshot()) {
 			res.add(r.getOrigID());
 		}
 		return res;
+	}
+
+	/** Return a detached snapshot of the currently assigned remaining route. */
+	public List<Road> getRoadPathSnapshot() {
+		List<Road> path = this.roadPath;
+		return path == null ? new ArrayList<Road>() : new ArrayList<Road>(path);
 	}
 	
 	/**
@@ -7404,7 +8127,13 @@ public class Vehicle {
 	public void setLinkTravelTime(double t) { this.linkTravelTime = t; }
 	public void setDestRoad(Road r) { this.destRoad_ = r; }
 	public void setOriginRoad(Road r) { this.originRoad_ = r; if (r != null && this.originCoord_ == null) this.originCoord_ = r.getStartCoord(); updateLastDeparturableRoad(r); }
-	public void setLastDeparturableRoad(Road r) { this.lastDeparturableRoad_ = isDeparturableRoad(r) ? r : null; }
+	public void setLastDeparturableRoad(Road r) {
+		// Migrate snapshots written while connectors were incorrectly cached by
+		// restoring their physical source checkpoint.
+		Road checkpoint = r instanceof ConnectorRoad
+				? ((ConnectorRoad) r).getSourceRoad() : r;
+		this.lastDeparturableRoad_ = isDeparturableRoad(checkpoint) ? checkpoint : null;
+	}
 	public void setActivityPlan(ArrayList<Plan> plan) { this.activityPlan = plan; }
 	public boolean getMovingFlag() { return this.movingFlag; }
 

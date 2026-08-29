@@ -26,20 +26,11 @@ public class FacilityContext<T> extends DefaultContext<T>{
 	}
 	
 	public T get(int ID) {
-		if (this.facilityDictionary.containsKey(ID)) {
-			return this.facilityDictionary.get(ID);
-		} else {
-			return null;
-		}
+		return this.facilityDictionary.get(ID);
 	}
 	
 	public boolean contains(int ID) {
-		if(this.facilityDictionary.containsKey(ID)) {
-			return true;
-		}
-		else {
-			return false;
-		}
+		return this.facilityDictionary.containsKey(ID);
 	}
 	
 	public Collection<T> getAll(){

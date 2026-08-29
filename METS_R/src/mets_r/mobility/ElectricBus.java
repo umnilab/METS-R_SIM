@@ -195,7 +195,7 @@ public class ElectricBus extends ElectricVehicle {
 			this.tripConsume = 0;
 		} else {
 			// drop off passengers at the stop
-			if (this.getRouteID() > 0) {
+			if (this.getRouteID() >= 0) {
 				String formated_msg = ContextCreator.getCurrentTick() + "," + this.getID() + ","
 						+ this.getRouteID() + ",3," + this.getOriginID() + "," + this.getDestID() + ","
 						+ this.getAccummulatedDistance() + "," + this.getDepTime() + "," + this.getTripConsume() + ","

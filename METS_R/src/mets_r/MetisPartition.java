@@ -2,6 +2,7 @@ package mets_r;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +26,8 @@ public class MetisPartition {
 	private ArrayList<Road> partitionedBwRoads;
 	private ArrayList<ArrayList<Zone>> partitionedZones;
 	private ArrayList<ArrayList<ChargingStation>> partitionedChargingStation;
+	private List<List<Zone>> partitionedZonesSnapshot;
+	private List<List<ChargingStation>> partitionedChargingStationSnapshot;
 	private ArrayList<ArrayList<Signal>> partitionedSignals;
 	private ArrayList<Integer> backgroundLoads;
 	private final ArrayList<ArrayList<Road>> activeRoadPartitions;
@@ -117,12 +120,11 @@ public class MetisPartition {
 		return this.partitionedBwRoads;
 	}
 
-	public synchronized ArrayList<ArrayList<Zone>> getpartitionedZones() {
-		ArrayList<ArrayList<Zone>> snapshot = new ArrayList<ArrayList<Zone>>();
-		for (ArrayList<Zone> partition : this.partitionedZones) {
-			snapshot.add(new ArrayList<Zone>(partition));
+	public synchronized List<List<Zone>> getpartitionedZones() {
+		if (this.partitionedZonesSnapshot == null) {
+			this.partitionedZonesSnapshot = copyPartitions(this.partitionedZones);
 		}
-		return snapshot;
+		return this.partitionedZonesSnapshot;
 	}
 
 	public synchronized void addZone(Zone zone) {
@@ -145,6 +147,7 @@ public class MetisPartition {
 			}
 		}
 		this.partitionedZones.get(bestPartition).add(zone);
+		this.partitionedZonesSnapshot = null;
 		this.backgroundLoads = computeBackgroundLoads();
 	}
 
@@ -153,15 +156,16 @@ public class MetisPartition {
 		for (ArrayList<Zone> partition : this.partitionedZones) {
 			partition.remove(zone);
 		}
+		this.partitionedZonesSnapshot = null;
 		this.backgroundLoads = computeBackgroundLoads();
 	}
 
-	public synchronized ArrayList<ArrayList<ChargingStation>> getpartitionedChargingStations() {
-		ArrayList<ArrayList<ChargingStation>> snapshot = new ArrayList<ArrayList<ChargingStation>>();
-		for (ArrayList<ChargingStation> partition : this.partitionedChargingStation) {
-			snapshot.add(new ArrayList<ChargingStation>(partition));
+	public synchronized List<List<ChargingStation>> getpartitionedChargingStations() {
+		if (this.partitionedChargingStationSnapshot == null) {
+			this.partitionedChargingStationSnapshot =
+					copyPartitions(this.partitionedChargingStation);
 		}
-		return snapshot;
+		return this.partitionedChargingStationSnapshot;
 	}
 
 	public synchronized void addChargingStation(ChargingStation chargingStation) {
@@ -184,6 +188,7 @@ public class MetisPartition {
 			}
 		}
 		this.partitionedChargingStation.get(bestPartition).add(chargingStation);
+		this.partitionedChargingStationSnapshot = null;
 		this.backgroundLoads = computeBackgroundLoads();
 	}
 
@@ -192,6 +197,7 @@ public class MetisPartition {
 		for (ArrayList<ChargingStation> partition : this.partitionedChargingStation) {
 			partition.remove(chargingStation);
 		}
+		this.partitionedChargingStationSnapshot = null;
 		this.backgroundLoads = computeBackgroundLoads();
 	}
 
@@ -233,6 +239,8 @@ public class MetisPartition {
 		this.partitionedBwRoads = new ArrayList<Road>();
 		this.partitionedZones = newZonePartitions();
 		this.partitionedChargingStation = newChargingStationPartitions();
+		this.partitionedZonesSnapshot = null;
+		this.partitionedChargingStationSnapshot = null;
 		this.partitionedSignals = newSignalPartitions();
 		this.backgroundLoads = new ArrayList<Integer>(this.nPartition);
 		for (int i = 0; i < this.nPartition; i++) {
@@ -243,9 +251,24 @@ public class MetisPartition {
 	private void rebuildAllPartitions() {
 		this.partitionedZones = partitionZonesByStock();
 		this.partitionedChargingStation = partitionChargingStationsByCapacity();
+		this.partitionedZonesSnapshot = null;
+		this.partitionedChargingStationSnapshot = null;
 		this.partitionedSignals = partitionSignalsEvenly();
 		this.backgroundLoads = computeBackgroundLoads();
 		run();
+	}
+
+	private static <T> List<List<T>> copyPartitions(
+			ArrayList<ArrayList<T>> partitions) {
+		ArrayList<List<T>> snapshot = new ArrayList<List<T>>(
+				partitions == null ? 0 : partitions.size());
+		if (partitions != null) {
+			for (ArrayList<T> partition : partitions) {
+				snapshot.add(Collections.unmodifiableList(
+						new ArrayList<T>(partition)));
+			}
+		}
+		return Collections.unmodifiableList(snapshot);
 	}
 
 	private ArrayList<ArrayList<Road>> partitionRoadsByCurrentLoad(Collection<Road> roads) {

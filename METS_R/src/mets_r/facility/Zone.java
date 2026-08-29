@@ -20,6 +20,8 @@ import java.util.Random;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import com.vividsolutions.jts.geom.Coordinate;
@@ -50,6 +52,9 @@ public class Zone {
 	private int privateTripTimeIndex = 0;
 	private int modeSplitCacheHour = -1;
 	private Map<Integer, ModeSplitChoice> modeSplitCache;
+	private int pendingModeSplitCacheHour = -1;
+	private Map<Integer, ModeSplitChoice> pendingModeSplitCache;
+	private ModeSplitRouteCostCache activeModeSplitRouteCostCache;
 	
 	// For vehicle repositioning
 	private int lastDemandUpdateHour = -1; // the last time for updating the demand generation rate
@@ -221,6 +226,9 @@ public class Zone {
 		} catch (Throwable ex) {
 			ContextCreator.logger.error("Zone.stepPart1 failed; zone=" + this.ID
 					+ ", tick=" + ContextCreator.getCurrentTick(), ex);
+			if (ex instanceof Error) throw (Error) ex;
+			throw ex instanceof RuntimeException ? (RuntimeException) ex
+					: new IllegalStateException(ex);
 		}
 	}
 
@@ -259,6 +267,9 @@ public class Zone {
 		} catch (Throwable ex) {
 			ContextCreator.logger.error("Zone.stepPart2 failed; zone=" + this.ID
 					+ ", tick=" + ContextCreator.getCurrentTick(), ex);
+			if (ex instanceof Error) throw (Error) ex;
+			throw ex instanceof RuntimeException ? (RuntimeException) ex
+					: new IllegalStateException(ex);
 		}
 	}
 
@@ -287,13 +298,19 @@ public class Zone {
 			if(v != null) { // If vehicle exists
 				if (v.getState() == Vehicle.NONE_OF_THE_ABOVE) {
 					// If vehicle is not on road
+					int originRoad = this.sampleRoad(false);
 					int destRoad =  destZone.sampleRoad(true);
-					v.initializePlan(this.getID(), this.sampleRoad(false), (int) ContextCreator.getCurrentTick());
+					double tripDistance = this.getPrivateEVRouteDistance(originRoad, destRoad);
+					if (!Double.isFinite(tripDistance)) {
+						ContextCreator.logger.warn("generatePrivateEVTrip: no route from road "
+								+ originRoad + " to " + destRoad + ", skipping trip");
+						continue;
+					}
+					v.initializePlan(this.getID(), originRoad, (int) ContextCreator.getCurrentTick());
 					v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 					v.setNextPlan();
 					v.setState(Vehicle.PRIVATE_TRIP);
-					// Check if vehicle has enough battery, 1 kWh = 5000 m
-					if(v.getBatteryLevel() * 5000 < ContextCreator.getCityContext().getDistance(v.getCurrentCoord(), ContextCreator.getRoadContext().get(destRoad).getEndCoord())) {
+					if (!v.hasEnoughBattery(tripDistance)) {
 						v.goCharging();
 					}
 					else {
@@ -321,13 +338,24 @@ public class Zone {
 				}
 				
 				// Assign trips
-				v.initializePlan(this.getID(), this.sampleRoad(false), (int) ContextCreator.getCurrentTick());
+				int originRoad = this.sampleRoad(false);
 				int destRoad =  destZone.sampleRoad(true);
+				double tripDistance = this.getPrivateEVRouteDistance(originRoad, destRoad);
+				if (!Double.isFinite(tripDistance)) {
+					ContextCreator.logger.warn("generatePrivateEVTrip: no route from road "
+							+ originRoad + " to " + destRoad + ", skipping trip");
+					continue;
+				}
+				v.initializePlan(this.getID(), originRoad, (int) ContextCreator.getCurrentTick());
 				v.addPlan(oneTrip.getValue(), destRoad, (int) ContextCreator.getNextTick());
 				v.setNextPlan();
 				v.setState(Vehicle.PRIVATE_TRIP);
 				
-				v.departure();
+				if (!v.hasEnoughBattery(tripDistance)) {
+					v.goCharging();
+				} else {
+					v.departure();
+				}
 				
 				this.numberOfGeneratedPrivateEVTrip += 1;
 				ContextCreator.getVehicleContext().registerPrivateEV(oneTrip.getKey(), v);
@@ -398,13 +426,17 @@ public class Zone {
 				if (numToGenerate <= 0 && !updateFutureDemand) {
 					continue;
 				}
+				double sharableRate = numToGenerate > 0 && GlobalVariables.RH_DEMAND_SHARABLE
+						? ContextCreator.travel_demand.getSharableRate(
+								this.getID(), destination, this.publicTripTimeIndex)
+						: 0.0;
 
 				ModeSplitChoice modeSplit = this.getModeSplitChoice(destZone, destination);
 				if (modeSplit.hasBusChoice()) {
 					for (int i = 0; i < numToGenerate; i++) {
 						if (rand_mode_only.nextDouble() >= modeSplit.busShare
 								|| !this.generateBusRequest(destZone, destination, modeSplit.busRouteID)) {
-							this.generateTaxiRequest(destZone, destination, baseDemand);
+							this.generateTaxiRequest(destZone, destination, sharableRate);
 						}
 					}
 					if (updateFutureDemand) {
@@ -412,7 +444,7 @@ public class Zone {
 					}
 				} else {
 					for (int i = 0; i < numToGenerate; i++) {
-						this.generateTaxiRequest(destZone, destination, baseDemand);
+						this.generateTaxiRequest(destZone, destination, sharableRate);
 					}
 					if (updateFutureDemand) {
 						this.futureDemand += passRate;
@@ -422,10 +454,76 @@ public class Zone {
 		}
 	}
 
+	private double getPrivateEVRouteDistance(int originRoadID, int destinationRoadID) {
+		Road originRoad = ContextCreator.getRoadContext().get(originRoadID);
+		Road destinationRoad = ContextCreator.getRoadContext().get(destinationRoadID);
+		if (originRoad == null || destinationRoad == null) {
+			return Double.POSITIVE_INFINITY;
+		}
+		List<Road> path = RouteContext.shortestPathRoute(originRoad, destinationRoad, this.rand);
+		if (path == null || path.isEmpty()) {
+			return Double.POSITIVE_INFINITY;
+		}
+		double distance = 0.0;
+		for (Road road : path) {
+			if (road != null) distance += road.getLength();
+		}
+		return Double.isFinite(distance) ? distance : Double.POSITIVE_INFINITY;
+	}
+
 	private void refreshModeSplitCacheIfNeeded() {
 		if (this.modeSplitCacheHour == this.publicTripTimeIndex) return;
 		this.modeSplitCache.clear();
 		this.modeSplitCacheHour = this.publicTripTimeIndex;
+	}
+
+	/**
+	 * Compute this zone's hourly mode choices without publishing them. The scheduler
+	 * runs this method on its existing partition workers, then publishes every zone
+	 * together only if the routing weights stayed unchanged for the whole batch.
+	 */
+	public void prepareModeSplitCache(int hour, List<Zone> destinations,
+			ModeSplitRouteCostCache routeCostCache) {
+		this.discardPreparedModeSplitCache();
+		if (this.modeSplitCacheHour == hour || destinations == null || routeCostCache == null) return;
+
+		HashMap<Integer, ModeSplitChoice> prepared = new HashMap<Integer, ModeSplitChoice>();
+		this.activeModeSplitRouteCostCache = routeCostCache;
+		try {
+			for (Zone destZone : destinations) {
+				if (destZone == null) continue;
+				int destination = destZone.getID();
+				double baseDemand = ContextCreator.travel_demand.getPublicTravelDemand(
+						this.getID(), destination, hour);
+				if (baseDemand > 0.0) {
+					prepared.put(destination, this.computeModeSplitChoice(destZone, destination));
+				}
+			}
+		} finally {
+			this.activeModeSplitRouteCostCache = null;
+		}
+		this.pendingModeSplitCache = prepared;
+		this.pendingModeSplitCacheHour = hour;
+	}
+
+	public void publishPreparedModeSplitCache(int hour) {
+		if (this.pendingModeSplitCacheHour != hour || this.pendingModeSplitCache == null) return;
+		this.modeSplitCache = this.pendingModeSplitCache;
+		this.modeSplitCacheHour = hour;
+		this.pendingModeSplitCache = null;
+		this.pendingModeSplitCacheHour = -1;
+	}
+
+	public void discardPreparedModeSplitCache() {
+		this.pendingModeSplitCache = null;
+		this.pendingModeSplitCacheHour = -1;
+		this.activeModeSplitRouteCostCache = null;
+	}
+
+	public static int currentModeSplitHour() {
+		if (GlobalVariables.HOUR_OF_DEMAND <= 0) return 0;
+		return (ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL)
+				% GlobalVariables.HOUR_OF_DEMAND;
 	}
 
 	private ModeSplitChoice getModeSplitChoice(Zone destZone, int destination) {
@@ -533,17 +631,30 @@ public class Zone {
 
 	private TravelCost getRouteTravelCost(Road originRoad, Road destRoad) {
 		if (originRoad == null || destRoad == null) return null;
+		ModeSplitRouteCostCache routeCostCache = this.activeModeSplitRouteCostCache;
+		if (routeCostCache != null) {
+			return routeCostCache.get(originRoad, destRoad);
+		}
+		return computeRouteTravelCost(originRoad, destRoad, this.rand);
+	}
 
+	private static TravelCost computeRouteTravelCost(Road originRoad, Road destRoad,
+			Random routeRandom) {
 		List<Road> path;
 		try {
-			path = RouteContext.shortestPathRoute(originRoad, destRoad, rand);
+			path = RouteContext.shortestPathRoute(originRoad, destRoad, routeRandom);
 		} catch (RuntimeException ex) {
 			return null;
 		}
 		if (path == null) return null;
 
-		double time = 0;
-		double distance = 0;
+		return computeTravelCost(path);
+	}
+
+	private static TravelCost computeTravelCost(List<Road> path) {
+		if (path == null) return null;
+		double time = 0.0;
+		double distance = 0.0;
 		for (Road road : path) {
 			if (road == null) continue;
 			time += road.getTravelTime();
@@ -554,6 +665,39 @@ public class Zone {
 			return null;
 		}
 		return new TravelCost(time, distance);
+	}
+
+	/** Deduplicates identical road-pair searches within one hourly precompute. */
+	public static final class ModeSplitRouteCostCache {
+		private final ConcurrentHashMap<Long, FutureTask<TravelCost>> costs =
+				new ConcurrentHashMap<Long, FutureTask<TravelCost>>();
+
+		private TravelCost get(final Road originRoad, final Road destRoad) {
+			long key = (((long) originRoad.getID()) << 32)
+					+ Integer.toUnsignedLong(destRoad.getID());
+			FutureTask<TravelCost> newTask = new FutureTask<TravelCost>(
+					() -> computeRouteTravelCost(originRoad, destRoad, null));
+			FutureTask<TravelCost> task = this.costs.putIfAbsent(key, newTask);
+			if (task == null) {
+				task = newTask;
+				task.run();
+			}
+			try {
+				return task.get();
+			} catch (InterruptedException ex) {
+				Thread.currentThread().interrupt();
+				throw new RuntimeException(ex);
+			} catch (ExecutionException ex) {
+				Throwable cause = ex.getCause();
+				if (cause instanceof RuntimeException) throw (RuntimeException) cause;
+				if (cause instanceof Error) throw (Error) cause;
+				throw new RuntimeException(cause);
+			}
+		}
+
+		public void clear() {
+			this.costs.clear();
+		}
 	}
 
 	private double getBusSplitRatio(double taxiTime, double taxiDist, double bestBusTime, double bestBusDist) {
@@ -950,11 +1094,7 @@ public class Zone {
 	}
 
 	private int currentPublicTripTimeIndex() {
-		if (GlobalVariables.HOUR_OF_DEMAND <= 0) {
-			return 0;
-		}
-		return (ContextCreator.getCurrentTick() / GlobalVariables.SIMULATION_DEMAND_REFRESH_INTERVAL)
-				% GlobalVariables.HOUR_OF_DEMAND;
+		return currentModeSplitHour();
 	}
     
     // Generate passenger waiting time for bus
@@ -1171,11 +1311,29 @@ public class Zone {
 	}
 	
 	public int sampleRoad(boolean goDest) {
+		Integer sampledRoad;
 		if(this.zoneType == Zone.HUB || !GlobalVariables.DEMAND_DIFFUSION){
-			return this.getClosestRoad(goDest);
+			sampledRoad = this.getClosestRoad(goDest);
 		}else {
-			return this.getNeighboringLink(rand_diffusion_only.nextInt(this.getNeighboringLinkSize(goDest)), goDest);
+			int candidateCount = this.getNeighboringLinkSize(goDest);
+			sampledRoad = candidateCount == 0 ? null
+					: this.getNeighboringLink(rand_diffusion_only.nextInt(candidateCount), goDest);
 		}
+		if (isTaxiTripEndpoint(sampledRoad, goDest)) {
+			return sampledRoad;
+		}
+		// A cache produced under older road-eligibility rules may still contain an
+		// invalid entry. Keep the fallback deterministic and directional.
+		for (Integer roadID : this.getNeighboringLinks(goDest)) {
+			if (isTaxiTripEndpoint(roadID, goDest)) return roadID;
+		}
+		throw new IllegalStateException("Zone " + this.ID
+				+ " has no eligible " + (goDest ? "destination" : "origin") + " road");
+	}
+
+	private boolean isTaxiTripEndpoint(Integer roadID, boolean goDest) {
+		Road road = roadID == null ? null : ContextCreator.getRoadContext().get(roadID);
+		return road != null && (goDest ? road.canBeTripDestination() : road.canBeTripOrigin());
 	}
 
 	public int getID() {

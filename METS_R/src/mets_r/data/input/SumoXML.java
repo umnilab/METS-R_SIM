@@ -54,6 +54,9 @@ public class SumoXML {
 	private static final double MIN_CONTROL_POINT_SEPARATION_METERS = 0.001;
 	private static final double MIN_CONTROL_POINT_SEPARATION_SQUARED =
 			MIN_CONTROL_POINT_SEPARATION_METERS * MIN_CONTROL_POINT_SEPARATION_METERS;
+	private static final double MIN_LOGICAL_LENGTH_OVERRIDE_METERS = 5.0;
+	private static final double MIN_LOGICAL_LENGTH_DIFFERENCE_METERS = 5.0;
+	private static final double MAX_GEOMETRIC_TO_LOGICAL_LENGTH_RATIO = 0.25;
 
 	private static long connectorPathKey(int sourceRoadID, int targetRoadID) {
 		return ((long) sourceRoadID << 32) ^ (targetRoadID & 0xffffffffL);
@@ -329,6 +332,7 @@ public class SumoXML {
 		int signalNum = 0;
 		int removedCoincidentLaneControlPoints = 0;
 		int zeroLengthLaneShapes = 0;
+		int logicalLaneLengthOverrides = 0;
 		
 		public LinkedHashMap<Integer,Road> getRoad() {return roads;};
 		public LinkedHashMap<Integer,Junction> getJunction() {return junctions;};
@@ -479,16 +483,6 @@ public class SumoXML {
 			return cleaned;
 		}
 
-		private boolean hasUsableLaneControlSegment(ArrayList<Coordinate> points) {
-			for (int i = 0; i < points.size() - 1; i++) {
-				if (geographicDistanceMeters(points.get(i), points.get(i + 1))
-						> MIN_CONTROL_POINT_SEPARATION_METERS) {
-					return true;
-				}
-			}
-			return false;
-		}
-
 		private ArrayList<Coordinate> cleanLaneControlPoints(
 				ArrayList<Coordinate> source, String laneID) {
 			ArrayList<Coordinate> cleaned = new ArrayList<Coordinate>();
@@ -541,226 +535,35 @@ public class SumoXML {
 			return cleaned;
 		}
 
+		private double planarPolylineLength(ArrayList<Coordinate> points) {
+			double length = 0.0;
+			for (int i = 1; i < points.size(); i++) {
+				Coordinate first = points.get(i - 1);
+				Coordinate second = points.get(i);
+				length += Math.hypot(second.x - first.x, second.y - first.y);
+			}
+			return length;
+		}
+
+		private boolean isSignificantLogicalLengthOverride(
+				double declaredLength, ArrayList<Coordinate> points) {
+			if (!Double.isFinite(declaredLength)
+					|| declaredLength < MIN_LOGICAL_LENGTH_OVERRIDE_METERS) {
+				return false;
+			}
+			double geometricLength = planarPolylineLength(points);
+			return Double.isFinite(geometricLength)
+					&& declaredLength - geometricLength
+							>= MIN_LOGICAL_LENGTH_DIFFERENCE_METERS
+					&& geometricLength
+							<= MAX_GEOMETRIC_TO_LOGICAL_LENGTH_RATIO * declaredLength;
+		}
+
 		private void rejectVerticalOnlyLaneSegment(
 				Coordinate first, Coordinate second, String laneID) {
 			if (Math.abs(first.z - second.z) > MIN_CONTROL_POINT_SEPARATION_METERS) {
 				throw new IllegalArgumentException("SUMO lane " + laneID
 						+ " has vertical-only geometry with no usable bearing");
-			}
-		}
-
-		private Coordinate interpolateCoordinate(Coordinate c1, Coordinate c2, double t) {
-			double clamped = Math.max(0.0, Math.min(1.0, t));
-			double z1 = zOrZero(c1);
-			double z2 = zOrZero(c2);
-			return new Coordinate(
-					c1.x + clamped * (c2.x - c1.x),
-					c1.y + clamped * (c2.y - c1.y),
-					z1 + clamped * (z2 - z1));
-		}
-
-		private boolean transitionStartIsBehindUpstreamLane(Coordinate upstreamPrev, Coordinate upstreamEnd,
-				Coordinate downstreamStart) {
-			double dirX = upstreamEnd.x - upstreamPrev.x;
-			double dirY = upstreamEnd.y - upstreamPrev.y;
-			double dirLengthSq = dirX * dirX + dirY * dirY;
-			if (dirLengthSq <= 1e-24) return false;
-
-			double relX = downstreamStart.x - upstreamEnd.x;
-			double relY = downstreamStart.y - upstreamEnd.y;
-			double relLengthSq = relX * relX + relY * relY;
-			if (relLengthSq <= 1e-24) return false;
-
-			return (relX * dirX + relY * dirY) < -1e-12 * Math.sqrt(dirLengthSq);
-		}
-
-		private double projectionAlongSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
-			double segX = segmentEnd.x - segmentStart.x;
-			double segY = segmentEnd.y - segmentStart.y;
-			double segLengthSq = segX * segX + segY * segY;
-			if (segLengthSq <= 1e-24) return Double.NaN;
-
-			return ((point.x - segmentStart.x) * segX
-					+ (point.y - segmentStart.y) * segY) / segLengthSq;
-		}
-
-		private boolean projectsInsideSegment(Coordinate point, Coordinate segmentStart, Coordinate segmentEnd) {
-			double projection = projectionAlongSegment(point, segmentStart, segmentEnd);
-			if (Double.isNaN(projection) || Double.isInfinite(projection)) return false;
-			return projection > 1e-9 && projection <= 1.0 + 1e-9;
-		}
-
-		private boolean firstControlPointIsBehindCurrent(Coordinate currentCoord, ArrayList<Coordinate> coords) {
-			if (coords.size() < 2) return false;
-			return projectsInsideSegment(currentCoord, coords.get(0), coords.get(1));
-		}
-
-		private double turnAngleDegrees(Coordinate previous, Coordinate current, Coordinate next) {
-			double inX = current.x - previous.x;
-			double inY = current.y - previous.y;
-			double outX = next.x - current.x;
-			double outY = next.y - current.y;
-			double inLength = Math.sqrt(inX * inX + inY * inY);
-			double outLength = Math.sqrt(outX * outX + outY * outY);
-			if (inLength <= 1e-12 || outLength <= 1e-12) return 0.0;
-
-			double cosTheta = (inX * outX + inY * outY) / (inLength * outLength);
-			cosTheta = Math.max(-1.0, Math.min(1.0, cosTheta));
-			return Math.toDegrees(Math.acos(cosTheta));
-		}
-
-		private boolean hasSharpTransitionAngle(Coordinate previous, Coordinate current, Coordinate next) {
-			return turnAngleDegrees(previous, current, next) > 150.0;
-		}
-
-		private Coordinate adjustedControlPoint(Coordinate incomingCoord, Coordinate controlPoint,
-				Coordinate followingPoint) {
-			if (squaredDistance2D(controlPoint, followingPoint) <= 1e-24) {
-				return copyCoordinate(incomingCoord);
-			}
-
-			double projection = projectionAlongSegment(incomingCoord, controlPoint, followingPoint);
-			if (Double.isNaN(projection) || Double.isInfinite(projection)) {
-				projection = 0.0;
-			}
-			// Move just past the closest point on the next segment so the
-			// generated transition curve does not collapse into a zero-length loop.
-			double targetProjection = Math.max(0.001, Math.min(0.999, projection + 0.001));
-			return interpolateCoordinate(controlPoint, followingPoint, targetProjection);
-		}
-
-		private boolean setAdjustedControlPoint(ArrayList<Coordinate> coords, int index, Coordinate adjustedCoord) {
-			if (index < 0 || index >= coords.size()) return false;
-			if (squaredDistance2D(coords.get(index), adjustedCoord) <= 1e-24) return false;
-			coords.set(index, copyCoordinate(adjustedCoord));
-			return true;
-		}
-
-		private void refreshRoadCenterlinesFromLanes() {
-			for (Map.Entry<Integer, List<Integer>> entry : roadLane.entrySet()) {
-				Road road = roads.get(entry.getKey());
-				if (road == null) continue;
-
-				double startX = 0;
-				double startY = 0;
-				double startZ = 0;
-				double endX = 0;
-				double endY = 0;
-				double endZ = 0;
-				int laneCount = 0;
-
-				for (int laneID : entry.getValue()) {
-					Lane lane = lanes.get(laneID);
-					if (lane == null) continue;
-					ArrayList<Coordinate> laneCoords = lane.getCoords();
-					if (laneCoords.isEmpty()) continue;
-
-					Coordinate start = laneCoords.get(0);
-					Coordinate end = laneCoords.get(laneCoords.size() - 1);
-					startX += start.x;
-					startY += start.y;
-					startZ += zOrZero(start);
-					endX += end.x;
-					endY += end.y;
-					endZ += zOrZero(end);
-					laneCount++;
-				}
-
-				if (laneCount == 0) continue;
-				ArrayList<Coordinate> roadCoords = new ArrayList<Coordinate>();
-				roadCoords.add(new Coordinate(startX / laneCount, startY / laneCount, startZ / laneCount));
-				roadCoords.add(new Coordinate(endX / laneCount, endY / laneCount, endZ / laneCount));
-				road.setCoords(roadCoords);
-			}
-		}
-
-		private void prescanTransitionControlPoints() {
-			int adjustedCount = 0;
-			int skippedCount = 0;
-			int maxControlPointsToScan = 4;
-
-			for (Lane fromLane : lanes.values()) {
-				ArrayList<Coordinate> fromCoords = fromLane.getCoords();
-				if (fromCoords.size() < 2) continue;
-
-				Coordinate upstreamPrev = fromCoords.get(fromCoords.size() - 2);
-				Coordinate upstreamEnd = fromCoords.get(fromCoords.size() - 1);
-
-				for (int toLaneID : fromLane.getDownStreamLanes()) {
-					Lane toLane = lanes.get(toLaneID);
-					if (toLane == null) continue;
-					ArrayList<Coordinate> originalToCoords = toLane.getCoords();
-					ArrayList<Coordinate> toCoords = toLane.getCoords();
-					if (toCoords.size() < 2) continue;
-
-					boolean adjustedLane = false;
-					while (toCoords.size() > 2 && firstControlPointIsBehindCurrent(upstreamEnd, toCoords)) {
-						toCoords.remove(0);
-						skippedCount++;
-						adjustedLane = true;
-					}
-
-					int scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
-					int guard = Math.max(1, toCoords.size() * 2);
-					for (int attempts = 0; attempts < guard; attempts++) {
-						boolean adjustedThisPass = false;
-						for (int i = 0; i < scanLimit && i + 1 < toCoords.size(); i++) {
-							Coordinate previous = (i == 0) ? upstreamEnd : toCoords.get(i - 1);
-							Coordinate current = toCoords.get(i);
-							Coordinate next = toCoords.get(i + 1);
-							if (!hasSharpTransitionAngle(previous, current, next)) continue;
-
-							if (i == 0 && transitionStartIsBehindUpstreamLane(upstreamPrev, upstreamEnd, current)) {
-								Coordinate adjustedCurrent = adjustedControlPoint(upstreamEnd, current, next);
-								if (setAdjustedControlPoint(toCoords, i, adjustedCurrent)) {
-									adjustedCount++;
-									adjustedLane = true;
-									adjustedThisPass = true;
-									break;
-								}
-							} else if (i + 2 < toCoords.size()) {
-								Coordinate following = toCoords.get(i + 2);
-								Coordinate adjustedNext = adjustedControlPoint(current, next, following);
-								if (setAdjustedControlPoint(toCoords, i + 1, adjustedNext)) {
-									adjustedCount++;
-									adjustedLane = true;
-									adjustedThisPass = true;
-									break;
-								}
-							}
-						}
-
-						if (!adjustedThisPass) break;
-						scanLimit = Math.min(maxControlPointsToScan, toCoords.size() - 1);
-					}
-					if (adjustedLane) {
-						ArrayList<Coordinate> cleanedCandidate;
-						try {
-							cleanedCandidate = cleanTransformedLaneControlPoints(
-									toCoords, toLane.getOrigID());
-						} catch (IllegalArgumentException invalidCandidate) {
-							ContextCreator.logger.warn("SUMO transition prescan discarded geometry "
-									+ "for lane " + toLane.getOrigID() + ": "
-									+ invalidCandidate.getMessage());
-							continue;
-						}
-						if (hasUsableLaneControlSegment(cleanedCandidate)
-								|| !hasUsableLaneControlSegment(originalToCoords)) {
-							toLane.setCoords(cleanedCandidate);
-						} 
-//						else {
-//							ContextCreator.logger.warn("SUMO transition prescan discarded a degenerate "
-//									+ "geometry adjustment for lane " + toLane.getOrigID());
-//						}
-					}
-				}
-			}
-
-			if (adjustedCount > 0 || skippedCount > 0) {
-				refreshRoadCenterlinesFromLanes();
-				ContextCreator.logger.info("SUMO transition prescan skipped " + skippedCount
-						+ " downstream lane control points behind upstream endpoints and adjusted " + adjustedCount
-						+ " downstream lane control points with transition angles sharper than 150 degrees.");
 			}
 		}
 
@@ -1088,6 +891,7 @@ public class SumoXML {
 			isInternalLaneMap = new LinkedHashMap<String, Boolean>();
 			removedCoincidentLaneControlPoints = 0;
 			zeroLengthLaneShapes = 0;
+			logicalLaneLengthOverrides = 0;
 		}
 		
 		@Override
@@ -1172,7 +976,8 @@ public class SumoXML {
 					    currentLane.setOrigID(attributes.getValue("id"));
 					    currentLane.setRoad(currentRoad.getID());    
 					    roadLane.get(currentRoad.getID()).add(lane_id);
-					    // currentLane.setLength(Double.parseDouble(attributes.getValue("length")));
+					    double declaredLaneLength = attributeDouble(attributes, "length", Double.NaN);
+					    currentLane.setDeclaredLength(declaredLaneLength);
 					    currentLane.setSpeed(Double.parseDouble(attributes.getValue("speed")));
 					    currentMaxSpeed = Math.max(currentLane.getSpeed(), currentMaxSpeed);
 					    // get coords
@@ -1187,6 +992,9 @@ public class SumoXML {
 						coords.add(coord);
 				    }
 				    coords = cleanLaneControlPoints(coords, attributes.getValue("id"));
+				    if (isSignificantLogicalLengthOverride(declaredLaneLength, coords)) {
+					logicalLaneLengthOverrides++;
+				    }
 				    for (Coordinate coord : coords) {
 				    	try {
 							JTS.transform(coord, coord, transform);
@@ -1559,12 +1367,17 @@ public class SumoXML {
 				}
 
 				buildExplicitConnectorPaths();
-				prescanTransitionControlPoints();
-				if (removedCoincidentLaneControlPoints > 0 || zeroLengthLaneShapes > 0) {
+				// Keep physical lane geometry immutable after parsing. Transition-specific
+				// cleanup belongs to connector/turning paths; changing a shared target
+				// lane here can collapse its length for every incoming movement.
+				if (removedCoincidentLaneControlPoints > 0 || zeroLengthLaneShapes > 0
+						|| logicalLaneLengthOverrides > 0) {
 					ContextCreator.logger.info("SUMO lane control-point cleanup removed "
 							+ removedCoincidentLaneControlPoints + " coincident points and retained "
 							+ zeroLengthLaneShapes
-							+ " irreducible zero-length lane shapes as degenerate two-point lines.");
+							+ " irreducible zero-length lane shapes as degenerate two-point lines; retained "
+							+ logicalLaneLengthOverrides
+							+ " significant SUMO logical-length overrides.");
 				}
 			}
 		}

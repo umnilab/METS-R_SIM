@@ -4,27 +4,54 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import mets_r.ContextCreator;
 import mets_r.facility.ChargingStation;
 import mets_r.facility.Road;
 import mets_r.facility.Zone;
 
 public class NeighboringGraphCache {
+	public static final int CURRENT_SCHEMA_VERSION = 4;
+	public int schemaVersion;
     public Map<Integer, ZoneNeighbors> zones = new HashMap<>();
     public Map<Integer, RoadNeighbors> roads = new HashMap<>();
     public Map<Integer, ChargingStationNeighbors> chargingStations = new HashMap<>();
+
+	@JsonIgnore
+	public boolean isCompatible() {
+		return this.schemaVersion == CURRENT_SCHEMA_VERSION;
+	}
+
+	public void markCurrentSchemaVersion() {
+		this.schemaVersion = CURRENT_SCHEMA_VERSION;
+	}
     
-    public void load() {
-    	for (Zone z : ContextCreator.getZoneContext().getAll()) {
-            ZoneNeighbors neighbors = zones.get(z.getID());
-            if (neighbors != null) {
-            	for(int zid: neighbors.neighboringZoneIDs) z.addNeighboringZone(zid);
-            	for(int rid: neighbors.neighboringDepartureLinkIDs) z.addNeighboringLink(rid, false);
-            	for(int rid: neighbors.neighboringArrivalLinkIDs) z.addNeighboringLink(rid, true);
-            	z.setClosestRoad(neighbors.closestDepartureLinkID, false);
-            	z.setClosestRoad(neighbors.closestArrivalLinkID, true);
-            }
-        }
+	public void load() {
+		for (Zone z : ContextCreator.getZoneContext().getAll()) {
+			ZoneNeighbors neighbors = zones.get(z.getID());
+			if (neighbors != null) {
+				for (int zid : neighbors.neighboringZoneIDs) z.addNeighboringZone(zid);
+				for (int rid : neighbors.neighboringDepartureLinkIDs) {
+					Road road = ContextCreator.getRoadContext().get(rid);
+					if (road != null && road.canBeTripOrigin()) z.addNeighboringLink(rid, false);
+				}
+				for (int rid : neighbors.neighboringArrivalLinkIDs) {
+					Road road = ContextCreator.getRoadContext().get(rid);
+					if (road != null && road.canBeTripDestination()) z.addNeighboringLink(rid, true);
+				}
+				Road closestDeparture = ContextCreator.getRoadContext()
+						.get(neighbors.closestDepartureLinkID);
+				Road closestArrival = ContextCreator.getRoadContext()
+						.get(neighbors.closestArrivalLinkID);
+				if (closestDeparture != null && closestDeparture.canBeTripOrigin()) {
+					z.setClosestRoad(neighbors.closestDepartureLinkID, false);
+				}
+				if (closestArrival != null && closestArrival.canBeTripDestination()) {
+					z.setClosestRoad(neighbors.closestArrivalLinkID, true);
+				}
+			}
+		}
         for (Road r : ContextCreator.getRoadContext().getAll()) {
             RoadNeighbors neighbors = roads.get(r.getID());
             if (neighbors != null) {
@@ -41,15 +68,20 @@ public class NeighboringGraphCache {
         }
     }
     
-    public void saveZoneNeighbor(int zid, List<Integer> neighboringZoneIDs, List<Integer> neighboringArrivalLinkIDs, List<Integer> neighboringDepartureLinkIDs, Integer closestDepartureLinkID, Integer closestArrivalLinkID) {
-    	if(!zones.containsKey(zid)) {
-    		ZoneNeighbors zn = new ZoneNeighbors(neighboringZoneIDs, neighboringArrivalLinkIDs, neighboringDepartureLinkIDs, closestDepartureLinkID, closestArrivalLinkID);
-    		zones.put(zid, zn);
-    	}
-    	else {
-    		ContextCreator.logger.warn("Zone " + zid + " already exists in the zone nighbors.");
-    	}
-    }
+	public void saveZoneNeighbor(int zid, List<Integer> neighboringZoneIDs,
+			List<Integer> neighboringDepartureLinkIDs,
+			List<Integer> neighboringArrivalLinkIDs,
+			Integer closestDepartureLinkID, Integer closestArrivalLinkID) {
+		if (!zones.containsKey(zid)) {
+			ZoneNeighbors zn = new ZoneNeighbors(neighboringZoneIDs,
+					neighboringDepartureLinkIDs, neighboringArrivalLinkIDs,
+					closestDepartureLinkID, closestArrivalLinkID);
+			zones.put(zid, zn);
+		}
+		else {
+			ContextCreator.logger.warn("Zone " + zid + " already exists in the zone nighbors.");
+		}
+	}
     
     public void saveRoadNeighbor(int rid, Integer neighboringZoneOrigin, Integer neighboringZoneDest) {
     	if(!roads.containsKey(rid)) {
@@ -81,10 +113,13 @@ class ZoneNeighbors {
     public ZoneNeighbors() {
         // Default constructor needed by Jackson
     }
-    public ZoneNeighbors(List<Integer> neighboringZoneIDs, List<Integer> neighboringArrivalLinkIDs2, List<Integer> neighboringDepartureLinkIDs, int closestDepartureLinkID, int closestArrivalLinkID) {
+	public ZoneNeighbors(List<Integer> neighboringZoneIDs,
+			List<Integer> neighboringDepartureLinkIDs,
+			List<Integer> neighboringArrivalLinkIDs,
+			int closestDepartureLinkID, int closestArrivalLinkID) {
     	this.neighboringZoneIDs = neighboringZoneIDs;
-        this.neighboringArrivalLinkIDs = neighboringArrivalLinkIDs2;
         this.neighboringDepartureLinkIDs = neighboringDepartureLinkIDs;
+		this.neighboringArrivalLinkIDs = neighboringArrivalLinkIDs;
         this.closestDepartureLinkID = closestDepartureLinkID;
         this.closestArrivalLinkID = closestArrivalLinkID;
     }

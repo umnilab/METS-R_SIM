@@ -2,12 +2,18 @@ package mets_r.facility;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 
 import org.geotools.referencing.GeodeticCalculator;
@@ -37,6 +43,9 @@ import repast.simphony.space.graph.RepastEdge;
  **/
 public class CityContext extends DefaultContext<Object> {
 	private static final double MIN_TURN_CONTROL_POINT_SEPARATION_METERS = 0.001;
+	private final ThreadLocal<GeodeticCalculator> distanceCalculators =
+			ThreadLocal.withInitial(() -> new GeodeticCalculator(
+					ContextCreator.getLaneGeography().getCRS()));
 
 	private HashMap<RepastEdge<?>, Integer> edgeRoadID_KeyEdge; // Store the TOIDs of edges (Edge as key)
 	private HashMap<Integer, RepastEdge<?>> edgeIDEdge_KeyID; // Store the TOIDs of edges (TOID as key)
@@ -45,7 +54,9 @@ public class CityContext extends DefaultContext<Object> {
 	private HashMap<Integer, HashMap<Integer, Road>> nodeIDRoad_KeyNodeID;
 	private HashMap<String, Integer> origRoadID_RoadID;
 	
-	private Boolean networkInitialized = false;
+	private volatile boolean networkInitialized = false;
+	private int lastConnectorTravelTimeRefreshTick = Integer.MIN_VALUE;
+	private boolean physicalEstimatorRefreshInitialized = false;
           
 	public CityContext() {
 		super("CityContext"); // Very important otherwise repast complains
@@ -71,7 +82,8 @@ public class CityContext extends DefaultContext<Object> {
 		this.addSubContext(new ChargingStationContext());
 	}
 	
-	// Calculate the length of each lane based on their geometries
+	// Retain SUMO's declared logical lane length while also measuring the physical
+	// centerline used for coordinate interpolation and map matching.
 	private void initializeLaneDistance() {
 		for (Lane lane : ContextCreator.getLaneContext().getAll()) {
 			ArrayList<Coordinate> coords = lane.getCoords();
@@ -84,8 +96,25 @@ public class CityContext extends DefaultContext<Object> {
 				length3D += Math.sqrt(h * h + dz * dz);
 				slopes[i] = (h > 1e-6) ? dz / h : 0.0;
 			}
-			lane.setLength(length3D);
+			lane.setGeometricLength(length3D);
+			double declaredLength = lane.getDeclaredLength();
+			lane.setLength(Double.isFinite(declaredLength) && declaredLength > 0.0
+					? declaredLength : length3D);
+			if (!Double.isFinite(length3D) || length3D <= 0.001) {
+				lane.setDepartureGeometryUsable(false);
+			}
 			lane.setSegmentSlopes(slopes);
+		}
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			double totalLength = 0.0;
+			int usableLaneCount = 0;
+			for (Lane lane : road.getLanes()) {
+				if (Double.isFinite(lane.getLength()) && lane.getLength() >= 0.0) {
+					totalLength += lane.getLength();
+					usableLaneCount++;
+				}
+			}
+			if (usableLaneCount > 0) road.setLength(totalLength / usableLaneCount);
 		}
 	}
 
@@ -267,36 +296,41 @@ public class CityContext extends DefaultContext<Object> {
 		ObjectMapper mapper = new ObjectMapper();
 		File cacheFile = new File(GlobalVariables.NETWORK_FILE.replace(".net.xml", "")+ ".json");
 		// Attempt to load cached graph if it exists
-	    if (cacheFile.exists()) {
-	        try {
-	            ContextCreator.logger.info("Loading neighboring graph from cache.");
-	            NeighboringGraphCache cachedData = mapper.readValue(cacheFile, NeighboringGraphCache.class);
-	            cachedData.load();
-	            
-	        for(Road r: ContextCreator.getRoadContext().getAll()) {
-	        	if(r.canBeOrigin()) {
-    				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-    			}
-    			if(r.canBeDest()) {
-    				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
-    			}
-	        }
-	        // If no real zones are configured, reset road-zone assignments from the
-	        // cache (which may reference a previous run's zones) and create the meta zone.
-	        if (ContextCreator.getZoneContext().size() == 0) {
-	        	for (Road r : ContextCreator.getRoadContext().getAll()) {
-	        		r.setNeighboringZone(0, false);
-	        		r.setDistToZone(Double.MAX_VALUE, false);
-	        		r.setNeighboringZone(0, true);
-	        		r.setDistToZone(Double.MAX_VALUE, true);
-	        	}
-	        	createMetaZone(geomFac);
-	        }
-	        return; // Successfully loaded from cache
-	        } catch (IOException e) {
-	            ContextCreator.logger.warn("Failed to load cache. Rebuilding neighboring graph.", e);
-	        }
-	    }
+		if (cacheFile.exists()) {
+			try {
+				ContextCreator.logger.info("Loading neighboring graph from cache.");
+				NeighboringGraphCache cachedData = mapper.readValue(
+						cacheFile, NeighboringGraphCache.class);
+				if (!cachedData.isCompatible()) {
+					ContextCreator.logger.info("Neighboring graph cache schema is stale; rebuilding it so "
+							+ "trip endpoints reflect current road eligibility.");
+				}
+				else {
+					cachedData.load();
+					for (Road r : ContextCreator.getRoadContext().getAll()) {
+						if (r.canBeTripOrigin()) {
+							this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
+						}
+						if (r.canBeTripDestination()) {
+							this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
+						}
+					}
+					if (ContextCreator.getZoneContext().size() == 0) {
+						for (Road r : ContextCreator.getRoadContext().getAll()) {
+							r.setNeighboringZone(0, false);
+							r.setDistToZone(Double.MAX_VALUE, false);
+							r.setNeighboringZone(0, true);
+							r.setDistToZone(Double.MAX_VALUE, true);
+						}
+						createMetaZone(geomFac);
+					}
+					return;
+				}
+			}
+			catch (IOException e) {
+				ContextCreator.logger.warn("Failed to load cache. Rebuilding neighboring graph.", e);
+			}
+		}
 		
 		int minNeighbors = Math.min(ContextCreator.getZoneContext().size() - 1, 8);
 		for (Zone z1 : ContextCreator.getZoneContext().getAll()) { 
@@ -451,13 +485,15 @@ public class CityContext extends DefaultContext<Object> {
 				}
 			}
 
-			if(r.canBeOrigin() && r.canBeDest()) {
+			if(r.canBeTripOrigin()) {
 				this.coordOrigRoad_KeyCoord.put(r.getStartCoord(), r);
-				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
 				if (r.getNeighboringZone(false) != 0) {
 					Zone zDept = ContextCreator.getZoneContext().get(r.getNeighboringZone(false));
 					if (zDept != null) zDept.addNeighboringLink(r.getID(), false);
 				}
+			}
+			if(r.canBeTripDestination()) {
+				this.coordDestRoad_KeyCoord.put(r.getEndCoord(), r);
 				if (r.getNeighboringZone(true) != 0) {
 					Zone zArr = ContextCreator.getZoneContext().get(r.getNeighboringZone(true));
 					if (zArr != null) zArr.addNeighboringLink(r.getID(), true);
@@ -474,8 +510,9 @@ public class CityContext extends DefaultContext<Object> {
 		
 		// Save full cache
 	    ContextCreator.logger.info("Saving neighboring graph to cache.");
-	    try {
-	    	NeighboringGraphCache cacheData = new NeighboringGraphCache();
+		try {
+			NeighboringGraphCache cacheData = new NeighboringGraphCache();
+			cacheData.markCurrentSchemaVersion();
 
 	        for (Zone z : ContextCreator.getZoneContext().getAll()) {
 	        	if (z.getID() == 0) continue; // meta zone is a runtime placeholder; do not persist it
@@ -488,7 +525,17 @@ public class CityContext extends DefaultContext<Object> {
 	            cacheData.saveChargingStationNeighbor(cs.getID(), cs.getClosestRoad(false), cs.getClosestRoad(true));
 	        }
 
-	        mapper.writerWithDefaultPrettyPrinter().writeValue(cacheFile, cacheData);
+	        File temporaryCache = new File(cacheFile.getParentFile(),
+					cacheFile.getName() + ".tmp");
+	        mapper.writerWithDefaultPrettyPrinter().writeValue(temporaryCache, cacheData);
+	        try {
+				Files.move(temporaryCache.toPath(), cacheFile.toPath(),
+						StandardCopyOption.ATOMIC_MOVE,
+						StandardCopyOption.REPLACE_EXISTING);
+	        } catch (AtomicMoveNotSupportedException unsupported) {
+				Files.move(temporaryCache.toPath(), cacheFile.toPath(),
+						StandardCopyOption.REPLACE_EXISTING);
+	        }
 	    } catch (IOException e) {
 	        ContextCreator.logger.warn("Failed to save cache.", e);
 	    }
@@ -510,8 +557,8 @@ public class CityContext extends DefaultContext<Object> {
 			sumX += r.getStartCoord().x;
 			sumY += r.getStartCoord().y;
 			count++;
-			if (firstDeptRoad == null && r.canBeOrigin()) firstDeptRoad = r;
-			if (firstArrRoad  == null && r.canBeDest())   firstArrRoad  = r;
+			if (firstDeptRoad == null && r.canBeTripOrigin()) firstDeptRoad = r;
+			if (firstArrRoad == null && r.canBeTripDestination()) firstArrRoad = r;
 		}
 		Coordinate centroid = (count > 0) ? new Coordinate(sumX / count, sumY / count, 0.0) : new Coordinate(0, 0, 0.0);
 		Zone metaZone = new Zone(0, Integer.MAX_VALUE, Zone.ZONE);
@@ -520,11 +567,11 @@ public class CityContext extends DefaultContext<Object> {
 		ContextCreator.getZoneGeography().move(metaZone, geomFac.createPoint(centroid));
 
 		for (Road r : roadGeography.getAllObjects()) {
-			if (r.canBeOrigin()) {
+			if (r.canBeTripOrigin()) {
 				r.setNeighboringZone(0, false);
 				metaZone.addNeighboringLink(r.getID(), false);
 			}
-			if (r.canBeDest()) {
+			if (r.canBeTripDestination()) {
 				r.setNeighboringZone(0, true);
 				metaZone.addNeighboringLink(r.getID(), true);
 			}
@@ -591,11 +638,13 @@ public class CityContext extends DefaultContext<Object> {
 					searchBuffer *= 2;
 				}
 			}
-			if (r.canBeOrigin() && r.canBeDest()) {
+			if (r.canBeTripOrigin()) {
 				if (r.getNeighboringZone(false) != 0) {
 					Zone z = ContextCreator.getZoneContext().get(r.getNeighboringZone(false));
 					if (z != null) z.addNeighboringLink(r.getID(), false);
 				}
+			}
+			if (r.canBeTripDestination()) {
 				if (r.getNeighboringZone(true) != 0) {
 					Zone z = ContextCreator.getZoneContext().get(r.getNeighboringZone(true));
 					if (z != null) z.addNeighboringLink(r.getID(), true);
@@ -606,7 +655,7 @@ public class CityContext extends DefaultContext<Object> {
 	}
 
 	public double getDistance(Coordinate c1, Coordinate c2) {
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
+		GeodeticCalculator calculator = this.distanceCalculators.get();
 		calculator.setStartingGeographicPoint(c1.x, c1.y);
 		calculator.setDestinationGeographicPoint(c2.x, c2.y);
 		double horizontalDist = calculator.getOrthodromicDistance();
@@ -678,6 +727,8 @@ public class CityContext extends DefaultContext<Object> {
 		else {
 			// Case 2: junction is provided, SumoXML case
 			SumoXML sxml = SumoXML.getData(GlobalVariables.NETWORK_FILE);
+			reconcileRoadConnectivityWithRetainedLanes(
+					sxml.getRoadConnection(), sxml.getRoad());
 			for (Junction j : sxml.getJunction().values()) {
 				junctionContext.put(j.getID(), j);
 			}
@@ -968,16 +1019,77 @@ public class CityContext extends DefaultContext<Object> {
 	
 	
 	/**
-	 * Marks all roads that are part of a dead-end branch (a "cul-de-sac").
-	 * A vehicle starting on such a road has no path to exit that branch.
+	 * Rebuild road adjacency from retained lane transitions before constructing
+	 * SUMO movement edges. Parsed road movements unsupported by lane topology
+	 * are removed from both routing authorities.
+	 */
+	static int reconcileRoadConnectivityWithRetainedLanes(
+			Map<Integer, List<List<Integer>>> roadConnections,
+			Map<Integer, Road> retainedRoads) {
+		if (roadConnections == null || retainedRoads == null) return 0;
+
+		// Remove parser-populated adjacency first so no unsupported or stale road
+		// movement can survive independently of the retained lane topology.
+		for (Road road : retainedRoads.values()) {
+			if (road == null) continue;
+			for (Integer downstreamRoadID
+					: new ArrayList<Integer>(road.getDownStreamRoads())) {
+				if (downstreamRoadID != null) {
+					road.removeDownStreamRoad(downstreamRoadID.intValue());
+				}
+			}
+		}
+
+		int removedMovements = 0;
+		for (List<List<Integer>> junctionMovements : roadConnections.values()) {
+			if (junctionMovements == null) continue;
+			for (int i = junctionMovements.size() - 1; i >= 0; i--) {
+				List<Integer> movement = junctionMovements.get(i);
+				Road sourceRoad = movement == null || movement.size() < 2
+						? null : retainedRoads.get(movement.get(0));
+				Road targetRoad = movement == null || movement.size() < 2
+						? null : retainedRoads.get(movement.get(1));
+				if (!hasRetainedLaneTransition(sourceRoad, targetRoad)) {
+					junctionMovements.remove(i);
+					removedMovements++;
+					continue;
+				}
+				sourceRoad.addDownStreamRoad(targetRoad.getID());
+			}
+		}
+		return removedMovements;
+	}
+
+	private static boolean hasRetainedLaneTransition(
+			Road sourceRoad, Road targetRoad) {
+		if (sourceRoad == null || targetRoad == null) return false;
+		for (Lane sourceLane : sourceRoad.getLanes()) {
+			if (sourceLane == null) continue;
+			for (Integer downstreamLaneID : sourceLane.getDownStreamLanes()) {
+				if (downstreamLaneID == null) continue;
+				for (Lane targetLane : targetRoad.getLanes()) {
+					if (targetLane != null
+							&& targetLane.getID() == downstreamLaneID.intValue()) {
+						return true;
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Marks roads in dead-end branches from which a vehicle cannot reach an exit.
 	 */
 	public void markInvalidOrigins() {
 	    // 1. Initialize a worklist for propagation.
 	    Queue<Road> worklist = new LinkedList<>();
 
-	    // 2. First pass: Find all terminal dead-end roads.
-	    // These are the initial roads that cannot be origins.
+	    // 2. First pass: classify physical departure geometry independently,
+	    // then find terminal dead-end roads. A bad insertion shape can prevent a
+	    // trip from starting here, but it must not change graph reachability.
 	    for (Road r : ContextCreator.getRoadContext().getAll()) {
+	        r.setHasUsableDepartureGeometry(hasUsableDepartureLaneGeometry(r));
 	        if (r.getDownStreamRoads().isEmpty()) {
 	            r.setCanBeOrigin(false);
 	            worklist.add(r);
@@ -993,15 +1105,23 @@ public class CityContext extends DefaultContext<Object> {
 
 	        // Find all roads that lead to the start of our current dead-end road.
 	        int upStreamJunctionId = currentRoad.getUpStreamJunction();
-	        for (int predecessorId : ContextCreator.getJunctionContext().get(upStreamJunctionId).getUpStreamRoads()) {
+	        Junction upstreamJunction = ContextCreator.getJunctionContext().get(upStreamJunctionId);
+	        if (upstreamJunction == null) {
+	            // Source-edge and partially connected map records have no registered
+	            // upstream junction, so there are no predecessors to invalidate.
+	            continue;
+	        }
+	        for (int predecessorId : upstreamJunction.getUpStreamRoads()) {
 	            Road predecessorRoad = ContextCreator.getRoadContext().get(predecessorId);
+	            if (predecessorRoad == null) continue;
 
 	            // If this predecessor was previously considered valid, check it now.
 	            if (predecessorRoad.canBeOrigin()) {
 	                boolean hasValidExit = false;
 	                // Check if ALL of its downstream paths are now invalid.
 	                for (int successorId : predecessorRoad.getDownStreamRoads()) {
-	                    if (ContextCreator.getRoadContext().get(successorId).canBeOrigin()) {
+	                    Road successorRoad = ContextCreator.getRoadContext().get(successorId);
+	                    if (successorRoad != null && successorRoad.canBeOrigin()) {
 	                        hasValidExit = true;
 	                        break; // Found a valid exit, so the predecessor is fine.
 	                    }
@@ -1015,6 +1135,19 @@ public class CityContext extends DefaultContext<Object> {
 	            }
 	        }
 	    }
+	}
+
+	private boolean hasUsableDepartureLaneGeometry(Road road) {
+		for (Lane lane : road.getLanes()) {
+			if (lane.isDepartureGeometryUsable()
+					&& Double.isFinite(lane.getGeometricLength())
+					&& lane.getGeometricLength() > 0.001
+					&& Double.isFinite(lane.getLength()) && lane.getLength() > 0.001
+					&& !lane.getDownStreamLanes().isEmpty()) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 
@@ -1083,19 +1216,88 @@ public class CityContext extends DefaultContext<Object> {
 			}
 		}
 
-		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if (road.updateTravelTimeEstimation()) {
-				updateRoadRoutingWeight(road, road.getTravelTime());
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		LinkedHashMap<RepastEdge<Node>, Double> weightUpdates =
+				new LinkedHashMap<RepastEdge<Node>, Double>();
+		ArrayList<Road> refreshedPhysicalRoads = roadContext.isRoutingMetricTrackingEnabled()
+				? new ArrayList<Road>() : null;
+		Collection<Road> roadsToRefresh = this.physicalEstimatorRefreshInitialized
+				? roadContext.getTravelTimeEstimatorRoadsSnapshot()
+				: roadContext.getAll();
+		for (Road road : roadsToRefresh) {
+			if (road == null) continue;
+			boolean changed = road.updateTravelTimeEstimation();
+			if (refreshedPhysicalRoads != null) refreshedPhysicalRoads.add(road);
+			if (changed) queueRoadRoutingWeight(weightUpdates, road,
+					road.getTravelTime());
+		}
+		this.physicalEstimatorRefreshInitialized = true;
+
+		if (connectorTravelTimeRefreshDue(ContextCreator.getCurrentTick())) {
+			// The connector topology is much larger than the active vehicle set. Refresh
+			// only connectors carrying vehicles or completed observations, while keeping
+			// versioned dirty acknowledgements safe against concurrent completions.
+			List<RoadContext.ConnectorTravelTimeRefresh> dirtyRefreshes =
+					roadContext.getDirtyConnectorTravelTimeSnapshot();
+			HashMap<Integer, RoadContext.ConnectorTravelTimeRefresh> dirtyByID =
+					new HashMap<Integer, RoadContext.ConnectorTravelTimeRefresh>();
+			HashMap<Integer, ConnectorRoad> connectorsToRefresh =
+					new HashMap<Integer, ConnectorRoad>();
+			for (ConnectorRoad connector : roadContext.getActiveConnectorsSnapshot()) {
+				connectorsToRefresh.put(connector.getID(), connector);
 			}
+			for (RoadContext.ConnectorTravelTimeRefresh dirtyRefresh : dirtyRefreshes) {
+				dirtyByID.put(dirtyRefresh.connector.getID(), dirtyRefresh);
+				connectorsToRefresh.put(dirtyRefresh.connector.getID(), dirtyRefresh.connector);
+			}
+			ArrayList<ConnectorRoad> orderedConnectors =
+					new ArrayList<ConnectorRoad>(connectorsToRefresh.values());
+			orderedConnectors.sort((left, right) -> {
+				int origIDCompare = left.getOrigID().compareTo(right.getOrigID());
+				return origIDCompare != 0 ? origIDCompare
+						: Integer.compare(left.getID(), right.getID());
+			});
+			for (ConnectorRoad connector : orderedConnectors) {
+				RoadContext.ConnectorTravelTimeRefresh dirtyRefresh =
+						dirtyByID.get(connector.getID());
+				boolean changed = connector.updateTravelTimeEstimation();
+				if ((changed || dirtyRefresh != null) && this.networkInitialized) {
+					queueConnectorRoutingWeight(weightUpdates, connector);
+				}
+				if (dirtyRefresh != null) {
+					roadContext.acknowledgeConnectorTravelTimeRefresh(dirtyRefresh);
+				}
+			}
+		}
+		RouteContext.setRoadNetworkEdgeWeights(weightUpdates);
+		if (refreshedPhysicalRoads != null) {
+			roadContext.markRoutingMetricsChanged(refreshedPhysicalRoads);
 		}
 	}
 
+	private boolean connectorTravelTimeRefreshDue(int currentTick) {
+		int refreshInterval = GlobalVariables.SIMULATION_CONNECTOR_TRAVEL_TIME_REFRESH_INTERVAL;
+		if (this.lastConnectorTravelTimeRefreshTick != Integer.MIN_VALUE
+				&& currentTick >= this.lastConnectorTravelTimeRefreshTick
+				&& (long) currentTick - this.lastConnectorTravelTimeRefreshTick < refreshInterval) {
+			return false;
+		}
+		this.lastConnectorTravelTimeRefreshTick = currentTick;
+		return true;
+	}
+
 	public void updateBackgroundSpeeds() {
+		LinkedHashMap<RepastEdge<Node>, Double> weightUpdates =
+				new LinkedHashMap<RepastEdge<Node>, Double>();
+		ArrayList<Road> changedRoads = new ArrayList<Road>();
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
 			if (road.updateBackgroundSpeed()) {
-				updateRoadRoutingWeight(road, road.getTravelTime());
+				queueRoadRoutingWeight(weightUpdates, road, road.getTravelTime());
+				changedRoads.add(road);
 			}
 		}
+		RouteContext.setRoadNetworkEdgeWeights(weightUpdates);
+		ContextCreator.getRoadContext().markRoutingMetricsChanged(changedRoads);
 	}
 
 	/**
@@ -1116,17 +1318,58 @@ public class CityContext extends DefaultContext<Object> {
 			return false;
 		}
 		double routingWeight = Math.max(weight, 1.0e-3);
-		edge.setWeight(routingWeight);
-		if (this.networkInitialized) {
-			RouteContext.setEdgeWeight(node1, node2, routingWeight);
-		}
+		boolean updated = RouteContext.setRoadNetworkEdgeWeight(edge, routingWeight);
+		if (updated) ContextCreator.getRoadContext().markRoutingMetricChanged(road);
+		return updated;
+	}
+
+	private boolean queueRoadRoutingWeight(Map<RepastEdge<Node>, Double> updates,
+			Road road, double weight) {
+		if (updates == null || road == null || !Double.isFinite(weight)) return false;
+		Node node1 = road.getUpStreamNode();
+		Node node2 = road.getDownStreamNode();
+		if (node1 == null || node2 == null) return false;
+		RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
+		if (edge == null) return false;
+		updates.put(edge, Double.valueOf(Math.max(weight, 1.0e-3)));
+		return true;
+	}
+
+//	private boolean updateConnectorRoutingWeight(ConnectorRoad connector) {
+//		LinkedHashMap<RepastEdge<Node>, Double> update =
+//				new LinkedHashMap<RepastEdge<Node>, Double>(1);
+//		if (!queueConnectorRoutingWeight(update, connector)) return false;
+//		return RouteContext.setRoadNetworkEdgeWeights(update) > 0;
+//	}
+
+	private boolean queueConnectorRoutingWeight(
+			Map<RepastEdge<Node>, Double> updates, ConnectorRoad connector) {
+		if (updates == null || connector == null) return false;
+		double travelTime = connector.getTravelTime();
+		if (!Double.isFinite(travelTime)) return false;
+		Node node1 = connector.getSourceRoad().getDownStreamNode();
+		Node node2 = connector.getTargetRoad().getUpStreamNode();
+		if (node1 == null || node2 == null) return false;
+		RepastEdge<Node> edge = ContextCreator.getRoadNetwork().getEdge(node1, node2);
+		if (edge == null) return false;
+		updates.put(edge, Double.valueOf(Math.max(1.0e-3, travelTime)));
 		return true;
 	}
 
 	public void refreshRoadNetworkWeights() {
+		LinkedHashMap<RepastEdge<Node>, Double> weightUpdates =
+				new LinkedHashMap<RepastEdge<Node>, Double>();
 		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			updateRoadRoutingWeight(road, road.getTravelTime());
+			queueRoadRoutingWeight(weightUpdates, road, road.getTravelTime());
 		}
+		if (this.networkInitialized) {
+			for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
+				queueConnectorRoutingWeight(weightUpdates, connector);
+			}
+		}
+		RouteContext.setRoadNetworkEdgeWeights(weightUpdates);
+		ContextCreator.getRoadContext().markRoutingMetricsChanged(
+				ContextCreator.getRoadContext().getAll());
 	}
 
 	public void registerAddedRoad(Road road, List<Road> upstreamRoads, List<Road> downstreamRoads,
@@ -1231,7 +1474,7 @@ public class CityContext extends DefaultContext<Object> {
 		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
 		RepastEdge<Node> existingEdge = roadNetwork.getEdge(node1, node2);
 		if (existingEdge != null) {
-			existingEdge.setWeight(road.getTravelTime());
+			RouteContext.setRoadNetworkEdgeWeight(existingEdge, road.getTravelTime());
 			this.edgeRoadID_KeyEdge.put(existingEdge, road.getID());
 			this.edgeIDEdge_KeyID.put(road.getID(), existingEdge);
 			return;
@@ -1325,7 +1568,7 @@ public class CityContext extends DefaultContext<Object> {
 		Network<Node> roadNetwork = ContextCreator.getRoadNetwork();
 		RepastEdge<Node> existingEdge = roadNetwork.getEdge(node1, node2);
 		if (existingEdge != null) {
-			existingEdge.setWeight(weight);
+			RouteContext.setRoadNetworkEdgeWeight(existingEdge, weight);
 			this.edgeRoadID_KeyEdge.put(existingEdge, -1);
 			return;
 		}
@@ -1672,19 +1915,13 @@ public class CityContext extends DefaultContext<Object> {
 	}
 
 	public Road findRoadBetweenNodeIDs(int node1, int node2) {
-		if(this.nodeIDRoad_KeyNodeID.containsKey(node1)) {
-			if(this.nodeIDRoad_KeyNodeID.get(node1).containsKey(node2)) {
-				return this.nodeIDRoad_KeyNodeID.get(node1).get(node2);
-			}
-		}
-		return null;
+		HashMap<Integer, Road> roadsByTarget = this.nodeIDRoad_KeyNodeID.get(node1);
+		return roadsByTarget == null ? null : roadsByTarget.get(node2);
 	}
 	
 	public Road findRoadWithOrigID(String origID) {
-		if(this.origRoadID_RoadID.containsKey(origID)) {
-			return ContextCreator.getRoadContext().get(this.origRoadID_RoadID.get(origID));
-		}
-		return null;
+		Integer roadID = this.origRoadID_RoadID.get(origID);
+		return roadID == null ? null : ContextCreator.getRoadContext().get(roadID);
 	}
 
 	public static double angle(Coordinate p0, Coordinate p1) {

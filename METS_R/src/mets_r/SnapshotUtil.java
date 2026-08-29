@@ -198,6 +198,13 @@ public class SnapshotUtil {
 		m.put("movingFlag", v.getMovingFlag());
 		m.put("roadTraversalStoppedTicks", v.getRoadTraversalStoppedTicks());
 		m.put("stopLineWaitTicks", v.getStopLineWaitTicks());
+		m.put("laneChangeActive", v.isLaneChanging());
+		m.put("laneChangeTargetLaneIndex",
+				v.isLaneChanging() && v.getRoad() != null
+						? v.getRoad().getLaneIndex(v.getLaneChangeTargetLane()) : -1);
+		m.put("laneChangeElapsedSeconds", v.getLaneChangeElapsedSeconds());
+		m.put("laneChangeDurationSeconds", v.getLaneChangeDurationSeconds());
+		m.put("laneChangeLateralDistanceMeters", v.getLaneChangeLateralDistanceMeters());
 		m.put("currentParkingRoad", v.getCurrentParkingRoad());
 		addTaxiPoolSnapshotFields(m, v);
 		addConnectorSnapshotFields(m, v.getConnectorPersistenceSnapshot());
@@ -495,6 +502,25 @@ public class SnapshotUtil {
 		HashMap<String, Object> m = new HashMap<>();
 		m.put("id", r.getID());
 		m.put("travelTime", r.getTravelTime());
+		m.put("travelTimeP90", r.getTravelTimeP90());
+		m.put("travelTimeEstimatorVersion", 2);
+		m.put("completedTravelTimeMean", r.getCompletedTravelTimeMean());
+		m.put("completedTravelTimeVariance", r.getCompletedTravelTimeVariance());
+		m.put("effectiveTravelTimeSampleCount", r.getTravelTimeEffectiveSampleCount());
+		m.put("lastTravelTimeSampleTick", r.getLastTravelTimeSampleTick());
+		m.put("lastTravelTimeUpdateTick", r.getLastTravelTimeUpdateTick());
+		m.put("travelTimeConfidence", r.getTravelTimeConfidence());
+		m.put("liveTravelTimeVehicleCount", r.getTravelTimeLiveVehicleCount());
+		m.put("liveTravelTimeStoppedCount", r.getTravelTimeLiveStoppedCount());
+		m.put("liveTravelTimeLowerBound", r.getTravelTimeLiveLowerBound());
+		m.put("liveTravelTimeMeanSpeed", r.getTravelTimeLiveMeanSpeed());
+		m.put("pendingTravelTimeSum", r.getPendingTravelTimeSum());
+		m.put("pendingTravelTimeSquareSum", r.getPendingTravelTimeSquareSum());
+		m.put("pendingTravelTimeCount", r.getPendingTravelTimeCount());
+		m.put("completedTravelTimeHistogram",
+				r.getCompletedTravelTimeHistogramSnapshot());
+		m.put("pendingTravelTimeHistogram",
+				r.getPendingTravelTimeHistogramSnapshot());
 		m.put("speedLimit", r.getSpeedLimit());
 		m.put("lastBackgroundSpeedHour", r.getLastBackgroundSpeedHour());
 		m.put("controlType", r.getControlType());
@@ -511,6 +537,28 @@ public class SnapshotUtil {
 		}
 		m.put("enteringVehicleQueue", enteringVehicleIDs);
 		return m;
+	}
+
+	private static void restoreRoadTravelTimeEstimator(Road road, HashMap<String, Object> state) {
+		if (road == null || state == null || !state.containsKey("travelTimeEstimatorVersion")) return;
+		road.restoreTravelTimeEstimatorState(
+				toDouble(state.get("completedTravelTimeMean")),
+				toDouble(state.get("completedTravelTimeVariance")),
+				toDouble(state.get("effectiveTravelTimeSampleCount")),
+				toInt(state.get("lastTravelTimeSampleTick")),
+				toInt(state.get("lastTravelTimeUpdateTick")),
+				toDouble(state.get("travelTimeConfidence")),
+				toInt(state.get("liveTravelTimeVehicleCount")),
+				toInt(state.get("liveTravelTimeStoppedCount")),
+				toDouble(state.get("liveTravelTimeLowerBound")),
+				toDouble(state.get("liveTravelTimeMeanSpeed")),
+				toDouble(state.get("pendingTravelTimeSum")),
+				toDouble(state.get("pendingTravelTimeSquareSum")),
+				toInt(state.get("pendingTravelTimeCount")),
+				state.containsKey("travelTimeP90")
+						? toDouble(state.get("travelTimeP90")) : Double.NaN,
+				toFloatArray(state.get("completedTravelTimeHistogram")),
+				toFloatArray(state.get("pendingTravelTimeHistogram")));
 	}
 
 	private static void addConnectorSnapshotFields(HashMap<String, Object> target,
@@ -655,7 +703,7 @@ public class SnapshotUtil {
 		}
 
 		snapshot.roadSnapshots = new ArrayList<>();
-		for (Road r : ContextCreator.getRoadContext().getAll()) {
+		for (Road r : ContextCreator.getRoadContext().getAllSteppableRoads()) {
 			snapshot.roadSnapshots.add(snapshotRoad(r));
 		}
 
@@ -668,7 +716,11 @@ public class SnapshotUtil {
 	}
 
 	public static boolean matchesCurrentFacilityMembership(SimulationSnapshot snapshot) {
-		return sameIDs(snapshot.roadSnapshots, ContextCreator.getRoadContext().getIDList())
+		ArrayList<Integer> roadIDs = new ArrayList<Integer>();
+		for (Road road : ContextCreator.getRoadContext().getAllSteppableRoads()) {
+			roadIDs.add(road.getID());
+		}
+		return sameIDs(snapshot.roadSnapshots, roadIDs)
 				&& sameIDs(snapshot.laneSnapshots, ContextCreator.getLaneContext().getIDList())
 				&& sameIDs(snapshot.zoneSnapshots, ContextCreator.getZoneContext().getIDList())
 				&& sameIDs(snapshot.chargingStationSnapshots, ContextCreator.getChargingStationContext().getIDList())
@@ -882,7 +934,7 @@ public class SnapshotUtil {
 
 		HashMap<Integer, HashMap<String, Object>> roadStateMap = mapByID(snapshot.roadSnapshots);
 		ContextCreator.coSimRoads.clear();
-		for (Road r : ContextCreator.getRoadContext().getAll()) {
+		for (Road r : ContextCreator.getRoadContext().getAllSteppableRoads()) {
 			HashMap<String, Object> rs = roadStateMap.get(r.getID());
 			if (rs != null) {
 				r.restoreRuntimeState(
@@ -898,7 +950,8 @@ public class SnapshotUtil {
 						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")),
 						rs.containsKey("lastBackgroundSpeedHour")
 								? toInt(rs.get("lastBackgroundSpeedHour")) : -1);
-				if (r.getControlType() == Road.COSIM) {
+				restoreRoadTravelTimeEstimator(r, rs);
+				if (!(r instanceof ConnectorRoad) && r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
 			}
@@ -940,6 +993,7 @@ public class SnapshotUtil {
 
 		HashMap<Integer, Vehicle> restoredVehicleMap = restoreVehicles(snapshot.vehicleSnapshots);
 		restoreRoadEnteringQueues(snapshot.roadSnapshots, restoredVehicleMap);
+		restoreLaneChangeStates(snapshot.vehicleSnapshots, restoredVehicleMap);
 		restoreConnectorStates(snapshot.vehicleSnapshots, restoredVehicleMap);
 		ContextCreator.getVehicleContext().rebuildPendingTaxiRequestIndex();
 
@@ -1028,7 +1082,7 @@ public class SnapshotUtil {
 
 		// 6. Road snapshots (dynamic state only)
 		ArrayList<HashMap<String, Object>> roadSnapshots = new ArrayList<>();
-		for (Road r : ContextCreator.getRoadContext().getAll()) {
+		for (Road r : ContextCreator.getRoadContext().getAllSteppableRoads()) {
 			roadSnapshots.add(snapshotRoad(r));
 		}
 
@@ -1255,7 +1309,7 @@ public class SnapshotUtil {
 			roadStateMap.put(toInt(rs.get("id")), rs);
 		}
 		ContextCreator.coSimRoads.clear();
-		for (Road r : ContextCreator.getRoadContext().getAll()) {
+		for (Road r : ContextCreator.getRoadContext().getAllSteppableRoads()) {
 			HashMap<String, Object> rs = roadStateMap.get(r.getID());
 			if (rs != null) {
 				r.restoreRuntimeState(
@@ -1271,7 +1325,8 @@ public class SnapshotUtil {
 						rs.containsKey("parkedNum") ? toInt(rs.get("parkedNum")) : toInt(rs.get("parked_num")),
 						rs.containsKey("lastBackgroundSpeedHour")
 								? toInt(rs.get("lastBackgroundSpeedHour")) : -1);
-				if (r.getControlType() == Road.COSIM) {
+				restoreRoadTravelTimeEstimator(r, rs);
+				if (!(r instanceof ConnectorRoad) && r.getControlType() == Road.COSIM) {
 					ContextCreator.coSimRoads.put(r.getOrigID(), r);
 				}
 			}
@@ -1517,6 +1572,7 @@ public class SnapshotUtil {
 		vc.rebuildTaxiRequestMaps();
 
 		restoreRoadEnteringQueues(roadSnapshots, restoredVehicleMap);
+		restoreLaneChangeStates(vehicleSnapshots, restoredVehicleMap);
 		restoreConnectorStates(vehicleSnapshots, restoredVehicleMap);
 
 		// 12. Restore charging station queues (now that vehicles are created)
@@ -1808,6 +1864,28 @@ public class SnapshotUtil {
 		if (vs.containsKey("initialChargingState")) ev.setInitialChargingState(toDouble(vs.get("initialChargingState")));
 	}
 
+	private static void restoreLaneChangeStates(
+			ArrayList<HashMap<String, Object>> vehicleSnapshots,
+			HashMap<Integer, Vehicle> restoredVehicleMap) {
+		if (vehicleSnapshots == null || restoredVehicleMap == null) return;
+		for (HashMap<String, Object> vs : vehicleSnapshots) {
+			if (vs == null || !vs.containsKey("laneChangeActive")
+					|| !toBool(vs.get("laneChangeActive"))) continue;
+			Vehicle vehicle = restoredVehicleMap.get(toInt(vs.get("id")));
+			if (vehicle == null || vehicle.getRoad() == null || vehicle.getLane() == null) continue;
+			int targetIndex = vs.containsKey("laneChangeTargetLaneIndex")
+					? toInt(vs.get("laneChangeTargetLaneIndex")) : -1;
+			Road road = vehicle.getRoad();
+			if (targetIndex < 0 || targetIndex >= road.getNumberOfLanes()) continue;
+			vehicle.restoreLaneChangeManeuver(road.getLane(targetIndex),
+					vs.containsKey("laneChangeElapsedSeconds")
+							? toDouble(vs.get("laneChangeElapsedSeconds")) : 0.0,
+					vs.containsKey("laneChangeDurationSeconds")
+							? toDouble(vs.get("laneChangeDurationSeconds")) : 0.0,
+					vs.containsKey("laneChangeLateralDistanceMeters")
+							? toDouble(vs.get("laneChangeLateralDistanceMeters")) : 0.0);
+		}
+	}
 	private static void restoreConnectorStates(
 			ArrayList<HashMap<String, Object>> vehicleSnapshots,
 			HashMap<Integer, Vehicle> restoredVehicleMap) {
@@ -2070,6 +2148,25 @@ public class SnapshotUtil {
 		if (obj == null) return false;
 		if (obj instanceof Boolean) return (Boolean) obj;
 		return Boolean.parseBoolean(obj.toString());
+	}
+
+	private static float[] toFloatArray(Object obj) {
+		if (obj instanceof float[]) return ((float[]) obj).clone();
+		if (obj instanceof double[]) {
+			double[] values = (double[]) obj;
+			float[] result = new float[values.length];
+			for (int i = 0; i < values.length; i++) result[i] = (float) values[i];
+			return result;
+		}
+		if (!(obj instanceof List<?>)) return null;
+		List<?> values = (List<?>) obj;
+		float[] result = new float[values.size()];
+		for (int i = 0; i < values.size(); i++) {
+			Object value = values.get(i);
+			result[i] = value instanceof Number
+					? ((Number) value).floatValue() : Float.parseFloat(value.toString());
+		}
+		return result;
 	}
 
 	private static ArrayList<Integer> toIntList(List<?> list) {

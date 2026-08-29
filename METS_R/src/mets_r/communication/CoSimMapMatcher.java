@@ -110,7 +110,8 @@ final class CoSimMapMatcher {
 			double score = projection.lateralDistanceMeters
 					+ 0.03 * headingError
 					+ continuity;
-			matches.add(new Match(road, lane, null, projection.downstreamDistance,
+			matches.add(new Match(road, lane, null,
+					lane.toLogicalDistance(projection.downstreamDistance),
 					projection.lateralDistanceMeters, headingError,
 					projection.endpointOvershootMeters, score));
 		}
@@ -134,7 +135,11 @@ final class CoSimMapMatcher {
 			double score = projection.lateralDistanceMeters
 					+ 0.03 * headingError
 					+ continuity;
-			matches.add(new Match(connector, null, path, projection.downstreamDistance,
+			Lane connectorLane = connector.getLane(path);
+			double downstreamDistance = connectorLane == null
+					? projection.downstreamDistance
+					: connectorLane.toLogicalDistance(projection.downstreamDistance);
+			matches.add(new Match(connector, null, path, downstreamDistance,
 					projection.lateralDistanceMeters, headingError,
 					projection.endpointOvershootMeters, score));
 		}

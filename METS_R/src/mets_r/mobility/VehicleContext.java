@@ -235,13 +235,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public ElectricTaxi getTaxi(int vid) {
-		if(this.taxiMap.containsKey(vid)) return this.taxiMap.get(vid);
-		return null;
+		return this.taxiMap.get(vid);
 	}
 	
 	public ElectricBus getBus(int vid) {
-		if(this.busMap.containsKey(vid)) return this.busMap.get(vid);
-		return null;
+		return this.busMap.get(vid);
 	}
 	
 	public Vehicle getPublicVehicle(int vid) {
@@ -582,21 +580,11 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public synchronized ElectricVehicle getPrivateEV(int vid) {
-		if(this.privateEVMap.containsKey(vid)) {
-			return this.privateEVMap.get(vid);
-		}
-		else {
-			return null;
-		}
+		return this.privateEVMap.get(vid);
 	}
 	
 	public synchronized Vehicle getPrivateGV(int vid) {
-		if(this.privateGVMap.containsKey(vid)) {
-			return this.privateGVMap.get(vid);
-		}
-		else {
-			return null;
-		}
+		return this.privateGVMap.get(vid);
 	}
 
 	public Collection<ElectricVehicle> getPrivateEVs() {
@@ -630,10 +618,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public synchronized int getPrivateVID(int agentID) {
-		if(privateVIDMap.containsKey(agentID)) {
-			return privateVIDMap.get(agentID);
-		}
-		return -1;
+		Integer vid = privateVIDMap.get(agentID);
+		return vid == null ? -1 : vid.intValue();
 	}
 	
 	/* Methods for save/load support */
@@ -767,20 +753,24 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	            continue;
 	        }
 	        Road r = currentVehicle.getRoad();
-            if (!currentVehicle.changeRoad()) { 
+	        long traversalEpoch = currentVehicle.getRoadTraversalEpoch();
+	        double traversalTicks = currentVehicle.getLinkTravelTime();
+	        Vehicle.RoadTransitionOutcome outcome = currentVehicle.changeRoadWithOutcome();
+            if (!outcome.completesSourceTraversal()) {
                 currentVehicle.setSpeed(0.0f);
                 currentVehicle.setAccRate(0.0f);
                 currentVehicle.setMovingFlag(false);
             } else { 
-                if (r != null) {
-                    r.recordEnergyConsumption(currentVehicle);
-                    r.recordTravelTime(currentVehicle);
+	            boolean recordedTraversal = r != null && r.recordTravelTime(
+						currentVehicle, traversalEpoch, traversalTicks);
+                if (recordedTraversal) {
+	                r.recordEnergyConsumption(currentVehicle);
                 }
 	                if (!currentVehicle.isExternalRoadTransition()) {
 	                    currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance()
 	                            + currentVehicle.getDistanceToNextJunction());
 	                }
-                currentVehicle.setMovingFlag(true);
+	                currentVehicle.setMovingFlag(outcome.transitioned());
             }
 	    }
 	    
@@ -822,7 +812,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	}
 	
 	public void addArrivalVehicles(Vehicle v) {
-		this.allArrivingVehicles.add(v);
+		if (v != null && v.claimArrivalQueueForTick(ContextCreator.getCurrentTick())) {
+			this.allArrivingVehicles.add(v);
+		}
 	}
 	
 	public void addTransferringVehicles(Vehicle v) {
@@ -832,7 +824,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		if (v != null && v.isExternalRoadTransition()) {
 			return;
 		}
-		this.allTransferringVehicles.add(v);
+		if (v != null && v.claimTransferringQueueForTick(ContextCreator.getCurrentTick())) {
+			this.allTransferringVehicles.add(v);
+		}
 	}
 
 	public void addDeferredRoadRecovery(Vehicle vehicle) {

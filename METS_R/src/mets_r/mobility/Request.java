@@ -70,7 +70,7 @@ public class Request {
 	
 	// Condition for passenger to left the service
 	public boolean check(){
-		if(this.currentWaitingTime > this.maxWaitingTime){
+		if(this.currentWaitingTime >= this.maxWaitingTime){
 			return true;
 		}
 		else{

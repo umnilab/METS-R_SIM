@@ -59,16 +59,16 @@ public class JsonOutputWriter implements DataConsumer {
 	private int fileSeriesNumber;
 
 	/** The thread which periodically reads the buffer for data to process. */
-	private Thread writingThread;
+	private volatile Thread writingThread;
 
 	/** The simulation tick currently being processed (or just processed). */
-	protected int currentTick;
+	protected volatile int currentTick;
 
 	/** Whether or not the output writer is currently consuming data. */
-	private boolean consuming;
+	private volatile boolean consuming;
 
 	/** Whether or not the output writer is paused for consuming data. */
-	private boolean paused;
+	private volatile boolean paused;
 
 	/** HG: This HashMap stores the data of ticks for every json file. */
 	private Map<String, Object> storeJsonObjects;

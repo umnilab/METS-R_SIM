@@ -4,14 +4,19 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 import com.vividsolutions.jts.geom.Coordinate;
 
 import mets_r.ContextCreator;
 import mets_r.GlobalVariables;
 import mets_r.mobility.Vehicle;
+
+import org.geotools.referencing.GeodeticCalculator;
 
 /**
  * 
@@ -22,12 +27,20 @@ import mets_r.mobility.Vehicle;
  **/
 
 public class Lane {
+	private static final AtomicLong ARC_GEOMETRY_EPOCH = new AtomicLong();
 	/* Private variables */
 	private int ID; // From shape file
 	private String origID;
 	private int index;
 	private ArrayList<Coordinate> coords;
-	private double length;
+	private volatile ArcGeometry arcGeometry;
+	private double length; // Logical longitudinal length used by traffic dynamics.
+	private double declaredLength;
+	private double geometricLength;
+	// False only when the lane has no usable physical direction/shape for safely
+	// inserting a vehicle. A declared-vs-drawn length difference is not by itself
+	// unusable: SUMO permits a logical length that differs from the centerline.
+	private boolean departureGeometryUsable;
 	private double[] segmentSlopes; // slope[i] = dz/horizontal for segment coords[i]→coords[i+1]
 	
 	// Connection with other facilities
@@ -58,6 +71,9 @@ public class Lane {
 		this.turningCoords = new HashMap<Integer, ArrayList<Coordinate>>();
 		this.turningDists = new HashMap<Integer, Double>();
 		this.explicitTurningTargets = new HashSet<Integer>();
+		this.departureGeometryUsable = true;
+		this.declaredLength = Double.NaN;
+		this.geometricLength = Double.NaN;
 	}
 
 	public int getID() {
@@ -83,12 +99,18 @@ public class Lane {
 		return coord;
 	}
 	
-	public void setCoords(Coordinate[] coordinates) {
+	public synchronized void setCoords(Coordinate[] coordinates) {
 		this.coords = new ArrayList<Coordinate>(Arrays.asList(coordinates));
+		this.arcGeometry = null;
+		this.geometricLength = Double.NaN;
+		ARC_GEOMETRY_EPOCH.incrementAndGet();
 	}
 	
-	public void setCoords(ArrayList<Coordinate> coords) {
-		this.coords = coords;
+	public synchronized void setCoords(ArrayList<Coordinate> coords) {
+		this.coords = new ArrayList<Coordinate>(coords);
+		this.arcGeometry = null;
+		this.geometricLength = Double.NaN;
+		ARC_GEOMETRY_EPOCH.incrementAndGet();
 	}
 
 	
@@ -121,6 +143,83 @@ public class Lane {
 			}
 		}
 		return res;
+	}
+
+	/**
+	 * Immutable, lazily built lane geometry for normalized-arc interpolation.
+	 * The defensive coordinate copy and geodetic segment lengths are computed
+	 * once per installed lane polyline and invalidated by either setCoords method.
+	 */
+	public ArcGeometry getArcGeometry() {
+		ArcGeometry cached = this.arcGeometry;
+		if (cached != null) return cached;
+		synchronized (this) {
+			cached = this.arcGeometry;
+			if (cached != null) return cached;
+			if (this.coords == null || this.coords.size() < 2) return null;
+
+			ArrayList<Coordinate> coordinates = new ArrayList<Coordinate>(this.coords.size());
+			for (Coordinate coordinate : this.coords) {
+				coordinates.add(new Coordinate(coordinate));
+			}
+			double[] cumulative = new double[coordinates.size()];
+			double total = 0.0;
+			GeodeticCalculator calculator =
+					new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
+			for (int i = 1; i < coordinates.size(); i++) {
+				Coordinate start = coordinates.get(i - 1);
+				Coordinate end = coordinates.get(i);
+				calculator.setStartingGeographicPoint(start.x, start.y);
+				calculator.setDestinationGeographicPoint(end.x, end.y);
+				double segmentLength = calculator.getOrthodromicDistance();
+				if (!Double.isFinite(segmentLength) || segmentLength < 0.0) segmentLength = 0.0;
+				total += segmentLength;
+				cumulative[i] = total;
+			}
+			if (!Double.isFinite(total) || total <= 0.001) return null;
+			cached = new ArcGeometry(this, coordinates, cumulative, total);
+			this.arcGeometry = cached;
+			return cached;
+		}
+	}
+
+	public static long getArcGeometryEpoch() {
+		return ARC_GEOMETRY_EPOCH.get();
+	}
+
+	public static final class ArcGeometry {
+		private final Lane lane;
+		private final List<Coordinate> coordinates;
+		private final double[] cumulative;
+		private final double geometricLength;
+
+		private ArcGeometry(Lane lane, ArrayList<Coordinate> coordinates,
+				double[] cumulative, double geometricLength) {
+			this.lane = lane;
+			this.coordinates = Collections.unmodifiableList(coordinates);
+			this.cumulative = cumulative;
+			this.geometricLength = geometricLength;
+		}
+
+		public Lane getLane() {
+			return this.lane;
+		}
+
+		public int size() {
+			return this.coordinates.size();
+		}
+
+		public Coordinate coordinateAt(int index) {
+			return this.coordinates.get(index);
+		}
+
+		public double cumulativeAt(int index) {
+			return this.cumulative[index];
+		}
+
+		public double getGeometricLength() {
+			return this.geometricLength;
+		}
 	}
 	
 	public void setTurningCoords(int targetLaneID, ArrayList<Coordinate> turningCoords) {
@@ -156,6 +255,60 @@ public class Lane {
 
 	public double getLength() {
 		return length;
+	}
+
+	public void setDeclaredLength(double declaredLength) {
+		this.declaredLength = Double.isFinite(declaredLength) && declaredLength > 0.0
+				? declaredLength : Double.NaN;
+	}
+
+	public double getDeclaredLength() {
+		return this.declaredLength;
+	}
+
+	public void setGeometricLength(double geometricLength) {
+		this.geometricLength = Double.isFinite(geometricLength) && geometricLength >= 0.0
+				? geometricLength : Double.NaN;
+	}
+
+	public double getGeometricLength() {
+		double cachedLength = this.geometricLength;
+		if (Double.isFinite(cachedLength)) return cachedLength;
+		ArcGeometry geometry = this.getArcGeometry();
+		if (geometry == null) return Double.NaN;
+		cachedLength = geometry.getGeometricLength();
+		this.geometricLength = cachedLength;
+		return cachedLength;
+	}
+
+	/** Convert a distance measured on the centerline to this lane's logical scale. */
+	public double toLogicalDistance(double geometricDistance) {
+		if (!Double.isFinite(geometricDistance)) return geometricDistance;
+		double centerlineLength = this.getGeometricLength();
+		if (!Double.isFinite(centerlineLength) || centerlineLength <= 0.0
+				|| !Double.isFinite(this.length) || this.length < 0.0) {
+			return geometricDistance;
+		}
+		return geometricDistance * this.length / centerlineLength;
+	}
+
+	/** Convert a logical longitudinal distance to a centerline distance. */
+	public double toGeometricDistance(double logicalDistance) {
+		if (!Double.isFinite(logicalDistance)) return logicalDistance;
+		double centerlineLength = this.getGeometricLength();
+		if (!Double.isFinite(this.length) || this.length <= 0.0
+				|| !Double.isFinite(centerlineLength) || centerlineLength < 0.0) {
+			return logicalDistance;
+		}
+		return logicalDistance * centerlineLength / this.length;
+	}
+
+	public boolean isDepartureGeometryUsable() {
+		return this.departureGeometryUsable;
+	}
+
+	public void setDepartureGeometryUsable(boolean usable) {
+		this.departureGeometryUsable = usable;
 	}
 
 	public void setSegmentSlopes(double[] slopes) {

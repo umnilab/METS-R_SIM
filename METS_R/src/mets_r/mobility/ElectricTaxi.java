@@ -126,7 +126,7 @@ public class ElectricTaxi extends ElectricVehicle {
 			return false;
 		}
 		Road targetRoad = ContextCreator.getRoadContext().get(targetZone.getClosestRoad(true));
-		if (targetRoad == null || !targetRoad.canBeDest()) {
+		if (targetRoad == null || !targetRoad.canBeTripDestination()) {
 			return false;
 		}
 		targetZone.addOneParkingVehicle();
@@ -138,7 +138,7 @@ public class ElectricTaxi extends ElectricVehicle {
 	}
 
 	public boolean goParking(Zone targetZone, Road targetRoad) {
-		if (targetZone == null || targetRoad == null || !targetRoad.canBeDest()) {
+		if (targetZone == null || targetRoad == null || !targetRoad.canBeTripDestination()) {
 			return false;
 		}
 		if (this.getState() == Vehicle.PARKING && this.getCurrentParkingRoad() == targetRoad.getID()) {
@@ -191,7 +191,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				continue;
 			}
 			Road parkingRoad = ContextCreator.getRoadContext().get(zone.getClosestRoad(true));
-			if (parkingRoad == null || !parkingRoad.canBeDest()) {
+			if (parkingRoad == null || !parkingRoad.canBeTripDestination()) {
 				continue;
 			}
 			double distance = ContextCreator.getCityContext().getDistance(this.getCurrentCoord(), zone.getCoord());

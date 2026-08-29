@@ -97,11 +97,10 @@ public class Junction {
 	}
 	
 	public int getDelay(int upStreamRoadID, int downStreamRoadID) {
-	    if(this.delay.containsKey(upStreamRoadID)) {
-	    	if(this.delay.get(upStreamRoadID).containsKey(downStreamRoadID)) {
-	    		return this.delay.get(upStreamRoadID).get(downStreamRoadID);
-	    	}
-	    }
+		Map<Integer, Integer> downstreamDelays = this.delay.get(upStreamRoadID);
+		Integer delayValue = downstreamDelays == null
+				? null : downstreamDelays.get(downStreamRoadID);
+		if (delayValue != null) return delayValue.intValue();
 //    	ContextCreator.logger.warn("No link found in junction: "+ this.getID() +
 //    			" between road: "+ upStreamRoadID + "," + downStreamRoadID);
     	return 0;
@@ -112,25 +111,20 @@ public class Junction {
 	}
 	
 	public void setDelay(int upStreamRoadID, int downStreamRoadID, int delay) {
-		if(this.delay.containsKey(upStreamRoadID)) {
-	    	this.delay.get(upStreamRoadID).put(downStreamRoadID, delay);
-	    }
-		else {
-			Map<Integer, Integer> tmpDelay = new HashMap<Integer,Integer>();
-			tmpDelay.put(downStreamRoadID, delay);
-			this.delay.put(upStreamRoadID, tmpDelay);
+		Map<Integer, Integer> downstreamDelays = this.delay.get(upStreamRoadID);
+		if (downstreamDelays == null) {
+			downstreamDelays = new HashMap<Integer,Integer>();
+			this.delay.put(upStreamRoadID, downstreamDelays);
 		}
+		downstreamDelays.put(downStreamRoadID, delay);
 	}
 
 	public int getMandatoryStopDelay(int upStreamRoadID, int downStreamRoadID) {
-		if (this.mandatoryStopDelay.containsKey(upStreamRoadID)) {
-			Map<Integer, Integer> downstreamDelays =
-					this.mandatoryStopDelay.get(upStreamRoadID);
-			if (downstreamDelays.containsKey(downStreamRoadID)) {
-				return downstreamDelays.get(downStreamRoadID);
-			}
-		}
-		return 0;
+		Map<Integer, Integer> downstreamDelays =
+				this.mandatoryStopDelay.get(upStreamRoadID);
+		Integer delayValue = downstreamDelays == null
+				? null : downstreamDelays.get(downStreamRoadID);
+		return delayValue == null ? 0 : delayValue.intValue();
 	}
 
 	public Map<Integer, Map<Integer, Integer>> getMandatoryStopDelay() {
@@ -151,21 +145,14 @@ public class Junction {
 	}
 	
 	public int getSignalState(int upStreamRoadID, int downStreamRoadID) {
-		if(this.signals.containsKey(upStreamRoadID)) {
-	    	if(this.signals.get(upStreamRoadID).containsKey(downStreamRoadID)) {
-	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID).getState();
-	    	}
-	    }
-    	return 0;
+		Signal signal = getSignal(upStreamRoadID, downStreamRoadID);
+		return signal == null ? 0 : signal.getState();
 	}
 	
 	public Signal getSignal(int upStreamRoadID, int downStreamRoadID) {
-		if(this.signals.containsKey(upStreamRoadID)) {
-	    	if(this.signals.get(upStreamRoadID).containsKey(downStreamRoadID)) {
-	    		return this.signals.get(upStreamRoadID).get(downStreamRoadID);
-	    	}
-	    }
-    	return null;
+		Map<Integer, Signal> downstreamSignals = this.signals.get(upStreamRoadID);
+		return downstreamSignals == null ? null
+				: downstreamSignals.get(downStreamRoadID);
 	}
 	
 	public void setSignal(int upStreamRoadID, int downStreamRoadID, Signal signal) {

@@ -51,14 +51,14 @@ public class QueryMessageHandler extends MessageHandler {
 	private Object routingGraphRoadContext = null;
 	private long routingGraphMetricVersion = 0L;
 	private long routingGraphTopologyVersion = 0L;
-	private boolean routingGraphSnapshotRequired = false;
+	private long routingGraphMetricCursor = 0L;
+	private long routingGraphBaselineTopologyVersion = 0L;
 	private static final double ROUTING_GRAPH_EPSILON = 1e-9;
-	private static final Object ROUTING_VERSION_LOCK = new Object();
-	private static Object versionedRoadContext = null;
-	private static long topologyFingerprint = 0L;
-	private static long metricFingerprint = 0L;
-	private static long globalTopologyVersion = 0L;
-	private static long globalMetricVersion = 0L;
+	private static final Object ROUTING_TOPOLOGY_CACHE_LOCK = new Object();
+	private static RoadContext cachedRoutingTopologyContext = null;
+	private static long cachedRoutingTopologyVersion = Long.MIN_VALUE;
+	private static List<RoutingTopologyEntry> cachedRoutingTopology =
+			Collections.emptyList();
 
 	public QueryMessageHandler() {
 		messageHandlers.put("tick", this::getTick);
@@ -68,6 +68,8 @@ public class QueryMessageHandler extends MessageHandler {
         // Vehicles
         // =============================================================
         messageHandlers.put("vehicle", this::getVehicle);
+		messageHandlers.put("vehicleRoute", this::getVehicleRoute);
+		messageHandlers.put("vehicle_route", this::getVehicleRoute);
         messageHandlers.put("onRoadVehicles", this::getOnRoadVehicles);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
         messageHandlers.put("taxi", this::getTaxi);
@@ -752,6 +754,7 @@ public class QueryMessageHandler extends MessageHandler {
 			}
 			record.put("connectorDistance", connector.getLength());
 			record.put("connectorTravelTime", connector.getTravelTime());
+			record.put("connectorTravelTimeP90", connector.getTravelTimeP90());
 			record.put("controlMode", controlModeName(connector.getControlType()));
 			record.put("segmentActive", connector.hasActiveVehicles());
 			record.put("sourceRoadId",
@@ -844,15 +847,7 @@ public class QueryMessageHandler extends MessageHandler {
 
 	private Road findEnteringQueueRoad(Vehicle vehicle) {
 		if (vehicle == null || vehicle.isOnRoad() || ContextCreator.getRoadContext() == null) return null;
-		for (Road road : ContextCreator.getRoadContext().getAll()) {
-			if (road == null) continue;
-			for (Vehicle queuedVehicle : road.getEnteringVehicleQueueSnapshot()) {
-				if (queuedVehicle == vehicle) {
-					return road;
-				}
-			}
-		}
-		return null;
+		return ContextCreator.getRoadContext().getEnteringRoadForVehicle(vehicle);
 	}
 
 
@@ -1052,6 +1047,92 @@ public class QueryMessageHandler extends MessageHandler {
 	}
 
 	/**
+	 * Fetch the currently assigned remaining route for one or more vehicles.
+	 *
+	 * <p>Input DATA: one record or a list of {@code {vehicleId, isPrivate}}.
+	 * The route is read from the vehicle; this query does not calculate or change
+	 * a route. Physical-road IDs, connector IDs, the interleaved segment path,
+	 * connector-aware distance, and mean/P90 travel-time metrics are returned.
+	 */
+	public HashMap<String, Object> getVehicleRoute(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("tick", ContextCreator.getCurrentTick());
+		if (!jsonMsg.containsKey("data")) {
+			jsonObj.put("publicVehicleIds", ContextCreator.getVehicleContext().getPublicVehicleIDList());
+			jsonObj.put("privateVehicleIds", ContextCreator.getVehicleContext().getPrivateVehicleIDList());
+			return jsonObj;
+		}
+
+		try {
+			Gson gson = new Gson();
+			String dataJson = jsonMsg.get("data").toString();
+			ArrayList<VehIDVehType> requests = new ArrayList<VehIDVehType>();
+			if (dataJson.trim().startsWith("[")) {
+				TypeToken<Collection<VehIDVehType>> collectionType =
+						new TypeToken<Collection<VehIDVehType>>() {};
+				Collection<VehIDVehType> parsed = gson.fromJson(dataJson, collectionType.getType());
+				if (parsed != null) requests.addAll(parsed);
+			}
+			else {
+				VehIDVehType parsed = gson.fromJson(dataJson, VehIDVehType.class);
+				if (parsed != null) requests.add(parsed);
+			}
+
+			ArrayList<Object> jsonData = new ArrayList<Object>();
+			for (VehIDVehType request : requests) {
+				int requestedID = request.vehicleId;
+				Vehicle vehicle = request.isPrivate
+						? ContextCreator.getVehicleContext().getPrivateVehicle(requestedID)
+						: ContextCreator.getVehicleContext().getPublicVehicle(requestedID);
+				if (vehicle == null) {
+					HashMap<String, Object> error = errorRecord("vehicleId", requestedID);
+					error.put("isPrivate", request.isPrivate);
+					error.put("errorCode", "VEHICLE_NOT_FOUND");
+					error.put("message", "Vehicle was not found.");
+					jsonData.add(error);
+					continue;
+				}
+
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("vehicleId", bridgeVehicleID(vehicle));
+				record.put("internalVehicleId", vehicle.getID());
+				record.put("isPrivate", request.isPrivate);
+				record.put("vehicleClass", vehicle.getVehicleClass());
+				record.put("state", vehicle.getState());
+				record.put("originZoneId", vehicle.getOriginID());
+				record.put("destinationZoneId", vehicle.getDestID());
+				addVehicleRoadFields(record, vehicle);
+
+				List<Road> route = vehicle.getRoadPathSnapshot();
+				if (route.isEmpty()) {
+					record.put("status", "error");
+					record.put("errorCode", "ROUTE_NOT_AVAILABLE");
+					record.put("message", "The vehicle currently has no assigned route.");
+					jsonData.add(record);
+					continue;
+				}
+
+				record.put("routeScope", "remainingAssignedRoute");
+				addRouteMetrics(record, route);
+				Object segmentIds = record.get("segmentIds");
+				record.put("routeSegmentCount", segmentIds instanceof Collection<?>
+						? ((Collection<?>) segmentIds).size() : route.size());
+				addRemainingDistanceFields(record, vehicle);
+				record.put("status", "ok");
+				jsonData.add(record);
+			}
+			jsonObj.put("data", jsonData);
+			return jsonObj;
+		}
+		catch (Exception e) {
+			ContextCreator.logger.error("Error processing vehicle-route query: " + e.toString());
+			jsonObj.put("status", "error");
+			jsonObj.put("errorCode", "INVALID_VEHICLE_ROUTE_QUERY");
+			return jsonObj;
+		}
+	}
+
+	/**
 	 * Query lane-to-lane paths belonging to a movement-level connector.
 	 *
 	 * <p>Input DATA is one record or a list of records containing required
@@ -1197,6 +1278,7 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("speed", connector.calcSpeed());
 		record.put("speedLimit", connector.getSpeedLimit());
 		record.put("travelTime", connector.getTravelTime());
+		record.put("travelTimeP90", connector.getTravelTimeP90());
 		record.put("routingWeight", connector.getTravelTime());
 		record.put("length", connector.getLength());
 		record.put("downstreamIds", connector.getDownStreamRoadOrigIDs());
@@ -1322,29 +1404,16 @@ public class QueryMessageHandler extends MessageHandler {
 	public HashMap<String, Object> getRoutingTopology(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		try {
-			ArrayList<Road> roads = new ArrayList<Road>(ContextCreator.getRoadContext().getAll());
-			roads.sort((a, b) -> {
-				String aid = a == null ? "" : String.valueOf(a.getOrigID());
-				String bid = b == null ? "" : String.valueOf(b.getOrigID());
-				return aid.compareTo(bid);
-			});
-
-			long topologyHash = 1125899906842597L;
-			long metricHash = 1469598103934665603L;
-			for (Road road : roads) {
-				if (road == null) continue;
-				topologyHash = 31L * topologyHash + String.valueOf(road.getOrigID()).hashCode();
-				topologyHash = 31L * topologyHash + Double.doubleToLongBits(road.getLength());
-				for (String downstream : road.getDownStreamRoadOrigIDs()) {
-					topologyHash = 31L * topologyHash + (downstream == null ? 0 : downstream.hashCode());
-				}
-				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getTravelTime());
-				metricHash = 31L * metricHash + Double.doubleToLongBits(routingWeightForRoad(road, road.getTravelTime()));
-				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getSpeedLimit());
-				metricHash = 31L * metricHash + Double.doubleToLongBits(road.getAvgEnergyConsumption());
+			RoadContext roadContext = ContextCreator.getRoadContext();
+			if (roadContext == null) {
+				throw new IllegalStateException("Road context is not initialized");
 			}
-			RoutingVersions versions = updateRoutingVersions(topologyHash, metricHash);
+			List<RoutingTopologyEntry> roads = routingTopologySnapshot(roadContext);
 
+			/*
+			 * Topology and metric versions are maintained at mutation sites; paging no
+			 * longer recomputes a whole-network fingerprint.
+			 */
 			int offset = Math.min(nonNegativeInt(jsonMsg.get("offset"), 0), roads.size());
 			int requestedLimit = nonNegativeInt(jsonMsg.get("limit"), roads.size());
 			int end = (int) Math.min((long) roads.size(), (long) offset + requestedLimit);
@@ -1352,22 +1421,26 @@ public class QueryMessageHandler extends MessageHandler {
 			boolean compact = Boolean.TRUE.equals(jsonMsg.get("compact"));
 			ArrayList<Object> data = new ArrayList<Object>(Math.max(0, end - offset));
 			for (int i = offset; i < end; i++) {
-				Road road = roads.get(i);
-				if (road == null) continue;
-				ArrayList<String> downstream = road.getDownStreamRoadOrigIDs();
+				RoutingTopologyEntry road = roads.get(i);
 				if (compact) {
 					ArrayList<Object> record = new ArrayList<Object>();
-					record.add(road.getOrigID());
-					record.add(downstream);
-					record.add(road.getLength());
-					if (includeCenter) addRoadCenter(record, road);
+					record.add(road.roadID);
+					record.add(road.downstreamRoadIDs);
+					record.add(road.length);
+					if (includeCenter) {
+						record.add(road.centerX);
+						record.add(road.centerY);
+					}
 					data.add(record);
 				} else {
 					HashMap<String, Object> record = new HashMap<String, Object>();
-					record.put("roadId", road.getOrigID());
-					record.put("downstreamRoadId", downstream);
-					record.put("length", road.getLength());
-					if (includeCenter) addRoadCenter(record, road);
+					record.put("roadId", road.roadID);
+					record.put("downstreamRoadId", road.downstreamRoadIDs);
+					record.put("length", road.length);
+					if (includeCenter && road.centerX != null && road.centerY != null) {
+						record.put("centerX", road.centerX);
+						record.put("centerY", road.centerY);
+					}
 					data.add(record);
 				}
 			}
@@ -1376,8 +1449,8 @@ public class QueryMessageHandler extends MessageHandler {
 			jsonObj.put("count", data.size());
 			jsonObj.put("total", roads.size());
 			jsonObj.put("hasMore", end < roads.size());
-			jsonObj.put("topologyVersion", versions.topologyVersion);
-			jsonObj.put("metricVersion", versions.metricVersion);
+			jsonObj.put("topologyVersion", roadContext.getPhysicalTopologyVersion());
+			jsonObj.put("metricVersion", roadContext.getRoutingMetricVersion());
 			jsonObj.put("tick", ContextCreator.getCurrentTick());
 			jsonObj.put("compact", compact);
 			if (compact) {
@@ -1393,24 +1466,42 @@ public class QueryMessageHandler extends MessageHandler {
 		return jsonObj;
 	}
 
+	private List<RoutingTopologyEntry> routingTopologySnapshot(RoadContext roadContext) {
+		long requestedVersion = roadContext.getPhysicalTopologyVersion();
+		if (cachedRoutingTopologyContext == roadContext
+				&& cachedRoutingTopologyVersion == requestedVersion) {
+			return cachedRoutingTopology;
+		}
+		synchronized (ROUTING_TOPOLOGY_CACHE_LOCK) {
+			requestedVersion = roadContext.getPhysicalTopologyVersion();
+			if (cachedRoutingTopologyContext == roadContext
+					&& cachedRoutingTopologyVersion == requestedVersion) {
+				return cachedRoutingTopology;
+			}
+			ArrayList<Road> orderedRoads = new ArrayList<Road>(roadContext.getAll());
+			orderedRoads.sort((left, right) -> String.valueOf(left.getOrigID())
+					.compareTo(String.valueOf(right.getOrigID())));
+			ArrayList<RoutingTopologyEntry> rebuilt =
+					new ArrayList<RoutingTopologyEntry>(orderedRoads.size());
+			for (Road road : orderedRoads) {
+				if (road == null || road.getOrigID() == null) continue;
+				Coordinate center = roadCenter(road);
+				rebuilt.add(new RoutingTopologyEntry(road.getOrigID(),
+						road.getDownStreamRoadOrigIDs(), road.getLength(),
+						center == null ? null : Double.valueOf(center.x),
+						center == null ? null : Double.valueOf(center.y)));
+			}
+			cachedRoutingTopologyContext = roadContext;
+			cachedRoutingTopologyVersion = requestedVersion;
+			cachedRoutingTopology = Collections.unmodifiableList(rebuilt);
+			return cachedRoutingTopology;
+		}
+	}
+
 	private int nonNegativeInt(Object value, int defaultValue) {
 		if (value == null) return Math.max(0, defaultValue);
 		try { return Math.max(0, Integer.parseInt(String.valueOf(value))); }
 		catch (NumberFormatException e) { return Math.max(0, defaultValue); }
-	}
-
-	private void addRoadCenter(ArrayList<Object> record, Road road) {
-		Coordinate center = roadCenter(road);
-		record.add(center == null ? null : center.x);
-		record.add(center == null ? null : center.y);
-	}
-
-	private void addRoadCenter(HashMap<String, Object> record, Road road) {
-		Coordinate center = roadCenter(road);
-		if (center != null) {
-			record.put("centerX", center.x);
-			record.put("centerY", center.y);
-		}
 	}
 
 	private Coordinate roadCenter(Road road) {
@@ -1421,36 +1512,21 @@ public class QueryMessageHandler extends MessageHandler {
 		return new Coordinate((first.x + last.x) / 2.0, (first.y + last.y) / 2.0);
 	}
 
-	private RoutingVersions updateRoutingVersions(long currentTopologyFingerprint,
-			long currentMetricFingerprint) {
-		synchronized (ROUTING_VERSION_LOCK) {
-			Object currentContext = ContextCreator.getRoadContext();
-			if (versionedRoadContext != currentContext) {
-				versionedRoadContext = currentContext;
-				topologyFingerprint = currentTopologyFingerprint;
-				metricFingerprint = currentMetricFingerprint;
-				globalTopologyVersion++;
-				globalMetricVersion++;
-			} else {
-				if (topologyFingerprint != currentTopologyFingerprint) {
-					topologyFingerprint = currentTopologyFingerprint;
-					globalTopologyVersion++;
-				}
-				if (metricFingerprint != currentMetricFingerprint) {
-					metricFingerprint = currentMetricFingerprint;
-					globalMetricVersion++;
-				}
-			}
-			return new RoutingVersions(globalTopologyVersion, globalMetricVersion);
-		}
-	}
+	private static final class RoutingTopologyEntry {
+		final String roadID;
+		final List<String> downstreamRoadIDs;
+		final double length;
+		final Double centerX;
+		final Double centerY;
 
-	private static class RoutingVersions {
-		final long topologyVersion;
-		final long metricVersion;
-		RoutingVersions(long topologyVersion, long metricVersion) {
-			this.topologyVersion = topologyVersion;
-			this.metricVersion = metricVersion;
+		RoutingTopologyEntry(String roadID, Collection<String> downstreamRoadIDs,
+				double length, Double centerX, Double centerY) {
+			this.roadID = roadID;
+			this.downstreamRoadIDs = Collections.unmodifiableList(
+					new ArrayList<String>(downstreamRoadIDs));
+			this.length = length;
+			this.centerX = centerX;
+			this.centerY = centerY;
 		}
 	}
 	/**
@@ -1465,15 +1541,17 @@ public class QueryMessageHandler extends MessageHandler {
 	public synchronized HashMap<String, Object> getRoutingGraphUpdates(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		try {
-			if (ContextCreator.getRoadContext() == null) {
+			RoadContext roadContext = ContextCreator.getRoadContext();
+			if (roadContext == null) {
 				jsonObj.put("message", "Road context is not initialized");
 				jsonObj.put("status", "error");
 				return jsonObj;
 			}
 
-			if (routingGraphRoadStates == null || routingGraphRoadContext != ContextCreator.getRoadContext()
-					|| routingGraphRoadStates.size() != ContextCreator.getRoadContext().getAll().size()) {
-				routingGraphSnapshotRequired = true;
+			if (routingGraphRoadStates == null || routingGraphRoadContext != roadContext
+					|| routingGraphBaselineTopologyVersion
+							!= roadContext.getPhysicalTopologyVersion()
+					|| routingGraphRoadStates.size() != roadContext.getAll().size()) {
 				jsonObj.put("data", new ArrayList<Object>());
 				jsonObj.put("removed", new ArrayList<String>());
 				jsonObj.put("status", "ok");
@@ -1481,17 +1559,24 @@ public class QueryMessageHandler extends MessageHandler {
 				return jsonObj;
 			}
 
-			HashMap<String, RoutingGraphRoadState> currentStates = new HashMap<String, RoutingGraphRoadState>();
+			RoadContext.RoutingMetricRefreshSnapshot refresh =
+					roadContext.getRoutingMetricRefreshSnapshot(routingGraphMetricCursor);
+			if (refresh.snapshotRequired) {
+				jsonObj.put("data", new ArrayList<Object>());
+				jsonObj.put("removed", new ArrayList<String>());
+				jsonObj.put("status", "ok");
+				addRoutingGraphMetadata(jsonObj, true);
+				return jsonObj;
+			}
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 			ArrayList<String> removedRoads = new ArrayList<String>();
 			boolean topologyChanged = false;
 
-			for (Road road : ContextCreator.getRoadContext().getAll()) {
+			for (Road road : refresh.roads) {
 				if (road == null || road.getOrigID() == null) {
 					continue;
 				}
 				RoutingGraphRoadState current = routingGraphRoadState(road);
-				currentStates.put(current.roadId, current);
 				RoutingGraphRoadState previous = routingGraphRoadStates.get(current.roadId);
 				if (previous == null) {
 					topologyChanged = true;
@@ -1504,20 +1589,12 @@ public class QueryMessageHandler extends MessageHandler {
 				if (!current.sameRoutingMetrics(previous)) {
 					jsonData.add(routingGraphUpdateRecord(road, current));
 				}
-			}
-
-			for (String previousRoadID : routingGraphRoadStates.keySet()) {
-				if (!currentStates.containsKey(previousRoadID)) {
-					topologyChanged = true;
-					removedRoads.add(previousRoadID);
-				}
+				routingGraphRoadStates.put(current.roadId, current);
 			}
 
 			if (topologyChanged) {
-				if (!routingGraphSnapshotRequired) {
-					routingGraphTopologyVersion++;
-				}
-				routingGraphSnapshotRequired = true;
+				routingGraphTopologyVersion =
+						roadContext.getPhysicalTopologyVersion();
 				jsonObj.put("data", new ArrayList<Object>());
 				jsonObj.put("removed", removedRoads);
 				jsonObj.put("status", "ok");
@@ -1525,12 +1602,9 @@ public class QueryMessageHandler extends MessageHandler {
 				return jsonObj;
 			}
 
-			if (!jsonData.isEmpty()) {
-				routingGraphMetricVersion++;
-			}
-			routingGraphRoadStates = currentStates;
-			routingGraphRoadContext = ContextCreator.getRoadContext();
-			routingGraphSnapshotRequired = false;
+			routingGraphMetricCursor = refresh.throughVersion;
+			routingGraphMetricVersion = refresh.throughVersion;
+			routingGraphRoadContext = roadContext;
 			jsonObj.put("data", jsonData);
 			jsonObj.put("removed", removedRoads);
 			jsonObj.put("status", "ok");
@@ -1545,18 +1619,20 @@ public class QueryMessageHandler extends MessageHandler {
 	}
 
 	private synchronized void beginRoutingGraphSnapshotBaseline() {
-		if (ContextCreator.getRoadContext() == null) {
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext == null) {
 			routingGraphRoadStates = null;
 			routingGraphRoadContext = null;
-			routingGraphSnapshotRequired = true;
+			routingGraphMetricCursor = 0L;
+			routingGraphBaselineTopologyVersion = 0L;
 			return;
 		}
-		if (routingGraphRoadContext != null && routingGraphRoadContext != ContextCreator.getRoadContext()) {
-			routingGraphTopologyVersion++;
-		}
 		routingGraphRoadStates = new HashMap<String, RoutingGraphRoadState>();
-		routingGraphRoadContext = ContextCreator.getRoadContext();
-		routingGraphSnapshotRequired = false;
+		routingGraphRoadContext = roadContext;
+		routingGraphMetricCursor = roadContext.enableRoutingMetricTracking();
+		routingGraphMetricVersion = routingGraphMetricCursor;
+		routingGraphBaselineTopologyVersion = roadContext.getPhysicalTopologyVersion();
+		routingGraphTopologyVersion = routingGraphBaselineTopologyVersion;
 	}
 
 	private synchronized void rememberRoutingGraphRoadSnapshot(Road road) {
@@ -1594,13 +1670,34 @@ public class QueryMessageHandler extends MessageHandler {
 		addRoutingMetricFields(record, routingGraphRoadState(road));
 	}
 
+	private void addTravelTimeEstimatorFields(HashMap<String, Object> record, Road road) {
+		record.put("travelTimeP90", road.getTravelTimeP90());
+		record.put("travelTimeConfidence", road.getTravelTimeConfidence());
+		record.put("travelTimeEffectiveSampleCount", road.getTravelTimeEffectiveSampleCount());
+		record.put("travelTimeSampleAgeSeconds", road.getTravelTimeSampleAgeSeconds());
+		record.put("travelTimeLiveVehicleCount", road.getTravelTimeLiveVehicleCount());
+		record.put("travelTimeStoppedFraction", road.getTravelTimeStoppedFraction());
+		record.put("travelTimeLiveLowerBound", road.getTravelTimeLiveLowerBound());
+		record.put("travelTimeLiveMeanSpeed", road.getTravelTimeLiveMeanSpeed());
+		record.put("travelTimeEstimateSource", road.getTravelTimeEstimateSource());
+	}
+
 	private void addRoutingMetricFields(HashMap<String, Object> record, RoutingGraphRoadState state) {
 		record.put("speedLimit", state.speedLimit);
 		record.put("travelTime", state.travelTime);
+		record.put("travelTimeP90", state.travelTimeP90);
 		record.put("routingWeight", state.routingWeight);
 		record.put("length", state.distance);
 		record.put("energyConsumed", state.energyConsumed);
 		record.put("averageEnergyConsumption", state.avgEnergyConsumption);
+		record.put("travelTimeConfidence", state.travelTimeConfidence);
+		record.put("travelTimeEffectiveSampleCount", state.effectiveSampleCount);
+		record.put("travelTimeSampleAgeSeconds", state.sampleAgeSeconds);
+		record.put("travelTimeLiveVehicleCount", state.liveVehicleCount);
+		record.put("travelTimeStoppedFraction", state.stoppedFraction);
+		record.put("travelTimeLiveLowerBound", state.liveLowerBound);
+		record.put("travelTimeLiveMeanSpeed", state.liveMeanSpeed);
+		record.put("travelTimeEstimateSource", state.estimateSource);
 	}
 
 	private RoutingGraphRoadState routingGraphRoadState(Road road) {
@@ -1621,9 +1718,18 @@ public class QueryMessageHandler extends MessageHandler {
 		catch (Exception e) {
 			// Missing downstream references are handled as a topology change by callers.
 		}
-		return new RoutingGraphRoadState(road.getOrigID(), distance, travelTime, routingWeight,
+		return new RoutingGraphRoadState(road.getOrigID(), distance, travelTime,
+				finiteDouble(road.getTravelTimeP90(), travelTime), routingWeight,
 				finiteDouble(road.getTotalEnergy(), 0.0),
-				finiteDouble(road.getAvgEnergyConsumption(), 0.0), speedLimit, downstreamRoads);
+				finiteDouble(road.getAvgEnergyConsumption(), 0.0), speedLimit,
+				finiteDouble(road.getTravelTimeConfidence(), 0.0),
+				finiteDouble(road.getTravelTimeEffectiveSampleCount(), 0.0),
+				finiteDouble(road.getTravelTimeSampleAgeSeconds(), -1.0),
+				road.getTravelTimeLiveVehicleCount(),
+				finiteDouble(road.getTravelTimeStoppedFraction(), 0.0),
+				finiteDouble(road.getTravelTimeLiveLowerBound(), 0.0),
+				finiteDouble(road.getTravelTimeLiveMeanSpeed(), 0.0),
+				road.getTravelTimeEstimateSource(), downstreamRoads);
 	}
 
 	private double finiteDouble(double value, double fallback) {
@@ -1650,32 +1756,63 @@ public class QueryMessageHandler extends MessageHandler {
 		final String roadId;
 		final double distance;
 		final double travelTime;
+		final double travelTimeP90;
 		final double routingWeight;
 		final double energyConsumed;
 		final double avgEnergyConsumption;
 		final double speedLimit;
+		final double travelTimeConfidence;
+		final double effectiveSampleCount;
+		final double sampleAgeSeconds;
+		final int liveVehicleCount;
+		final double stoppedFraction;
+		final double liveLowerBound;
+		final double liveMeanSpeed;
+		final String estimateSource;
 		final ArrayList<String> downstreamRoads;
 
 		RoutingGraphRoadState(String roadId, double distance, double travelTime,
-				double routingWeight, double energyConsumed, double avgEnergyConsumption,
-				double speedLimit, ArrayList<String> downstreamRoads) {
+				double travelTimeP90, double routingWeight, double energyConsumed,
+				double avgEnergyConsumption,
+				double speedLimit, double travelTimeConfidence, double effectiveSampleCount,
+				double sampleAgeSeconds, int liveVehicleCount, double stoppedFraction,
+				double liveLowerBound, double liveMeanSpeed, String estimateSource,
+				ArrayList<String> downstreamRoads) {
 			this.roadId = roadId;
 			this.distance = distance;
 			this.travelTime = travelTime;
+			this.travelTimeP90 = travelTimeP90;
 			this.routingWeight = routingWeight;
 			this.energyConsumed = energyConsumed;
 			this.avgEnergyConsumption = avgEnergyConsumption;
 			this.speedLimit = speedLimit;
+			this.travelTimeConfidence = travelTimeConfidence;
+			this.effectiveSampleCount = effectiveSampleCount;
+			this.sampleAgeSeconds = sampleAgeSeconds;
+			this.liveVehicleCount = liveVehicleCount;
+			this.stoppedFraction = stoppedFraction;
+			this.liveLowerBound = liveLowerBound;
+			this.liveMeanSpeed = liveMeanSpeed;
+			this.estimateSource = estimateSource;
 			this.downstreamRoads = downstreamRoads == null ? new ArrayList<String>() : downstreamRoads;
 		}
 
 		boolean sameRoutingMetrics(RoutingGraphRoadState other) {
 			return sameDouble(this.distance, other.distance)
 					&& sameDouble(this.travelTime, other.travelTime)
+					&& sameDouble(this.travelTimeP90, other.travelTimeP90)
 					&& sameDouble(this.routingWeight, other.routingWeight)
 					&& sameDouble(this.energyConsumed, other.energyConsumed)
 					&& sameDouble(this.avgEnergyConsumption, other.avgEnergyConsumption)
-					&& sameDouble(this.speedLimit, other.speedLimit);
+					&& sameDouble(this.speedLimit, other.speedLimit)
+					&& sameDouble(this.travelTimeConfidence, other.travelTimeConfidence)
+					&& sameDouble(this.effectiveSampleCount, other.effectiveSampleCount)
+					&& this.liveVehicleCount == other.liveVehicleCount
+					&& sameDouble(this.stoppedFraction, other.stoppedFraction)
+					&& sameDouble(this.liveLowerBound, other.liveLowerBound)
+					&& sameDouble(this.liveMeanSpeed, other.liveMeanSpeed)
+					&& (this.estimateSource == null ? other.estimateSource == null
+							: this.estimateSource.equals(other.estimateSource));
 		}
 
 		boolean sameTopology(RoutingGraphRoadState other) {
@@ -2682,6 +2819,7 @@ public class QueryMessageHandler extends MessageHandler {
 					record2.put("roadType", road.getRoadType());
 					record2.put("travelTime", road.getTravelTime());
 					record2.put("length", road.getLength());
+					addTravelTimeEstimatorFields(record2, road);
 					if (road instanceof ConnectorRoad) {
 						record2.put("routingWeight", road.getTravelTime());
 						record2.put("segmentType", "connector");
@@ -2720,6 +2858,11 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("roadTravelTime", metrics.roadTravelTime);
 		record.put("connectorTravelTime", metrics.connectorTravelTime);
 		record.put("travelTime", metrics.roadTravelTime + metrics.connectorTravelTime);
+		record.put("travelTimeP90", metrics.travelTimeP90());
+		record.put("travelTimeConfidence", metrics.confidence());
+		record.put("minimumSegmentTravelTimeConfidence", metrics.minimumConfidence());
+		record.put("liveEvidenceSegmentCount", metrics.liveEvidenceSegmentCount);
+		record.put("priorOnlySegmentCount", metrics.priorOnlySegmentCount);
 	}
 
 	private void addKRouteMetrics(HashMap<String, Object> record,
@@ -2733,6 +2876,11 @@ public class QueryMessageHandler extends MessageHandler {
 		ArrayList<Double> roadTravelTimes = new ArrayList<Double>();
 		ArrayList<Double> connectorTravelTimes = new ArrayList<Double>();
 		ArrayList<Double> travelTimes = new ArrayList<Double>();
+		ArrayList<Double> travelTimeP90s = new ArrayList<Double>();
+		ArrayList<Double> travelTimeConfidences = new ArrayList<Double>();
+		ArrayList<Double> minimumSegmentConfidences = new ArrayList<Double>();
+		ArrayList<Integer> liveEvidenceSegmentCounts = new ArrayList<Integer>();
+		ArrayList<Integer> priorOnlySegmentCounts = new ArrayList<Integer>();
 		for (List<Road> roadList : roadLists) {
 			RouteQueryMetrics metrics = routeMetrics(roadList);
 			roads.add(metrics.roadIDs);
@@ -2744,6 +2892,11 @@ public class QueryMessageHandler extends MessageHandler {
 			roadTravelTimes.add(metrics.roadTravelTime);
 			connectorTravelTimes.add(metrics.connectorTravelTime);
 			travelTimes.add(metrics.roadTravelTime + metrics.connectorTravelTime);
+			travelTimeP90s.add(metrics.travelTimeP90());
+			travelTimeConfidences.add(metrics.confidence());
+			minimumSegmentConfidences.add(metrics.minimumConfidence());
+			liveEvidenceSegmentCounts.add(metrics.liveEvidenceSegmentCount);
+			priorOnlySegmentCounts.add(metrics.priorOnlySegmentCount);
 		}
 		record.put("roadIdLists", roads);
 		record.put("connectorIdLists", connectors);
@@ -2754,6 +2907,11 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("roadTravelTimes", roadTravelTimes);
 		record.put("connectorTravelTimes", connectorTravelTimes);
 		record.put("travelTimes", travelTimes);
+		record.put("travelTimeP90s", travelTimeP90s);
+		record.put("travelTimeConfidences", travelTimeConfidences);
+		record.put("minimumSegmentTravelTimeConfidences", minimumSegmentConfidences);
+		record.put("liveEvidenceSegmentCounts", liveEvidenceSegmentCounts);
+		record.put("priorOnlySegmentCounts", priorOnlySegmentCounts);
 	}
 
 	private RouteQueryMetrics routeMetrics(List<Road> roadList) {
@@ -2762,10 +2920,23 @@ public class QueryMessageHandler extends MessageHandler {
 		for (int i = 0; i < roadList.size(); i++) {
 			Road road = roadList.get(i);
 			if (road == null) continue;
+			if (road instanceof ConnectorRoad) {
+				ConnectorRoad explicitConnector = (ConnectorRoad) road;
+				result.connectorIDs.add(explicitConnector.getOrigID());
+				result.interleavedIDs.add(explicitConnector.getOrigID());
+				result.connectorDistance += finiteDouble(explicitConnector.getLength(), 0.0);
+				double connectorTravelTime = finiteDouble(
+						explicitConnector.getTravelTime(), 0.0);
+				result.connectorTravelTime += connectorTravelTime;
+				result.addEvidence(explicitConnector, connectorTravelTime);
+				continue;
+			}
 			result.roadIDs.add(road.getOrigID());
 			result.interleavedIDs.add(road.getOrigID());
 			result.roadDistance += finiteDouble(road.getLength(), 0.0);
-			result.roadTravelTime += finiteDouble(road.getTravelTime(), 0.0);
+			double roadTravelTime = finiteDouble(road.getTravelTime(), 0.0);
+			result.roadTravelTime += roadTravelTime;
+			result.addEvidence(road, roadTravelTime);
 			if (i + 1 >= roadList.size()) continue;
 			Road target = roadList.get(i + 1);
 			ConnectorRoad connector = target == null ? null
@@ -2774,7 +2945,9 @@ public class QueryMessageHandler extends MessageHandler {
 			result.connectorIDs.add(connector.getOrigID());
 			result.interleavedIDs.add(connector.getOrigID());
 			result.connectorDistance += finiteDouble(connector.getLength(), 0.0);
-			result.connectorTravelTime += finiteDouble(connector.getTravelTime(), 0.0);
+			double connectorTravelTime = finiteDouble(connector.getTravelTime(), 0.0);
+			result.connectorTravelTime += connectorTravelTime;
+			result.addEvidence(connector, connectorTravelTime);
 		}
 		return result;
 	}
@@ -2787,6 +2960,51 @@ public class QueryMessageHandler extends MessageHandler {
 		double connectorDistance = 0.0;
 		double roadTravelTime = 0.0;
 		double connectorTravelTime = 0.0;
+		double travelTimeVarianceProxy = 0.0;
+		double confidenceLogWeight = 0.0;
+		double confidenceTimeWeight = 0.0;
+		double minimumSegmentConfidence = 1.0;
+		int evidenceSegmentCount = 0;
+		int liveEvidenceSegmentCount = 0;
+		int priorOnlySegmentCount = 0;
+
+		void addEvidence(Road road, double travelTime) {
+			double p90 = Math.max(travelTime,
+					finiteStatic(road.getTravelTimeP90(), travelTime));
+			double standardDeviationProxy = (p90 - travelTime) / 1.2815515655446004;
+			this.travelTimeVarianceProxy += standardDeviationProxy * standardDeviationProxy;
+			double confidence = Math.max(0.001,
+					Math.min(0.999, road.getTravelTimeConfidence()));
+			double weight = Math.max(0.001, travelTime);
+			this.confidenceLogWeight += weight * Math.log(confidence);
+			this.confidenceTimeWeight += weight;
+			this.minimumSegmentConfidence = Math.min(this.minimumSegmentConfidence, confidence);
+			this.evidenceSegmentCount++;
+			String source = road.getTravelTimeEstimateSource();
+			if ("live_censored".equals(source) || "completed_and_live".equals(source)) {
+				this.liveEvidenceSegmentCount++;
+			}
+			if ("free_flow_prior".equals(source)) this.priorOnlySegmentCount++;
+		}
+
+		double confidence() {
+			return this.confidenceTimeWeight > 0.0
+					? Math.exp(this.confidenceLogWeight / this.confidenceTimeWeight) : 0.0;
+		}
+
+		double minimumConfidence() {
+			return this.evidenceSegmentCount > 0 ? this.minimumSegmentConfidence : 0.0;
+		}
+
+		double travelTimeP90() {
+			double mean = this.roadTravelTime + this.connectorTravelTime;
+			return mean + 1.2815515655446004
+					* Math.sqrt(Math.max(0.0, this.travelTimeVarianceProxy));
+		}
+
+		private static double finiteStatic(double value, double fallback) {
+			return Double.isFinite(value) ? value : fallback;
+		}
 	}
 
 	// =============================================================

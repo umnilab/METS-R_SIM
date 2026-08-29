@@ -4,6 +4,7 @@ import java.util.Timer;
 import java.util.TimerTask;
 import java.util.TreeMap;
 import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import com.vividsolutions.jts.geom.Coordinate;
 
@@ -32,22 +33,23 @@ import mets_r.mobility.Vehicle;
 public class DataCollector {
 
 	/** A flag for knowing if the collector is running. */
-	private boolean collecting;
+	private volatile boolean collecting;
 
 	/** A flag for knowing if the collector has been paused. */
-	private boolean paused;
+	private volatile boolean paused;
 
 	/** The time step number of the last tick stored in the buffer. */
-	private double lastTick;
+	private volatile double lastTick;
 
 	/** The double-ended queue which is the data buffer for the simulation. */
 	private ConcurrentLinkedQueue<TickSnapshot> buffer;
+	private ConcurrentHashMap<Integer, TickSnapshot> tickIndex;
 
 	/** The list of registered data consumers reading the data buffer. */
 	private Vector<DataConsumer> registeredConsumers;
 
 	/** The current tick snapshot into which new data is being stored. */
-	private TickSnapshot currentSnapshot;
+	private volatile TickSnapshot currentSnapshot;
 
 	private ConcurrentLinkedQueue<Road> pendingRoadParkingSnapshots;
 
@@ -73,6 +75,7 @@ public class DataCollector {
 
 		// Create the data buffer
 		this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
+		this.tickIndex = new ConcurrentHashMap<Integer, TickSnapshot>();
 
 		// Create the list of registered data consumers
 		this.registeredConsumers = new Vector<DataConsumer>();
@@ -123,6 +126,7 @@ public class DataCollector {
 
 		// We are not paused, so this is a new run.
 		this.buffer = new ConcurrentLinkedQueue<TickSnapshot>();
+		this.tickIndex = new ConcurrentHashMap<Integer, TickSnapshot>();
 		this.lastTick = -1.0;
 		this.currentSnapshot = null;
 		this.pendingRoadParkingSnapshots = new ConcurrentLinkedQueue<Road>();
@@ -239,6 +243,7 @@ public class DataCollector {
 			if (!this.currentSnapshot.isEmpty()) {
 				this.recordFrameSummary(this.currentSnapshot);
 				this.buffer.add(this.currentSnapshot);
+				this.tickIndex.put(this.currentSnapshot.getTickNumber(), this.currentSnapshot);
 			}
 	
 			// Update the counter of the latest tick buffered
@@ -538,15 +543,9 @@ public class DataCollector {
 			return null;
 		}
 
-		// Walk through the list and look for the first matching
-		// tick in the buffer which has a tick index equal to or
-		// greater than the requested tick index
-		for (TickSnapshot tick : this.buffer) {
-
-			if (tick != null && tick.getTickNumber() == tickNumber) {
-				return tick;
-			}
-		}
+		TickSnapshot indexedTick = this.tickIndex == null
+				? null : this.tickIndex.get(tickNumber);
+		if (indexedTick != null) return indexedTick;
 
 		// We exhausted the buffer of items without finding a tick that
 		// has a time-step equal to or greater than the requested index
@@ -619,7 +618,10 @@ public class DataCollector {
 		for (TickSnapshot nextTick = this.buffer.peek(); nextTick != null; nextTick = this.buffer.peek()) {
 			// If the tick is older than we need to retain, we delete it
 			if (nextTick.getTickNumber() < minimumTick) {
-				this.buffer.poll();
+				TickSnapshot removedTick = this.buffer.poll();
+				if (removedTick != null && this.tickIndex != null) {
+					this.tickIndex.remove(removedTick.getTickNumber(), removedTick);
+				}
 				removed++;
 			} else {
 				// We've reached a tick number in the buffer that at least

@@ -8,9 +8,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.PriorityQueue;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.PriorityBlockingQueue;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 
@@ -46,7 +46,7 @@ public class BusSchedule {
 	private Map<Long, Integer> locationIDMap; 
 	
 	// For assign schedule to vehicles, key: depart zone
-	private ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>> pendingSchedules;
+	private ConcurrentHashMap<Integer, PriorityBlockingQueue<OneBusSchedule>> pendingSchedules;
 	private ConcurrentHashMap<Integer, Integer> ongoingSchedules;
 	
 	// For generating bus routes
@@ -60,7 +60,7 @@ public class BusSchedule {
 		toVisitZones = new HashMap<Integer, ArrayList<Integer>>();
 		toVisitRoads = new HashMap<Integer, ArrayList<Road>>();
 		scheduledPaths = new HashMap<Integer, ArrayList<List<Road>>> ();
-		pendingSchedules = new ConcurrentHashMap<Integer, PriorityQueue<OneBusSchedule>>();
+		pendingSchedules = new ConcurrentHashMap<Integer, PriorityBlockingQueue<OneBusSchedule>>();
 		ongoingSchedules = new  ConcurrentHashMap<Integer, Integer>();
 		
 		readEventFile();
@@ -83,16 +83,33 @@ public class BusSchedule {
 			}
 			br.close();
 			
-			Object obj = parser.parse(new FileReader(GlobalVariables.BUS_SCHEDULE));
+			Object obj;
+			try (FileReader scheduleReader =
+					new FileReader(GlobalVariables.BUS_SCHEDULE)) {
+				obj = parser.parse(scheduleReader);
+			}
 			JSONObject jsonObject = (JSONObject) obj;
-			for (Long name : (ArrayList<Long>) jsonObject.get("names")) {
-				this.routeIDs.add(BusSchedule.genRouteID());
-				routeID2RouteName.put(route_num, name.toString());
-				routeName2RouteID.put(name.toString(), route_num);
+			ArrayList<Long> routeNames = (ArrayList<Long>) jsonObject.get("names");
+			ArrayList<ArrayList<Long>> routes =
+					(ArrayList<ArrayList<Long>>) jsonObject.get("routes");
+			busNum = (ArrayList<Double>) jsonObject.get("nums");
+			busGap = (ArrayList<Double>) jsonObject.get("gaps");
+			if (routeNames == null || routes == null || busNum == null || busGap == null
+					|| routeNames.size() != routes.size()
+					|| routeNames.size() != busNum.size()
+					|| routeNames.size() != busGap.size()) {
+				throw new IllegalArgumentException(
+						"Bus schedule names, routes, nums, and gaps must have equal lengths");
+			}
+			for (Long name : routeNames) {
+				int routeID = BusSchedule.genRouteID();
+				this.routeIDs.add(routeID);
+				routeID2RouteName.put(routeID, name.toString());
+				routeName2RouteID.put(name.toString(), routeID);
 			}
 			
 			int k = 0;
-			for (ArrayList<Long> route : (ArrayList<ArrayList<Long>>) jsonObject.get("routes")) {
+			for (ArrayList<Long> route : routes) {
 				int rID = this.routeIDs.get(k);
 				ArrayList<Integer> oneRoute = new ArrayList<Integer>();
 				for (Long station : route) {
@@ -100,18 +117,23 @@ public class BusSchedule {
 						oneRoute.add(locationIDMap.get(station.longValue()));
 					}
 				}
+				if (oneRoute.size() < 2) {
+					throw new IllegalArgumentException(
+							"Bus route " + routeID2RouteName.get(rID)
+									+ " must contain at least two recognized stops");
+				}
 				toVisitZones.put(rID, oneRoute);
 				
 				k++;
 			}
-			busNum = (ArrayList<Double>) jsonObject.get("nums");
-			busGap = (ArrayList<Double>) jsonObject.get("gaps");
 			
 			ContextCreator.logger.info("Loaded bus schedule from offline files.");
 		} catch (FileNotFoundException e) {
-			e.printStackTrace();
+			throw new IllegalStateException(
+					"Bus schedule input was not found: " + GlobalVariables.BUS_SCHEDULE, e);
 		} catch (Exception e) {
-			e.printStackTrace();
+			throw new IllegalStateException(
+					"Failed to load bus schedule from " + GlobalVariables.BUS_SCHEDULE, e);
 		}	
 	}
 	
@@ -134,21 +156,18 @@ public class BusSchedule {
 				Zone z = ContextCreator.getZoneContext().get(zoneID);
 				Integer closestRoadID = z.getClosestRoad(false);
 				if (closestRoadID == null) {
-					ContextCreator.logger.error("Route " + rID + ": zone " + zoneID + " has no reachable destination road; route will be skipped.");
-					stopRoads = null;
-					break;
+					throw new IllegalStateException("Route " + rID + ": zone " + zoneID
+							+ " has no reachable destination road");
 				}
 				Road r = ContextCreator.getRoadContext().get(closestRoadID);
 				if (r == null) {
-					ContextCreator.logger.error("Route " + rID + ": zone " + zoneID + " closest road ID " + closestRoadID + " not found in road context; route will be skipped.");
-					stopRoads = null;
-					break;
+					throw new IllegalStateException("Route " + rID + ": zone " + zoneID
+							+ " closest road ID " + closestRoadID
+							+ " not found in road context");
 				}
 				stopRoads.add(r);
 			}
-			if (stopRoads != null) {
-				toVisitRoads.put(rID, stopRoads);
-			}
+			toVisitRoads.put(rID, stopRoads);
 		}
 		
 		// Translate bus route into bus schedules
@@ -156,7 +175,8 @@ public class BusSchedule {
 		for (int i = 0; i < n; i++) {
 			int startZone = this.toVisitZones.get(routeIDs.get(i)).get(0);
 			if (!pendingSchedules.containsKey(startZone)) {
-				pendingSchedules.put(startZone, new PriorityQueue<OneBusSchedule>(new The_Comparator()));
+				pendingSchedules.putIfAbsent(startZone,
+						new PriorityBlockingQueue<OneBusSchedule>(11, new The_Comparator()));
 			}
 			for (int j = 0; j < busNum.get(i); j++) { 
 				int depTime = (int) (j * busGap.get(i) * 60 / GlobalVariables.SIMULATION_STEP_SIZE);
@@ -310,7 +330,8 @@ public class BusSchedule {
 		}
 		int startZone = toVisitZones.get(rID).get(0); 
 		if (!pendingSchedules.containsKey(startZone)) {
-			pendingSchedules.put(startZone, new PriorityQueue<OneBusSchedule>(new The_Comparator()));
+			pendingSchedules.putIfAbsent(startZone,
+					new PriorityBlockingQueue<OneBusSchedule>(11, new The_Comparator()));
 		}
 		
 		if(!scheduledPaths.containsKey(rID)) {
@@ -340,12 +361,7 @@ public class BusSchedule {
 						.get(0) < (ContextCreator.getCurrentTick() + 600 / GlobalVariables.SIMULATION_STEP_SIZE)) {
 					OneBusSchedule obs = this.pendingSchedules.get(startZone).poll();
 					b.updateSchedule(obs);
-					if(ongoingSchedules.containsKey(obs.routeID)) {
-						ongoingSchedules.put(obs.routeID, ongoingSchedules.get(obs.routeID) + 1);
-					}
-					else{
-						ongoingSchedules.put(obs.routeID, 1);
-					}
+					ongoingSchedules.merge(obs.routeID, 1, Integer::sum);
 					
 					return;
 				}
@@ -356,10 +372,9 @@ public class BusSchedule {
 	}
 
 	public boolean hasSchedule(Integer stopZone) {
-		if (ContextCreator.bus_schedule.pendingSchedules.containsKey(stopZone)) {
-			return ContextCreator.bus_schedule.pendingSchedules.get(stopZone).size() > 0;
-		}
-		return false;
+		PriorityBlockingQueue<OneBusSchedule> schedules =
+				this.pendingSchedules.get(stopZone);
+		return schedules != null && !schedules.isEmpty();
 	}
 	
 	public int getRouteID(String routeName) {
@@ -393,20 +408,24 @@ public class BusSchedule {
 	}
 	
 	public int getNextDepartTime(int routeID) {
-		int startZone = this.toVisitZones.get(routeID).get(0);
-		for(OneBusSchedule obs: this.pendingSchedules.get(startZone)) {
+		ArrayList<Integer> stopZones = this.toVisitZones.get(routeID);
+		if (stopZones == null || stopZones.isEmpty()) return -1;
+		int startZone = stopZones.get(0);
+		PriorityBlockingQueue<OneBusSchedule> schedules =
+				this.pendingSchedules.get(startZone);
+		if (schedules == null) return -1;
+		int nextDeparture = Integer.MAX_VALUE;
+		for(OneBusSchedule obs: schedules) {
 			if(routeID == obs.routeID) {
-				return obs.departureTime.get(0);
+				nextDeparture = Math.min(nextDeparture, obs.departureTime.get(0));
 			}
 		}
-		return -1;
+		return nextDeparture == Integer.MAX_VALUE ? -1 : nextDeparture;
 	}
 	
 	public boolean isOngoing(int rID) {
-		if(ongoingSchedules.containsKey(rID) && ongoingSchedules.get(rID) > 0) 
-			return true;
-		else
-			return false;
+		Integer count = ongoingSchedules.get(rID);
+		return count != null && count > 0;
 	}
 	
 	public boolean isValid(int rID) {
@@ -443,7 +462,8 @@ public class BusSchedule {
 	}
 	
 	public void finishSchedule(int rID) {
-		ongoingSchedules.put(rID, ongoingSchedules.get(rID) - 1);
+		ongoingSchedules.computeIfPresent(rID,
+				(key, count) -> Math.max(0, count - 1));
 	}
 	
 	public ArrayList<Integer> getStopZones(int rID) {

@@ -13,6 +13,7 @@ import mets_r.facility.Road;
 import mets_r.facility.RoadContext;
 import mets_r.facility.Signal;
 import mets_r.facility.Zone;
+import mets_r.routing.RouteContext;
 
 /** Parallel scheduler with a barrier between the two road phases. */
 public class ThreadedScheduler {
@@ -26,6 +27,7 @@ public class ThreadedScheduler {
 	private final RoadPartitionTask[] roadPart2Tasks;
 	private final IntersectionPartitionTask[] intersectionTasks;
 	private final ZonePartitionTask[] zonePart2Tasks;
+	private final ZoneModeSplitPartitionTask[] zoneModeSplitTasks;
 	private final ChargingPartitionTask[] chargingPart1Tasks;
 	private final SignalPartitionTask[] signalTasks;
 	private volatile Runnable[] activeTasks;
@@ -40,6 +42,7 @@ public class ThreadedScheduler {
 
 	private int lastRoadStepTick = -1;
 	private int lastZoneStepTick = -1;
+	private int lastModeSplitPrecomputeHour = Integer.MIN_VALUE;
 	private int lastChargingStationStepTick = -1;
 	private int lastSignalStepTick = -1;
 
@@ -71,6 +74,7 @@ public class ThreadedScheduler {
 				? new IntersectionPartitionTask[this.nPartitions]
 				: new IntersectionPartitionTask[0];
 		this.zonePart2Tasks = new ZonePartitionTask[this.nPartitions];
+		this.zoneModeSplitTasks = new ZoneModeSplitPartitionTask[this.nPartitions];
 		this.chargingPart1Tasks = new ChargingPartitionTask[this.nPartitions];
 		this.signalTasks = new SignalPartitionTask[this.nPartitions];
 		for (int i = 0; i < this.nPartitions; i++) {
@@ -80,6 +84,7 @@ public class ThreadedScheduler {
 				this.intersectionTasks[i] = new IntersectionPartitionTask(i);
 			}
 			this.zonePart2Tasks[i] = new ZonePartitionTask(i);
+			this.zoneModeSplitTasks[i] = new ZoneModeSplitPartitionTask();
 			this.chargingPart1Tasks[i] = new ChargingPartitionTask(i);
 			this.signalTasks[i] = new SignalPartitionTask(i);
 		}
@@ -91,6 +96,7 @@ public class ThreadedScheduler {
 	public synchronized void resetTickGuards() {
 		this.lastRoadStepTick = -1;
 		this.lastZoneStepTick = -1;
+		this.lastModeSplitPrecomputeHour = Integer.MIN_VALUE;
 		this.lastChargingStationStepTick = -1;
 		this.lastSignalStepTick = -1;
 		this.roadPart1Nanos = 0L;
@@ -227,7 +233,7 @@ public class ThreadedScheduler {
 		try {
 			submitAndAwait(this.roadPart1Tasks);
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler road.part1 failed", ex);
+			throw stageFailure("road.part1", ex);
 		} finally {
 			this.roadPart1Nanos += elapsed(stageStart);
 			endStage("road.part1");
@@ -238,7 +244,7 @@ public class ThreadedScheduler {
 		try {
 			submitAndAwait(this.roadPart2Tasks);
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler road.part2 failed", ex);
+			throw stageFailure("road.part2", ex);
 		} finally {
 			this.roadPart2Nanos += elapsed(stageStart);
 			endStage("road.part2");
@@ -249,7 +255,7 @@ public class ThreadedScheduler {
 		try {
 			ContextCreator.getVehicleContext().executeGlobalTransfers();
 		} catch (Throwable ex) {
-			ContextCreator.logger.error("ThreadedScheduler vehicle.globalTransfers failed", ex);
+			throw stageFailure("vehicle.globalTransfers", ex);
 		} finally {
 			this.globalTransferNanos += elapsed(stageStart);
 			endStage("vehicle.globalTransfers");
@@ -274,8 +280,7 @@ public class ThreadedScheduler {
 				}
 				submitAndAwait(this.intersectionTasks);
 			} catch (Exception ex) {
-				ContextCreator.logger.error(
-						"ThreadedScheduler intersection.collision failed", ex);
+				throw stageFailure("intersection.collision", ex);
 			} finally {
 				this.intersectionNanos += elapsed(stageStart);
 				endStage("intersection.collision");
@@ -315,8 +320,7 @@ public class ThreadedScheduler {
 			this.latestRoadMetricsSnapshot = mergeRoadMetrics(currentTick, this.roadPart1Tasks);
 			return this.latestRoadMetricsSnapshot;
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler road.metrics failed", ex);
-			return RoadMetricsSnapshot.empty(currentTick);
+			throw stageFailure("road.metrics", ex);
 		} finally {
 			for (RoadPartitionTask task : this.roadPart1Tasks) {
 				task.clearMetricCollection();
@@ -362,16 +366,17 @@ public class ThreadedScheduler {
 	public void paraZoneStep() {
 		if (!claimZoneTick()) return;
 		long totalStart = profileStart();
+		precomputeModeSplitCachesIfNeeded();
 		beginStage("zone.part1");
 		try {
 			for (Zone zone : ContextCreator.getZoneContext().getAll()) zone.stepPart1();
 		} catch (Throwable ex) {
-			ContextCreator.logger.error("ThreadedScheduler zone.part1 failed", ex);
+			throw stageFailure("zone.part1", ex);
 		} finally {
 			endStage("zone.part1");
 		}
 
-		ArrayList<ArrayList<Zone>> partitions = ContextCreator.partitioner.getpartitionedZones();
+		List<List<Zone>> partitions = ContextCreator.partitioner.getpartitionedZones();
 		for (int i = 0; i < this.nPartitions; i++) {
 			this.zonePart2Tasks[i].setZones(i < partitions.size() ? partitions.get(i) : Collections.<Zone>emptyList());
 		}
@@ -379,7 +384,7 @@ public class ThreadedScheduler {
 		try {
 			submitAndAwait(this.zonePart2Tasks);
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler zone.part2 failed", ex);
+			throw stageFailure("zone.part2", ex);
 		} finally {
 			endStage("zone.part2");
 			this.zoneNanos += elapsed(totalStart);
@@ -387,10 +392,45 @@ public class ThreadedScheduler {
 		if (this.profilingEnabled) this.zoneStepCount++;
 	}
 
+	private void precomputeModeSplitCachesIfNeeded() {
+		// K-shortest-path mode consumes per-zone random numbers while choosing a
+		// path, so retain the original sequential behavior in that configuration.
+		if (GlobalVariables.K_SHORTEST_PATH
+				|| ContextCreator.getCurrentTick() == GlobalVariables.SIMULATION_STOP_TIME) return;
+		int hour = Zone.currentModeSplitHour();
+		if (this.lastModeSplitPrecomputeHour == hour) return;
+		this.lastModeSplitPrecomputeHour = hour;
+
+		ArrayList<Zone> destinations = new ArrayList<Zone>();
+		for (Zone zone : ContextCreator.getZoneContext().getAll()) destinations.add(zone);
+		List<List<Zone>> partitions = ContextCreator.partitioner.getpartitionedZones();
+		Zone.ModeSplitRouteCostCache routeCostCache = new Zone.ModeSplitRouteCostCache();
+		for (int i = 0; i < this.nPartitions; i++) {
+			this.zoneModeSplitTasks[i].configure(hour,
+					i < partitions.size() ? partitions.get(i) : Collections.<Zone>emptyList(),
+					destinations, routeCostCache);
+		}
+
+		long routingVersion = RouteContext.getRoutingGraphVersion();
+		boolean publish = false;
+		try {
+			submitAndAwait(this.zoneModeSplitTasks);
+			publish = routingVersion == RouteContext.getRoutingGraphVersion();
+		} catch (Exception ex) {
+			throw stageFailure("zone.modeSplit", ex);
+		} finally {
+			for (ZoneModeSplitPartitionTask task : this.zoneModeSplitTasks) {
+				task.finish(hour, publish);
+			}
+			routeCostCache.clear();
+		}
+	}
+
 	public void paraChargingStationStep() {
 		if (!claimChargingTick()) return;
 		long totalStart = profileStart();
-		ArrayList<ArrayList<ChargingStation>> partitions = ContextCreator.partitioner.getpartitionedChargingStations();
+		List<List<ChargingStation>> partitions =
+				ContextCreator.partitioner.getpartitionedChargingStations();
 		for (int i = 0; i < this.nPartitions; i++) {
 			this.chargingPart1Tasks[i].setStations(i < partitions.size()
 					? partitions.get(i) : Collections.<ChargingStation>emptyList());
@@ -399,7 +439,7 @@ public class ThreadedScheduler {
 		try {
 			submitAndAwait(this.chargingPart1Tasks);
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler charging.part1 failed", ex);
+			throw stageFailure("charging.part1", ex);
 		} finally {
 			endStage("charging.part1");
 		}
@@ -407,7 +447,7 @@ public class ThreadedScheduler {
 		try {
 			for (ChargingStation station : ContextCreator.getChargingStationContext().getAll()) station.stepPart2();
 		} catch (Throwable ex) {
-			ContextCreator.logger.error("ThreadedScheduler charging.part2 failed", ex);
+			throw stageFailure("charging.part2", ex);
 		} finally {
 			endStage("charging.part2");
 			this.chargingNanos += elapsed(totalStart);
@@ -420,18 +460,26 @@ public class ThreadedScheduler {
 		long totalStart = profileStart();
 		ArrayList<ArrayList<Signal>> partitions = ContextCreator.partitioner.getpartitionedSignals();
 		for (int i = 0; i < this.nPartitions; i++) {
-			this.signalTasks[i].setSignals(i < partitions.size() ? partitions.get(i) : Collections.<Signal>emptyList());
+			this.signalTasks[i].setSignals(i < partitions.size()
+					? partitions.get(i) : Collections.<Signal>emptyList());
 		}
 		beginStage("signal");
 		try {
 			submitAndAwait(this.signalTasks);
 		} catch (Exception ex) {
-			ContextCreator.logger.error("ThreadedScheduler signal failed", ex);
+			throw stageFailure("signal", ex);
 		} finally {
 			this.signalNanos += elapsed(totalStart);
 			endStage("signal");
 		}
 		if (this.profilingEnabled) this.signalStepCount++;
+	}
+
+	private static RuntimeException stageFailure(String stage, Throwable failure) {
+		ContextCreator.logger.error("ThreadedScheduler " + stage + " failed", failure);
+		if (failure instanceof Error) throw (Error) failure;
+		if (failure instanceof RuntimeException) return (RuntimeException) failure;
+		return new IllegalStateException("ThreadedScheduler " + stage + " failed", failure);
 	}
 
 	private synchronized void submitAndAwait(Runnable[] tasks) throws Exception {
@@ -545,6 +593,7 @@ public class ThreadedScheduler {
 						int roadID = road == null ? -1 : road.getID();
 						ContextCreator.logger.error("road.metrics partition " + this.partitionID
 								+ " failed on road " + roadID, ex);
+						throw new IllegalStateException("Road metrics failed for road " + roadID, ex);
 					}
 				}
 				return;
@@ -558,6 +607,7 @@ public class ThreadedScheduler {
 					ContextCreator.logger.error("road.part" + (this.part1 ? "1" : "2")
 							+ " partition " + this.partitionID + " failed on road " + roadID
 							+ " vehicles=" + vehicleCount, ex);
+					throw new IllegalStateException("Road stage failed for road " + roadID, ex);
 				}
 			}
 		}
@@ -618,10 +668,6 @@ public class ThreadedScheduler {
 		private static RoadMetricsSnapshot from(int tick, RoadMetricsAccumulator metrics) {
 			return new RoadMetricsSnapshot(tick, metrics);
 		}
-
-		private static RoadMetricsSnapshot empty(int tick) {
-			return new RoadMetricsSnapshot(tick, new RoadMetricsAccumulator());
-		}
 	}
 
 	private static class IntersectionPartitionTask implements Runnable {
@@ -647,8 +693,43 @@ public class ThreadedScheduler {
 					ContextCreator.logger.error("intersection.collision partition "
 							+ this.partitionID + " failed on intersection "
 							+ intersectionID, ex);
+					throw new IllegalStateException(
+							"Intersection collision check failed for " + intersectionID, ex);
 				}
 			}
+		}
+	}
+
+	private static class ZoneModeSplitPartitionTask implements Runnable {
+		private int hour;
+		private List<Zone> zones = Collections.emptyList();
+		private List<Zone> destinations = Collections.emptyList();
+		private Zone.ModeSplitRouteCostCache routeCostCache;
+
+		ZoneModeSplitPartitionTask() {
+		}
+
+		void configure(int hour, List<Zone> zones, List<Zone> destinations,
+				Zone.ModeSplitRouteCostCache routeCostCache) {
+			this.hour = hour;
+			this.zones = zones;
+			this.destinations = destinations;
+			this.routeCostCache = routeCostCache;
+		}
+
+		public void run() {
+			for (Zone zone : this.zones) {
+				zone.prepareModeSplitCache(this.hour, this.destinations, this.routeCostCache);
+			}
+		}
+
+		void finish(int completedHour, boolean publish) {
+			for (Zone zone : this.zones) {
+				if (publish) zone.publishPreparedModeSplitCache(completedHour);
+				else zone.discardPreparedModeSplitCache();
+			}
+			this.destinations = Collections.emptyList();
+			this.routeCostCache = null;
 		}
 	}
 
@@ -658,8 +739,15 @@ public class ThreadedScheduler {
 		ZonePartitionTask(int partitionID) { this.partitionID = partitionID; }
 		void setZones(List<Zone> zones) { this.zones = zones; }
 		public void run() {
-			try { for (Zone zone : this.zones) zone.stepPart2(); }
-			catch (Throwable ex) { ContextCreator.logger.error("zone.part2 partition " + this.partitionID + " failed", ex); }
+			for (Zone zone : this.zones) {
+				try {
+					zone.stepPart2();
+				} catch (Throwable ex) {
+					throw new IllegalStateException("zone.part2 partition "
+							+ this.partitionID + " failed for zone "
+							+ (zone == null ? -1 : zone.getID()), ex);
+				}
+			}
 		}
 	}
 
@@ -669,8 +757,15 @@ public class ThreadedScheduler {
 		ChargingPartitionTask(int partitionID) { this.partitionID = partitionID; }
 		void setStations(List<ChargingStation> stations) { this.stations = stations; }
 		public void run() {
-			try { for (ChargingStation station : this.stations) station.stepPart1(); }
-			catch (Throwable ex) { ContextCreator.logger.error("charging.part1 partition " + this.partitionID + " failed", ex); }
+			for (ChargingStation station : this.stations) {
+				try {
+					station.stepPart1();
+				} catch (Throwable ex) {
+					throw new IllegalStateException("charging.part1 partition "
+							+ this.partitionID + " failed for station "
+							+ (station == null ? 0 : station.getID()), ex);
+				}
+			}
 		}
 	}
 
@@ -680,8 +775,16 @@ public class ThreadedScheduler {
 		SignalPartitionTask(int partitionID) { this.partitionID = partitionID; }
 		void setSignals(List<Signal> signals) { this.signals = signals; }
 		public void run() {
-			try { for (Signal signal : this.signals) signal.step(); }
-			catch (Throwable ex) { ContextCreator.logger.error("signal partition " + this.partitionID + " failed", ex); }
+			int currentTick = ContextCreator.getCurrentTick();
+			for (Signal signal : this.signals) {
+				try {
+					if (currentTick >= signal.getNextUpdateTick()) signal.step();
+				} catch (Throwable ex) {
+					throw new IllegalStateException("signal partition "
+							+ this.partitionID + " failed for signal "
+							+ (signal == null ? -1 : signal.getID()), ex);
+				}
+			}
 		}
 	}
 }

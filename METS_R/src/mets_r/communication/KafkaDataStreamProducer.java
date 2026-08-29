@@ -1,12 +1,6 @@
 package mets_r.communication;
 
 import java.util.Properties;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CompletionService;
-import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.kafka.clients.producer.*;
 
@@ -19,18 +13,17 @@ import mets_r.mobility.Vehicle;
 public class KafkaDataStreamProducer{
 	private static final String BOOTSTRAP_SERVERS = "localhost:29092";
 	private Producer<String, String> myProducer;
-	private ExecutorService executorService;
-	private CompletionService<String> compService;
 	
 	public KafkaDataStreamProducer(){
 		Properties props = new Properties();
 		props.put("bootstrap.servers", BOOTSTRAP_SERVERS);
 		props.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
 		props.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+		props.put("buffer.memory", "33554432");
+		props.put("max.block.ms", "100");
+		props.put("delivery.timeout.ms", "30000");
 		
 		myProducer = new KafkaProducer<String, String>(props);
-		executorService = Executors.newFixedThreadPool(1); // Use one thread to send Kafka message
-		compService = new ExecutorCompletionService<String>(executorService);
 	}
 	
 	public void produceBSM(Vehicle vehicle, Coordinate coordinate, int type) {
@@ -43,45 +36,39 @@ public class KafkaDataStreamProducer{
 		BSMDataStream myMessage = new BSMDataStream(vid, vehicle, coordinate, type);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
-		Callable<String> sender = ()->{
-			myProducer.send(new ProducerRecord<String, String>("bsm", key, message));
-			return "sent bsm";
-		};
-		compService.submit(sender);
+		this.send("bsm", key, message);
 	}
 	
 	public void produceLinkEnergy(int vid, int vehType, int roadID, double linkEnergy) {
 		LinkEnergyDataStream myMessage = new LinkEnergyDataStream(vid, vehType, roadID, linkEnergy);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
-		Callable<String> sender = () -> {
-			myProducer.send(new ProducerRecord<String, String>("link_energy", key, message));
-			return "sent link_energy";
-		};
-		compService.submit(sender);
+		this.send("link_energy", key, message);
 	}
 	
 	public void produceLinkTravelTime(int vid, int vehType, int roadID, double linkTravelTime, double length) {
 		LinkTravelTimeDataStream myMessage = new LinkTravelTimeDataStream(vid, vehType, roadID, linkTravelTime, length);
 		String key = Integer.toString(myMessage.hashCode());
 		String message = myMessage.toString();
-		Callable<String> sender = () -> {
-			myProducer.send(new ProducerRecord<String, String>("link_tt", key, message));
-			return "sent link_tt";
-		};
-		compService.submit(sender);
+		this.send("link_tt", key, message);
+	}
+
+	private void send(String topic, String key, String message) {
+		try {
+			this.myProducer.send(new ProducerRecord<String, String>(topic, key, message),
+					(metadata, failure) -> {
+						if (failure != null) {
+							ContextCreator.logger.warn(
+									"Kafka send failed for topic " + topic, failure);
+						}
+					});
+		} catch (RuntimeException failure) {
+			ContextCreator.logger.warn(
+					"Kafka send rejected for topic " + topic, failure);
+		}
 	}
 
 	public void close() {
-		executorService.shutdown();
-		try {
-			if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-				executorService.shutdownNow();
-			}
-		} catch (InterruptedException e) {
-			executorService.shutdownNow();
-			Thread.currentThread().interrupt();
-		}
 		myProducer.flush();
 		myProducer.close();
 	}

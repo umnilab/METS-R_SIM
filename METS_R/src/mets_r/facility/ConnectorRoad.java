@@ -53,6 +53,7 @@ public final class ConnectorRoad extends Road {
 	private final ConcurrentHashMap<Integer, ConnectorVehicleState> vehicleStates =
 			new ConcurrentHashMap<Integer, ConnectorVehicleState>();
 	private volatile Set<Integer> conflictingConnectorIDs = Collections.emptySet();
+	private volatile int lastTravelTimeLazyReadTick = Integer.MIN_VALUE;
 
 	ConnectorRoad(int id, long movementKey, Road sourceRoad, Road targetRoad,
 			int intersectionID, List<ConnectorPath> paths) {
@@ -114,10 +115,13 @@ public final class ConnectorRoad extends Road {
 		double explicitSpeed = Double.POSITIVE_INFINITY;
 		for (ConnectorPath path : this.paths) {
 			List<Coordinate> line = path.getCenterLine();
+			double geometricPathLength =
+					polylineLengthMeters(line, intersectionAnchor(line));
 			double pathLength = Double.isFinite(path.getDeclaredLength())
 					&& path.getDeclaredLength() >= 0.0
 							? path.getDeclaredLength()
-							: polylineLengthMeters(line, intersectionAnchor(line));
+							: geometricPathLength;
+			if (!Double.isFinite(pathLength) || pathLength < 0.0) pathLength = 0.0;
 			maxLength = Math.max(maxLength, pathLength);
 			if (Double.isFinite(path.getSpeed()) && path.getSpeed() >= 0.0) {
 				explicitSpeed = Math.min(explicitSpeed, path.getSpeed());
@@ -128,6 +132,8 @@ public final class ConnectorRoad extends Road {
 			connectorLane.setOrigID(resolvedOrigID + "/" + path.getConnectorPathID());
 			connectorLane.setRoad(id);
 			connectorLane.setCoords(deepCopy(line));
+			connectorLane.setDeclaredLength(path.getDeclaredLength());
+			connectorLane.setGeometricLength(geometricPathLength);
 			connectorLane.setLength(pathLength);
 			connectorLane.setSpeed(Double.isFinite(path.getSpeed()) && path.getSpeed() >= 0.0
 					? path.getSpeed() : this.getSpeedLimit());
@@ -142,7 +148,10 @@ public final class ConnectorRoad extends Road {
 		if (Double.isFinite(explicitSpeed)) {
 			this.setSpeedLimit(Math.min(this.getSpeedLimit(), explicitSpeed));
 		}
-		this.updateTravelTimeEstimation();
+		// Length and speed setters already establish the free-flow prior. Leave the
+		// estimator untouched until this connector becomes active or dirty.
+		// Connectors are internal transition state, never external trip endpoints.
+		// canBeTripOrigin()/canBeTripDestination() enforce that endpoint rule.
 		this.setCanBeOrigin(true);
 		this.setCanBeDest(false);
 	}
@@ -684,6 +693,12 @@ public final class ConnectorRoad extends Road {
 		return path == null ? null : this.lanesByPathID.get(path.getConnectorPathID());
 	}
 
+	/** Exact geometry length for a selected lane-pair path. */
+	public double getPathLength(ConnectorPath path) {
+		Lane connectorLane = this.getLane(path);
+		return connectorLane == null ? Double.NaN : connectorLane.getLength();
+	}
+
 	/**
 	 * A connector path shorter than the normal entry headway cannot safely hold
 	 * two vehicle fronts. Treat it as an atomic path: a following vehicle may
@@ -899,8 +914,12 @@ public final class ConnectorRoad extends Road {
 		}
 		double bestDistanceSquared = Double.POSITIVE_INFINITY;
 		double bestRemaining = Double.NaN;
-		for (List<Coordinate> line : this.centerLines) {
+		for (int pathIndex = 0; pathIndex < this.centerLines.size(); pathIndex++) {
+			List<Coordinate> line = this.centerLines.get(pathIndex);
 			if (line == null || line.size() < 2) continue;
+			ConnectorPath path = pathIndex < this.paths.size()
+					? this.paths.get(pathIndex) : null;
+			Lane connectorLane = path == null ? null : this.getLane(path);
 			Coordinate anchor = intersectionAnchor(line);
 			double[][] local = toLocalMeters(line, anchor);
 			double[][] posePoint = toLocalMeters(
@@ -929,6 +948,9 @@ public final class ConnectorRoad extends Road {
 				double segmentLength = Math.sqrt(segmentLengthSquared);
 				double remaining = Math.max(0.0,
 						totalLength - distanceBeforeSegment - fraction * segmentLength);
+				if (connectorLane != null) {
+					remaining = connectorLane.toLogicalDistance(remaining);
+				}
 				if (distanceSquared < bestDistanceSquared - GEOMETRY_EPSILON
 						|| (Math.abs(distanceSquared - bestDistanceSquared)
 								<= GEOMETRY_EPSILON
@@ -1004,6 +1026,107 @@ public final class ConnectorRoad extends Road {
 		ArrayList<Vehicle> result = new ArrayList<Vehicle>(this.activeVehicles.values());
 		result.sort(Comparator.comparingInt(Vehicle::getID));
 		return result;
+	}
+
+	/**
+	 * Whether another vehicle still occupies or reserves the selected path. This
+	 * reads the live membership map directly so clearance lookahead does not need
+	 * to allocate a snapshot on the transition hot path.
+	 */
+	public boolean hasActiveVehicleOnPath(ConnectorPath path, Vehicle requester) {
+		if (path == null) return false;
+		for (Vehicle vehicle : this.activeVehicles.values()) {
+			if (vehicle != null && vehicle != requester
+					&& vehicle.getCurrentConnector() == this
+					&& vehicle.getCurrentConnectorPath() == path) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	@Override
+	protected Iterable<Vehicle> travelTimeObservationVehicles() {
+		return this.activeVehicles.values();
+	}
+
+	@Override
+	protected int travelTimeRefreshIntervalTicks() {
+		return GlobalVariables.SIMULATION_CONNECTOR_TRAVEL_TIME_REFRESH_INTERVAL;
+	}
+
+	@Override
+	protected void prepareTravelTimeEstimateForRead() {
+		// Never initialize untouched connectors merely because startup publishes their
+		// free-flow cost. Once a connector has estimator state, age it only when read.
+		if (!this.hasUpdatedTravelTimeEstimate()) return;
+		int currentTick = ContextCreator.getCurrentTick();
+		if (this.lastTravelTimeLazyReadTick == currentTick) return;
+		this.lastTravelTimeLazyReadTick = currentTick;
+		if (this.refreshTravelTimeEstimationIfStale(currentTick)) {
+			RoadContext roadContext = ContextCreator.getRoadContext();
+			if (roadContext != null) roadContext.markConnectorTravelTimeDirty(this);
+		}
+	}
+
+	@Override
+	public double getTravelTime() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTime();
+	}
+
+	@Override
+	public double getTravelTimeP90() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeP90();
+	}
+
+	@Override
+	public double getTravelTimeConfidence() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeConfidence();
+	}
+
+	@Override
+	public double getTravelTimeEffectiveSampleCount() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeEffectiveSampleCount();
+	}
+
+	@Override
+	public int getTravelTimeLiveVehicleCount() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeLiveVehicleCount();
+	}
+
+	@Override
+	public double getTravelTimeStoppedFraction() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeStoppedFraction();
+	}
+
+	@Override
+	public double getTravelTimeLiveLowerBound() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeLiveLowerBound();
+	}
+
+	@Override
+	public double getTravelTimeLiveMeanSpeed() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeLiveMeanSpeed();
+	}
+
+	@Override
+	public String getTravelTimeEstimateSource() {
+		this.prepareTravelTimeEstimateForRead();
+		return super.getTravelTimeEstimateSource();
+	}
+
+	@Override
+	protected void onTravelTimeObservationRecorded() {
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		if (roadContext != null) roadContext.markConnectorTravelTimeDirty(this);
 	}
 
 	List<ConnectorVehicleState> getVehicleStatesSnapshot() {

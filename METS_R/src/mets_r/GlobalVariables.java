@@ -54,12 +54,13 @@ public class GlobalVariables {
 				ex.printStackTrace();
 			}
 		}
-		return config.getProperty(property);
+		String value = config.getProperty(property);
+		return value == null ? null : value.trim();
 	}
 
 	private static boolean loadBooleanConfig(String property, boolean defaultValue) {
 		String value = loadConfig(property);
-		return value == null ? defaultValue : Boolean.valueOf(value);
+		return value == null ? defaultValue : Boolean.parseBoolean(value.trim());
 	}
 
 	private static int loadIntConfig(String property, int defaultValue) {
@@ -68,15 +69,27 @@ public class GlobalVariables {
 				? defaultValue : Integer.valueOf(value.trim());
 	}
 	
+	private static double loadDoubleConfig(String property, double defaultValue) {
+		String value = loadConfig(property);
+		return value == null || value.trim().isEmpty()
+				? defaultValue : Double.valueOf(value.trim());
+	}
+
+	private static int loadSecondsAsTicks(String property, int defaultSeconds) {
+		double seconds = loadDoubleConfig(property, defaultSeconds);
+		return Math.max(1, (int) Math.ceil(seconds / SIMULATION_STEP_SIZE));
+	}
+
 	// Whether the simulation is ran in the synchronized mode
-	public static boolean SYNCHRONIZED = Boolean.valueOf(loadConfig("SYNCHRONIZED"));
+	public static boolean SYNCHRONIZED = loadBooleanConfig("SYNCHRONIZED", false);
 	
 	// Whether the simulation is ran in the standalone mode
-	public static boolean STANDALONE = Boolean.valueOf(loadConfig("STANDALONE"));
+	public static boolean STANDALONE = loadBooleanConfig("STANDALONE", false);
+	public static boolean ENABLE_NETWORK = loadBooleanConfig("ENABLE_NETWORK", !STANDALONE);
 	
 	
 	// Whether the simulation is ran with V2X enabled
-	public static boolean V2X = Boolean.valueOf(loadConfig("V2X"));
+	public static boolean V2X = loadBooleanConfig("V2X", false);
 	
 	/* Simulation setup */
 	public static int RANDOM_SEED = Integer
@@ -195,7 +208,7 @@ public class GlobalVariables {
 	public static String RH_DEMAND_FILE = loadConfig("RH_DEMAND_FILE");
 	public static String RH_WAITING_TIME = loadConfig("RH_WAITING_TIME");
 	public static String RH_SHARE_PERCENTAGE = loadConfig("RH_SHARE_PERCENTAGE");
-	public static boolean RH_DEMAND_SHARABLE = Boolean.valueOf(loadConfig("RH_DEMAND_SHARABLE"));
+	public static boolean RH_DEMAND_SHARABLE = loadBooleanConfig("RH_DEMAND_SHARABLE", false);
 	public static double RH_DEMAND_FACTOR = Double.valueOf(loadConfig("RH_DEMAND_FACTOR"));
 	
 	// Default bus schedule
@@ -254,8 +267,12 @@ public class GlobalVariables {
 	// Load the number of partitions from the config file
 	public static int N_Partition = Integer.valueOf(loadConfig("N_PARTITION"));
 	public static int N_THREADS = Integer.valueOf(loadConfig("N_THREADS"));
-	public static int SIMULATION_NETWORK_REFRESH_INTERVAL = Integer
-			.valueOf(loadConfig("SIMULATION_NETWORK_REFRESH_INTERVAL"));
+	public static int SIMULATION_NETWORK_REFRESH_INTERVAL =
+			loadSecondsAsTicks("SIMULATION_NETWORK_REFRESH_INTERVAL", 300);
+	// Connector observations are less volatile and expensive to project. Refresh
+	// their active/dirty set every five minutes of simulation time.
+	public static int SIMULATION_CONNECTOR_TRAVEL_TIME_REFRESH_INTERVAL = Math.max(1,
+			(int) Math.ceil(5.0 * 60.0 / SIMULATION_STEP_SIZE));
 	public static int SIMULATION_PARTITION_REFRESH_INTERVAL = Integer
 			.valueOf(loadConfig("SIMULATION_PARTITION_REFRESH_INTERVAL"));
 	// Maximum network partitioning interval
@@ -404,6 +421,8 @@ public class GlobalVariables {
 	public static float DEFAULT_VEHICLE_LENGTH = Float.valueOf(loadConfig("DEFAULT_VEHICLE_LENGTH")); // meters
 	public static float NO_LANECHANGING_LENGTH = Float.valueOf(loadConfig("NO_LANECHANGING_LENGTH")); // meters
 	public static float LANE_WIDTH = Float.valueOf(loadConfig("LANE_WIDTH"));
+	public static double LANE_CHANGE_LATERAL_SPEED = loadDoubleConfig("LANE_CHANGE_LATERAL_SPEED", 1.0);
+	public static double LANE_CHANGE_MIN_DURATION = loadDoubleConfig("LANE_CHANGE_MIN_DURATION", 1.0);
 	public static float LANE_CHANGING_PROB_PART1 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART1"));
 	public static float LANE_CHANGING_PROB_PART2 = Float.valueOf(loadConfig("LANE_CHANGING_PROB_PART2"));
 	public static float H_UPPER = Float.valueOf(loadConfig("H_UPPER"));

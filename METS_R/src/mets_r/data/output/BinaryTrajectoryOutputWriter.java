@@ -9,12 +9,15 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.TreeMap;
 
 import org.json.simple.JSONObject;
 
@@ -48,10 +51,10 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private boolean defaultDirectory;
 	private File outputDirectory;
 	private DataOutputStream writer;
-	private Thread writingThread;
-	protected int currentTick;
-	private boolean consuming;
-	private boolean paused;
+	private volatile Thread writingThread;
+	protected volatile int currentTick;
+	private volatile boolean consuming;
+	private volatile boolean paused;
 	private int ticksWritten;
 	private int fileSeriesNumber;
 	private String currentChunkFilename;
@@ -66,8 +69,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private ArrayList<HashMap<String, Object>> zoneDictionary;
 	private ArrayList<HashMap<String, Object>> chargingStationDictionary;
 	private ArrayList<HashMap<String, Object>> busRouteDictionary;
-	private HashMap<Integer, BinaryZoneRecord> previousZoneRecords;
-	private HashMap<Integer, BinaryChargingStationRecord> previousChargingStationRecords;
+	private TreeMap<Integer, BinaryZoneRecord> previousZoneRecords;
+	private TreeMap<Integer, BinaryChargingStationRecord> previousChargingStationRecords;
 
 	public BinaryTrajectoryOutputWriter() {
 		this(null, false);
@@ -96,8 +99,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.zoneDictionary = new ArrayList<HashMap<String, Object>>();
 		this.chargingStationDictionary = new ArrayList<HashMap<String, Object>>();
 		this.busRouteDictionary = new ArrayList<HashMap<String, Object>>();
-		this.previousZoneRecords = new HashMap<Integer, BinaryZoneRecord>();
-		this.previousChargingStationRecords = new HashMap<Integer, BinaryChargingStationRecord>();
+		this.previousZoneRecords = new TreeMap<Integer, BinaryZoneRecord>();
+		this.previousChargingStationRecords = new TreeMap<Integer, BinaryChargingStationRecord>();
 	}
 
 	@Override
@@ -232,7 +235,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writingThread.join();
 		this.writingThread = null;
 		this.currentTick = Integer.MAX_VALUE;
-		this.closeOutputFileWriter();
 	}
 
 	public void awaitCompletion() throws InterruptedException {
@@ -320,7 +322,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writer.close();
 		this.writer = null;
 		this.finalizeCurrentChunkManifest();
-		this.writeManifest();
 	}
 
 	private void closeOutputFileWriter() throws IOException {
@@ -378,7 +379,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		manifest.put("roadIdDictionary", this.roadIdDictionary);
 		manifest.put("zoneDictionary", this.zoneDictionary);
 		manifest.put("chargingStationDictionary", this.chargingStationDictionary);
-		this.initializeBusRouteDictionary();
 		manifest.put("busRouteDictionary", this.busRouteDictionary);
 		manifest.put("vehicleTypes", BinaryTrajectoryOutputWriter.createVehicleTypes());
 		manifest.put("frameGroups", schema("vehicle", "ev_private", "ev_occupied", "ev_relocation",
@@ -388,11 +388,21 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		manifest.put("schemas", BinaryTrajectoryOutputWriter.createSchemas());
 
 		File manifestFile = new File(this.outputDirectory, "manifest.json");
-		BufferedWriter manifestWriter = new BufferedWriter(new FileWriter(manifestFile));
+		File temporaryManifest = new File(this.outputDirectory, "manifest.json.tmp");
+		BufferedWriter manifestWriter =
+				new BufferedWriter(new FileWriter(temporaryManifest));
 		try {
-			manifestWriter.write(JSONObject.toJSONString(manifest));
+			manifest.writeJSONString(manifestWriter);
 		} finally {
 			manifestWriter.close();
+		}
+		try {
+			Files.move(temporaryManifest.toPath(), manifestFile.toPath(),
+					StandardCopyOption.ATOMIC_MOVE,
+					StandardCopyOption.REPLACE_EXISTING);
+		} catch (AtomicMoveNotSupportedException unsupported) {
+			Files.move(temporaryManifest.toPath(), manifestFile.toPath(),
+					StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 
@@ -460,8 +470,6 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.writeLinkGroup(summary.links);
 		this.writeZoneGroup(zones);
 		this.writeChargingStationGroup(chargingStations);
-		this.writer.flush();
-
 		int vehicleRecords = vehicles.size() + privateEvs.size() + occupiedTaxis.size() + relocationTaxis.size()
 				+ chargingTaxis.size() + attackTaxis.size() + buses.size();
 		this.currentChunkLastTick = tick.getTickNumber();
@@ -557,7 +565,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private ArrayList<VehicleSnapshot> getVehicleRecords(TickSnapshot tick) {
 		ArrayList<VehicleSnapshot> records = new ArrayList<VehicleSnapshot>();
-		for (Integer id : sortedIds(tick.getVehicleList())) {
+		for (Integer id : orderedIds(tick.getVehicleList())) {
 			VehicleSnapshot snapshot = tick.getVehicleSnapshot(id);
 			if (snapshot != null) {
 				records.add(snapshot);
@@ -568,7 +576,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private ArrayList<EVSnapshot> getPrivateEVRecords(TickSnapshot tick) {
 		ArrayList<EVSnapshot> records = new ArrayList<EVSnapshot>();
-		for (Integer id : sortedIds(tick.getPrivateEVList())) {
+		for (Integer id : orderedIds(tick.getPrivateEVList())) {
 			EVSnapshot snapshot = tick.getPrivateEVSnapshot(id);
 			if (snapshot != null) {
 				records.add(snapshot);
@@ -579,7 +587,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private ArrayList<ETaxiSnapshot> getETaxiRecords(TickSnapshot tick, int vehicleState) {
 		ArrayList<ETaxiSnapshot> records = new ArrayList<ETaxiSnapshot>();
-		for (Integer id : sortedIds(tick.getETaxiList(vehicleState))) {
+		for (Integer id : orderedIds(tick.getETaxiList(vehicleState))) {
 			ETaxiSnapshot snapshot = tick.getETaxiSnapshot(id, vehicleState);
 			if (snapshot != null) {
 				records.add(snapshot);
@@ -590,7 +598,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private ArrayList<ETaxiSnapshot> getAttackVehicleRecords(TickSnapshot tick) {
 		ArrayList<ETaxiSnapshot> records = new ArrayList<ETaxiSnapshot>();
-		for (Integer id : sortedIds(tick.getAttackVehicleList())) {
+		for (Integer id : orderedIds(tick.getAttackVehicleList())) {
 			ETaxiSnapshot snapshot = tick.getAttackVehicleSnapshot(id);
 			if (snapshot != null) {
 				records.add(snapshot);
@@ -601,7 +609,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private ArrayList<BusSnapshot> getBusRecords(TickSnapshot tick) {
 		ArrayList<BusSnapshot> records = new ArrayList<BusSnapshot>();
-		for (Integer id : sortedIds(tick.getBusList())) {
+		for (Integer id : orderedIds(tick.getBusList())) {
 			BusSnapshot snapshot = tick.getBusSnapshot(id);
 			if (snapshot != null) {
 				records.add(snapshot);
@@ -626,7 +634,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private BinaryZoneGroup getChangedZoneRecords() {
 		BinaryZoneGroup changedGroup = new BinaryZoneGroup();
-		HashMap<Integer, BinaryZoneRecord> currentRecords = new HashMap<Integer, BinaryZoneRecord>();
+		TreeMap<Integer, BinaryZoneRecord> currentRecords = new TreeMap<Integer, BinaryZoneRecord>();
 		for (Zone zone : this.getZoneRecords()) {
 			BinaryZoneRecord record = new BinaryZoneRecord(zone);
 			currentRecords.put(record.id, record);
@@ -635,7 +643,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				changedGroup.records.add(record);
 			}
 		}
-		for (Integer previousID : sortedIds(this.previousZoneRecords.keySet())) {
+		for (Integer previousID : this.previousZoneRecords.keySet()) {
 			if (!currentRecords.containsKey(previousID)) {
 				changedGroup.removedIds.add(previousID);
 			}
@@ -646,8 +654,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	private BinaryChargingStationGroup getChangedChargingStationRecords() {
 		BinaryChargingStationGroup changedGroup = new BinaryChargingStationGroup();
-		HashMap<Integer, BinaryChargingStationRecord> currentRecords =
-				new HashMap<Integer, BinaryChargingStationRecord>();
+		TreeMap<Integer, BinaryChargingStationRecord> currentRecords =
+				new TreeMap<Integer, BinaryChargingStationRecord>();
 		for (ChargingStation station : this.getChargingStationRecords()) {
 			BinaryChargingStationRecord record = new BinaryChargingStationRecord(station);
 			currentRecords.put(record.id, record);
@@ -656,7 +664,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 				changedGroup.records.add(record);
 			}
 		}
-		for (Integer previousID : sortedIds(this.previousChargingStationRecords.keySet())) {
+		for (Integer previousID : this.previousChargingStationRecords.keySet()) {
 			if (!currentRecords.containsKey(previousID)) {
 				changedGroup.removedIds.add(previousID);
 			}
@@ -850,14 +858,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		return agentID;
 	}
 
-	private static ArrayList<Integer> sortedIds(Collection<Integer> ids) {
-		ArrayList<Integer> sorted = new ArrayList<Integer>();
-		if (ids == null || ids.isEmpty()) {
-			return sorted;
-		}
-		sorted.addAll(ids);
-		Collections.sort(sorted);
-		return sorted;
+	private static Collection<Integer> orderedIds(Collection<Integer> ids) {
+		return ids == null ? Collections.<Integer>emptyList() : ids;
 	}
 
 	private static int scaledX(double x) {

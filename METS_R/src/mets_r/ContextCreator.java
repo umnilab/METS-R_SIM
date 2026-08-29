@@ -72,7 +72,8 @@ public class ContextCreator implements ContextBuilder<Object> {
 	/* Data communication */
 	// Connection manager maintains the socket server for remote programs
 	// set to be final to avoid further modifications
-	public static final ConnectionManager manager =  GlobalVariables.STANDALONE?null: new ConnectionManager();
+	public static final ConnectionManager manager = GlobalVariables.ENABLE_NETWORK
+			? new ConnectionManager() : null;
 	public static Connection connection = null;
 	public static final StepMessageHandler stepHandler = new StepMessageHandler();
 	public static final ControlMessageHandler controlHandler = new ControlMessageHandler();
@@ -202,7 +203,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 				&& !GlobalVariables.ENABLE_METRICS_DISPLAY && !GlobalVariables.DEBUG_NETWORK
 				&& !logger.isDebugEnabled();
 		capabilities.put("headless", headless);
-		capabilities.put("standalone", GlobalVariables.STANDALONE);
+		capabilities.put("networkEnabled", GlobalVariables.ENABLE_NETWORK);
 		capabilities.put("synchronized", GlobalVariables.SYNCHRONIZED);
 		capabilities.put("v2x", kafkaManager != null);
 		capabilities.put("kafkaProducer", kafkaManager != null);
@@ -664,6 +665,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 
 	// The main function
 	public Context<Object> build(Context<Object> context) {
+		GlobalVariables.validateNetworkConfiguration();
 		start_time = System.currentTimeMillis(); // Record the start time of the simulation
 		
 		mainContext = context;

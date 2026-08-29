@@ -47,28 +47,44 @@ public class RoadContext extends FacilityContext<Road> {
 	private static final double INTERSECTION_CLEARANCE_MARGIN_METERS = 0.25;
 	private static final int FIRST_CONNECTOR_INTERNAL_ID = -2;
 
-	private ConcurrentHashMap<Integer, Long> activeRoadIDs;
+	private ConcurrentHashMap<Integer, Boolean> activeRoadIDs;
 	private ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>> enteringVehicleRoadIDs;
 	private AtomicLong activeRoadMarkVersion;
 	private final HashMap<Long, Integer> connectorIDByMovement;
 	private int nextConnectorInternalID;
 	private volatile ConnectorTopology connectorTopology;
 	private final ConcurrentHashMap<Integer, Boolean> activeIntersectionIDs;
+	private final ConcurrentHashMap<Integer, Long> dirtyConnectorTravelTimeVersions;
+	private final AtomicLong connectorTravelTimeDirtyVersion;
 	private final ConcurrentHashMap<Integer, AtomicInteger> connectorVehicleCountByTargetRoad;
 	private final ReentrantReadWriteLock connectorTopologyLock;
+	private final java.util.concurrent.ConcurrentSkipListMap<Integer, Road>
+			travelTimeEstimatorRoads;
+	private final ConcurrentHashMap<Integer, Long> routingMetricRoadVersions;
+	private final AtomicLong routingMetricVersion;
+	private final AtomicLong physicalTopologyVersion;
+	private volatile boolean routingMetricTrackingEnabled;
 	
 	public RoadContext() {
 		super("RoadContext");
-		this.activeRoadIDs = new ConcurrentHashMap<Integer, Long>();
+		this.activeRoadIDs = new ConcurrentHashMap<Integer, Boolean>();
 		this.enteringVehicleRoadIDs = new ConcurrentHashMap<Integer, ConcurrentHashMap<Integer, Boolean>>();
 		this.activeRoadMarkVersion = new AtomicLong(0);
 		this.connectorIDByMovement = new HashMap<Long, Integer>();
 		this.nextConnectorInternalID = FIRST_CONNECTOR_INTERNAL_ID;
 		this.connectorTopology = ConnectorTopology.empty();
 		this.activeIntersectionIDs = new ConcurrentHashMap<Integer, Boolean>();
+		this.dirtyConnectorTravelTimeVersions = new ConcurrentHashMap<Integer, Long>();
+		this.connectorTravelTimeDirtyVersion = new AtomicLong(0L);
 		this.connectorVehicleCountByTargetRoad =
 				new ConcurrentHashMap<Integer, AtomicInteger>();
 		this.connectorTopologyLock = new ReentrantReadWriteLock();
+		this.travelTimeEstimatorRoads =
+				new java.util.concurrent.ConcurrentSkipListMap<Integer, Road>();
+		this.routingMetricRoadVersions = new ConcurrentHashMap<Integer, Long>();
+		this.routingMetricVersion = new AtomicLong(0L);
+		this.physicalTopologyVersion = new AtomicLong(0L);
+		this.routingMetricTrackingEnabled = false;
 		ContextCreator.logger.info("RoadContext creation");
 		/*
 		 * GIS projection for spatial information about Roads. This is used to then
@@ -131,6 +147,15 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
+	@Override
+	public void put(int id, Road road) {
+		super.put(id, road);
+		if (road != null && !(road instanceof ConnectorRoad)) {
+			this.physicalTopologyVersion.incrementAndGet();
+			this.routingMetricVersion.incrementAndGet();
+		}
+	}
+
 	public Road setAttribute(Road r, String[] att) {
 		if(Integer.parseInt(att[6])!=0)
 			r.addDownStreamRoad(Integer.parseInt(att[6]));
@@ -189,6 +214,7 @@ public class RoadContext extends FacilityContext<Road> {
 			}
 			this.connectorTopology = ConnectorTopology.empty();
 			this.activeIntersectionIDs.clear();
+			this.dirtyConnectorTravelTimeVersions.clear();
 			this.connectorVehicleCountByTargetRoad.clear();
 			return;
 		}
@@ -275,6 +301,9 @@ public class RoadContext extends FacilityContext<Road> {
 								movementKey, sourceRoad, targetRoad, junction.getID(), connectorOrigID,
 								usableAliases, definition.configuredControlType, definition.paths);
 					}
+					// Connectors are internal transition state rather than trip endpoints.
+					connector.setCanBeOrigin(true);
+					connector.setCanBeDest(false);
 					if (definition.loadedFromNetXML) explicitConnectorCount++;
 					connectorsByMovement.put(movementKey, connector);
 					connectorsByInternalID.put(connector.getID(), connector);
@@ -326,6 +355,8 @@ public class RoadContext extends FacilityContext<Road> {
 		this.connectorTopology = new ConnectorTopology(connectorsByMovement,
 				connectorsByInternalID, connectorsByOrigID, connectorsByAlias,
 				intersectionByConnectorID, connectorsByIntersection, intersectionRuntimes);
+		this.dirtyConnectorTravelTimeVersions.keySet().removeIf(
+				connectorID -> !connectorsByInternalID.containsKey(connectorID));
 		if (ContextCreator.partitioner != null) ContextCreator.partitioner.run();
 		rebuildActiveIntersectionIndexes();
 		double defaultConnectorGap = 1.2 * GlobalVariables.DEFAULT_VEHICLE_LENGTH;
@@ -621,6 +652,7 @@ public class RoadContext extends FacilityContext<Road> {
 			runtime.clearRuntimeState();
 		}
 		this.activeIntersectionIDs.clear();
+		this.dirtyConnectorTravelTimeVersions.clear();
 		this.connectorVehicleCountByTargetRoad.clear();
 		} finally {
 			this.connectorTopologyLock.writeLock().unlock();
@@ -951,6 +983,60 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
+	/** Mark one connector for estimator refresh without scanning the full topology. */
+	void markConnectorTravelTimeDirty(ConnectorRoad connector) {
+		if (connector == null || this.connectorTopology.connectorsByInternalID
+				.get(connector.getID()) != connector) return;
+		long version = this.connectorTravelTimeDirtyVersion.incrementAndGet();
+		this.dirtyConnectorTravelTimeVersions.put(connector.getID(), Long.valueOf(version));
+	}
+
+	/**
+	 * Capture versioned dirty work. A newer observation replacing a captured version
+	 * cannot be removed by acknowledgement of the older refresh.
+	 */
+	List<ConnectorTravelTimeRefresh> getDirtyConnectorTravelTimeSnapshot() {
+		this.connectorTopologyLock.readLock().lock();
+		try {
+			ArrayList<ConnectorTravelTimeRefresh> result =
+					new ArrayList<ConnectorTravelTimeRefresh>();
+			for (Map.Entry<Integer, Long> entry
+					: this.dirtyConnectorTravelTimeVersions.entrySet()) {
+				ConnectorRoad connector = this.connectorTopology.connectorsByInternalID
+						.get(entry.getKey());
+				if (connector == null) {
+					this.dirtyConnectorTravelTimeVersions.remove(
+							entry.getKey(), entry.getValue());
+					continue;
+				}
+				result.add(new ConnectorTravelTimeRefresh(
+						connector, entry.getValue().longValue()));
+			}
+			result.sort(Comparator.comparing(
+					(ConnectorTravelTimeRefresh refresh) -> refresh.connector.getOrigID())
+					.thenComparingInt(refresh -> refresh.connector.getID()));
+			return result;
+		} finally {
+			this.connectorTopologyLock.readLock().unlock();
+		}
+	}
+
+	void acknowledgeConnectorTravelTimeRefresh(ConnectorTravelTimeRefresh refresh) {
+		if (refresh == null) return;
+		this.dirtyConnectorTravelTimeVersions.remove(refresh.connector.getID(),
+				Long.valueOf(refresh.version));
+	}
+
+	static final class ConnectorTravelTimeRefresh {
+		final ConnectorRoad connector;
+		final long version;
+
+		ConnectorTravelTimeRefresh(ConnectorRoad connector, long version) {
+			this.connector = connector;
+			this.version = version;
+		}
+	}
+
 	public ArrayList<ArrayList<Integer>> getActiveIntersectionPartitions(int partitionCount) {
 		this.connectorTopologyLock.readLock().lock();
 		try {
@@ -1042,13 +1128,122 @@ public class RoadContext extends FacilityContext<Road> {
 
 	public void markRoadActive(Road road) {
 		if (road != null) {
+			markTravelTimeEstimatorRelevant(road);
 			markRoadActive(road.getID());
 		}
 	}
 
 	public void markRoadActive(int roadID) {
-		this.activeRoadIDs.computeIfAbsent(roadID,
-				id -> Long.valueOf(this.activeRoadMarkVersion.incrementAndGet()));
+		if (this.activeRoadIDs.putIfAbsent(roadID, Boolean.TRUE) == null) {
+			this.activeRoadMarkVersion.incrementAndGet();
+		}
+	}
+
+	public void markTravelTimeEstimatorRelevant(Road road) {
+		if (road != null && !(road instanceof ConnectorRoad)
+				&& road.claimTravelTimeEstimatorRegistration()) {
+			if (super.get(road.getID()) == road) {
+				this.travelTimeEstimatorRoads.put(road.getID(), road);
+			} else {
+				road.clearTravelTimeEstimatorRegistration();
+			}
+		}
+	}
+
+	/**
+	 * Physical roads that have carried traffic or received observations. Roads stay
+	 * in this set so their historical estimator decay is applied on the same fixed
+	 * refresh schedule; never-used free-flow roads no longer need repeated work.
+	 */
+	public List<Road> getTravelTimeEstimatorRoadsSnapshot() {
+		return new ArrayList<Road>(this.travelTimeEstimatorRoads.values());
+	}
+
+	public long markRoutingMetricChanged(Road road) {
+		long version = this.routingMetricVersion.incrementAndGet();
+		if (!this.routingMetricTrackingEnabled) return version;
+		if (road == null || road instanceof ConnectorRoad
+				|| super.get(road.getID()) != road) return version;
+		this.routingMetricRoadVersions.put(road.getID(), Long.valueOf(version));
+		return version;
+	}
+
+	public void markRoutingMetricsChanged(Collection<? extends Road> roads) {
+		if (roads == null || roads.isEmpty()) return;
+		long version = this.routingMetricVersion.incrementAndGet();
+		if (!this.routingMetricTrackingEnabled) return;
+		for (Road road : roads) {
+			if (road != null && !(road instanceof ConnectorRoad)
+					&& super.get(road.getID()) == road) {
+				this.routingMetricRoadVersions.put(road.getID(), Long.valueOf(version));
+			}
+		}
+	}
+
+	public boolean isRoutingMetricTrackingEnabled() {
+		return this.routingMetricTrackingEnabled;
+	}
+
+	/** Start retaining per-road versions only when an external delta client exists. */
+	public synchronized long enableRoutingMetricTracking() {
+		if (!this.routingMetricTrackingEnabled) {
+			this.routingMetricRoadVersions.clear();
+			this.routingMetricTrackingEnabled = true;
+		}
+		return this.routingMetricVersion.get();
+	}
+
+	public long getRoutingMetricVersion() {
+		return this.routingMetricVersion.get();
+	}
+
+	public long getPhysicalTopologyVersion() {
+		return this.physicalTopologyVersion.get();
+	}
+
+	public void markPhysicalTopologyChanged(Road road) {
+		if (road == null || road instanceof ConnectorRoad
+				|| super.get(road.getID()) != road) return;
+		this.physicalTopologyVersion.incrementAndGet();
+		this.routingMetricVersion.incrementAndGet();
+	}
+
+	/**
+	 * Capture a version-consistent set of roads changed after a client's cursor.
+	 * Retaining only each road's latest version is sufficient for any cursor age;
+	 * a concurrent later update is deliberately left for the next query.
+	 */
+	public RoutingMetricRefreshSnapshot getRoutingMetricRefreshSnapshot(long afterVersion) {
+		enableRoutingMetricTracking();
+		long throughVersion = this.routingMetricVersion.get();
+		HashSet<Integer> changedRoadIDs = new HashSet<Integer>();
+		for (Map.Entry<Integer, Long> entry : this.routingMetricRoadVersions.entrySet()) {
+			Long version = entry.getValue();
+			if (version != null && version.longValue() > afterVersion
+					&& version.longValue() <= throughVersion) {
+				changedRoadIDs.add(entry.getKey());
+			}
+		}
+		ArrayList<Road> roads = new ArrayList<Road>(changedRoadIDs.size());
+		for (Integer roadID : changedRoadIDs) {
+			Road road = super.get(roadID.intValue());
+			if (road != null) roads.add(road);
+		}
+		roads.sort(Comparator.comparingInt(Road::getID));
+		return new RoutingMetricRefreshSnapshot(throughVersion, roads, false);
+	}
+
+	public static final class RoutingMetricRefreshSnapshot {
+		public final long throughVersion;
+		public final List<Road> roads;
+		public final boolean snapshotRequired;
+
+		RoutingMetricRefreshSnapshot(long throughVersion, List<Road> roads,
+				boolean snapshotRequired) {
+			this.throughVersion = throughVersion;
+			this.roads = Collections.unmodifiableList(roads);
+			this.snapshotRequired = snapshotRequired;
+		}
 	}
 
 	public void registerEnteringVehicle(Road road, Vehicle vehicle) {
@@ -1079,6 +1274,27 @@ public class RoadContext extends FacilityContext<Road> {
 		ConcurrentHashMap<Integer, Boolean> roadIDs =
 				this.enteringVehicleRoadIDs.get(vehicle.getID());
 		return roadIDs != null && !roadIDs.isEmpty();
+	}
+
+	/**
+	 * Return the indexed physical road whose entry queue contains this vehicle.
+	 * Physical road IDs are assigned in deterministic construction order, so the
+	 * smallest ID preserves the old full-context scan's result if stale state ever
+	 * contains more than one registration.
+	 */
+	public Road getEnteringRoadForVehicle(Vehicle vehicle) {
+		if (vehicle == null) return null;
+		ConcurrentHashMap<Integer, Boolean> roadIDs =
+				this.enteringVehicleRoadIDs.get(vehicle.getID());
+		if (roadIDs == null || roadIDs.isEmpty()) return null;
+		int selectedRoadID = Integer.MAX_VALUE;
+		for (Integer roadID : roadIDs.keySet()) {
+			if (roadID != null && roadID.intValue() >= 0
+					&& roadID.intValue() < selectedRoadID) {
+				selectedRoadID = roadID.intValue();
+			}
+		}
+		return selectedRoadID == Integer.MAX_VALUE ? null : super.get(selectedRoadID);
 	}
 
 	public boolean isEnteringVehicleRegistered(Road road, Vehicle vehicle) {
@@ -1206,8 +1422,13 @@ public class RoadContext extends FacilityContext<Road> {
 	public void rebuildActiveRoadsFromState() {
 		this.activeRoadIDs.clear();
 		this.enteringVehicleRoadIDs.clear();
+		this.travelTimeEstimatorRoads.clear();
 		this.activeRoadMarkVersion.incrementAndGet();
 		for (Road road : this.getAllSteppableRoads()) {
+			road.clearTravelTimeEstimatorRegistration();
+			if (!(road instanceof ConnectorRoad) && road.hasTravelTimeEstimatorEvidence()) {
+				markTravelTimeEstimatorRelevant(road);
+			}
 			if (road.hasActiveVehicles()) {
 				markRoadActive(road);
 			}
@@ -1766,12 +1987,20 @@ public class RoadContext extends FacilityContext<Road> {
 
 	@Override
 	public void remove(int ID) {
+		Road road = super.get(ID);
 		if (this.activeRoadIDs.remove(ID) != null) {
 			this.activeRoadMarkVersion.incrementAndGet();
 		}
 		for (ConcurrentHashMap<Integer, Boolean> roadIDs : this.enteringVehicleRoadIDs.values()) {
 			roadIDs.remove(ID);
 		}
+		this.travelTimeEstimatorRoads.remove(ID);
+		this.routingMetricRoadVersions.remove(ID);
+		if (road != null) road.clearTravelTimeEstimatorRegistration();
 		super.remove(ID);
+		if (road != null) {
+			this.physicalTopologyVersion.incrementAndGet();
+			this.routingMetricVersion.incrementAndGet();
+		}
 	}
 }
