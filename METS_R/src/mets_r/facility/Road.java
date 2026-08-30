@@ -346,10 +346,6 @@ public class Road {
 					currentVehicle = nextVehicle;
 					continue;
 				}
-				if (this instanceof ConnectorRoad) {
-					currentVehicle = nextVehicle;
-					continue;
-				}
 				try {
 					currentVehicle.calcLaneChangingState(tickcount);
 				} catch (Throwable ex) {

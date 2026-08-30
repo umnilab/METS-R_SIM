@@ -2269,9 +2269,10 @@ public class Vehicle {
 		if (this.lane == null) return;
 		boolean invalidDesiredSpeed = !Double.isFinite(this.desiredSpeed_)
 				|| this.desiredSpeed_ <= 0.0;
-		if (this.hasActiveConnectorReservation() || this.isLaneChanging()) {
+		if (this.road instanceof ConnectorRoad
+				|| this.hasActiveConnectorReservation() || this.isLaneChanging()) {
 			// Connector occupancy and an already active physical maneuver suppress new
-			// lane-changing decisions, but restored vehicles still need a target speed.
+			// lane-changing decisions, but every vehicle still needs a valid target speed.
 			if (invalidDesiredSpeed) {
 				this.desiredSpeed_ = this.lane.getRandomFreeSpeed(
 						rand_car_follow_only.nextGaussian());
@@ -3522,7 +3523,10 @@ public class Vehicle {
 	private boolean isRoadTraversalPatienceDepletedAtLaneFront() {
 		return this.roadTraversalStoppedTicks
 				>= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE
-				&& this.road != null && !(this.road instanceof ConnectorRoad)
+				&& this.road != null
+				&& (!(this.road instanceof ConnectorRoad)
+						|| (this.currentConnector == this.road
+								&& this.currentConnectorPath != null))
 				&& this.lane != null && this.lane.getRoad() == this.road
 				&& this.lane.firstVehicle() == this
 				&& !this.externalRoadTransition
@@ -6621,6 +6625,7 @@ public class Vehicle {
 			if (recovered) {
 				this.roadPatienceRecoveryResolved = true;
 				this.latchRoadTraversalRecovery();
+				this.logStuckRecovery("ROAD_PATIENCE_REROUTED", "REROUTED", null);
 			}
 		}
 		if (missedLaneRequested && !recovered) {
@@ -6628,13 +6633,12 @@ public class Vehicle {
 		}
 		if (roadPatienceAttempted && !recovered
 				&& this.isRoadTraversalPatienceDepletedAtLaneFront()
-				&& !this.isDeparturableRoad(this.road)) {
-			// A short/non-departurable road can have only the already-planned
-			// successor. The ordinary patience reroute excludes that road, while a
-			// direct lane transition makes missed-lane recovery return immediately.
-			// Reuse the bounded fallback so such a vehicle cannot remain the
+				&& this.isRoadPatienceLivenessFallbackEligible()) {
+			// The ordinary patience reroute can fail even on a normal departurable
+			// road. Reuse the bounded fallback so such a vehicle cannot remain the
 			// permanent downstream blocker for otherwise healthy upstream lanes.
-			this.handleMissedLaneRecoveryLivenessFallback();
+			this.handleMissedLaneRecoveryLivenessFallback(
+					"ROAD_PATIENCE_REROUTE_FAILED");
 		}
 		return recovered;
 	}
@@ -6706,8 +6710,9 @@ public class Vehicle {
 			this.latchRoadTraversalRecovery();
 			return true;
 		}
-		if (finalAttempt) {
-			this.handleMissedLaneRecoveryLivenessFallback();
+		if (finalAttempt && this.isRoadPatienceLivenessFallbackEligible()) {
+			this.handleMissedLaneRecoveryLivenessFallback(
+					"MISSED_LANE_RECOVERY_FAILED");
 		}
 		return false;
 	}
@@ -6767,7 +6772,35 @@ public class Vehicle {
 				this.missedLaneRecoverySelectedPath);
 	}
 
-	private void handleMissedLaneRecoveryLivenessFallback() {
+	private boolean isRoadPatienceLivenessFallbackEligible() {
+		if (this.road instanceof ConnectorRoad) {
+			// A validated native connector occupant has no safe place to wait: it
+			// physically blocks the intersection until it moves or is recovered.
+			return true;
+		}
+		// On normal roads, limit detach/requeue to the downstream transfer zone.
+		// This avoids treating an isolated vehicle stopped far upstream as a
+		// junction liveness failure merely because its patience timer elapsed.
+		double recoveryDistance = Math.max(STOP_LINE_WAIT_DISTANCE_METERS,
+				1.2 * this.length());
+		return Double.isFinite(this.distance_) && this.distance_ >= 0.0
+				&& this.distance_ <= recoveryDistance;
+	}
+
+	private void logStuckRecovery(String reason, String action, Road fallbackRoad) {
+		ContextCreator.logger.warn("STUCK_RECOVERED"
+				+ " tick=" + ContextCreator.getCurrentTick()
+				+ " veh=" + this.getID()
+				+ " reason=" + reason
+				+ " action=" + action
+				+ " roadStoppedTicks=" + this.roadTraversalStoppedTicks
+				+ " currentRoad=" + roadLabel(this.road)
+				+ " currentLane=" + laneLabel(this.lane)
+				+ " distToJunction=" + formatDebugDouble(this.distance_)
+				+ " fallbackRoad=" + roadLabel(fallbackRoad));
+	}
+
+	private void handleMissedLaneRecoveryLivenessFallback(String reason) {
 		if (this.missedLaneRecoveryFallbackHandled || this.externalRoadTransition) {
 			return;
 		}
@@ -6776,6 +6809,7 @@ public class Vehicle {
 		// doing so resets the traversal timer and recreates the identical failure.
 		Road fallbackRoad = this.departurableFallbackRoad(this.road);
 		if (fallbackRoad != null) {
+			this.logStuckRecovery(reason, "REQUEUED", fallbackRoad);
 			this.originRoad_ = fallbackRoad;
 			this.updateLastDeparturableRoad(fallbackRoad);
 			this.isReachDest = false;
@@ -6786,6 +6820,7 @@ public class Vehicle {
 		// No safe road exists from which to retry. Preserve the trip and last pose,
 		// but detach the quarantined vehicle so it cannot remain a permanent
 		// physical blocker. A later explicit departure can safely requeue it.
+		this.logStuckRecovery(reason, "QUARANTINED", null);
 		this.missedLaneRecoveryQuarantined = true;
 		this.clearShadowImpact();
 		this.removeFromCurrentLane();
