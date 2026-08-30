@@ -20,6 +20,8 @@ import org.json.simple.parser.JSONParser;
  **/
 
 public class TravelDemand {
+	private static final int DEFAULT_WAITING_THRESHOLD_SECONDS = 10 * 60;
+
 	private TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> privateEVTravelDemandByOrigin;
 	private TreeMap<Integer, TreeMap<Integer, TreeMap<Integer, Integer>>> privateGVTravelDemandByOrigin;
 	private TreeMap<Integer, ArrayList<Double>> privateEVProfile;
@@ -265,7 +267,10 @@ public class TravelDemand {
 				}
 				row++;
 			}
-			if (waitingThreshold.size() < GlobalVariables.HOUR_OF_DEMAND) {
+			if (waitingThreshold.isEmpty()) {
+				waitingThreshold.addAll(Collections.nCopies(
+						GlobalVariables.HOUR_OF_DEMAND, DEFAULT_WAITING_THRESHOLD_SECONDS));
+			} else if (waitingThreshold.size() < GlobalVariables.HOUR_OF_DEMAND) {
 				throw new IllegalArgumentException("Waiting-time input contains "
 						+ waitingThreshold.size() + " values; expected at least "
 						+ GlobalVariables.HOUR_OF_DEMAND);
@@ -406,7 +411,7 @@ public class TravelDemand {
 		if (hour >= 0 && waitingThreshold.size() > hour) {
 			return waitingThreshold.get(hour);
 		}
-		return 600;
+		return DEFAULT_WAITING_THRESHOLD_SECONDS;
 	}
 
 	private static int[] parseODKey(String key) {
