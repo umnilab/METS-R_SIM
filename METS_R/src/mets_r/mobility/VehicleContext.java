@@ -766,10 +766,8 @@ public class VehicleContext extends DefaultContext<Vehicle> {
                 if (recordedTraversal) {
 	                r.recordEnergyConsumption(currentVehicle);
                 }
-	                if (!currentVehicle.isExternalRoadTransition()) {
-	                    currentVehicle.setAccumulatedDistance(currentVehicle.getAccummulatedDistance()
-	                            + currentVehicle.getDistanceToNextJunction());
-	                }
+	                // Vehicle.move() already records the physical distance traveled.
+	                // A road transfer changes network membership, but is not additional movement.
 	                currentVehicle.setMovingFlag(outcome.transitioned());
             }
 	    }
