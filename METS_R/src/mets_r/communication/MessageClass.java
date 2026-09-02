@@ -91,45 +91,18 @@ public class MessageClass{
 	}
 	}
 
-	class VehIDVehTypeTranBearingXYSpeed {
-	int vehicleId;
-	boolean isPrivate;
-	boolean transformCoordinates;
-	double bearing;
-	double x;
-	double y;
-	double z = 0.0;
-	double speed;
+	class CoSimTeleportRequest {
+	Integer vehicleId;
+	Boolean isPrivate;
+	Boolean transformCoordinates;
+	Double bearing;
+	Double x;
+	Double y;
+	Double z;
+	Double speed;
 	String segmentId;
 	Integer connectorPathId;
 	Integer laneIndex;
-
-	// Constructor
-	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
-	double bearing, double x, double y, double z, double speed) {
-	this.vehicleId = vehicleId;
-	this.isPrivate = isPrivate;
-	this.transformCoordinates = transformCoordinates;
-	this.bearing = bearing;
-	this.x = x;
-	this.y = y;
-	this.z = z;
-	this.speed = speed;
-	}
-
-	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
-	double bearing, double x, double y, double z, double speed,
-	String segmentId) {
-	this(vehicleId, isPrivate, transformCoordinates, bearing, x, y, z, speed);
-	this.segmentId = segmentId;
-	}
-
-	public VehIDVehTypeTranBearingXYSpeed(int vehicleId, boolean isPrivate, boolean transformCoordinates,
-	double bearing, double x, double y, double z, double speed,
-	String segmentId, Integer laneIndex) {
-	this(vehicleId, isPrivate, transformCoordinates, bearing, x, y, z, speed, segmentId);
-	this.laneIndex = laneIndex;
-	}
 	}
 
 	class InitializeCoSimVehRequest {
@@ -160,36 +133,18 @@ public class MessageClass{
 	}
 	}
 
-	class VehIDVehTypeRoadLaneDist {
-	int vehicleId;
-	boolean isPrivate;
-	String roadId;
-	int laneIndex;
+	class DigitalTwinTeleportRequest {
+	Integer vehicleId;
+	Boolean isPrivate;
+	String positionType;
+	String segmentId;
+	Integer laneIndex;
+	Integer connectorPathId;
 	Double distanceToSegmentEnd;
 	Double x;
 	Double y;
-	boolean transformCoordinates;
-
-	// Constructor
-	public VehIDVehTypeRoadLaneDist(int vehicleId, boolean isPrivate, String roadId, int laneIndex,
-			double distanceToSegmentEnd) {
-	this.vehicleId = vehicleId;
-	this.isPrivate = isPrivate;
-	this.roadId = roadId;
-	this.laneIndex = laneIndex;
-	this.distanceToSegmentEnd = distanceToSegmentEnd;
-	}
-
-	public VehIDVehTypeRoadLaneDist(int vehicleId, boolean isPrivate, String roadId, int laneIndex,
-		double x, double y, boolean transformCoordinates) {
-	this.vehicleId = vehicleId;
-	this.isPrivate = isPrivate;
-	this.roadId = roadId;
-	this.laneIndex = laneIndex;
-	this.x = x;
-	this.y = y;
-	this.transformCoordinates = transformCoordinates;
-	}
+	Double z;
+	Boolean transformCoordinates;
 	}
 
     class VehIDOrigDestNum{

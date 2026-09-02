@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import mets_r.ContextCreator;
@@ -54,7 +53,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	private ArrayList<Vehicle> deferredRoadRecoveryBuffer;
 	private Map<Long, List<Road>> recoveryPathCache;
 	private int recoveryPathCacheEpoch;
-	private ConcurrentHashMap<Integer, Vehicle> externalRoadTransitionMap;
 
 	public VehicleContext() {
 		super("VehicleContext");
@@ -118,7 +116,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			}
 		};
 		recoveryPathCacheEpoch = Integer.MIN_VALUE;
-		externalRoadTransitionMap = new ConcurrentHashMap<Integer, Vehicle>();
 	}
 
 	public void createTaxiContextFromZone(Geography<Zone> zoneGeography, int vehicle_num) {
@@ -635,7 +632,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		this.availableTaxiZoneByID.clear();
 		this.relocationTaxiZoneByID.clear();
 		this.pendingTaxiRequestMap.clear();
-		this.externalRoadTransitionMap.clear();
 		for (TreeSet<ElectricTaxi> q : this.availableTaxiMap.values()) {
 			q.clear();
 		}
@@ -681,52 +677,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		}
 	}
 
-	public void registerExternalRoadTransition(Vehicle vehicle) {
-		if (vehicle != null && vehicle.isExternalRoadTransition()) {
-			this.externalRoadTransitionMap.put(vehicle.getID(), vehicle);
-		}
-	}
-
-	public void unregisterExternalRoadTransition(Vehicle vehicle) {
-		if (vehicle != null) {
-			this.externalRoadTransitionMap.remove(vehicle.getID(), vehicle);
-		}
-	}
-
-	public List<Vehicle> getExternalRoadTransitionsSnapshot() {
-		ArrayList<Vehicle> result = new ArrayList<Vehicle>(this.externalRoadTransitionMap.values());
-		result.sort(Comparator.comparingInt(Vehicle::getID));
-		return result;
-	}
-
-	/**
-	 * Capture immutable pending-state records without holding a context or map
-	 * lock while acquiring any Vehicle monitor.
-	 */
-	public List<Vehicle.ExternalRoadTransitionSnapshot> getExternalRoadTransitionSnapshots() {
-		ArrayList<Vehicle> vehicles =
-				new ArrayList<Vehicle>(this.externalRoadTransitionMap.values());
-		ArrayList<Vehicle.ExternalRoadTransitionSnapshot> result =
-				new ArrayList<Vehicle.ExternalRoadTransitionSnapshot>(vehicles.size());
-		for (Vehicle vehicle : vehicles) {
-			Vehicle.ExternalRoadTransitionSnapshot snapshot =
-					vehicle.getExternalRoadTransitionSnapshot();
-			if (snapshot.isPending()) result.add(snapshot);
-		}
-		result.sort(Comparator.comparingInt(
-				Vehicle.ExternalRoadTransitionSnapshot::getVehicleID));
-		return result;
-	}
-
-	public int getExternalRoadTransitionCount() {
-		return this.externalRoadTransitionMap.size();
-	}
-
-	public boolean tryCommitExternalRoadTransition(Vehicle vehicle) {
-		if (vehicle == null || !vehicle.isExternalRoadTransition()) return false;
-		return vehicle.tryCommitExternalRoadTransition();
-	}
-	
 	public void executeGlobalTransfers() {
 		ArrayList<Vehicle> sortedTransfers = this.transferringVehicleBuffer;
 		ArrayList<Vehicle> sortedArrivals = this.arrivingVehicleBuffer;
@@ -743,9 +693,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 			sortedTransfers.sort(VEHICLE_ID_ORDER);
 	    
 	    for (Vehicle currentVehicle: sortedTransfers) {
-	        if (currentVehicle.isExternalRoadTransition()) {
-	            continue;
-	        }
 	        if (currentVehicle.isDormantOnRoad()) {
 	            currentVehicle.setSpeed(0.0f);
 	            currentVehicle.setAccRate(0.0f);
@@ -817,9 +764,6 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	
 	public void addTransferringVehicles(Vehicle v) {
 		if (v != null && v.isDormantOnRoad()) {
-			return;
-		}
-		if (v != null && v.isExternalRoadTransition()) {
 			return;
 		}
 		if (v != null && v.claimTransferringQueueForTick(ContextCreator.getCurrentTick())) {

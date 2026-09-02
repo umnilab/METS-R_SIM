@@ -8,13 +8,13 @@ import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.Set;
 
 import org.geotools.geometry.jts.JTS;
-import org.geotools.referencing.GeodeticCalculator;
 import org.json.simple.JSONObject;
 import org.opengis.referencing.operation.TransformException;
 
@@ -50,10 +50,10 @@ import mets_r.communication.MessageClass.VehIDZoneRoad;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
 import mets_r.communication.MessageClass.VehIDVehTypeAttack;
-import mets_r.communication.MessageClass.VehIDVehTypeRoadLaneDist;
+import mets_r.communication.MessageClass.DigitalTwinTeleportRequest;
 import mets_r.communication.MessageClass.VehIDVehTypeRoute;
 import mets_r.communication.MessageClass.VehIDVehTypeSensorType;
-import mets_r.communication.MessageClass.VehIDVehTypeTranBearingXYSpeed;
+import mets_r.communication.MessageClass.CoSimTeleportRequest;
 import mets_r.communication.MessageClass.InitializeCoSimVehRequest;
 import mets_r.communication.MessageClass.AddTaxiToZone;
 import mets_r.communication.MessageClass.ChargingStationParams;
@@ -81,11 +81,6 @@ import mets_r.routing.RouteContext;
 
 public class ControlMessageHandler extends MessageHandler {
 	private static final int MAX_COMPLETED_ADVANCE_COMMANDS = 128;
-	private static final double TRACE_REPLAY_CLEARANCE_METERS = 0.01;
-	private static final double TRACE_REPLAY_DISTANCE_EPSILON = 1.0e-6;
-	private static final double TRACE_REPLAY_COINCIDENT_GEOMETRY_TOLERANCE_METERS = 0.001;
-	private static final double TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS = 1.0e-4;
-	private static final double TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS = 0.05;
 	private static final double COSIM_LARGE_DISPLACEMENT_WARNING_METERS = 25.0;
 	private final Object advanceCommandLock = new Object();
 	private final LinkedHashMap<String, AdvanceCommandRecord> advanceCommands =
@@ -590,7 +585,7 @@ public class ControlMessageHandler extends MessageHandler {
 	* Mark one or more roads as co-simulation roads. Vehicles on these
 	* roads stop being stepped by METS-R's car-following logic; an
 	* external simulator is expected to drive them via
-	* {@link #teleportCoSimVeh}, which also performs connector transitions.
+	* {@link #teleportCoSimVeh}, which can place them directly on connector roads.
 	*
 	* <p>Input DATA: list of original road IDs.
 	*/
@@ -633,7 +628,6 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("blockingVehicleId", vehicle.getID());
 				record.put("onRoad", vehicle.isOnRoad());
 				record.put("onLane", vehicle.isOnLane());
-				record.put("transitionPending", vehicle.isExternalRoadTransition());
 				Road currentRoad = vehicle.getRoad();
 				record.put("currentRoadId", currentRoad == null ? null : currentRoad.getOrigID());
 				Lane lane = vehicle.getLane();
@@ -1079,598 +1073,233 @@ public class ControlMessageHandler extends MessageHandler {
     // VEHICLE TELEPORT & RUNTIME CONTROL
     // =============================================================
 
-    /**
-     * Teleport an existing vehicle to a given lane and offset for trace
-     * replay scenarios. The vehicle is removed from its current
-     * lane/road and re-inserted at the target position.
-     *
-	* <p>Input data: list of {@code {vehicleId, isPrivate, roadId, laneIndex, distanceToSegmentEnd}}
-     * or {@code {vehicleId, isPrivate, roadId, laneIndex, x, y, transformCoordinates}} where
-     * {@code isPrivate=true} selects a private vehicle and {@code isPrivate=false}
-     * selects a public one. {@code laneIndex} is a zero-based index local to the
-     * specified road. When {@code x} and {@code y} are provided, they are
-     * projected onto the target lane to compute the distance to downstream. A
-     * {@code laneIndex} of {@code -1} considers every lane on the specified road
-     * and therefore requires both {@code x} and {@code y}.
-     *
-     * <p>Records are processed sequentially. If the requested footprint overlaps
-     * a vehicle already present on the target or a directly connected road, the
-     * target is moved upstream to the nearest collision-free location. With
-     * {@code laneIndex=-1}, the nearest valid location may be on another lane. A
-	* saturated road still returns an ok record, marked {@code forced=true}, at the
-     * farthest-back best-effort location. Spatial-only conflicts are searched at
-     * 0.05 m intervals, then the first free boundary is refined by bisection.
-     */
-    private HashMap<String, Object> teleportDigitalTwinVeh(JSONObject jsonMsg) {
+	/**
+	 * Teleport an externally observed Digital Twin vehicle onto a native segment.
+	 * Input DATA is an array containing exactly one position form per record:
+	 *
+	 * <ul>
+	 * <li>{@code {vehicleId, isPrivate, positionType:"coordinate", x, y,
+	 * z?, transformCoordinates?}} searches native roads and connectors.</li>
+	 * <li>{@code {vehicleId, isPrivate, positionType:"segment", segmentId,
+	 * distanceToSegmentEnd, laneIndex?}} uses an exact physical road and lane.</li>
+	 * <li>A connector segment uses {@code connectorPathId?} instead of
+	 * {@code laneIndex}; a single path, current path, or segment alias may infer it.</li>
+	 * </ul>
+	 *
+	 * The distance is measured upstream from the segment end and is clamped to its
+	 * lane/path. External observations are placed exactly without overlap checks.
+	 */
+	private synchronized HashMap<String, Object> teleportDigitalTwinVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> answer = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("data")) {
 			answer.put("message", "No DATA field found in the control message");
 			answer.put("status", "error");
 			return answer;
 		}
+		ArrayList<Object> responseData = new ArrayList<Object>();
+		int successCount = 0;
 		try {
 			Gson gson = new Gson();
-			String dataJson = jsonMsg.get("data").toString();
-			TypeToken<Collection<VehIDVehTypeRoadLaneDist>> requestType =
-					new TypeToken<Collection<VehIDVehTypeRoadLaneDist>>() { };
-			TypeToken<Collection<Map<String, Object>>> rawType =
-					new TypeToken<Collection<Map<String, Object>>>() { };
-			Collection<VehIDVehTypeRoadLaneDist> requests = gson.fromJson(dataJson, requestType.getType());
-			Collection<Map<String, Object>> rawRequests = gson.fromJson(dataJson, rawType.getType());
-			if (requests == null || rawRequests == null || requests.size() != rawRequests.size()) {
-				throw new IllegalArgumentException("teleportDigitalTwinVeh data must be an array of objects");
+			TypeToken<Collection<DigitalTwinTeleportRequest>> requestType =
+					new TypeToken<Collection<DigitalTwinTeleportRequest>>() { };
+			Collection<DigitalTwinTeleportRequest> requests = gson.fromJson(
+					jsonMsg.get("data").toString(), requestType.getType());
+			if (requests == null) {
+				throw new IllegalArgumentException(
+						"teleportDigitalTwinVeh data must be an array of objects");
 			}
-			ArrayList<Object> responseData = new ArrayList<Object>();
-			Iterator<Map<String, Object>> rawIterator = rawRequests.iterator();
-			for (VehIDVehTypeRoadLaneDist request : requests) {
-				responseData.add(processTraceReplayTeleport(request, rawIterator.next()));
+			if (requests.isEmpty()) {
+				throw new IllegalArgumentException(
+						"teleportDigitalTwinVeh data must contain at least one record");
+			}
+			for (DigitalTwinTeleportRequest request : requests) {
+				HashMap<String, Object> record = new HashMap<String, Object>();
+				record.put("vehicleId", request == null ? null : request.vehicleId);
+				try {
+					if (request == null || request.vehicleId == null
+							|| request.isPrivate == null || request.positionType == null) {
+						throw new IllegalArgumentException(
+								"vehicleId, isPrivate, and positionType are required");
+					}
+					Vehicle vehicle = request.isPrivate.booleanValue()
+							? ContextCreator.getVehicleContext()
+									.getPrivateVehicle(request.vehicleId.intValue())
+							: ContextCreator.getVehicleContext()
+									.getPublicVehicle(request.vehicleId.intValue());
+					if (vehicle == null) {
+						throw new IllegalArgumentException(
+								"Vehicle not found for ID " + request.vehicleId);
+					}
+					Road currentRoad = vehicle.getRoad();
+					ConnectorRoad currentConnector = vehicle.getCurrentConnector();
+					if ((currentRoad != null && currentRoad.getControlType() == Road.COSIM)
+							|| (currentConnector != null
+									&& currentConnector.getControlType() == Road.COSIM)) {
+						throw new IllegalArgumentException(
+								"Digital Twin teleport cannot move a COSIM-owned vehicle");
+					}
+
+					String positionType = request.positionType.trim()
+							.toLowerCase(Locale.ROOT);
+					Road targetSegment;
+					Lane targetLane;
+					ConnectorRoad.ConnectorPath targetConnectorPath;
+					double requestedDistance;
+					double appliedDistance;
+					CoSimMapMatcher.Match coordinateMatch = null;
+					if ("coordinate".equals(positionType)) {
+						if (request.x == null || request.y == null
+								|| !Double.isFinite(request.x.doubleValue())
+								|| !Double.isFinite(request.y.doubleValue())
+								|| request.z != null && !Double.isFinite(request.z.doubleValue())) {
+							throw new IllegalArgumentException(
+									"Coordinate mode requires finite x and y; z is optional");
+						}
+						if (request.segmentId != null || request.distanceToSegmentEnd != null
+								|| request.laneIndex != null || request.connectorPathId != null) {
+							throw new IllegalArgumentException(
+									"Coordinate mode cannot include segment, distance, lane, or connector-path fields");
+						}
+						Coordinate pose = new Coordinate(request.x.doubleValue(),
+								request.y.doubleValue(), request.z == null
+										? 0.0 : request.z.doubleValue());
+						if (Boolean.TRUE.equals(request.transformCoordinates)) {
+							JTS.transform(pose, pose,
+									SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
+						}
+						List<CoSimMapMatcher.Match> matches =
+								CoSimMapMatcher.nativeCandidates(vehicle, pose);
+						if (matches.isEmpty()) {
+							throw new IllegalArgumentException(
+									"No native road or connector matches the coordinate");
+						}
+						coordinateMatch = matches.get(0);
+						targetSegment = coordinateMatch.segment;
+						targetLane = coordinateMatch.lane;
+						targetConnectorPath = coordinateMatch.connectorPath;
+						requestedDistance = coordinateMatch.downstreamDistance;
+						appliedDistance = requestedDistance;
+					} else if ("segment".equals(positionType)) {
+						if (request.segmentId == null
+								|| request.segmentId.trim().isEmpty()
+								|| request.distanceToSegmentEnd == null
+								|| !Double.isFinite(request.distanceToSegmentEnd.doubleValue())) {
+							throw new IllegalArgumentException(
+									"Segment mode requires segmentId and finite distanceToSegmentEnd");
+						}
+						if (request.x != null || request.y != null || request.z != null
+								|| request.transformCoordinates != null) {
+							throw new IllegalArgumentException(
+									"Segment mode cannot include coordinate fields");
+						}
+						targetSegment = ContextCreator.getRoadContext()
+								.getQueryableRoad(request.segmentId.trim());
+						if (targetSegment == null) {
+							throw new IllegalArgumentException(
+									"Segment not found for ID " + request.segmentId);
+						}
+						if (targetSegment.getControlType() == Road.COSIM) {
+							throw new IllegalArgumentException(
+									"Digital Twin teleport requires a native target segment");
+						}
+						requestedDistance = request.distanceToSegmentEnd.doubleValue();
+						targetConnectorPath = null;
+						if (targetSegment instanceof ConnectorRoad) {
+							if (request.laneIndex != null) {
+								throw new IllegalArgumentException(
+										"Use connectorPathId, not laneIndex, for a connector");
+							}
+							ConnectorRoad connector = (ConnectorRoad) targetSegment;
+							if (request.connectorPathId != null) {
+								targetConnectorPath = connector.getPathByID(
+										request.connectorPathId.intValue());
+							} else {
+								targetConnectorPath = connector.getPath(request.segmentId.trim());
+								if (targetConnectorPath == null
+										&& vehicle.getCurrentConnector() == connector) {
+									targetConnectorPath = vehicle.getCurrentConnectorPath();
+								}
+								if (targetConnectorPath == null && connector.getPaths().size() == 1) {
+									targetConnectorPath = connector.getPaths().get(0);
+								}
+							}
+							if (targetConnectorPath == null) {
+								throw new IllegalArgumentException(
+										"Connector path is invalid or ambiguous");
+							}
+							targetLane = connector.getLane(targetConnectorPath);
+						} else {
+							if (request.connectorPathId != null) {
+								throw new IllegalArgumentException(
+										"A physical road cannot specify connectorPathId");
+							}
+							int laneIndex;
+							if (request.laneIndex != null) {
+								laneIndex = request.laneIndex.intValue();
+							} else if (vehicle.getRoad() == targetSegment
+									&& vehicle.getLane() != null) {
+								laneIndex = targetSegment.getLaneIndex(vehicle.getLane());
+							} else {
+								laneIndex = 0;
+							}
+							if (laneIndex < 0 || laneIndex >= targetSegment.getNumberOfLanes()) {
+								throw new IllegalArgumentException("Invalid laneIndex " + laneIndex
+										+ " for segment " + targetSegment.getOrigID());
+							}
+							targetLane = targetSegment.getLane(laneIndex);
+						}
+						double laneLength = targetLane == null ? Double.NaN : targetLane.getLength();
+						if (!Double.isFinite(laneLength) || laneLength < 0.0) {
+							throw new IllegalArgumentException("Target lane has no usable length");
+						}
+						appliedDistance = Math.max(0.0,
+								Math.min(laneLength, requestedDistance));
+					} else {
+						throw new IllegalArgumentException(
+								"positionType must be coordinate or segment");
+					}
+					vehicle.synchronizeNativeObservation(targetSegment, targetLane,
+							targetConnectorPath, appliedDistance, null, null);
+					record.put("inputMode", positionType);
+					record.put("segmentId", targetSegment.getOrigID());
+					record.put("segmentType", targetSegment instanceof ConnectorRoad
+							? "connector" : "road");
+					record.put("laneIndex", targetSegment instanceof ConnectorRoad
+							? null : targetSegment.getLaneIndex(targetLane));
+					if (targetConnectorPath != null) {
+						record.put("connectorPathId",
+								targetConnectorPath.getConnectorPathID());
+					}
+					record.put("requestedDistance", requestedDistance);
+					record.put("distanceToSegmentEnd", appliedDistance);
+					record.put("distanceClamped",
+							Math.abs(requestedDistance - appliedDistance) > 1.0e-6);
+					record.put("controlMode", "native");
+					if (coordinateMatch != null) {
+						record.put("lateralError", coordinateMatch.lateralDistanceMeters);
+						record.put("endpointOvershoot",
+								coordinateMatch.endpointOvershootMeters);
+					}
+					record.put("status", "ok");
+					successCount++;
+				} catch (Exception ex) {
+					record.put("status", "error");
+					record.put("message", ex.getMessage());
+					ContextCreator.logger.error("Invalid Digital Twin teleport for vehicle "
+							+ (request == null ? "unknown" : request.vehicleId)
+							+ ": " + ex.getMessage(), ex);
+				}
+				responseData.add(record);
 			}
 			answer.put("data", responseData);
-			answer.put("status", "ok");
+			answer.put("status", successCount == requests.size() ? "ok"
+					: successCount == 0 ? "error" : "partial");
 		} catch (Exception ex) {
 			ContextCreator.logger.error("Error processing teleportDigitalTwinVeh: " + ex, ex);
 			answer.put("message", ex.getMessage());
 			answer.put("status", "error");
 		}
 		return answer;
-    }
-
-    private HashMap<String, Object> processTraceReplayTeleport(
-            VehIDVehTypeRoadLaneDist request, Map<String, Object> rawRequest) {
-		HashMap<String, Object> record = new HashMap<String, Object>();
-		record.put("vehicleId", request == null ? null : request.vehicleId);
-		try {
-			validateTraceReplayRequestFormat(rawRequest, request);
-			Vehicle veh = request.isPrivate
-					? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehicleId)
-					: ContextCreator.getVehicleContext().getPublicVehicle(request.vehicleId);
-			if (veh == null) {
-				throw new IllegalArgumentException("Vehicle not found for ID " + request.vehicleId);
-			}
-			Road road = ContextCreator.getCityContext().findRoadWithOrigID(request.roadId);
-			if (road == null) {
-				throw new IllegalArgumentException("Road not found for ID " + request.roadId);
-			}
-			if (road.getControlType() == Road.COSIM) {
-				throw new IllegalArgumentException(
-						"Digital-twin teleport cannot target a COSIM road; use teleportCoSimVeh");
-			}
-			if (veh.isExternalRoadTransition() || veh.isOnConnector()
-					|| veh.getRoad() != null && veh.getRoad().getControlType() == Road.COSIM) {
-				throw new IllegalArgumentException(
-						"Digital-twin teleport cannot move a vehicle owned by COSIM");
-			}
-			if (request.laneIndex < -1 || request.laneIndex >= road.getNumberOfLanes()) {
-				throw new IllegalArgumentException(String.format(
-						"Invalid lane index %d for road %s (lanes: %d)", request.laneIndex,
-						request.roadId, road.getNumberOfLanes()));
-			}
-
-			// Resolve before unlinking. Earlier records have already moved, so every
-			// successful placement immediately constrains the next record in the batch.
-			TraceReplayPlacement placement = resolveTraceReplayPlacement(request, veh, road);
-			veh.removeFromCurrentLane();
-			if (veh.getRoad() != road) {
-				veh.removeFromCurrentRoad();
-			}
-			road.teleportVehicle(veh, placement.lane, placement.appliedDistance);
-			removeVehicleFromEnteringQueues(veh);
-
-			record.put("status", "ok");
-			record.put("laneIndex", road.getLaneIndex(placement.lane));
-			record.put("requestedDistance", placement.requestedDistance);
-			record.put("appliedDistance", placement.appliedDistance);
-			record.put("backwardShift", placement.backwardShift());
-			record.put("adjusted", placement.adjusted());
-			record.put("forced", !placement.collisionFree);
-			if (!placement.collisionFree) {
-				String warning = "FORCED_OVERLAP: no collision-free location exists behind "
-						+ "the requested position on the permitted lane(s)";
-				record.put("message", warning);
-				ContextCreator.logger.warn("Trace replay vehicle " + request.vehicleId + " on road "
-						+ request.roadId + ": " + warning);
-			}
-		} catch (Exception ex) {
-			record.put("status", "error");
-			record.put("message", ex.getMessage());
-			ContextCreator.logger.error("Invalid trace replay teleport request for vehicle "
-					+ (request == null ? "unknown" : request.vehicleId) + ": " + ex.getMessage(), ex);
-		}
-		return record;
-    }
-
-	private void validateTraceReplayRequestFormat(Map<String, Object> raw,
-			VehIDVehTypeRoadLaneDist request) {
-		if (raw == null || request == null) {
-			throw new IllegalArgumentException("Each teleportDigitalTwinVeh record must be an object");
-		}
-		double vehicleId = requiredFiniteNumber(raw, "vehicleId");
-		double laneIndex = requiredFiniteNumber(raw, "laneIndex");
-		if (vehicleId != Math.rint(vehicleId) || vehicleId < Integer.MIN_VALUE || vehicleId > Integer.MAX_VALUE
-				|| laneIndex != Math.rint(laneIndex) || laneIndex < Integer.MIN_VALUE || laneIndex > Integer.MAX_VALUE) {
-			throw new IllegalArgumentException("vehicleId and laneIndex must be integers");
-		}
-		request.vehicleId = (int) vehicleId;
-		request.laneIndex = (int) laneIndex;
-		if (!(raw.get("isPrivate") instanceof Boolean)) {
-			throw new IllegalArgumentException("isPrivate must be a boolean");
-		}
-		Object roadId = raw.get("roadId");
-		if (roadId instanceof String) {
-			request.roadId = ((String) roadId).trim();
-		} else if (roadId instanceof Number) {
-			double value = ((Number) roadId).doubleValue();
-			if (!Double.isFinite(value)) {
-				throw new IllegalArgumentException("roadId must be finite");
-			}
-			request.roadId = value == Math.rint(value)
-					? Long.toString((long) value) : roadId.toString();
-		} else {
-			throw new IllegalArgumentException("roadId must be a string or number");
-		}
-		if (request.roadId.length() == 0) {
-			throw new IllegalArgumentException("roadId must not be empty");
-		}
-		if (raw.containsKey("transformCoordinates") && !(raw.get("transformCoordinates") instanceof Boolean)) {
-			throw new IllegalArgumentException("transformCoordinates must be a boolean");
-		}
-
-		boolean hasDist = raw.get("distanceToSegmentEnd") != null;
-		boolean hasX = raw.get("x") != null;
-		boolean hasY = raw.get("y") != null;
-		if (hasX != hasY) {
-			throw new IllegalArgumentException("x and y must be supplied together");
-		}
-		if (hasDist) requiredFiniteNumber(raw, "distanceToSegmentEnd");
-		if (hasX) {
-			requiredFiniteNumber(raw, "x");
-			requiredFiniteNumber(raw, "y");
-		}
-		if (request.laneIndex == -1 && !hasX) {
-			throw new IllegalArgumentException("laneIndex=-1 requires finite x and y");
-		}
-		if (!hasDist && !hasX) {
-			throw new IllegalArgumentException("A finite distanceToSegmentEnd or x/y pair is required");
-		}
-	}
-
-	private double requiredFiniteNumber(Map<String, Object> raw, String field) {
-		Object value = raw.get(field);
-		if (!(value instanceof Number) || !Double.isFinite(((Number) value).doubleValue())) {
-			throw new IllegalArgumentException(field + " must be a finite number");
-		}
-		return ((Number) value).doubleValue();
-	}
-
-	private TraceReplayPlacement resolveTraceReplayPlacement(
-			VehIDVehTypeRoadLaneDist request, Vehicle veh, Road road) throws TransformException {
-		if (request.laneIndex >= 0) {
-			Lane lane = road.getLane(request.laneIndex);
-			double requestedDistance = traceReplayTeleportDistance(request, lane);
-			return closestBackwardTraceReplayPlacement(veh, road, lane, requestedDistance, null);
-		}
-
-		Coordinate requestedCoordinate = traceReplayCoordinate(request);
-		TraceReplayPlacement bestValid = null;
-		TraceReplayPlacement bestForced = null;
-		for (Lane lane : road.getLanes()) {
-			try {
-				TraceReplayLaneProjection projection = traceReplayLaneProjection(lane, requestedCoordinate);
-				TraceReplayPlacement placement = closestBackwardTraceReplayPlacement(
-						veh, road, lane, projection.downstreamDistance, requestedCoordinate);
-				if (placement.collisionFree) {
-					if (isBetterTraceReplayPlacement(placement, bestValid, road)) bestValid = placement;
-				} else if (isBetterTraceReplayPlacement(placement, bestForced, road)) {
-					bestForced = placement;
-				}
-			} catch (IllegalArgumentException ignored) {
-				// A malformed lane must not prevent trying the neighboring lanes.
-			}
-		}
-		if (bestValid != null) return bestValid;
-		if (bestForced != null) return bestForced;
-		throw new IllegalArgumentException("Road " + request.roadId + " has no lane with usable geometry");
-	}
-
-	private boolean isBetterTraceReplayPlacement(
-			TraceReplayPlacement candidate, TraceReplayPlacement current, Road road) {
-		if (current == null) return true;
-		int displacementCompare = Double.compare(candidate.sourceDisplacement, current.sourceDisplacement);
-		if (displacementCompare != 0) return displacementCompare < 0;
-		int shiftCompare = Double.compare(candidate.backwardShift(), current.backwardShift());
-		if (shiftCompare != 0) return shiftCompare < 0;
-		return road.getLaneIndex(candidate.lane) < road.getLaneIndex(current.lane);
-	}
-
-	private TraceReplayPlacement closestBackwardTraceReplayPlacement(Vehicle veh, Road road,
-			Lane lane, double requestedDistance, Coordinate requestedCoordinate) {
-		double laneLength = lane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
-			throw new IllegalArgumentException("Lane " + lane.getID() + " has an invalid length");
-		}
-		double boundedDistance = Math.max(0.0, Math.min(laneLength, requestedDistance));
-		double candidateDistance = boundedDistance;
-		boolean collisionFree = false;
-		double lastConflictingDistance = Double.NaN;
-		int iterations = 0;
-		int maxIterations = Math.max(64,
-				(int) Math.ceil(Math.max(0.0, laneLength - boundedDistance)
-						/ TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS) + road.getVehicleNum() * 4 + 8);
-
-		while (candidateDistance <= laneLength + TRACE_REPLAY_DISTANCE_EPSILON
-				&& iterations++ < maxIterations) {
-			candidateDistance = Math.min(candidateDistance, laneLength);
-			TraceReplayConflict conflict = traceReplayConflictAt(
-					veh, road, lane, candidateDistance);
-			if (conflict == null) {
-				if (Double.isFinite(lastConflictingDistance)) {
-					double low = lastConflictingDistance;
-					double high = candidateDistance;
-					for (int refinement = 0; refinement < 10; refinement++) {
-						double middle = (low + high) / 2.0;
-						if (traceReplayConflictAt(veh, road, lane, middle) == null) high = middle;
-						else low = middle;
-					}
-					candidateDistance = high;
-				}
-				collisionFree = true;
-				break;
-			}
-			lastConflictingDistance = candidateDistance;
-			double nextDistance = conflict.incrementalSearch
-					? candidateDistance + TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS
-					: conflict.nextDistance;
-			if (nextDistance <= candidateDistance + TRACE_REPLAY_DISTANCE_EPSILON) {
-				nextDistance = candidateDistance + TRACE_REPLAY_SPATIAL_SEARCH_STEP_METERS;
-			}
-			if (nextDistance > laneLength + TRACE_REPLAY_DISTANCE_EPSILON) {
-				if (candidateDistance < laneLength - TRACE_REPLAY_DISTANCE_EPSILON) {
-					candidateDistance = laneLength;
-					continue;
-				}
-				break;
-			}
-			candidateDistance = nextDistance;
-		}
-
-		double appliedDistance = collisionFree ? Math.min(candidateDistance, laneLength) : laneLength;
-		TraceReplayLanePose pose =
-				traceReplayLanePose(lane, appliedDistance, veh.getBearing());
-		double sourceDisplacement = requestedCoordinate == null
-				? Math.max(0.0, appliedDistance - boundedDistance)
-				: ContextCreator.getCityContext().getDistance(requestedCoordinate, pose.frontCoordinate);
-		return new TraceReplayPlacement(lane, requestedDistance, boundedDistance,
-				appliedDistance, collisionFree, sourceDisplacement);
-	}
-
-	private TraceReplayConflict traceReplayConflictAt(
-			Vehicle moving, Road road, Lane lane, double candidateDistance) {
-		TraceReplayLanePose candidatePose =
-				traceReplayLanePose(lane, candidateDistance, moving.getBearing());
-		Set<Vehicle> visited = new HashSet<Vehicle>();
-		double nextDistance = candidateDistance;
-		boolean conflictFound = false;
-		boolean incrementalSearch = false;
-		for (Road collisionRoad : traceReplayCollisionRoads(road)) {
-			for (Lane occupiedLane : collisionRoad.getLanes()) {
-				Vehicle existing = occupiedLane.firstVehicle();
-				Set<Vehicle> laneVisited = new HashSet<Vehicle>();
-				while (existing != null && laneVisited.add(existing)) {
-					Vehicle next = existing.trailing();
-					if (existing != moving && visited.add(existing)) {
-						boolean distanceOverlap = existing.isOnLane() && existing.getLane() == lane
-								&& traceReplayLongitudinalOverlap(candidateDistance, moving.length(),
-										existing.getDistanceToNextJunction(), existing.length());
-						double existingBearing = existing.getBearing();
-						if (existing.isOnLane() && existing.getLane() != null) {
-							try {
-								existingBearing = traceReplayLanePose(existing.getLane(),
-										existing.getDistanceToNextJunction(), existingBearing).bearing;
-							} catch (IllegalArgumentException ignored) { }
-						}
-						boolean spatialOverlap = traceReplayFootprintsOverlap(candidatePose, moving.length(),
-								existing.getCurrentCoord(), existingBearing, existing.length());
-						if (distanceOverlap || spatialOverlap) {
-							double blockerDistance = distanceOverlap
-									? existing.getDistanceToNextJunction()
-									: traceReplayLaneProjection(lane, existing.getCurrentCoord()).downstreamDistance;
-							double clearingDistance = blockerDistance + existing.length()
-									+ TRACE_REPLAY_CLEARANCE_METERS;
-							nextDistance = Math.max(nextDistance, clearingDistance);
-							conflictFound = true;
-							incrementalSearch |= spatialOverlap && !distanceOverlap;
-						}
-					}
-					existing = next;
-				}
-			}
-		}
-		return conflictFound ? new TraceReplayConflict(nextDistance, incrementalSearch) : null;
-	}
-
-	private Set<Road> traceReplayCollisionRoads(Road road) {
-		Set<Road> roads = new HashSet<Road>();
-		roads.add(road);
-		for (int roadId : road.getDownStreamRoads()) {
-			Road connected = ContextCreator.getRoadContext().get(roadId);
-			if (connected != null) roads.add(connected);
-		}
-		for (Lane lane : road.getLanes()) {
-			addTraceReplayConnectedLaneRoads(roads, lane.getUpStreamLanes());
-			addTraceReplayConnectedLaneRoads(roads, lane.getDownStreamLanes());
-		}
-		return roads;
-	}
-
-	private void addTraceReplayConnectedLaneRoads(Set<Road> roads, Collection<Integer> laneIDs) {
-		for (int laneIndex : laneIDs) {
-			Lane connectedLane = ContextCreator.getLaneContext().get(laneIndex);
-			if (connectedLane != null && connectedLane.getRoad() != null) {
-				roads.add(connectedLane.getRoad());
-			}
-		}
-	}
-
-	private boolean traceReplayLongitudinalOverlap(double firstDistance, double firstLength,
-			double secondDistance, double secondLength) {
-		return firstDistance < secondDistance + secondLength - TRACE_REPLAY_DISTANCE_EPSILON
-				&& secondDistance < firstDistance + firstLength - TRACE_REPLAY_DISTANCE_EPSILON;
-	}
-
-	private TraceReplayLanePose traceReplayLanePose(
-			Lane lane, double distance, double fallbackBearing) {
-		ArrayList<Coordinate> coords = lane.getCoords();
-		if (coords == null || coords.size() < 2) {
-			throw new IllegalArgumentException("Lane " + lane.getID() + " has unusable geometry");
-		}
-		double remaining = Math.max(0.0, Math.min(lane.getLength(), distance));
-		for (int i = coords.size() - 1; i > 0; i--) {
-			Coordinate downstream = coords.get(i);
-			Coordinate upstream = coords.get(i - 1);
-			double segmentLength = lane.toLogicalDistance(
-					ContextCreator.getCityContext().getDistance(downstream, upstream));
-			if (segmentLength <= TRACE_REPLAY_DISTANCE_EPSILON) continue;
-			boolean firstUsableSegment = i == 1;
-			if (remaining < segmentLength - TRACE_REPLAY_LANE_VERTEX_TOLERANCE_METERS
-					|| firstUsableSegment) {
-				double fractionTowardUpstream = Math.max(0.0, Math.min(1.0, remaining / segmentLength));
-				Coordinate front = new Coordinate(
-						downstream.x + fractionTowardUpstream * (upstream.x - downstream.x),
-						downstream.y + fractionTowardUpstream * (upstream.y - downstream.y),
-						downstream.z + fractionTowardUpstream * (upstream.z - downstream.z));
-				return new TraceReplayLanePose(front,
-						traceReplayAzimuthOrFallback(upstream, downstream, fallbackBearing));
-			}
-			remaining -= segmentLength;
-		}
-		for (int i = 0; i < coords.size() - 1; i++) {
-			if (ContextCreator.getCityContext().getDistance(coords.get(i), coords.get(i + 1))
-					> TRACE_REPLAY_DISTANCE_EPSILON) {
-				return new TraceReplayLanePose(coords.get(0),
-						traceReplayAzimuthOrFallback(
-								coords.get(i), coords.get(i + 1), fallbackBearing));
-			}
-		}
-		return new TraceReplayLanePose(
-				lane.getEndCoord(), finiteTraceReplayBearing(fallbackBearing));
-	}
-
-	private double traceReplayAzimuthOrFallback(
-			Coordinate from, Coordinate to, double fallbackBearing) {
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
-		calculator.setStartingGeographicPoint(from.x, from.y);
-		calculator.setDestinationGeographicPoint(to.x, to.y);
-		double horizontalDistance = calculator.getOrthodromicDistance();
-		if (!Double.isFinite(horizontalDistance)
-				|| horizontalDistance <= TRACE_REPLAY_COINCIDENT_GEOMETRY_TOLERANCE_METERS) {
-			return finiteTraceReplayBearing(fallbackBearing);
-		}
-		double azimuth = calculator.getAzimuth();
-		return Double.isFinite(azimuth)
-				? azimuth : finiteTraceReplayBearing(fallbackBearing);
-	}
-
-	private double finiteTraceReplayBearing(double bearing) {
-		return Double.isFinite(bearing) ? bearing : 0.0;
-	}
-
-	private boolean traceReplayFootprintsOverlap(TraceReplayLanePose candidate, double candidateLength,
-			Coordinate otherFront, double otherBearing, double otherLength) {
-		if (otherFront == null || !Double.isFinite(otherFront.x) || !Double.isFinite(otherFront.y)
-				|| !Double.isFinite(otherBearing)) return false;
-
-		double candidateBearingRadians = Math.toRadians(candidate.bearing);
-		double otherBearingRadians = Math.toRadians(otherBearing);
-		double candidateForwardX = Math.sin(candidateBearingRadians);
-		double candidateForwardY = Math.cos(candidateBearingRadians);
-		double candidateLateralX = Math.cos(candidateBearingRadians);
-		double candidateLateralY = -Math.sin(candidateBearingRadians);
-		double otherForwardX = Math.sin(otherBearingRadians);
-		double otherForwardY = Math.cos(otherBearingRadians);
-		double otherLateralX = Math.cos(otherBearingRadians);
-		double otherLateralY = -Math.sin(otherBearingRadians);
-
-		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
-		calculator.setStartingGeographicPoint(candidate.frontCoordinate.x, candidate.frontCoordinate.y);
-		calculator.setDestinationGeographicPoint(otherFront.x, otherFront.y);
-		double frontDistance = calculator.getOrthodromicDistance();
-		double frontAzimuth = frontDistance <= TRACE_REPLAY_DISTANCE_EPSILON
-				? 0.0 : Math.toRadians(calculator.getAzimuth());
-		double deltaX = frontDistance * Math.sin(frontAzimuth)
-				+ candidateForwardX * candidateLength / 2.0 - otherForwardX * otherLength / 2.0;
-		double deltaY = frontDistance * Math.cos(frontAzimuth)
-				+ candidateForwardY * candidateLength / 2.0 - otherForwardY * otherLength / 2.0;
-
-		double halfCandidateLength = Math.max(0.0, candidateLength) / 2.0;
-		double halfOtherLength = Math.max(0.0, otherLength) / 2.0;
-		double halfWidth = Math.max(0.0, GlobalVariables.DEFAULT_VEHICLE_WIDTH) / 2.0;
-		double[][] axes = {
-				{ candidateForwardX, candidateForwardY },
-				{ candidateLateralX, candidateLateralY },
-				{ otherForwardX, otherForwardY },
-				{ otherLateralX, otherLateralY }
-		};
-		for (double[] axis : axes) {
-			double separation = Math.abs(deltaX * axis[0] + deltaY * axis[1]);
-			double candidateRadius = halfCandidateLength
-					* Math.abs(candidateForwardX * axis[0] + candidateForwardY * axis[1])
-					+ halfWidth * Math.abs(candidateLateralX * axis[0] + candidateLateralY * axis[1]);
-			double otherRadius = halfOtherLength
-					* Math.abs(otherForwardX * axis[0] + otherForwardY * axis[1])
-					+ halfWidth * Math.abs(otherLateralX * axis[0] + otherLateralY * axis[1]);
-			if (separation >= candidateRadius + otherRadius - TRACE_REPLAY_DISTANCE_EPSILON) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	private double traceReplayTeleportDistance(VehIDVehTypeRoadLaneDist request, Lane lane)
-			throws TransformException {
-		if (request.x != null && request.y != null) {
-			Coordinate coord = traceReplayCoordinate(request);
-			return laneDistanceFromCoordinate(lane, coord);
-		}
-		if (request.distanceToSegmentEnd != null) {
-			return request.distanceToSegmentEnd.doubleValue();
-		}
-		throw new IllegalArgumentException("teleportDigitalTwinVeh requires either distanceToSegmentEnd or x/y");
-	}
-
-	private Coordinate traceReplayCoordinate(VehIDVehTypeRoadLaneDist request) throws TransformException {
-		if (request.x == null || request.y == null) {
-			throw new IllegalArgumentException(
-					"teleportDigitalTwinVeh requires both x and y when laneIndex is -1");
-		}
-		if (!Double.isFinite(request.x.doubleValue()) || !Double.isFinite(request.y.doubleValue())) {
-			throw new IllegalArgumentException("teleportDigitalTwinVeh requires finite x and y values");
-		}
-
-		Coordinate coord = new Coordinate(request.x, request.y);
-		if (request.transformCoordinates) {
-			JTS.transform(coord, coord, SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
-		}
-		return coord;
-	}
-
-	private double laneDistanceFromCoordinate(Lane lane, Coordinate coord) {
-		return traceReplayLaneProjection(lane, coord).downstreamDistance;
-	}
-
-	private TraceReplayLaneProjection traceReplayLaneProjection(Lane lane, Coordinate coord) {
-		ArrayList<Coordinate> coords = lane.getCoords();
-		if (coords == null || coords.size() < 2) {
-			throw new IllegalArgumentException("Cannot project coordinate onto lane " + lane.getID()
-					+ " because it has fewer than two coordinates");
-		}
-
-		double downstreamDistance = 0.0;
-		double bestDistance = Double.NaN;
-		double minProjectionError = Double.MAX_VALUE;
-		for (int i = coords.size() - 1; i > 0; i--) {
-			Coordinate downstream = coords.get(i);
-			Coordinate upstream = coords.get(i - 1);
-			double dx = downstream.x - upstream.x;
-			double dy = downstream.y - upstream.y;
-			double lenSq = dx * dx + dy * dy;
-			double segmentLen = ContextCreator.getCityContext().getDistance(downstream, upstream);
-			if (lenSq > 0) {
-				double apx = coord.x - upstream.x;
-				double apy = coord.y - upstream.y;
-				double param = Math.max(0.0, Math.min(1.0, (apx * dx + apy * dy) / lenSq));
-				Coordinate closest = new Coordinate(
-						upstream.x + param * dx,
-						upstream.y + param * dy,
-						upstream.z + param * (downstream.z - upstream.z));
-				double projectionError = ContextCreator.getCityContext().getDistance(coord, closest);
-				if (projectionError < minProjectionError) {
-					minProjectionError = projectionError;
-					bestDistance = downstreamDistance + (1.0 - param) * segmentLen;
-				}
-			}
-			downstreamDistance += segmentLen;
-		}
-
-		if (Double.isNaN(bestDistance)) bestDistance = 0.0;
-		bestDistance = lane.toLogicalDistance(bestDistance);
-		return new TraceReplayLaneProjection(
-				Math.max(0.0, Math.min(lane.getLength(), bestDistance)));
-	}
-
-	private static class TraceReplayPlacement {
-		final Lane lane;
-		final double requestedDistance;
-		final double boundedDistance;
-		final double appliedDistance;
-		final boolean collisionFree;
-		final double sourceDisplacement;
-
-		TraceReplayPlacement(Lane lane, double requestedDistance, double boundedDistance,
-				double appliedDistance, boolean collisionFree, double sourceDisplacement) {
-			this.lane = lane;
-			this.requestedDistance = requestedDistance;
-			this.boundedDistance = boundedDistance;
-			this.appliedDistance = appliedDistance;
-			this.collisionFree = collisionFree;
-			this.sourceDisplacement = sourceDisplacement;
-		}
-
-		double backwardShift() {
-			return Math.max(0.0, appliedDistance - boundedDistance);
-		}
-
-		boolean adjusted() {
-			return Math.abs(requestedDistance - boundedDistance) > TRACE_REPLAY_DISTANCE_EPSILON
-					|| backwardShift() > TRACE_REPLAY_DISTANCE_EPSILON;
-		}
-	}
-
-	private static class TraceReplayConflict {
-		final double nextDistance;
-		final boolean incrementalSearch;
-
-		TraceReplayConflict(double nextDistance, boolean incrementalSearch) {
-			this.nextDistance = nextDistance;
-			this.incrementalSearch = incrementalSearch;
-		}
-	}
-
-	private static class TraceReplayLanePose {
-		final Coordinate frontCoordinate;
-		final double bearing;
-
-		TraceReplayLanePose(Coordinate frontCoordinate, double bearing) {
-			this.frontCoordinate = new Coordinate(frontCoordinate);
-			this.bearing = bearing;
-		}
-	}
-
-	private static class TraceReplayLaneProjection {
-		final double downstreamDistance;
-
-		TraceReplayLaneProjection(double downstreamDistance) {
-			this.downstreamDistance = downstreamDistance;
-		}
 	}
 
 	/**
@@ -1693,6 +1322,7 @@ public class ControlMessageHandler extends MessageHandler {
 			return jsonAns;
 		}
 		ArrayList<Object> jsonData = new ArrayList<Object>();
+		int successCount = 0;
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<InitializeCoSimVehRequest>> collectionType =
@@ -1831,7 +1461,7 @@ public class ControlMessageHandler extends MessageHandler {
 				record.put("inferredSourceLaneIndex", startRoad.getLaneIndex(startLane));
 				record.put("lateralError", applied.lateralDistanceMeters);
 				record.put("vehicleLength", vehicle.length());
-				addExternalTransitionState(record, vehicle);
+				addConnectorState(record, vehicle);
 				jsonData.add(record);
 			}
 			jsonAns.put("data", jsonData);
@@ -1871,10 +1501,8 @@ public class ControlMessageHandler extends MessageHandler {
 			throw new IllegalStateException(
 					"Connector admission was not available for the initialized pose");
 		}
-		vehicle.setCurrentCoord(pose);
-		vehicle.syncPreviousEpochCoord();
-		vehicle.setBearing(bearing);
-		vehicle.setSpeed(speed);
+		vehicle.positionInitializedCoSimConnectorVehicle(
+				match.downstreamDistance, pose, bearing, speed);
 	}
 
 	private ArrayList<ConnectorRoad> coSimConnectorsForRoad(Road road) {
@@ -1967,21 +1595,18 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	/**
-	* Teleport a co-simulation vehicle to an absolute (x, y, z) world
-	* coordinate, optionally transforming from the external simulator's
-	* coordinate system, and update its bearing and speed.
-	*
-	* Input DATA: list of
-	* {{vehicleId, isPrivate, x, y, z, bearing, speed, transformCoordinates,
-	* segmentId?, connectorPathId?}}. {@code connectorPathId} is a zero-based
-	* connector-local index and therefore requires a connector {@code segmentId}.
-	* A supplied {@code segmentId} is authoritative and must identify
-	* a controlled COSIM road, connector, or one of a connector's SUMO via-lane or
-	* internal-edge aliases. When it is omitted, membership is
-	* inferred across all controlled segments without restricting the search to
-	* METS-R's retained route. Geometry discrepancies are returned as
-	* warnings; caller-provided lane IDs remain ignored.
-	*/
+	 * Apply an authoritative co-simulation observation. Input DATA is an array of
+	 * {@code {vehicleId, isPrivate, x, y, z?, bearing, speed,
+	 * transformCoordinates?, segmentId?, laneIndex?, connectorPathId?}}.
+	 *
+	 * <p>Without {@code segmentId}, coordinates are matched only against currently
+	 * controlled COSIM roads and connectors. With {@code segmentId}, that segment
+	 * is authoritative: {@code laneIndex} optionally selects a physical-road lane,
+	 * while {@code connectorPathId} optionally selects a connector path. If the
+	 * explicit segment is native, a currently COSIM-owned vehicle is released to
+	 * native simulation and its route/lane state is rebuilt from that placement.
+	 * Geometry discrepancies on authoritative segments are reported as warnings.
+	 */
 	private synchronized HashMap<String, Object> teleportCoSimVeh(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 		if (!jsonMsg.containsKey("data")) {
@@ -1990,34 +1615,56 @@ public class ControlMessageHandler extends MessageHandler {
 			return jsonAns;
 		}
 		ArrayList<Object> jsonData = new ArrayList<Object>();
+		int successCount = 0;
 		try {
 			Gson gson = new Gson();
-			TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>> collectionType =
-					new TypeToken<Collection<VehIDVehTypeTranBearingXYSpeed>>() {};
-			Collection<VehIDVehTypeTranBearingXYSpeed> requests = gson.fromJson(
+			TypeToken<Collection<CoSimTeleportRequest>> collectionType =
+					new TypeToken<Collection<CoSimTeleportRequest>>() {};
+			Collection<CoSimTeleportRequest> requests = gson.fromJson(
 					jsonMsg.get("data").toString(), collectionType.getType());
 			if (requests == null) {
 				throw new IllegalArgumentException("teleportCoSimVeh DATA must be an array");
 			}
-			for (VehIDVehTypeTranBearingXYSpeed request : requests) {
-				Vehicle vehicle = request.isPrivate
-						? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehicleId)
-						: ContextCreator.getVehicleContext().getPublicVehicle(request.vehicleId);
+			if (requests.isEmpty()) {
+				throw new IllegalArgumentException(
+						"teleportCoSimVeh DATA must contain at least one record");
+			}
+			for (CoSimTeleportRequest request : requests) {
+				if (request == null || request.vehicleId == null || request.isPrivate == null
+						|| request.x == null || request.y == null
+						|| request.bearing == null || request.speed == null) {
+					jsonData.add(coSimTeleportFailure(request == null ? null : request.vehicleId,
+							"INVALID_REQUEST", "vehicleId, isPrivate, x, y, bearing, and speed are required"));
+					continue;
+				}
+				double z = request.z == null ? 0.0 : request.z.doubleValue();
+				if (!Double.isFinite(request.x.doubleValue())
+						|| !Double.isFinite(request.y.doubleValue()) || !Double.isFinite(z)
+						|| !Double.isFinite(request.bearing.doubleValue())
+						|| !Double.isFinite(request.speed.doubleValue())
+						|| request.speed.doubleValue() < 0.0) {
+					jsonData.add(coSimTeleportFailure(request.vehicleId, "INVALID_POSE",
+							"Pose, bearing, and non-negative speed must be finite"));
+					continue;
+				}
+				String segmentHint = firstNonBlank(request.segmentId, null);
+				if (segmentHint == null
+						&& (request.laneIndex != null || request.connectorPathId != null)) {
+					jsonData.add(coSimTeleportFailure(request.vehicleId, "INVALID_REQUEST",
+							"laneIndex and connectorPathId require segmentId"));
+					continue;
+				}
+				Vehicle vehicle = request.isPrivate.booleanValue()
+						? ContextCreator.getVehicleContext().getPrivateVehicle(request.vehicleId.intValue())
+						: ContextCreator.getVehicleContext().getPublicVehicle(request.vehicleId.intValue());
 				if (vehicle == null) {
 					jsonData.add(coSimTeleportFailure(request.vehicleId, "VEHICLE_NOT_FOUND",
 							"Vehicle not found for ID " + request.vehicleId));
 					continue;
 				}
-				if (!Double.isFinite(request.x) || !Double.isFinite(request.y)
-						|| !Double.isFinite(request.z) || !Double.isFinite(request.bearing)
-						|| !Double.isFinite(request.speed) || request.speed < 0.0) {
-					jsonData.add(coSimTeleportFailure(request.vehicleId, "INVALID_POSE",
-							"Pose, bearing, and non-negative speed must be finite"));
-					continue;
-				}
-
-				Coordinate pose = new Coordinate(request.x, request.y, request.z);
-				if (request.transformCoordinates) {
+				Coordinate pose = new Coordinate(request.x.doubleValue(),
+						request.y.doubleValue(), z);
+				if (Boolean.TRUE.equals(request.transformCoordinates)) {
 					try {
 						JTS.transform(pose, pose,
 								SumoXML.getData(GlobalVariables.NETWORK_FILE).transform);
@@ -2034,26 +1681,53 @@ public class ControlMessageHandler extends MessageHandler {
 							"Coordinate transform produced a non-finite pose"));
 					continue;
 				}
-				String segmentHint = firstNonBlank(request.segmentId, null);
+				Road suppliedSegment = null;
+				List<CoSimMapMatcher.Match> matches;
 				if (segmentHint != null) {
-					Road suppliedSegment =
-							ContextCreator.getRoadContext().getQueryableRoad(segmentHint);
+					suppliedSegment = ContextCreator.getRoadContext()
+							.getQueryableRoad(segmentHint);
 					if (suppliedSegment == null) {
 						jsonData.add(coSimTeleportFailure(request.vehicleId,
 								"SEGMENT_NOT_FOUND",
 								"segmentId does not identify a METS-R road or connector"));
 						continue;
 					}
-					if (suppliedSegment.getControlType() != Road.COSIM) {
-						jsonData.add(coSimTeleportFailure(request.vehicleId,
-								"SEGMENT_NOT_COSIM",
-								"segmentId must identify a currently controlled COSIM segment"));
-						continue;
+					if (suppliedSegment instanceof ConnectorRoad) {
+						if (request.laneIndex != null) {
+							jsonData.add(coSimTeleportFailure(request.vehicleId,
+									"INVALID_LANE_SELECTOR",
+									"Use connectorPathId, not laneIndex, for a connector"));
+							continue;
+						}
+						if (request.connectorPathId != null
+								&& request.connectorPathId.intValue() < 0) {
+							jsonData.add(coSimTeleportFailure(request.vehicleId,
+									"INVALID_CONNECTOR_PATH", "connectorPathId must be non-negative"));
+							continue;
+						}
+					} else {
+						if (request.connectorPathId != null) {
+							jsonData.add(coSimTeleportFailure(request.vehicleId,
+									"INVALID_CONNECTOR_PATH",
+									"A physical road cannot specify connectorPathId"));
+							continue;
+						}
+						if (request.laneIndex != null
+								&& (request.laneIndex.intValue() < 0
+										|| request.laneIndex.intValue()
+												>= suppliedSegment.getNumberOfLanes())) {
+							jsonData.add(coSimTeleportFailure(request.vehicleId,
+									"INVALID_LANE_SELECTOR", "laneIndex is outside the segment"));
+							continue;
+						}
 					}
+					matches = CoSimMapMatcher.candidatesOnSegment(vehicle, pose,
+							request.bearing.doubleValue(), suppliedSegment, segmentHint,
+							request.laneIndex, request.connectorPathId);
+				} else {
+					matches = CoSimMapMatcher.candidates(vehicle, pose,
+							request.bearing.doubleValue(), null, null);
 				}
-				List<CoSimMapMatcher.Match> matches = CoSimMapMatcher.candidates(
-						vehicle, pose, request.bearing, segmentHint,
-						request.connectorPathId);
 				if (matches.isEmpty()) {
 					String errorCode = segmentHint == null
 							? "NO_MAP_MATCH" : "SEGMENT_GEOMETRY_UNAVAILABLE";
@@ -2064,18 +1738,39 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 				CoSimMapMatcher.Match applied = matches.get(0);
+				boolean targetNative = applied.segment.getControlType() != Road.COSIM;
+				if (targetNative) {
+					Road currentRoad = vehicle.getRoad();
+					ConnectorRoad currentConnector = vehicle.getCurrentConnector();
+					boolean currentlyCoSimOwned = (currentRoad != null
+							&& currentRoad.getControlType() == Road.COSIM)
+							|| (currentConnector != null
+									&& currentConnector.getControlType() == Road.COSIM);
+					if (!currentlyCoSimOwned) {
+						jsonData.add(coSimTeleportFailure(request.vehicleId,
+								"VEHICLE_NOT_COSIM",
+								"A native target is only valid when releasing a COSIM-owned vehicle"));
+						continue;
+					}
+				}
 				Coordinate previousPose = vehicle.getCurrentCoord() == null
 						? null : new Coordinate(vehicle.getCurrentCoord());
-				boolean transitionBefore = vehicle.isExternalRoadTransition();
-				Road roadBefore = vehicle.getRoad();
+				boolean releasedFromCoSim = false;
 				try {
-					vehicle.synchronizeAuthoritativeCoSimObservation(
-						applied.segment, applied.lane, applied.connectorPath,
-						applied.downstreamDistance, pose,
-						request.bearing, request.speed);
+					if (targetNative) {
+						releasedFromCoSim = vehicle.synchronizeNativeObservation(
+								applied.segment, applied.lane, applied.connectorPath,
+								applied.downstreamDistance, request.bearing, request.speed);
+					} else {
+						vehicle.synchronizeAuthoritativeCoSimObservation(
+								applied.segment, applied.lane, applied.connectorPath,
+								applied.downstreamDistance, pose,
+								request.bearing.doubleValue(), request.speed.doubleValue());
+					}
 				} catch (RuntimeException ex) {
 					jsonData.add(coSimTeleportFailure(request.vehicleId,
-							"MIRROR_UPDATE_FAILED", ex.getMessage()));
+							targetNative ? "NATIVE_HANDOFF_FAILED" : "MIRROR_UPDATE_FAILED",
+							ex.getMessage()));
 					continue;
 				}
 
@@ -2083,14 +1778,13 @@ public class ControlMessageHandler extends MessageHandler {
 				ArrayList<String> warnings = coSimObservationWarnings(
 						previousPose, pose, applied);
 				for (String warning : warnings) {
-					ContextCreator.logger.warn("Authoritative COSIM pose vehicle="
+					ContextCreator.logger.warn("External pose vehicle="
 							+ request.vehicleId + ": " + warning);
 				}
 				HashMap<String, Object> record = new HashMap<String, Object>();
 				record.put("vehicleId", request.vehicleId);
 				record.put("status", "ok");
 				record.put("segmentId", applied.segment.getOrigID());
-				record.put("roadId", applied.segment.getOrigID());
 				record.put("segmentType", applied.isConnector() ? "connector" : "road");
 				if (segmentHint != null) record.put("observedSegmentId", segmentHint);
 				if (applied.isConnector()) {
@@ -2101,31 +1795,28 @@ public class ControlMessageHandler extends MessageHandler {
 					record.put("internalEdgeIds", connector.getInternalEdgeIDs());
 				}
 				record.put("laneIndex", applied.isConnector()
-						? ConnectorRoad.NO_LANE
+						? null
 						: applied.segment.getLaneIndex(applied.lane));
 				record.put("segmentAuthoritative", segmentHint != null);
 				record.put("segmentInferred", segmentHint == null);
-				record.put("laneInferred", true);
+				record.put("laneInferred", applied.isConnector()
+						? request.connectorPathId == null : request.laneIndex == null);
 				record.put("lateralError", applied.lateralDistanceMeters);
 				record.put("headingError", applied.headingErrorDegrees);
 				record.put("endpointOvershoot", applied.endpointOvershootMeters);
 				record.put("distanceToSegmentEnd", applied.downstreamDistance);
-				record.put("transitionStarted",
-						!transitionBefore && vehicle.isExternalRoadTransition());
-				record.put("transitionCommitted",
-						(transitionBefore || applied.segment != roadBefore)
-						&& !applied.isConnector() && !vehicle.isExternalRoadTransition());
-				if (request.laneIndex != null) {
-					record.put("providedLaneIgnored", true);
-				}
+				record.put("controlMode", targetNative ? "native" : "cosim");
+				record.put("releasedFromCoSim", releasedFromCoSim);
 				if (!warnings.isEmpty()) {
 					record.put("warnings", warnings);
 				}
-				addExternalTransitionState(record, vehicle);
+				addConnectorState(record, vehicle);
 				jsonData.add(record);
+				successCount++;
 			}
 			jsonAns.put("data", jsonData);
-			jsonAns.put("status", "ok");
+			jsonAns.put("status", successCount == requests.size() ? "ok"
+					: successCount == 0 ? "error" : "partial");
 		} catch (Exception ex) {
 			ContextCreator.logger.error("Error processing teleportCoSimVeh: "
 					+ ex.toString(), ex);
@@ -2158,7 +1849,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return warnings;
 	}
 
-	private HashMap<String, Object> coSimTeleportFailure(int vehicleID, String reason,
+	private HashMap<String, Object> coSimTeleportFailure(Integer vehicleID, String reason,
 			String warning) {
 		HashMap<String, Object> record = new HashMap<String, Object>();
 		record.put("vehicleId", vehicleID);
@@ -2283,11 +1974,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return jsonAns;
 	}
 
-	private void addExternalTransitionState(Map<String, Object> record, Vehicle vehicle) {
-		Vehicle.ExternalRoadTransitionSnapshot snapshot = vehicle == null
-				? null : vehicle.getExternalRoadTransitionSnapshot();
-		boolean pending = snapshot != null && snapshot.isPending();
-		record.put("transitionPending", pending);
+	private void addConnectorState(Map<String, Object> record, Vehicle vehicle) {
 		ConnectorRoad connector = vehicle != null && vehicle.isOnConnector()
 				? vehicle.getCurrentConnector() : null;
 		if (connector != null) {
@@ -2298,33 +1985,12 @@ public class ControlMessageHandler extends MessageHandler {
 			record.put("sourceRoadId", connector.getSourceRoad().getOrigID());
 			record.put("targetRoadId", connector.getTargetRoad().getOrigID());
 			record.put("intersectionId", connector.getIntersectionID());
-			ConnectorRoad.ConnectorPath connectorPath = snapshot != null
-					&& snapshot.getConnectorPath() != null
-							? snapshot.getConnectorPath() : vehicle.getCurrentConnectorPath();
+			ConnectorRoad.ConnectorPath connectorPath = vehicle.getCurrentConnectorPath();
 			if (connectorPath != null) {
 				record.put("connectorPathId", connectorPath.getConnectorPathID());
 				record.put("connectorPathInternalEdgeIds",
 						connectorPath.getInternalEdgeIDs());
 			}
-			if (snapshot != null && snapshot.getTargetLane() != null) {
-				record.put("transitionTargetRoadId",
-						connector.getTargetRoad().getOrigID());
-				record.put("transitionTargetLaneIndex",
-						connector.getTargetRoad().getLaneIndex(snapshot.getTargetLane()));
-			}
-			return;
-		}
-		if (pending) {
-			addExternalTransitionTarget(record, snapshot.getTargetRoad(), snapshot.getTargetLane());
-		}
-	}
-
-	private void addExternalTransitionTarget(Map<String, Object> record, Road road, Lane lane) {
-		if (road != null) record.put("roadId", road.getOrigID());
-		if (lane != null) {
-			int laneIndex = road == null ? -1 : road.getLaneIndex(lane);
-			if (laneIndex >= 0) record.put("laneIndex", laneIndex);
-			record.put("internalLaneId", lane.getID());
 		}
 	}
 
@@ -5311,17 +4977,10 @@ public class ControlMessageHandler extends MessageHandler {
 						record.put("status", "ok");
 						record.put("state", "arrived");
 					} else {
-						Lane targetLane = road.firstLane();
-						if (targetLane != null
-								&& road.getExternalLaneReservationBlocker(targetLane, vehicle) != null) {
-							record.put("status", "error");
-							record.put("errorCode", "TARGET_LANE_RESERVED");
-							record.put("retryable", true);
-							record.put("message", "Target lane is reserved by another external transition");
-						} else if (vehicle.enterNetworkByControl(road)) {
+						if (vehicle.enterNetworkByControl(road)) {
 							road.removeVehicleFromNewQueue(vehicle.getDepTime(), vehicle);
 							record.put("status", "ok");
-							addExternalTransitionState(record, vehicle);
+							addConnectorState(record, vehicle);
 						} else {
 							record.put("status", "error");
 							record.put("errorCode", "ENTRY_BLOCKED");

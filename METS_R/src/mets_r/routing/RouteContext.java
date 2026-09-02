@@ -86,24 +86,9 @@ public class RouteContext {
 					+ roadLabel(originRoad) + ", destination=" + roadLabel(destRoad));
 			return null;
 		}
-		if (vbr == null) {
-			ContextCreator.logger.warn("shortestPathRoute skipped because the routing engine is not initialized.");
-			return null;
-		}
 		if (destRoad instanceof ConnectorRoad) {
 			ContextCreator.logger.debug("shortestPathRoute skipped because a connector cannot be a destination: "
 					+ roadLabel(destRoad));
-			return null;
-		}
-		if (originRoad.getID() == destRoad.getID()) {
-			List<Road> sameRoadPath = new ArrayList<Road>();
-			sameRoadPath.add(originRoad);
-			return sameRoadPath;
-		}
-		if (!originRoad.canBeOrigin() || !destRoad.canBeDest()) {
-			ContextCreator.logger.debug("shortestPathRoute skipped for non-routable endpoint: origin="
-					+ roadLabel(originRoad) + " originAllowed=" + originRoad.canBeOrigin()
-					+ ", destination=" + roadLabel(destRoad) + " destAllowed=" + destRoad.canBeDest());
 			return null;
 		}
 		if (originRoad instanceof ConnectorRoad) {
@@ -121,6 +106,21 @@ public class RouteContext {
 			connectorPath.add(connector);
 			connectorPath.addAll(suffix);
 			return connectorPath;
+		}
+		if (vbr == null) {
+			ContextCreator.logger.warn("shortestPathRoute skipped because the routing engine is not initialized.");
+			return null;
+		}
+		if (originRoad.getID() == destRoad.getID()) {
+			List<Road> sameRoadPath = new ArrayList<Road>();
+			sameRoadPath.add(originRoad);
+			return sameRoadPath;
+		}
+		if (!originRoad.canBeOrigin() || !destRoad.canBeDest()) {
+			ContextCreator.logger.debug("shortestPathRoute skipped for non-routable endpoint: origin="
+					+ roadLabel(originRoad) + " originAllowed=" + originRoad.canBeOrigin()
+					+ ", destination=" + roadLabel(destRoad) + " destAllowed=" + destRoad.canBeDest());
+			return null;
 		}
 		Node originDownStreamNode = originRoad.getDownStreamNode();
 		Node destUpStreamNode = destRoad.getUpStreamNode();

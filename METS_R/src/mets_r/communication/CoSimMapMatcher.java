@@ -1,6 +1,7 @@
 package mets_r.communication;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -18,14 +19,12 @@ import mets_r.facility.Road;
 import mets_r.mobility.Vehicle;
 
 /**
- * Deterministic map matching for lane-less co-simulation poses.
+ * Deterministic map matching for external vehicle observations.
  *
- * <p>The external pose is never snapped or shifted. Geometry is used only to
- * infer METS-R membership. A supplied segment is authoritative: geometry is
- * still projected for internal lane/path bookkeeping and diagnostics, but it
- * cannot veto the observation. Without a supplied segment, geometry determines
- * which controlled segment owns the pose; retained topology is only a ranking
- * preference and never a hard filter.</p>
+ * <p>A supplied segment is authoritative: geometry is projected for internal
+ * lane/path bookkeeping and diagnostics, but cannot veto the observation.
+ * Without a supplied segment, callers provide the eligible control-domain
+ * segments and geometry determines the best membership.</p>
  */
 final class CoSimMapMatcher {
 	private static final double EARTH_RADIUS_METERS = 6371008.8;
@@ -57,12 +56,6 @@ final class CoSimMapMatcher {
 			}
 		}
 
-		LinkedHashSet<Road> eligibleSegments = new LinkedHashSet<Road>(
-				ContextCreator.getRoadContext().getCoSimSegmentsSnapshot());
-		if (hintedSegment != null && !eligibleSegments.contains(hintedSegment)) {
-			return Collections.emptyList();
-		}
-		boolean authoritativeSegment = hintedSegment != null;
 		ConnectorRoad.ConnectorPath hintedConnectorPath = null;
 		if (connectorPathHint != null) {
 			if (!(hintedSegment instanceof ConnectorRoad)) return Collections.emptyList();
@@ -74,15 +67,66 @@ final class CoSimMapMatcher {
 			// to the movement-level connector for ownership.
 			hintedConnectorPath = ((ConnectorRoad) hintedSegment).getPath(normalizedHint);
 		}
+		Collection<Road> eligibleSegments = hintedSegment == null
+				? ContextCreator.getRoadContext().getCoSimSegmentsSnapshot()
+				: Collections.singletonList(hintedSegment);
+		return collectCandidates(eligibleSegments, hintedSegment, null,
+				hintedConnectorPath, pose, bearing, hintedSegment != null, true, vehicle);
+	}
+
+	/** Match an authoritative pose only against the supplied segment. */
+	static List<Match> candidatesOnSegment(Vehicle vehicle, Coordinate pose, double bearing,
+			Road segment, String segmentAlias, Integer laneIndex,
+			Integer connectorPathHint) {
+		if (!finitePose(pose) || !Double.isFinite(bearing) || segment == null) {
+			return Collections.emptyList();
+		}
+		ConnectorRoad.ConnectorPath connectorPath = null;
+		if (segment instanceof ConnectorRoad) {
+			if (laneIndex != null) return Collections.emptyList();
+			ConnectorRoad connector = (ConnectorRoad) segment;
+			if (connectorPathHint != null) {
+				connectorPath = connector.getPathByID(connectorPathHint.intValue());
+				if (connectorPath == null) return Collections.emptyList();
+			} else if (segmentAlias != null) {
+				connectorPath = connector.getPath(segmentAlias.trim());
+			}
+		} else if (connectorPathHint != null) {
+			return Collections.emptyList();
+		}
+		return collectCandidates(Collections.singletonList(segment), segment, laneIndex,
+				connectorPath, pose, bearing, true, true, vehicle);
+	}
+
+	/** Match a coordinate-only Digital Twin observation against native segments. */
+	static List<Match> nativeCandidates(Vehicle vehicle, Coordinate pose) {
+		if (!finitePose(pose)) return Collections.emptyList();
+		LinkedHashSet<Road> eligibleSegments = new LinkedHashSet<Road>();
+		for (Road road : ContextCreator.getRoadContext().getAll()) {
+			if (road != null && road.getControlType() != Road.COSIM) eligibleSegments.add(road);
+		}
+		for (ConnectorRoad connector : ContextCreator.getRoadContext().getAllConnectors()) {
+			if (connector != null && connector.getControlType() != Road.COSIM) {
+				eligibleSegments.add(connector);
+			}
+		}
+		return collectCandidates(eligibleSegments, null, null, null,
+				pose, Double.NaN, false, false, vehicle);
+	}
+
+	private static List<Match> collectCandidates(Collection<Road> eligibleSegments,
+			Road exactSegment, Integer laneIndex,
+			ConnectorRoad.ConnectorPath connectorPath, Coordinate pose, double bearing,
+			boolean authoritativeSegment, boolean useHeading, Vehicle vehicle) {
 		ArrayList<Match> matches = new ArrayList<Match>();
 		for (Road segment : eligibleSegments) {
-			if (hintedSegment != null && segment != hintedSegment) continue;
+			if (exactSegment != null && segment != exactSegment) continue;
 			if (segment instanceof ConnectorRoad) {
 				addConnectorCandidates(matches, vehicle, (ConnectorRoad) segment,
-						pose, bearing, authoritativeSegment, hintedConnectorPath);
+						pose, bearing, authoritativeSegment, connectorPath, useHeading);
 			} else {
 				addPhysicalRoadCandidates(matches, vehicle, segment, pose, bearing,
-						authoritativeSegment);
+						authoritativeSegment, laneIndex, useHeading);
 			}
 		}
 		matches.sort(new Comparator<Match>() {
@@ -99,14 +143,17 @@ final class CoSimMapMatcher {
 	}
 
 	private static void addPhysicalRoadCandidates(List<Match> matches, Vehicle vehicle,
-			Road road, Coordinate pose, double bearing, boolean authoritativeSegment) {
+			Road road, Coordinate pose, double bearing, boolean authoritativeSegment,
+			Integer laneIndex, boolean useHeading) {
 		for (Lane lane : road.getLanes()) {
+			if (laneIndex != null && road.getLaneIndex(lane) != laneIndex.intValue()) continue;
 			Projection projection = project(pose, lane.getCoords());
 			if (projection == null
-					|| !authoritativeSegment && !usableProjection(projection, bearing)) continue;
+					|| !authoritativeSegment
+							&& !usableProjection(projection, bearing, useHeading)) continue;
 			double continuity = authoritativeSegment
 					? 0.0 : continuityBonus(vehicle, road, lane, null);
-			double headingError = headingError(bearing, projection.bearing);
+			double headingError = useHeading ? headingError(bearing, projection.bearing) : 0.0;
 			double score = projection.lateralDistanceMeters
 					+ 0.03 * headingError
 					+ continuity;
@@ -120,7 +167,7 @@ final class CoSimMapMatcher {
 	private static void addConnectorCandidates(List<Match> matches, Vehicle vehicle,
 			ConnectorRoad connector, Coordinate pose, double bearing,
 			boolean authoritativeSegment,
-			ConnectorRoad.ConnectorPath hintedConnectorPath) {
+			ConnectorRoad.ConnectorPath hintedConnectorPath, boolean useHeading) {
 		for (ConnectorRoad.ConnectorPath path : connector.getPaths()) {
 			if (hintedConnectorPath != null && path != hintedConnectorPath) continue;
 			// A geometry-only fallback connector is useful for visualization, but it
@@ -128,10 +175,11 @@ final class CoSimMapMatcher {
 			if (path.getSourceLane() == null || path.getTargetLane() == null) continue;
 			Projection projection = project(pose, path.getCenterLine());
 			if (projection == null
-					|| !authoritativeSegment && !usableProjection(projection, bearing)) continue;
+					|| !authoritativeSegment
+							&& !usableProjection(projection, bearing, useHeading)) continue;
 			double continuity = authoritativeSegment
 					? 0.0 : continuityBonus(vehicle, connector, null, path);
-			double headingError = headingError(bearing, projection.bearing);
+			double headingError = useHeading ? headingError(bearing, projection.bearing) : 0.0;
 			double score = projection.lateralDistanceMeters
 					+ 0.03 * headingError
 					+ continuity;
@@ -148,16 +196,11 @@ final class CoSimMapMatcher {
 	private static double continuityBonus(Vehicle vehicle, Road segment, Lane lane,
 			ConnectorRoad.ConnectorPath path) {
 		if (vehicle == null) return 0.0;
-		if (vehicle.isExternalRoadTransition()) {
-			if (segment == vehicle.getCurrentConnector()) {
+		if (segment == vehicle.getRoad()) {
+			if (segment instanceof ConnectorRoad) {
 				return path != null && path == vehicle.getCurrentConnectorPath()
 						? -4.0 : -2.0;
 			}
-			if (segment == vehicle.getExternalTransitionTargetRoad()
-					&& lane == vehicle.getExternalTransitionTargetLane()) return -3.0;
-			return 0.0;
-		}
-		if (segment == vehicle.getRoad()) {
 			return lane == vehicle.getLane() ? -4.0 : -2.0;
 		}
 		if (segment instanceof ConnectorRoad && path != null
@@ -166,12 +209,13 @@ final class CoSimMapMatcher {
 		return 0.0;
 	}
 
-	private static boolean usableProjection(Projection projection, double observedBearing) {
+	private static boolean usableProjection(Projection projection, double observedBearing,
+			boolean useHeading) {
 		if (projection == null) return false;
 		return projection.lateralDistanceMeters <= lateralToleranceMeters()
 				&& projection.endpointOvershootMeters <= ENDPOINT_TOLERANCE_METERS
-				&& headingError(observedBearing, projection.bearing)
-						<= MAX_HEADING_ERROR_DEGREES;
+				&& (!useHeading || headingError(observedBearing, projection.bearing)
+						<= MAX_HEADING_ERROR_DEGREES);
 	}
 
 	private static double lateralToleranceMeters() {
@@ -190,8 +234,9 @@ final class CoSimMapMatcher {
 			double[] start = local(line.get(i), pose, longitudeScale, latitudeScale);
 			double[] end = local(line.get(i + 1), pose, longitudeScale, latitudeScale);
 			double localLength = Math.hypot(end[0] - start[0], end[1] - start[1]);
-			double networkLength = ContextCreator.getCityContext().getDistance(
-					line.get(i), line.get(i + 1));
+			double networkLength = ContextCreator.cityContext == null
+					? localLength : ContextCreator.cityContext.getDistance(
+							line.get(i), line.get(i + 1));
 			segmentLengths[i] = Double.isFinite(networkLength) && networkLength > 0.0
 					? networkLength : localLength;
 			totalLength += segmentLengths[i];

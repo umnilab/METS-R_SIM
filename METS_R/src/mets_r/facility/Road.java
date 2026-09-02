@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -88,13 +87,9 @@ public class Road {
 	private Vehicle lastVehicle_; // Vehicle stored as a linked list
 	private Vehicle firstVehicle_;
 	private Vehicle prevFirstVehicle; // For parallel computing
-	/* One externally controlled connector may reserve each target lane. */
-	private ConcurrentHashMap<Integer, Vehicle> externalLaneReservations;
 	/* Active native lane changes reserve their target lane in stable vehicle-ID order. */
 	private TreeMap<Integer, TreeMap<Integer, Vehicle>> laneChangeReservations;
 	private volatile boolean nativeReleaseInProgress;
-	private int activeExternalLaneAdmissions;
-	private int activeExternalLaneCommits;
 	private static final double TRAVEL_TIME_HISTORY_HALF_LIFE_SECONDS = 900.0;
 	private static final double TRAVEL_TIME_PRIOR_SAMPLE_STRENGTH = 3.0;
 	private static final double TRAVEL_TIME_EFFECTIVE_SAMPLE_CAP = 100.0;
@@ -175,11 +170,8 @@ public class Road {
 		this.downStreamRoads = new ArrayList<Integer>();
 		this.departureVehMap = new TreeMap<Integer, ArrayList<Vehicle>>();
 		this.toAddDepartureVeh = new ConcurrentLinkedQueue<Vehicle>();
-		this.externalLaneReservations = new ConcurrentHashMap<Integer, Vehicle>();
 		this.laneChangeReservations = new TreeMap<Integer, TreeMap<Integer, Vehicle>>();
 		this.nativeReleaseInProgress = false;
-		this.activeExternalLaneAdmissions = 0;
-		this.activeExternalLaneCommits = 0;
 		this.lastUpdateHour = -1;
 		this.travelTime =  this.length / this.speedLimit_;
 		this.travelTimeP90 = this.travelTime;
@@ -342,7 +334,7 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
+				if (currentVehicle.isDormantOnRoad()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -368,7 +360,7 @@ public class Road {
 
 			// 2. Iterate through the buffered list to safely apply macro list repairs
 			for (Vehicle v : vehicleBuffer) {
-				if (v.isDormantOnRoad() || v.isExternalRoadTransition()) {
+				if (v.isDormantOnRoad()) {
 					continue;
 				}
 				try {
@@ -386,7 +378,7 @@ public class Road {
 			currentVehicle = this.firstVehicle();
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
+				if (currentVehicle.isDormantOnRoad()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -413,7 +405,7 @@ public class Road {
 			// happened during time t to t + 1, conducting vehicle movements
 			while (currentVehicle != null) {
 				Vehicle nextVehicle = currentVehicle.macroTrailing();
-				if (currentVehicle.isDormantOnRoad() || currentVehicle.isExternalRoadTransition()) {
+				if (currentVehicle.isDormantOnRoad()) {
 					currentVehicle = nextVehicle;
 					continue;
 				}
@@ -673,75 +665,6 @@ public class Road {
 		return lastVehicle_;
 	}
 
-	/**
-	 * Return the vehicle that currently reserves a lane entrance while it is on
-	 * an externally controlled connector.
-	 */
-	public synchronized Vehicle getExternalLaneReservationBlocker(Lane lane, Vehicle requester) {
-		if (lane == null || lane.getRoad() != this) return null;
-		Vehicle existing = this.externalLaneReservations.get(lane.getID());
-		return existing == requester ? null : existing;
-	}
-
-	/**
-	 * Atomically reserve a target lane for a regular-road -> CoSim connector.
-	 * The reservation prevents a second handoff from passing the lane-level gap
-	 * check before the first external vehicle has reached and joined the lane.
-	 */
-	public synchronized boolean tryReserveExternalLane(Lane lane, Vehicle vehicle) {
-		if (lane == null || vehicle == null || lane.getRoad() != this) return false;
-		Vehicle current = this.externalLaneReservations.get(lane.getID());
-		if (current == vehicle) return true;
-		if (this.nativeReleaseInProgress) return false;
-		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
-		return existing == null || existing == vehicle;
-	}
-
-	/**
-	 * Atomically reserve a target lane and hold release control until the pending
-	 * vehicle is fully attached and published in the transition registry.
-	 */
-	public synchronized boolean beginExternalLaneAdmission(Lane lane, Vehicle vehicle) {
-		if (this.nativeReleaseInProgress || lane == null || vehicle == null || lane.getRoad() != this) {
-			return false;
-		}
-		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
-		if (existing != null && existing != vehicle) return false;
-		this.activeExternalLaneAdmissions++;
-		return true;
-	}
-
-	/** Finish an admission lease, optionally retaining its lane reservation. */
-	public synchronized void endExternalLaneAdmission(Lane lane, Vehicle vehicle,
-			boolean retainReservation) {
-		if (this.activeExternalLaneAdmissions > 0) this.activeExternalLaneAdmissions--;
-		if (!retainReservation && lane != null && vehicle != null && lane.getRoad() == this) {
-			this.externalLaneReservations.remove(lane.getID(), vehicle);
-		}
-	}
-
-	/** Reserve an alternate only for a vehicle already owned by this release. */
-	public synchronized boolean tryReserveExternalLaneForNativeRelease(Lane lane, Vehicle vehicle) {
-		if (!this.nativeReleaseInProgress || lane == null || vehicle == null || lane.getRoad() != this
-				|| !this.externalLaneReservations.containsValue(vehicle)) return false;
-		Vehicle existing = this.externalLaneReservations.putIfAbsent(lane.getID(), vehicle);
-		return existing == null || existing == vehicle;
-	}
-
-	/** Release a connector reservation only when it is owned by this vehicle. */
-	public synchronized void releaseExternalLaneReservation(Lane lane, Vehicle vehicle) {
-		if (lane == null || vehicle == null || lane.getRoad() != this) return;
-		this.externalLaneReservations.remove(lane.getID(), vehicle);
-	}
-
-	public synchronized boolean hasExternalLaneReservation(Lane lane, Vehicle vehicle) {
-		return lane != null && vehicle != null && lane.getRoad() == this
-				&& this.externalLaneReservations.get(lane.getID()) == vehicle;
-	}
-
-	public synchronized int getExternalLaneReservationCount() {
-		return this.externalLaneReservations.size();
-	}
 	/** Publish an active native lane change without changing lane-list membership. */
 	public synchronized boolean registerLaneChangeReservation(Lane targetLane, Vehicle vehicle) {
 		if (targetLane == null || vehicle == null || targetLane.getRoad() != this
@@ -854,29 +777,6 @@ public class Road {
 	}
 	public boolean isNativeReleaseInProgress() {
 		return this.nativeReleaseInProgress;
-	}
-
-	public synchronized boolean beginConnectorNativeRelease() {
-		if (this.controlType == Road.COSIM || this.nativeReleaseInProgress
-				|| this.activeExternalLaneAdmissions > 0
-				|| this.activeExternalLaneCommits > 0) return false;
-		this.nativeReleaseInProgress = true;
-		return true;
-	}
-
-	public synchronized void endConnectorNativeRelease() {
-		this.nativeReleaseInProgress = false;
-	}
-
-	public synchronized boolean beginExternalLaneCommit(Lane lane, Vehicle vehicle) {
-		if (this.nativeReleaseInProgress || lane == null || vehicle == null
-				|| this.externalLaneReservations.get(lane.getID()) != vehicle) return false;
-		this.activeExternalLaneCommits++;
-		return true;
-	}
-
-	public synchronized void endExternalLaneCommit() {
-		if (this.activeExternalLaneCommits > 0) this.activeExternalLaneCommits--;
 	}
 
 	/* Number of vehicles on the road */
@@ -1354,7 +1254,6 @@ public class Road {
 		unregisterEnteringQueueMemberships();
 		this.departureVehMap.clear();
 		this.toAddDepartureVeh.clear();
-		this.externalLaneReservations.clear();
 		this.laneChangeReservations.clear();
 		if (vehicles == null) return;
 		Set<Integer> restoredVehicleIDs = new HashSet<Integer>();
@@ -2207,7 +2106,6 @@ public class Road {
 			return;
 		}
 		if (this.getVehicleNum() == 0) {
-			this.externalLaneReservations.clear();
 			this.laneChangeReservations.clear();
 			this.controlType = controlType;
 			return;
@@ -2225,12 +2123,9 @@ public class Road {
 			return;
 		}
 
-		HashSet<Vehicle> retainedConnectorVehicles = new HashSet<Vehicle>();
 		ArrayList<Vehicle> vehiclesToAdapt = new ArrayList<Vehicle>();
 		for (Vehicle vehicle : vehicles) {
-			if (this.occupiesIncidentConnector(vehicle)) {
-				retainedConnectorVehicles.add(vehicle);
-			} else {
+			if (!this.occupiesIncidentConnector(vehicle)) {
 				vehiclesToAdapt.add(vehicle);
 			}
 		}
@@ -2305,13 +2200,6 @@ public class Road {
 		}
 		this.lastVehicle(vehicles.get(vehicles.size() - 1));
 		synchronized (this) {
-			for (Map.Entry<Integer, Vehicle> reservation
-					: this.externalLaneReservations.entrySet()) {
-				if (!retainedConnectorVehicles.contains(reservation.getValue())) {
-					this.externalLaneReservations.remove(
-							reservation.getKey(), reservation.getValue());
-				}
-			}
 			this.controlType = controlType;
 		}
 		} finally {
@@ -2428,7 +2316,7 @@ public class Road {
 		return controlType;
 	}
 
-	/** Connector ownership changes after their external vehicles are adapted by the API. */
+	/** Set connector ownership without physical-road hand-back projection. */
 	protected synchronized void setControlTypeDirect(int controlType) {
 		this.controlType = controlType;
 	}

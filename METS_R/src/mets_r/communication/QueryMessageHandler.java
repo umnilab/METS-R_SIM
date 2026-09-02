@@ -445,48 +445,32 @@ public class QueryMessageHandler extends MessageHandler {
 
 //		List<Integer> vehicleIDList = new ArrayList<Integer>();
 //		List<Boolean> vehicleTypeList = new ArrayList<Boolean>();
-		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
-		List<Vehicle.ExternalRoadTransitionSnapshot> pendingBefore = vehicleContext == null
-				? Collections.emptyList()
-				: vehicleContext.getExternalRoadTransitionSnapshots();
-		LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot> snapshotsByVehicleID =
-				new LinkedHashMap<Integer, Vehicle.ExternalRoadTransitionSnapshot>();
+		LinkedHashMap<Integer, Vehicle> vehiclesByID =
+				new LinkedHashMap<Integer, Vehicle>();
 		RoadContext roadContext = ContextCreator.getRoadContext();
 		for (Road road : roadContext.getCoSimPhysicalRoadsSnapshot()) {
 			Vehicle vehicle = road.firstVehicle();
 			while (vehicle != null) {
 				Vehicle nextVehicle = vehicle.macroTrailing();
-				mergeCoSimVehicleSnapshot(snapshotsByVehicleID,
-						vehicle.getExternalRoadTransitionSnapshot());
+				vehiclesByID.put(vehicle.getID(), vehicle);
 				vehicle = nextVehicle;
 			}
 		}
 		for (ConnectorRoad connector : roadContext.getCoSimConnectorsSnapshot()) {
 			for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
-				Vehicle.ExternalRoadTransitionSnapshot snapshot =
-						vehicle.getExternalRoadTransitionSnapshot();
 				// A newly controlled connector also transfers a native vehicle whose
 				// front is still inside it, even when that vehicle is macro-attached to
 				// a native target road. Rear-only connector reservations stay native.
-				// The vehicle-ID map deduplicates target-road and transition scans.
-				if (snapshot.isPending() || vehicle.isOnConnector()) {
-					mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
+				// The vehicle-ID map deduplicates connector and physical-road scans.
+				if (vehicle.isOnConnector()) {
+					vehiclesByID.put(vehicle.getID(), vehicle);
 				}
 			}
 		}
-		for (Vehicle.ExternalRoadTransitionSnapshot snapshot : pendingBefore) {
-			mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
-		}
-		if (vehicleContext != null) {
-			for (Vehicle.ExternalRoadTransitionSnapshot snapshot
-					: vehicleContext.getExternalRoadTransitionSnapshots()) {
-				mergeCoSimVehicleSnapshot(snapshotsByVehicleID, snapshot);
-			}
-		}
 
-		ArrayList<Object> jsonData = new ArrayList<Object>(snapshotsByVehicleID.size());
-		for (Vehicle.ExternalRoadTransitionSnapshot snapshot : snapshotsByVehicleID.values()) {
-			appendCoSimVehicleRecord(jsonData, snapshot);
+		ArrayList<Object> jsonData = new ArrayList<Object>(vehiclesByID.size());
+		for (Vehicle vehicle : vehiclesByID.values()) {
+			appendCoSimVehicleRecord(jsonData, vehicle);
 		}
 
 		jsonObj.put("data", jsonData);
@@ -512,20 +496,7 @@ public class QueryMessageHandler extends MessageHandler {
 		return jsonObj;
 	}
 
-	private void mergeCoSimVehicleSnapshot(
-			Map<Integer, Vehicle.ExternalRoadTransitionSnapshot> snapshotsByVehicleID,
-			Vehicle.ExternalRoadTransitionSnapshot snapshot) {
-		if (snapshot == null || snapshot.getVehicle() == null) return;
-		Vehicle.ExternalRoadTransitionSnapshot existing =
-				snapshotsByVehicleID.get(snapshot.getVehicleID());
-		if (existing == null || snapshot.isPending()) {
-			snapshotsByVehicleID.put(snapshot.getVehicleID(), snapshot);
-		}
-	}
-
-	private void appendCoSimVehicleRecord(ArrayList<Object> jsonData,
-			Vehicle.ExternalRoadTransitionSnapshot transitionSnapshot) {
-		Vehicle vehicle = transitionSnapshot == null ? null : transitionSnapshot.getVehicle();
+	private void appendCoSimVehicleRecord(ArrayList<Object> jsonData, Vehicle vehicle) {
 		if (vehicle == null) return;
 		int bridgeVehicleID;
 		boolean privateVehicle;
@@ -714,7 +685,6 @@ public class QueryMessageHandler extends MessageHandler {
 		record.put("onRoad", vehicle.isOnRoad());
 		record.put("onConnector", vehicle.isOnConnector());
 		record.put("connectorOccupancyActive", vehicle.hasActiveConnectorReservation());
-		addExternalTransitionFields(record, vehicle);
 		Road currentRoad = vehicle.isOnRoad() ? vehicle.getRoad() : null;
 		Road queuedRoad = vehicle.isOnRoad() ? null : findEnteringQueueRoad(vehicle);
 		int originRoadID = firstAvailableRoadID(vehicle.getOriginRoad(), vehicle.getLastDeparturableRoad(),
@@ -742,8 +712,6 @@ public class QueryMessageHandler extends MessageHandler {
 					vehicle.getEstimatedConnectorDistanceRemaining();
 			double connectorTravelTimeRemaining =
 					vehicle.getEstimatedConnectorTravelTimeRemaining();
-			// Native motion has an exact distance. Lane-less external motion is
-			// projected onto the closest connector centerline.
 			if (shouldEmitConnectorDistance(true, connectorDistanceRemaining)) {
 				record.put("distanceToSegmentEnd", connectorDistanceRemaining);
 				record.put("connectorDistanceRemaining", connectorDistanceRemaining);
@@ -791,40 +759,6 @@ public class QueryMessageHandler extends MessageHandler {
 	static boolean shouldEmitConnectorDistance(boolean hasUsableEstimate,
 			double connectorDistance) {
 		return hasUsableEstimate && Double.isFinite(connectorDistance);
-	}
-
-	private void addExternalTransitionFields(Map<String, Object> record, Vehicle vehicle) {
-		Vehicle.ExternalRoadTransitionSnapshot snapshot = vehicle == null
-				? null : vehicle.getExternalRoadTransitionSnapshot();
-		addExternalTransitionFields(record, snapshot);
-	}
-
-	private void addExternalTransitionFields(Map<String, Object> record,
-			Vehicle.ExternalRoadTransitionSnapshot snapshot) {
-		boolean pending = snapshot != null && snapshot.isPending();
-		record.put("transitionPending", pending);
-		if (!pending) return;
-
-		Road sourceRoad = snapshot.getSourceRoad();
-		Road targetRoad = snapshot.getTargetRoad();
-		Lane targetLane = snapshot.getTargetLane();
-		ConnectorRoad.ConnectorPath connectorPath = snapshot.getConnectorPath();
-		if (sourceRoad != null) {
-			record.put("transitionSourceRoadId", sourceRoad.getOrigID());
-		}
-		if (targetRoad != null) {
-			record.put("transitionTargetRoadId", targetRoad.getOrigID());
-		}
-		if (targetLane != null) {
-			int laneIndex = targetRoad == null ? -1 : targetRoad.getLaneIndex(targetLane);
-			if (laneIndex >= 0) record.put("transitionTargetLaneIndex", laneIndex);
-			record.put("transitionTargetInternalLaneId", targetLane.getID());
-		}
-		if (connectorPath != null) {
-			record.put("connectorPathId", connectorPath.getConnectorPathID());
-			record.put("connectorPathInternalEdgeIds", connectorPath.getInternalEdgeIDs());
-			record.put("connectorPathViaLaneIds", connectorPath.getViaLaneIDs());
-		}
 	}
 
 	private int firstAvailableRoadID(int... roadIDs) {

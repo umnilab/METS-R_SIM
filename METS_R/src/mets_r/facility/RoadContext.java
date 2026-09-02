@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
@@ -56,7 +55,6 @@ public class RoadContext extends FacilityContext<Road> {
 	private final ConcurrentHashMap<Integer, Boolean> activeIntersectionIDs;
 	private final ConcurrentHashMap<Integer, Long> dirtyConnectorTravelTimeVersions;
 	private final AtomicLong connectorTravelTimeDirtyVersion;
-	private final ConcurrentHashMap<Integer, AtomicInteger> connectorVehicleCountByTargetRoad;
 	private final ReentrantReadWriteLock connectorTopologyLock;
 	private final java.util.concurrent.ConcurrentSkipListMap<Integer, Road>
 			travelTimeEstimatorRoads;
@@ -76,8 +74,6 @@ public class RoadContext extends FacilityContext<Road> {
 		this.activeIntersectionIDs = new ConcurrentHashMap<Integer, Boolean>();
 		this.dirtyConnectorTravelTimeVersions = new ConcurrentHashMap<Integer, Long>();
 		this.connectorTravelTimeDirtyVersion = new AtomicLong(0L);
-		this.connectorVehicleCountByTargetRoad =
-				new ConcurrentHashMap<Integer, AtomicInteger>();
 		this.connectorTopologyLock = new ReentrantReadWriteLock();
 		this.travelTimeEstimatorRoads =
 				new java.util.concurrent.ConcurrentSkipListMap<Integer, Road>();
@@ -215,7 +211,6 @@ public class RoadContext extends FacilityContext<Road> {
 			this.connectorTopology = ConnectorTopology.empty();
 			this.activeIntersectionIDs.clear();
 			this.dirtyConnectorTravelTimeVersions.clear();
-			this.connectorVehicleCountByTargetRoad.clear();
 			return;
 		}
 
@@ -619,21 +614,11 @@ public class RoadContext extends FacilityContext<Road> {
 		this.connectorTopologyLock.writeLock().lock();
 		try {
 			this.activeIntersectionIDs.clear();
-			this.connectorVehicleCountByTargetRoad.clear();
-			HashMap<Integer, Integer> hiddenCountsByTargetRoad =
-					new HashMap<Integer, Integer>();
 			for (Map.Entry<Integer, IntersectionRuntime> entry
 					: this.connectorTopology.intersectionRuntimes.entrySet()) {
 				IntersectionRuntime runtime = entry.getValue();
 				if (runtime.hasWork()) {
 					this.activeIntersectionIDs.put(entry.getKey(), Boolean.TRUE);
-				}
-				runtime.addHiddenTargetCounts(hiddenCountsByTargetRoad);
-			}
-			for (Map.Entry<Integer, Integer> entry : hiddenCountsByTargetRoad.entrySet()) {
-				if (entry.getValue().intValue() > 0) {
-					this.connectorVehicleCountByTargetRoad.put(entry.getKey(),
-							new AtomicInteger(entry.getValue().intValue()));
 				}
 			}
 		} finally {
@@ -653,7 +638,6 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 		this.activeIntersectionIDs.clear();
 		this.dirtyConnectorTravelTimeVersions.clear();
-		this.connectorVehicleCountByTargetRoad.clear();
 		} finally {
 			this.connectorTopologyLock.writeLock().unlock();
 		}
@@ -796,8 +780,7 @@ public class RoadContext extends FacilityContext<Road> {
 	}
 
 	/** Restore a saved admission without applying new-traffic conflict gates. */
-	public void restoreConnectorVehicle(ConnectorRoad connector, Vehicle vehicle,
-			boolean hideTargetVehicle) {
+	public void restoreConnectorVehicle(ConnectorRoad connector, Vehicle vehicle) {
 		this.connectorTopologyLock.readLock().lock();
 		try {
 			if (connector == null || vehicle == null) {
@@ -809,8 +792,7 @@ public class RoadContext extends FacilityContext<Road> {
 				throw new IllegalStateException("Missing intersection runtime for connector "
 						+ connector.getOrigID());
 			}
-			runtime.restoreAdmission(connector, vehicle, hideTargetVehicle,
-					ContextCreator.getCurrentTick());
+			runtime.restoreAdmission(connector, vehicle, ContextCreator.getCurrentTick());
 			this.activeIntersectionIDs.put(connector.getIntersectionID(), Boolean.TRUE);
 		} finally {
 			this.connectorTopologyLock.readLock().unlock();
@@ -836,11 +818,7 @@ public class RoadContext extends FacilityContext<Road> {
 				throw new IllegalStateException("Missing intersection runtime for connector "
 						+ connector.getOrigID());
 			}
-			boolean added = runtime.restoreAdmission(connector, vehicle, true,
-					ContextCreator.getCurrentTick());
-			if (added) {
-				adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), 1);
-			}
+			runtime.restoreAdmission(connector, vehicle, ContextCreator.getCurrentTick());
 			this.activeIntersectionIDs.put(connector.getIntersectionID(), Boolean.TRUE);
 		} finally {
 			this.connectorTopologyLock.readLock().unlock();
@@ -854,22 +832,6 @@ public class RoadContext extends FacilityContext<Road> {
 			for (Integer intersectionID : getActiveIntersectionIDsSnapshot()) {
 				processIntersectionState(intersectionID.intValue());
 			}
-		}
-	}
-
-	/** Publish query-visible connector membership after the physical transition commits. */
-	public void activateConnectorVehicle(ConnectorRoad connector, Vehicle vehicle) {
-		this.connectorTopologyLock.readLock().lock();
-		try {
-		if (connector == null || vehicle == null) return;
-		IntersectionRuntime runtime =
-				this.connectorTopology.intersectionRuntimes.get(connector.getIntersectionID());
-		if (runtime != null && vehicle.getRoad() != connector
-				&& runtime.hideTargetVehicle(connector, vehicle)) {
-			adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), 1);
-		}
-		} finally {
-			this.connectorTopologyLock.readLock().unlock();
 		}
 	}
 
@@ -889,25 +851,6 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
-	/**
-	 * Stop hiding the vehicle from its physical target-road query count once the
-	 * front reaches that road, while retaining collision occupancy until the rear
-	 * clears.
-	 */
-	public void connectorFrontCleared(ConnectorRoad connector, Vehicle vehicle) {
-		this.connectorTopologyLock.readLock().lock();
-		try {
-		if (connector == null || vehicle == null) return;
-		IntersectionRuntime runtime =
-				this.connectorTopology.intersectionRuntimes.get(connector.getIntersectionID());
-		if (runtime != null && runtime.revealTargetVehicle(connector, vehicle)) {
-			adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), -1);
-		}
-		} finally {
-			this.connectorTopologyLock.readLock().unlock();
-		}
-	}
-
 	/** Release connector occupancy after the vehicle's rear clears the junction. */
 	public void leaveConnector(ConnectorRoad connector, Vehicle vehicle) {
 		this.connectorTopologyLock.readLock().lock();
@@ -916,12 +859,9 @@ public class RoadContext extends FacilityContext<Road> {
 		IntersectionRuntime runtime =
 				this.connectorTopology.intersectionRuntimes.get(connector.getIntersectionID());
 		if (runtime == null) return;
-		int release = runtime.release(connector, vehicle,
+		boolean released = runtime.release(connector, vehicle,
 				vehicle.getCurrentConnector() == connector);
-		if (release == IntersectionRuntime.NOT_ACTIVE) return;
-		if (release == IntersectionRuntime.RELEASED_HIDDEN) {
-			adjustTargetRoadHiddenCount(connector.getTargetRoad().getID(), -1);
-		}
+		if (!released) return;
 		if (!runtime.hasWork()) {
 			this.activeIntersectionIDs.remove(connector.getIntersectionID(), Boolean.TRUE);
 			if (runtime.hasWork()) {
@@ -933,24 +873,12 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
-	private void adjustTargetRoadHiddenCount(int targetRoadID, int delta) {
-		if (delta == 0) return;
-		this.connectorVehicleCountByTargetRoad.compute(targetRoadID, (id, count) -> {
-			int current = count == null ? 0 : count.get();
-			int updated = Math.max(0, current + delta);
-			return updated == 0 ? null : new AtomicInteger(updated);
-		});
-	}
-
 	public int getQueryableVehicleCount(Road road) {
 		this.connectorTopologyLock.readLock().lock();
 		try {
 			if (road == null) return 0;
 			if (road instanceof ConnectorRoad) return ((ConnectorRoad) road).getVehicleNum();
-			AtomicInteger connectorCount =
-					this.connectorVehicleCountByTargetRoad.get(road.getID());
-			int hiddenConnectorVehicles = connectorCount == null ? 0 : connectorCount.get();
-			return Math.max(0, road.getVehicleNum() - hiddenConnectorVehicles);
+			return road.getVehicleNum();
 		} finally {
 			this.connectorTopologyLock.readLock().unlock();
 		}
@@ -1497,9 +1425,6 @@ public class RoadContext extends FacilityContext<Road> {
 		static final int BLOCKED = 0;
 		static final int ADMITTED = 1;
 		static final int ALREADY_ADMITTED = 2;
-		static final int NOT_ACTIVE = 0;
-		static final int RELEASED_VISIBLE = 1;
-		static final int RELEASED_HIDDEN = 2;
 
 		private final int intersectionID;
 		private final double anchorLongitude;
@@ -1507,7 +1432,6 @@ public class RoadContext extends FacilityContext<Road> {
 		private final Set<ConnectorRoad> connectors;
 		private final HashMap<Integer, Admission> activeAdmissionByVehicle =
 				new HashMap<Integer, Admission>();
-		private final HashSet<Integer> hiddenTargetVehicleIDs = new HashSet<Integer>();
 		private final HashMap<Integer, DepartedVehicleState> recentlyDepartedStates =
 				new HashMap<Integer, DepartedVehicleState>();
 		private final HashSet<Integer> activeCollisionVehicleIDs = new HashSet<Integer>();
@@ -1575,11 +1499,6 @@ public class RoadContext extends FacilityContext<Road> {
 					this.activeAdmissionByVehicle.put(vehicle.getID(),
 							new Admission(vehicle, connector, connectorPath,
 									admissionSequence, admissionTick));
-					if ((sameAdmission
-							&& previous.hiddenTargetVehicleIDs.contains(vehicle.getID()))
-							|| (!sameAdmission && vehicle.isOnConnector())) {
-						this.hiddenTargetVehicleIDs.add(vehicle.getID());
-					}
 					if (sameAdmission
 							&& previous.activeCollisionVehicleIDs.contains(vehicle.getID())) {
 						this.activeCollisionVehicleIDs.add(vehicle.getID());
@@ -1644,7 +1563,7 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 
 		synchronized boolean restoreAdmission(ConnectorRoad connector, Vehicle vehicle,
-				boolean hiddenTargetVehicle, int tick) {
+				int tick) {
 			if (connector == null || vehicle == null || !this.connectors.contains(connector)) {
 				throw new IllegalArgumentException("Saved connector admission does not match topology");
 			}
@@ -1663,34 +1582,20 @@ public class RoadContext extends FacilityContext<Road> {
 			this.activeAdmissionByVehicle.put(vehicle.getID(),
 					new Admission(vehicle, connector, connectorPath,
 							++this.eventSequence, tick));
-			if (hiddenTargetVehicle) this.hiddenTargetVehicleIDs.add(vehicle.getID());
 			this.activeCollisionVehicleIDs.remove(vehicle.getID());
 			this.recentlyDepartedStates.remove(vehicle.getID());
 			return true;
 		}
 
-		synchronized boolean revealTargetVehicle(ConnectorRoad connector, Vehicle vehicle) {
-			return connector != null && vehicle != null
-					&& ownsAdmission(connector, vehicle)
-					&& this.hiddenTargetVehicleIDs.remove(vehicle.getID());
-		}
-
-		synchronized boolean hideTargetVehicle(ConnectorRoad connector, Vehicle vehicle) {
-			return connector != null && vehicle != null
-					&& ownsAdmission(connector, vehicle)
-					&& this.hiddenTargetVehicleIDs.add(vehicle.getID());
-		}
-
-		synchronized int release(ConnectorRoad connector, Vehicle vehicle,
+		synchronized boolean release(ConnectorRoad connector, Vehicle vehicle,
 				boolean retainFinalSweep) {
-			if (connector == null || vehicle == null) return NOT_ACTIVE;
+			if (connector == null || vehicle == null) return false;
 			Admission admission = this.activeAdmissionByVehicle.get(vehicle.getID());
 			if (admission == null || admission.vehicle != vehicle
-					|| admission.connector != connector) return NOT_ACTIVE;
+					|| admission.connector != connector) return false;
 			ConnectorRoad.ConnectorVehicleState finalState = retainFinalSweep
 					&& GlobalVariables.ENABLE_INTERSECTION_SWEPT_COLLISION_CHECK
 					? connector.getVehicleState(vehicle) : null;
-			boolean hidden = this.hiddenTargetVehicleIDs.remove(vehicle.getID());
 			this.activeAdmissionByVehicle.remove(vehicle.getID());
 			this.activeCollisionVehicleIDs.remove(vehicle.getID());
 			connector.unregisterVehicle(vehicle);
@@ -1699,7 +1604,7 @@ public class RoadContext extends FacilityContext<Road> {
 						new DepartedVehicleState(finalState, admission.admissionSequence,
 								++this.eventSequence, admission.admissionTick));
 			}
-			return hidden ? RELEASED_HIDDEN : RELEASED_VISIBLE;
+			return true;
 		}
 
 		private boolean ownsAdmission(ConnectorRoad connector, Vehicle vehicle) {
@@ -1718,23 +1623,12 @@ public class RoadContext extends FacilityContext<Road> {
 			return this.activeAdmissionByVehicle.size();
 		}
 
-		synchronized void addHiddenTargetCounts(Map<Integer, Integer> counts) {
-			for (Integer vehicleID : this.hiddenTargetVehicleIDs) {
-				Admission admission = this.activeAdmissionByVehicle.get(vehicleID);
-				if (admission == null) continue;
-				int targetRoadID = admission.connector.getTargetRoad().getID();
-				Integer previous = counts.get(targetRoadID);
-				counts.put(targetRoadID, previous == null ? 1 : previous.intValue() + 1);
-			}
-		}
-
 		IntersectionSnapshot getSnapshot() {
 			return this.snapshot;
 		}
 
 		synchronized void clearRuntimeState() {
 			this.activeAdmissionByVehicle.clear();
-			this.hiddenTargetVehicleIDs.clear();
 			this.recentlyDepartedStates.clear();
 			this.activeCollisionVehicleIDs.clear();
 			this.snapshot = IntersectionSnapshot.empty(this.intersectionID);

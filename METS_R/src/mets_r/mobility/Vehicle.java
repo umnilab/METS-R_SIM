@@ -131,7 +131,7 @@ public class Vehicle {
 	private static final int LC_REASON_KEEP_RIGHT = 4;
 	private static final int LC_REASON_REGULATORY = 5;
 	private static final double COINCIDENT_WAYPOINT_TOLERANCE_METERS = 0.001;
-	private static final double EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS = 0.05;
+	private static final double AUTHORITATIVE_LANE_ENDPOINT_TOLERANCE_METERS = 0.05;
 	private static final double COSIM_LANE_OBSERVATION_DOWNSTREAM_TOLERANCE_METERS = 5.0;
 	// OpenDRIVE and SUMO lane centerlines are generated independently and may
 	// differ slightly even when their lane mapping is topologically exact.
@@ -179,28 +179,11 @@ public class Vehicle {
 	private int currentParkingRoad; // Road-backed parking spot, or -1 when not parked on a road
 	private Road road;
 	private Lane lane;
-	/*
-	 * Explicit native connector identity. Physics still uses the target lane's
-	 * existing linked lists, but queries and intersection collision ownership use
-	 * this field until the vehicle's rear clears the junction.
-	 */
+	/* Connector identity remains active until the vehicle's rear clears the junction. */
 	private volatile ConnectorRoad currentConnector;
 	private volatile ConnectorRoad.ConnectorPath currentConnectorPath;
 	private volatile boolean connectorFrontCleared;
-	private boolean preserveConnectorReservationOnLaneDetach;
-
-	/*
-	 * A regular-road -> CoSim-road handoff has two distinct boundaries. The
-	 * external simulator owns the vehicle as soon as it leaves the source lane,
-	 * but the vehicle must not occupy a lane on the CoSim road until the external
-	 * pose actually reaches that lane. While this flag is set, road points at the
-	 * target CoSim road (so the bridge can discover the vehicle), lane is null,
-	 * and native movement must not step the vehicle.
-	 */
-	private volatile boolean externalRoadTransition;
-	private Road externalTransitionSourceRoad;
-	private Road externalTransitionTargetRoad;
-	private Lane externalTransitionTargetLane;
+	private boolean preserveConnectorMembershipOnLaneDetach;
 	
 	private double prevDistance;
 	private double prevSpeed;
@@ -366,12 +349,8 @@ public class Vehicle {
 		this.trailing_ = null;
 		this.road = null;
 		this.nextRoad_ = null;
-		this.externalRoadTransition = false;
 		this.currentConnector = null;
 		this.currentConnectorPath = null;
-		this.externalTransitionSourceRoad = null;
-		this.externalTransitionTargetRoad = null;
-		this.externalTransitionTargetLane = null;
 		this.coordMap = new LinkedList<Coordinate>();
 		this.originCoord_ = null;
 		this.originRoad_ = null;
@@ -420,8 +399,7 @@ public class Vehicle {
 			double downstreamDistance, Coordinate authoritativePose,
 			double authoritativeBearing, double authoritativeSpeed,
 			Road destinationRoad, Road requiredNextRoad, Lane requiredNextLane) {
-		if (this.onRoad || this.onLane || this.road != null || this.lane != null
-				|| this.externalRoadTransition) {
+		if (this.onRoad || this.onLane || this.road != null || this.lane != null) {
 			throw new IllegalStateException("Direct COSIM initialization requires a new, detached vehicle");
 		}
 		if (startRoad == null || startLane == null || startLane.getRoad() != startRoad
@@ -487,7 +465,7 @@ public class Vehicle {
 			this.setSpeed(authoritativeSpeed);
 			if (this.nextRoad_ != null) {
 				if (requiredNextRoad != null) {
-					if (!this.assertNextLaneForExternalTransition(
+					if (!this.assertNextLaneForCoSimInitialization(
 							requiredNextRoad, requiredNextLane)) {
 						throw new IllegalArgumentException(
 								"Matched connector lane is inconsistent with the initialized route");
@@ -503,7 +481,7 @@ public class Vehicle {
 			this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(this.roadPath));
 			this.setShadowImpact();
 		} catch (RuntimeException ex) {
-			if (this.onRoad || this.onLane || this.externalRoadTransition) this.leaveNetwork();
+			if (this.onRoad || this.onLane) this.leaveNetwork();
 			throw ex;
 		}
 	}
@@ -605,7 +583,6 @@ public class Vehicle {
 		if (road == null || lane == null) return false;
 		if(lane.getRoad() != road) return false;
 		if (!isViableDepartureLane(road, lane)) return false;
-		if (road.getExternalLaneReservationBlocker(lane, this) != null) return false;
 		if (road.getControlType() == Road.COSIM && !allowCoSimEntry) return false;
 		if (!allowCoSimEntry
 				&& ContextCreator.getRoadContext().hasEnteringVehicleRegistration(this)
@@ -720,7 +697,6 @@ public class Vehicle {
 	    this.appendToLane(lane);
 	    this.appendToRoad(road);
 		if (enteringConnector != null) {
-			ContextCreator.getRoadContext().activateConnectorVehicle(enteringConnector, this);
 			ContextCreator.getRoadContext().updateConnectorVehicleState(enteringConnector, this);
 		}
 
@@ -1252,7 +1228,7 @@ public class Vehicle {
 	 *         successor exists on the planned target road
 	 */
 	public synchronized Lane adjustNextLaneToDirectSuccessor(Road plannedTargetRoad) {
-		if (this.externalRoadTransition || this.road == null || this.lane == null
+		if (this.road == null || this.lane == null
 				|| plannedTargetRoad == null || this.nextRoad_ == null
 				|| this.nextRoad_.getID() != plannedTargetRoad.getID()) {
 			return null;
@@ -1292,9 +1268,9 @@ public class Vehicle {
 	 * @return {@code true} only when the exact lane is a direct successor of the
 	 *         vehicle's actual current lane on the planned target road
 	 */
-	public synchronized boolean assertNextLaneForExternalTransition(
+	public synchronized boolean assertNextLaneForCoSimInitialization(
 			Road plannedTargetRoad, Lane assertedLane) {
-		if (this.externalRoadTransition || this.road == null || this.lane == null
+		if (this.road == null || this.lane == null
 				|| plannedTargetRoad == null || assertedLane == null
 				|| this.nextRoad_ == null
 				|| this.nextRoad_.getID() != plannedTargetRoad.getID()
@@ -1305,6 +1281,146 @@ public class Vehicle {
 		}
 		this.nextLane_ = assertedLane;
 		return true;
+	}
+
+	/** Place this vehicle on a native segment after an external observation. */
+	public synchronized boolean synchronizeNativeObservation(
+			Road observedSegment, Lane observedLane,
+			ConnectorRoad.ConnectorPath observedConnectorPath,
+			double projectedDownstreamDistance,
+			Double authoritativeBearing, Double authoritativeSpeed) {
+		if (observedSegment == null || observedSegment.getControlType() == Road.COSIM) {
+			throw new IllegalArgumentException("Native target required");
+		}
+		if (!Double.isFinite(projectedDownstreamDistance)) {
+			throw new IllegalArgumentException(
+					"Native observation requires a finite target distance");
+		}
+		if (authoritativeBearing != null
+				&& !Double.isFinite(authoritativeBearing.doubleValue())) {
+			throw new IllegalArgumentException("Native observation bearing must be finite");
+		}
+		if (authoritativeSpeed != null
+				&& (!Double.isFinite(authoritativeSpeed.doubleValue())
+						|| authoritativeSpeed.doubleValue() < 0.0)) {
+			throw new IllegalArgumentException(
+					"Native observation speed must be finite and non-negative");
+		}
+		ConnectorRoad targetConnector = observedSegment instanceof ConnectorRoad
+				? (ConnectorRoad) observedSegment : null;
+		Lane targetLane = observedLane;
+		if (targetConnector == null) {
+			if (targetLane == null || targetLane.getRoad() != observedSegment) {
+				throw new IllegalArgumentException(
+						"Native physical-road observation requires a lane on that road");
+			}
+			if (observedConnectorPath != null) {
+				throw new IllegalArgumentException(
+						"A physical-road observation cannot specify a connector path");
+			}
+		} else {
+			if (observedConnectorPath == null
+					|| !targetConnector.getPaths().contains(observedConnectorPath)) {
+				throw new IllegalArgumentException(
+						"Native connector observation requires a valid connector path");
+			}
+			targetLane = targetConnector.getLane(observedConnectorPath);
+			if (targetLane == null || targetLane.getRoad() != targetConnector) {
+				throw new IllegalArgumentException(
+						"Native connector observation has no connector lane");
+			}
+		}
+		double laneLength = targetLane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0
+				|| targetLane.getCoords() == null || targetLane.getCoords().size() < 2) {
+			throw new IllegalArgumentException(
+					"Native observation target has no usable lane geometry");
+		}
+		double targetDistance = Math.max(0.0,
+				Math.min(laneLength, projectedDownstreamDistance));
+
+		ArrayList<Road> nativeRoute = null;
+		if (this.destRoad_ != null) {
+			List<Road> route = RouteContext.shortestPathRoute(
+					observedSegment, this.destRoad_, this.rand_route_only);
+			if (route == null || route.isEmpty() || route.get(0) != observedSegment) {
+				throw new IllegalArgumentException("No native route from segment "
+						+ observedSegment.getOrigID() + " to vehicle destination");
+			}
+			nativeRoute = new ArrayList<Road>(route);
+		}
+
+		boolean releasedFromCoSim = this.road != null
+				&& this.road.getControlType() == Road.COSIM;
+		if (!releasedFromCoSim && this.currentConnector != null) {
+			releasedFromCoSim = this.currentConnector.getControlType() == Road.COSIM;
+		}
+		ConnectorRoad previousConnector = this.currentConnector;
+		boolean preservePreviousConnector = previousConnector != null
+				&& (observedSegment == previousConnector
+						|| observedSegment == previousConnector.getTargetRoad());
+		this.clearShadowImpact();
+		if (previousConnector != null && !preservePreviousConnector) {
+			this.clearNativeConnectorMembership();
+		}
+		this.preserveConnectorMembershipOnLaneDetach = preservePreviousConnector;
+		try {
+			this.removeFromCurrentLane();
+			if (this.road != observedSegment) this.removeFromCurrentRoad();
+			ContextCreator.getRoadContext().removeVehicleFromEnteringQueues(this);
+			observedSegment.teleportVehicle(this, targetLane, targetDistance);
+		} finally {
+			this.preserveConnectorMembershipOnLaneDetach = false;
+		}
+
+		this.roadPath = nativeRoute;
+		this.nextRoad_ = null;
+		this.nextLane_ = null;
+		this.Nshadow = 0;
+		this.futureRoutingRoad = new ArrayList<Road>();
+		this.distToTravel_ = 0.0;
+		this.distToTravelReferenceDistance_ = 0.0;
+		this.atOrigin = false;
+		this.isReachDest = false;
+		this.resetRoadTraversalPatience();
+		this.accRate_ = 0.0;
+		this.accDecided_ = false;
+		this.hasAccelerationPlan_ = false;
+		this.resetLaneChangeRuntimeState();
+		if (authoritativeBearing != null) {
+			this.bearing_ = authoritativeBearing.doubleValue();
+		}
+		if (authoritativeSpeed != null) {
+			this.currentSpeed_ = authoritativeSpeed.doubleValue();
+		}
+		this.syncPreviousEpochCoord();
+
+		if (targetConnector != null) {
+			this.currentConnector = targetConnector;
+			this.currentConnectorPath = observedConnectorPath;
+			this.connectorFrontCleared = false;
+			ContextCreator.getRoadContext()
+					.mirrorAuthoritativeConnectorVehicle(targetConnector, this);
+			ContextCreator.getRoadContext()
+					.updateConnectorVehicleState(targetConnector, this);
+		}
+		if (nativeRoute != null) {
+			this.setShadowImpact();
+			this.setDistToTravelEstimate(this.routeDistanceFromCurrentPosition(nativeRoute));
+			if (nativeRoute.size() >= 2) {
+				this.nextRoad_ = nativeRoute.get(1);
+				if (targetConnector != null
+						&& this.nextRoad_ == targetConnector.getTargetRoad()) {
+					this.nextLane_ = observedConnectorPath.getTargetLane();
+				} else {
+					this.assignNextLane();
+				}
+			}
+		}
+		if (targetConnector == null && preservePreviousConnector) {
+			this.updateNativeConnectorMembership();
+		}
+		return releasedFromCoSim;
 	}
 
 	/**
@@ -1776,7 +1892,7 @@ public class Vehicle {
 	}
 
 	/**
-	 * A lane is clear only when it has no physical occupant or pending admission.
+	 * A lane is clear only when it has no physical occupant.
 	 * Active lane changes count as occupants even though their vehicles remain in
 	 * their source-lane lists until the physical maneuver completes.
 	 */
@@ -1786,7 +1902,6 @@ public class Vehicle {
 				&& targetLane.nVehicles() == 0
 				&& targetLane.firstVehicle() == null
 				&& targetLane.lastVehicle() == null
-				&& targetRoad.getExternalLaneReservationBlocker(targetLane, this) == null
 				&& targetRoad.getLaneChangeReservationBlocker(targetLane, this) == null;
 	}
 
@@ -1794,7 +1909,7 @@ public class Vehicle {
 	public boolean changeLane(Lane plane) {
 		if (plane == null || this.lane == null || this.road == null || plane == this.lane
 				|| this.isLaneChanging() || !this.onLane || !this.onRoad
-				|| this.hasActiveConnectorReservation() || this.externalRoadTransition
+				|| this.hasActiveConnectorReservation()
 				|| this.road instanceof ConnectorRoad || this.road.getControlType() == Road.COSIM
 				|| plane.getRoad() != this.road
 				|| Math.abs(this.road.getLaneIndex(plane) - this.road.getLaneIndex(this.lane)) != 1) {
@@ -3358,9 +3473,6 @@ public class Vehicle {
 	 * Also, the vehicle will be removed from the network if it arrives its destination.
 	 */
 	public void move() {
-		if (this.externalRoadTransition) {
-			return;
-		}
 		if (this.isDormantOnRoad()) {
 			this.currentSpeed_ = 0.0;
 			this.accRate_ = 0.0;
@@ -3529,7 +3641,6 @@ public class Vehicle {
 								&& this.currentConnectorPath != null))
 				&& this.lane != null && this.lane.getRoad() == this.road
 				&& this.lane.firstVehicle() == this
-				&& !this.externalRoadTransition
 				&& this.road.getControlType() != Road.COSIM;
 	}
 
@@ -3771,12 +3882,6 @@ public class Vehicle {
 
 	private boolean changeRoadInternal(boolean exactTargetLane) {
 		if (this.isLaneChanging()) return false;
-		// This road change was already handed to the external simulator. A second
-		// transfer must not consume the following route edge while the pose is still
-		// on the connector.
-		if (this.externalRoadTransition) {
-			return false;
-		}
 		// Check if the vehicle has reached the destination or not
 		if (this.isReachDest) {
 			this.clearShadowImpact(); // Clear shadow impact if already reaches destination
@@ -3910,7 +4015,7 @@ public class Vehicle {
 	 * lane after the caller's headway check.
 	 *
 	 * @return true when the transition was accepted; false when its target-lane
-	 *         reservation could not be acquired or the request is inconsistent
+	 *         or connector-path admission could not be accepted
 	 */
 	public synchronized boolean executeRoadTransition(Lane targetLane, Road targetRoad) {
 		return this.executeRoadTransitionInternal(targetLane, targetRoad, null, null);
@@ -3920,10 +4025,6 @@ public class Vehicle {
 			ConnectorRoad selectedConnector, ConnectorRoad.ConnectorPath selectedConnectorPath) {
 		if (targetLane == null || targetRoad == null || targetLane.getRoad() != targetRoad) {
 			return false;
-		}
-		if (this.externalRoadTransition) {
-			return this.externalTransitionTargetRoad == targetRoad
-					&& this.externalTransitionTargetLane == targetLane;
 		}
 		Road sourceRoad = this.road;
 		Lane sourceLane = this.lane;
@@ -3942,12 +4043,18 @@ public class Vehicle {
 				return false;
 			}
 			this.coordMap.clear();
-			this.removeFromCurrentLane();
-			this.removeFromCurrentRoad();
-			this.distance_ = 0.0;
-			this.nextDistance_ = 0.0;
-			this.appendToLane(targetLane);
-			this.appendToRoad(targetRoad);
+			this.preserveConnectorMembershipOnLaneDetach = true;
+			try {
+				this.removeFromCurrentLane();
+				this.removeFromCurrentRoad();
+				this.distance_ = 0.0;
+				this.nextDistance_ = 0.0;
+				this.appendToLane(targetLane);
+				this.appendToRoad(targetRoad);
+			} finally {
+				this.preserveConnectorMembershipOnLaneDetach = false;
+			}
+			this.updateNativeConnectorMembership();
 			return true;
 		}
 
@@ -3985,19 +4092,11 @@ public class Vehicle {
 		}
 		boolean transitioned = false;
 		try {
-			if (connector.getControlType() == Road.COSIM) {
-				transitioned = this.beginExternalRoadTransition(
-						sourceRoad, targetLane, targetRoad);
-				if (transitioned) {
-					this.currentConnector = connector;
-					this.currentConnectorPath = connectorPath;
-					this.connectorFrontCleared = false;
-					ContextCreator.getRoadContext()
-							.activateConnectorVehicle(connector, this);
-					ContextCreator.getRoadContext()
-							.updateConnectorVehicleState(connector, this);
-				}
-				return transitioned;
+			double handoffSpeed = this.currentSpeed_;
+			if (connector.getControlType() == Road.COSIM
+					&& sourceRoad.getControlType() != Road.COSIM
+					&& Double.isFinite(this.tickStartSpeed_)) {
+				handoffSpeed = Math.max(handoffSpeed, this.tickStartSpeed_);
 			}
 			this.coordMap.clear();
 			this.removeFromCurrentLane();
@@ -4010,7 +4109,7 @@ public class Vehicle {
 			this.currentConnector = connector;
 			this.currentConnectorPath = connectorPath;
 			this.connectorFrontCleared = false;
-			ContextCreator.getRoadContext().activateConnectorVehicle(connector, this);
+			this.currentSpeed_ = Math.max(0.0, handoffSpeed);
 			ContextCreator.getRoadContext().updateConnectorVehicleState(connector, this);
 			transitioned = true;
 			return true;
@@ -4022,11 +4121,7 @@ public class Vehicle {
 	private void releaseUnusedConnectorAdmission(ConnectorRoad connector) {
 		if (connector == null) return;
 		if (this.currentConnector == connector) {
-			if (this.externalRoadTransition) {
-				this.clearExternalRoadTransitionState();
-			} else {
-				this.clearNativeConnectorMembership();
-			}
+			this.clearNativeConnectorMembership();
 			return;
 		}
 		ContextCreator.getRoadContext().leaveConnector(connector, this);
@@ -4062,7 +4157,6 @@ public class Vehicle {
 		if (!this.connectorFrontCleared
 				&& this.distance_ <= laneLength + COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
 			this.connectorFrontCleared = true;
-			ContextCreator.getRoadContext().connectorFrontCleared(connector, this);
 		}
 		double rearClearDistance = Math.max(0.0,
 				laneLength - Math.max(0.0, this.length()) - 0.25);
@@ -4116,7 +4210,7 @@ public class Vehicle {
 		return Double.isFinite(remaining) ? Math.max(0.0, remaining) : Double.NaN;
 	}
 
-	/** Exact for native turns and centerline-projected for external turns. */
+	/** Prefer exact connector-lane distance, with a geometry fallback for malformed state. */
 	public synchronized double getEstimatedConnectorDistanceRemaining() {
 		if (!this.isOnConnector() || this.currentConnector == null) return 0.0;
 		double nativeRemaining = this.getConnectorDistanceRemaining();
@@ -4142,14 +4236,6 @@ public class Vehicle {
 	/** Remaining trip distance including current and future connector movements. */
 	public synchronized double getDistToTravelIncludingConnectors() {
 		double remaining = Math.max(0.0, this.getDistToTravel());
-		if (this.externalRoadTransition && this.currentConnector != null) {
-			double connectorRemaining = this.getEstimatedConnectorDistanceRemaining();
-			if (Double.isFinite(connectorRemaining)) remaining += connectorRemaining;
-			if (this.externalTransitionTargetLane != null
-					&& Double.isFinite(this.externalTransitionTargetLane.getLength())) {
-				remaining += Math.max(0.0, this.externalTransitionTargetLane.getLength());
-			}
-		}
 		return remaining + this.futureConnectorMetric(false);
 	}
 
@@ -4214,10 +4300,6 @@ public class Vehicle {
 		private final ConnectorRoad connector;
 		private final ConnectorRoad.ConnectorPath connectorPath;
 		private final boolean frontCleared;
-		private final boolean externalTransition;
-		private final Road externalSourceRoad;
-		private final Road externalTargetRoad;
-		private final Lane targetLane;
 		private final ArrayList<Coordinate> remainingCoordinates;
 		private final double distance;
 		private final double nextDistance;
@@ -4226,17 +4308,12 @@ public class Vehicle {
 
 		private ConnectorPersistenceSnapshot(ConnectorRoad connector,
 				ConnectorRoad.ConnectorPath connectorPath,
-				boolean frontCleared, boolean externalTransition,
-				Road externalSourceRoad, Road externalTargetRoad, Lane targetLane,
+				boolean frontCleared,
 				ArrayList<Coordinate> remainingCoordinates, double distance,
 				double nextDistance, int segmentIndex, double laneSlope) {
 			this.connector = connector;
 			this.connectorPath = connectorPath;
 			this.frontCleared = frontCleared;
-			this.externalTransition = externalTransition;
-			this.externalSourceRoad = externalSourceRoad;
-			this.externalTargetRoad = externalTargetRoad;
-			this.targetLane = targetLane;
 			this.remainingCoordinates = remainingCoordinates;
 			this.distance = distance;
 			this.nextDistance = nextDistance;
@@ -4247,10 +4324,6 @@ public class Vehicle {
 		public ConnectorRoad getConnector() { return this.connector; }
 		public ConnectorRoad.ConnectorPath getConnectorPath() { return this.connectorPath; }
 		public boolean isFrontCleared() { return this.frontCleared; }
-		public boolean isExternalTransition() { return this.externalTransition; }
-		public Road getExternalSourceRoad() { return this.externalSourceRoad; }
-		public Road getExternalTargetRoad() { return this.externalTargetRoad; }
-		public Lane getTargetLane() { return this.targetLane; }
 		public List<Coordinate> getRemainingCoordinates() {
 			return Collections.unmodifiableList(this.remainingCoordinates);
 		}
@@ -4263,84 +4336,57 @@ public class Vehicle {
 	/** Capture connector fields atomically with respect to road transitions. */
 	public synchronized ConnectorPersistenceSnapshot getConnectorPersistenceSnapshot() {
 		ConnectorRoad connector = this.currentConnector;
-		if (connector == null) {
-			if (this.externalRoadTransition) {
-				throw new IllegalStateException("Vehicle " + this.getID()
-						+ " has an external transition without a connector");
-			}
-			return null;
-		}
+		if (connector == null) return null;
 		ConnectorRoad.ConnectorPath connectorPath = this.currentConnectorPath;
 		if (connectorPath == null || !connector.getPaths().contains(connectorPath)) {
 			throw new IllegalStateException("Vehicle " + this.getID()
 					+ " has incomplete connector-path state");
 		}
-		Lane targetLane = this.externalRoadTransition
-				? this.externalTransitionTargetLane : connectorPath.getTargetLane();
+		Lane targetLane = connectorPath.getTargetLane();
 		if (targetLane == null || targetLane.getRoad() != connector.getTargetRoad()
 				|| connectorPath.getTargetLane() != targetLane) {
 			throw new IllegalStateException("Vehicle " + this.getID()
 					+ " has incomplete connector target-lane state");
-		}
-		if (this.externalRoadTransition
-				&& (this.externalTransitionSourceRoad != connector.getSourceRoad()
-						|| this.externalTransitionTargetRoad != connector.getTargetRoad())) {
-			throw new IllegalStateException("Vehicle " + this.getID()
-					+ " has inconsistent external connector roads");
 		}
 		ArrayList<Coordinate> remaining = new ArrayList<Coordinate>();
 		for (Coordinate coordinate : this.coordMap) {
 			if (coordinate != null) remaining.add(new Coordinate(coordinate));
 		}
 		return new ConnectorPersistenceSnapshot(connector, connectorPath,
-				this.connectorFrontCleared, this.externalRoadTransition,
-				this.externalTransitionSourceRoad, this.externalTransitionTargetRoad,
-				targetLane, remaining, this.distance_, this.nextDistance_,
+				this.connectorFrontCleared, remaining, this.distance_, this.nextDistance_,
 				this.currentSegmentIdx_, this.currentLaneSlope_);
 	}
 
 	/**
-	 * Restore the physical path and reservation for a vehicle already attached to
-	 * its saved connector segment (or to the external target-road handoff). Normal
+	 * Restore the physical path and reservation for a vehicle attached to its
+	 * saved connector lane, or whose front has entered the target lane while its
+	 * rear still occupies the connector. Normal
 	 * admission checks are bypassed because all occupants share one snapshot.
 	 */
 	public synchronized void restoreConnectorPersistenceState(
 			ConnectorRoad connector, ConnectorRoad.ConnectorPath connectorPath,
-			boolean frontCleared, boolean externalTransition,
-			Road externalSourceRoad, Road externalTargetRoad, Lane targetLane,
+			boolean frontCleared,
 			List<Coordinate> remainingCoordinates, double restoredDistance,
 			double restoredNextDistance, int restoredSegmentIndex,
 			double restoredLaneSlope, Coordinate restoredPose,
 			double restoredBearing) {
-		boolean nativeConnector = connector != null && connectorPath != null
-				&& !externalTransition && this.road == connector
+		boolean onConnector = connector != null && connectorPath != null
+				&& this.road == connector
 				&& this.lane == connector.getLane(connectorPath);
-		boolean externalConnector = connector != null && externalTransition
-				&& this.road == connector.getTargetRoad() && this.lane == null;
-		if (connector == null || connectorPath == null || targetLane == null || restoredPose == null
-				|| (!nativeConnector && !externalConnector)
+		boolean clearingConnector = connector != null && connectorPath != null
+				&& frontCleared && this.road == connector.getTargetRoad()
+				&& this.lane == connectorPath.getTargetLane();
+		if (connector == null || connectorPath == null || restoredPose == null
+				|| (!onConnector && !clearingConnector)
 				|| !connector.getPaths().contains(connectorPath)
-				|| connectorPath.getTargetLane() != targetLane
-				|| targetLane.getRoad() != connector.getTargetRoad()
-				|| this.currentConnector != null || this.externalRoadTransition
+				|| connectorPath.getTargetLane() == null
+				|| connectorPath.getTargetLane().getRoad() != connector.getTargetRoad()
+				|| this.currentConnector != null
 				|| !Double.isFinite(restoredDistance) || restoredDistance < 0.0
 				|| !Double.isFinite(restoredNextDistance) || restoredNextDistance < 0.0) {
 			throw new IllegalArgumentException("Invalid saved connector state for vehicle "
 					+ this.getID());
 		}
-		if (externalTransition) {
-			if (this.lane != null || externalSourceRoad != connector.getSourceRoad()
-					|| externalTargetRoad != connector.getTargetRoad()) {
-				throw new IllegalStateException("Cannot restore external connector state for vehicle "
-						+ this.getID());
-			}
-			if (!externalTargetRoad.tryReserveExternalLane(targetLane, this)) {
-				ContextCreator.logger.warn("Restored authoritative connector state for vehicle "
-						+ this.getID() + " without a target-lane reservation; native hand-back "
-						+ "will retry the reservation.");
-			}
-		}
-
 		this.currentCoord_ = new Coordinate(restoredPose);
 		this.bearing_ = restoredBearing;
 		this.distance_ = restoredDistance;
@@ -4357,30 +4403,15 @@ public class Vehicle {
 		this.currentConnector = connector;
 		this.currentConnectorPath = connectorPath;
 		this.connectorFrontCleared = frontCleared;
-		this.externalRoadTransition = externalTransition;
-		this.externalTransitionSourceRoad = externalTransition ? externalSourceRoad : null;
-		this.externalTransitionTargetRoad = externalTransition ? externalTargetRoad : null;
-		this.externalTransitionTargetLane = externalTransition ? targetLane : null;
 		this.onRoad = true;
-		this.onLane = !externalTransition;
+		this.onLane = true;
 
 		try {
-			ContextCreator.getRoadContext().restoreConnectorVehicle(
-					connector, this, externalTransition && !frontCleared);
-			if (externalTransition) {
-				ContextCreator.getVehicleContext().registerExternalRoadTransition(this);
-			}
+			ContextCreator.getRoadContext().restoreConnectorVehicle(connector, this);
 		} catch (RuntimeException ex) {
-			if (externalTransition) {
-				externalTargetRoad.releaseExternalLaneReservation(targetLane, this);
-			}
 			this.currentConnector = null;
 			this.currentConnectorPath = null;
 			this.connectorFrontCleared = false;
-			this.externalRoadTransition = false;
-			this.externalTransitionSourceRoad = null;
-			this.externalTransitionTargetRoad = null;
-			this.externalTransitionTargetLane = null;
 			throw ex;
 		}
 		this.syncPreviousEpochCoord();
@@ -4392,665 +4423,11 @@ public class Vehicle {
 		this.retreatInMacroList();
 	}
 
-	private boolean beginExternalRoadTransition(Road sourceRoad, Lane targetLane, Road targetRoad) {
-		// Connector handoff advances exactly the already-selected route edge. This
-		// keeps the post-attach path update deterministic and prevents reroute code
-		// from queueing a departure while the vehicle is externally owned.
-		if (this.nextRoad_ == null || this.nextRoad_.getID() != targetRoad.getID()) {
-			return false;
-		}
-		if (!targetRoad.beginExternalLaneAdmission(targetLane, this)) {
-			return false;
-		}
-		boolean retainAdmissionReservation = false;
-		try {
-
-		// Build every potentially fallible geometry component before detaching the
-		// source-road membership. A malformed target must leave the vehicle waiting
-		// safely at the source lane end.
-		ArrayList<Coordinate> priorCoordMap = new ArrayList<Coordinate>(this.coordMap);
-		double priorDistance = this.distance_;
-		double priorNextDistance = this.nextDistance_;
-		double priorBearing = this.bearing_;
-		int priorSegmentIndex = this.currentSegmentIdx_;
-		double priorLaneSlope = this.currentLaneSlope_;
-		try {
-			this.enterNextLane(targetLane);
-			this.appendExternalTargetLaneGeometry(targetLane);
-		} catch (RuntimeException ex) {
-			this.coordMap.clear();
-			this.coordMap.addAll(priorCoordMap);
-			this.distance_ = priorDistance;
-			this.nextDistance_ = priorNextDistance;
-			this.bearing_ = priorBearing;
-			this.currentSegmentIdx_ = priorSegmentIndex;
-			this.currentLaneSlope_ = priorLaneSlope;
-			ContextCreator.logger.error("Invalid external road transition geometry for vehicle "
-					+ this.getID(), ex);
-			return false;
-		}
-
-		this.externalTransitionSourceRoad = sourceRoad;
-		this.externalTransitionTargetRoad = targetRoad;
-		this.externalTransitionTargetLane = targetLane;
-		this.externalRoadTransition = true;
-
-		// Publish transition discoverability before removing source-road
-		// membership. QUERY_coSimVehicle samples the registry on both sides of its
-		// road scan, so the vehicle is always visible during the handoff.
-		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
-		if (vehicleContext != null) {
-			vehicleContext.registerExternalRoadTransition(this);
-		}
-		retainAdmissionReservation = true;
-
-		double handoffSpeed = this.currentSpeed_;
-		if (sourceRoad.getControlType() != Road.COSIM && Double.isFinite(this.tickStartSpeed_)) {
-			handoffSpeed = Math.max(handoffSpeed, this.tickStartSpeed_);
-		}
-
-		this.removeFromCurrentLane();
-		this.removeFromCurrentRoad();
-		this.attachToRoad(targetRoad);
-		try {
-			this.setNextRoad();
-		} catch (RuntimeException ex) {
-			// Road ownership is already valid and must remain visible to the bridge.
-			// A later external route command can repair routing independently.
-			ContextCreator.logger.error("External handoff route update failed for vehicle "
-					+ this.getID() + " on road " + targetRoad.getID(), ex);
-		}
-
-		// distance_ has no lane meaning while on the connector. Keeping it at zero
-		// prevents the off-lane macro member from reserving physical lane space.
-		this.distance_ = 0.0;
-		this.currentSegmentIdx_ = 0;
-		this.currentLaneSlope_ = 0.0;
-		this.onLane = false;
-		this.currentSpeed_ = Math.max(0.0, handoffSpeed);
-		this.accRate_ = 0.0;
-		this.accDecided_ = false;
-		this.hasAccelerationPlan_ = false;
-		this.advanceInMacroList();
-
-		return true;
-		} finally {
-			targetRoad.endExternalLaneAdmission(targetLane, this, retainAdmissionReservation);
-		}
-	}
-
-	private void appendExternalTargetLaneGeometry(Lane targetLane) {
-		double laneLength = targetLane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
-			throw new IllegalArgumentException("External transition target lane has invalid length");
-		}
-		ArrayList<Coordinate> targetCoordinates = targetLane.getCoords();
-		if (targetCoordinates == null || targetCoordinates.isEmpty()) {
-			throw new IllegalArgumentException("External transition target lane has no geometry");
-		}
-		this.distance_ += laneLength;
-		for (int i = 1; i < targetCoordinates.size(); i++) {
-			this.coordMap.add(targetCoordinates.get(i));
-		}
-		this.currentSegmentIdx_ = 0;
-		this.currentLaneSlope_ = targetLane.getSegmentSlope(0);
-		this.updateBearingAndNextDistanceToCoordMap(null);
-	}
-
-	public boolean isExternalRoadTransition() {
-		return this.externalRoadTransition;
-	}
-
-	/**
-	 * Immutable, point-in-time view of external connector state. Query handlers
-	 * must use one instance for an entire response record instead of combining
-	 * separately timed flag and target getters.
-	 */
-	public static final class ExternalRoadTransitionSnapshot {
-		private final Vehicle vehicle;
-		private final boolean pending;
-		private final Road sourceRoad;
-		private final Road targetRoad;
-		private final Lane targetLane;
-		private final ConnectorRoad.ConnectorPath connectorPath;
-
-		private ExternalRoadTransitionSnapshot(Vehicle vehicle, boolean pending,
-				Road sourceRoad, Road targetRoad, Lane targetLane,
-				ConnectorRoad.ConnectorPath connectorPath) {
-			this.vehicle = vehicle;
-			this.pending = pending;
-			this.sourceRoad = sourceRoad;
-			this.targetRoad = targetRoad;
-			this.targetLane = targetLane;
-			this.connectorPath = connectorPath;
-		}
-
-		public Vehicle getVehicle() {
-			return this.vehicle;
-		}
-
-		public int getVehicleID() {
-			return this.vehicle == null ? -1 : this.vehicle.getID();
-		}
-
-		public boolean isPending() {
-			return this.pending;
-		}
-
-		public Road getSourceRoad() {
-			return this.sourceRoad;
-		}
-
-		public Road getTargetRoad() {
-			return this.targetRoad;
-		}
-
-		public Lane getTargetLane() {
-			return this.targetLane;
-		}
-
-		public ConnectorRoad.ConnectorPath getConnectorPath() {
-			return this.connectorPath;
-		}
-	}
-
-	/** Capture all pending-transition fields while holding only this vehicle. */
-	public synchronized ExternalRoadTransitionSnapshot getExternalRoadTransitionSnapshot() {
-		boolean pending = this.externalRoadTransition;
-		return new ExternalRoadTransitionSnapshot(this, pending,
-				pending ? this.externalTransitionSourceRoad : null,
-				pending ? this.externalTransitionTargetRoad : null,
-				pending ? this.externalTransitionTargetLane : null,
-				pending ? this.currentConnectorPath : null);
-	}
-
-	public String getRoadTransitionState() {
-		return this.externalRoadTransition ? "EXTERNAL_CONNECTOR" : "NONE";
-	}
-
-	public Road getExternalTransitionSourceRoad() {
-		return this.externalRoadTransition ? this.externalTransitionSourceRoad : null;
-	}
-
-	public Road getExternalTransitionTargetRoad() {
-		return this.externalRoadTransition ? this.externalTransitionTargetRoad : null;
-	}
-
-	public Lane getExternalTransitionTargetLane() {
-		return this.externalRoadTransition ? this.externalTransitionTargetLane : null;
-	}
-
-	public boolean isExternalRoadTransitionTo(Road targetRoad, Lane targetLane) {
-		if (!this.externalRoadTransition || targetRoad == null || targetLane == null
-				|| this.externalTransitionTargetRoad == null || this.externalTransitionTargetLane == null) {
-			return false;
-		}
-		return this.externalTransitionTargetRoad.getID() == targetRoad.getID()
-				&& this.externalTransitionTargetLane.getID() == targetLane.getID();
-	}
-
-	/**
-	 * Commit a pending external connector when the authoritative pose is inside
-	 * the reserved target lane footprint.
-	 */
-	public synchronized boolean tryCommitExternalRoadTransition() {
-		double tolerance = Math.max(COINCIDENT_WAYPOINT_TOLERANCE_METERS,
-				Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5);
-		return this.tryCommitExternalRoadTransition(tolerance);
-	}
-
-	public synchronized boolean tryCommitExternalRoadTransition(double maxLateralDistanceMeters) {
-		if (!this.externalRoadTransition || !Double.isFinite(maxLateralDistanceMeters)
-				|| maxLateralDistanceMeters < 0.0) {
-			return false;
-		}
-		ExternalLaneProjection projection = this.projectExternalPoseToTargetLane();
-		if (projection == null || !Double.isFinite(projection.lateralDistanceMeters)
-				|| projection.lateralDistanceMeters > maxLateralDistanceMeters
-				|| !Double.isFinite(projection.upstreamOvershootMeters)
-				|| projection.upstreamOvershootMeters
-						> EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS) {
-			return false;
-		}
-		return this.commitExternalRoadTransition(projection.downstreamDistance);
-	}
-
-	/** Pure geometry gate used before an all-or-nothing native-control release. */
-	public synchronized boolean isExternalRoadTransitionPoseReadyForLaneEntry() {
-		return this.isExternalRoadTransitionPoseReadyForLaneEntry(
-				this.externalTransitionTargetLane);
-	}
-
-	/** Evaluate release readiness against one specific lane on the target road. */
-	public synchronized boolean isExternalRoadTransitionPoseReadyForLaneEntry(Lane candidateLane) {
-		if (!this.externalRoadTransition || this.externalTransitionTargetRoad == null
-				|| candidateLane == null || candidateLane.getRoad() != this.externalTransitionTargetRoad) {
-			return false;
-		}
-		return this.isAuthoritativeExternalPoseReadyForLane(candidateLane);
-	}
-
-	/**
-	 * Collapse a sparsely observed, already-traversed target road to its endpoint.
-	 * This is intentionally narrower than a normal commit: the observed road must
-	 * be the directly planned successor, its next lane must be directly connected
-	 * from the pending target lane, and the external pose must already be on that
-	 * successor lane. Collision and reservation checks remain those of the normal
-	 * target-lane endpoint commit.
-	 */
-	public synchronized boolean tryCommitExternalRoadTransitionAfterSkippedTarget(
-			Road observedRoad) {
-		if (!this.externalRoadTransition || observedRoad == null
-				|| this.externalTransitionTargetRoad == null
-				|| this.externalTransitionTargetLane == null || this.nextRoad_ == null
-				|| this.nextLane_ == null) {
-			return false;
-		}
-		Road targetRoad = this.externalTransitionTargetRoad;
-		Lane targetLane = this.externalTransitionTargetLane;
-		Lane observedLane = this.nextLane_;
-		if (this.nextRoad_.getID() != observedRoad.getID()
-				|| !targetRoad.getDownStreamRoads().contains(observedRoad.getID())
-				|| observedLane.getRoad() != observedRoad
-				|| !targetLane.getDownStreamLanes().contains(observedLane.getID())
-				|| !this.isAuthoritativeExternalPoseReadyForLane(observedLane)) {
-			return false;
-		}
-		return this.commitExternalRoadTransition(0.0);
-	}
-
-	private boolean isAuthoritativeExternalPoseReadyForLane(Lane candidateLane) {
-		ExternalLaneProjection projection = this.projectExternalPoseToLane(candidateLane);
-		double lateralTolerance = Math.max(COINCIDENT_WAYPOINT_TOLERANCE_METERS,
-				Math.max(0.0, GlobalVariables.LANE_WIDTH) * 0.5);
-		return projection != null && Double.isFinite(projection.lateralDistanceMeters)
-				&& projection.lateralDistanceMeters <= lateralTolerance
-				&& Double.isFinite(projection.upstreamOvershootMeters)
-				&& projection.upstreamOvershootMeters
-						<= EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS;
-	}
-
-	/**
-	 * Attach a pending external connector vehicle at an already validated target
-	 * lane distance. The authoritative external pose and bearing are retained;
-	 * lane geometry is used only to rebuild linked-list and route state.
-	 */
-	public synchronized boolean commitExternalRoadTransition(double downstreamDistance) {
-		Road targetRoad = this.externalTransitionTargetRoad;
-		Lane targetLane = this.externalTransitionTargetLane;
-		if (targetRoad == null || targetLane == null
-				|| !targetRoad.beginExternalLaneCommit(targetLane, this)) return false;
-		try {
-			return this.commitExternalRoadTransitionAtDistance(downstreamDistance, true);
-		} finally {
-			targetRoad.endExternalLaneCommit();
-		}
-	}
-
-	private boolean commitExternalRoadTransitionAtDistance(double downstreamDistance,
-			boolean preserveExternalPose) {
-		if (!this.externalRoadTransition || this.externalTransitionTargetRoad == null
-				|| this.externalTransitionTargetLane == null || this.road != this.externalTransitionTargetRoad
-				|| this.lane != null) {
-			return false;
-		}
-		Road targetRoad = this.externalTransitionTargetRoad;
-		Lane targetLane = this.externalTransitionTargetLane;
-		if (!targetRoad.hasExternalLaneReservation(targetLane, this)) {
-			return false;
-		}
-		double laneLength = targetLane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0 || !Double.isFinite(downstreamDistance)
-				|| downstreamDistance < -COINCIDENT_WAYPOINT_TOLERANCE_METERS
-				|| downstreamDistance > laneLength + COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
-			return false;
-		}
-
-		double clampedDistance = Math.max(0.0, Math.min(laneLength, downstreamDistance));
-		if (!this.externalTargetLaneIntervalAvailable(targetLane, clampedDistance)) {
-			return false;
-		}
-		Coordinate authoritativePose = preserveExternalPose ? this.getCurrentCoord() : null;
-		double authoritativeBearing = this.bearing_;
-		this.preserveConnectorReservationOnLaneDetach = true;
-		try {
-			this.teleportToLane(targetLane, clampedDistance);
-		} finally {
-			this.preserveConnectorReservationOnLaneDetach = false;
-		}
-		if (this.lane != targetLane || !this.onLane) {
-			return false;
-		}
-
-		// CoSim coordinates may include a small lateral displacement from the
-		// centerline. Preserve that authoritative pose while retaining the projected
-		// lane distance for linked-list ordering and eventual control release.
-		if (preserveExternalPose) {
-			this.setCurrentCoord(authoritativePose);
-			if (Double.isFinite(authoritativeBearing)) {
-				this.bearing_ = authoritativeBearing;
-			}
-		}
-		this.advanceInMacroList();
-		this.retreatInMacroList();
-		this.updateNativeConnectorMembership();
-		this.clearExternalRoadTransitionState(true);
-		return true;
-	}
-
-	/**
-	 * Native-control release places the vehicle at the nearest free position no
-	 * farther downstream than the projection. Increasing distance moves upstream.
-	 * If the lane is full, the pending state and reservation remain intact.
-	 */
-	public synchronized boolean commitExternalRoadTransitionAtClosestAvailableDistance(
-			double preferredDownstreamDistance) {
-		return this.commitExternalRoadTransitionAtClosestAvailableDistance(
-				this.externalTransitionTargetLane, preferredDownstreamDistance);
-	}
-
-	public synchronized boolean commitExternalRoadTransitionAtClosestAvailableDistance(
-			Lane releaseLane, double preferredDownstreamDistance) {
-		if (!this.externalRoadTransition || this.externalTransitionTargetRoad == null
-				|| this.externalTransitionTargetLane == null || releaseLane == null
-				|| releaseLane.getRoad() != this.externalTransitionTargetRoad
-				|| !this.externalTransitionTargetRoad.isNativeReleaseInProgress()
-				|| !Double.isFinite(preferredDownstreamDistance)) {
-			return false;
-		}
-		Road targetRoad = this.externalTransitionTargetRoad;
-		Lane originalTargetLane = this.externalTransitionTargetLane;
-		boolean alternateLane = releaseLane != originalTargetLane;
-		boolean releaseLaneAlreadyReserved =
-				targetRoad.hasExternalLaneReservation(releaseLane, this);
-		boolean acquiredReleaseReservation = !releaseLaneAlreadyReserved;
-		if (acquiredReleaseReservation
-				&& !targetRoad.tryReserveExternalLaneForNativeRelease(releaseLane, this)) {
-			return false;
-		}
-		this.externalTransitionTargetLane = releaseLane;
-
-		Lane targetLane = releaseLane;
-		double laneLength = targetLane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
-			this.externalTransitionTargetLane = originalTargetLane;
-			if (acquiredReleaseReservation) {
-				targetRoad.releaseExternalLaneReservation(releaseLane, this);
-			}
-			return false;
-		}
-		double candidate = Math.max(0.0, Math.min(laneLength, preferredDownstreamDistance));
-
-		while (candidate <= laneLength + COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
-			double shiftedCandidate = candidate;
-			double vehicleEnd = candidate + Math.max(0.0, this.length());
-			Vehicle other = targetLane.firstVehicle();
-			while (other != null) {
-				Vehicle next = other.trailing();
-				if (other != this) {
-					double otherStart = other.getDistanceToNextJunction();
-					double otherEnd = otherStart + Math.max(0.0, other.length());
-					boolean overlaps = candidate < otherEnd - COINCIDENT_WAYPOINT_TOLERANCE_METERS
-							&& otherStart < vehicleEnd - COINCIDENT_WAYPOINT_TOLERANCE_METERS;
-					if (overlaps) {
-						shiftedCandidate = Math.max(shiftedCandidate,
-								otherEnd + COINCIDENT_WAYPOINT_TOLERANCE_METERS);
-					}
-				}
-				other = next;
-			}
-			if (shiftedCandidate <= candidate + 1e-9) {
-				boolean committed = this.commitExternalRoadTransitionAtDistance(candidate, false);
-				if (committed) {
-					if (alternateLane) {
-						targetRoad.releaseExternalLaneReservation(originalTargetLane, this);
-						this.nextLane_ = null;
-					}
-					return true;
-				}
-				break;
-			}
-			candidate = shiftedCandidate;
-		}
-		this.externalTransitionTargetLane = originalTargetLane;
-		if (acquiredReleaseReservation) {
-			targetRoad.releaseExternalLaneReservation(releaseLane, this);
-		}
-		return false;
-	}
-
-	private boolean externalTargetLaneIntervalAvailable(Lane targetLane, double downstreamDistance) {
-		double vehicleStart = downstreamDistance;
-		double vehicleEnd = downstreamDistance + Math.max(0.0, this.length());
-		Vehicle other = targetLane.firstVehicle();
-		while (other != null) {
-			Vehicle next = other.trailing();
-			if (other != this) {
-				double otherStart = other.getDistanceToNextJunction();
-				double otherEnd = otherStart + Math.max(0.0, other.length());
-				boolean overlaps = vehicleStart < otherEnd - COINCIDENT_WAYPOINT_TOLERANCE_METERS
-						&& otherStart < vehicleEnd - COINCIDENT_WAYPOINT_TOLERANCE_METERS;
-				if (overlaps) return false;
-			}
-			other = next;
-		}
-		return true;
-	}
-
-	/** Called by Road when a COSIM road is projected back to native control. */
-	public synchronized boolean completeExternalRoadTransitionAfterProjection() {
-		if (!this.externalRoadTransition) return false;
-		if (this.road != this.externalTransitionTargetRoad || this.lane == null) return false;
-		this.updateNativeConnectorMembership();
-		this.clearExternalRoadTransitionState(true);
-		return true;
-	}
-
-	public synchronized boolean resumeNativeConnectorTraversal() {
-		ConnectorRoad connector = this.currentConnector;
-		ConnectorRoad.ConnectorPath connectorPath = this.currentConnectorPath;
-		Lane targetLane = this.externalTransitionTargetLane;
-		if (!this.externalRoadTransition || connector == null || connectorPath == null
-				|| this.externalTransitionSourceRoad != connector.getSourceRoad()
-				|| this.externalTransitionTargetRoad != connector.getTargetRoad()
-				|| this.road != connector.getTargetRoad() || this.lane != null
-				|| !this.onRoad || this.onLane || targetLane == null
-				|| connectorPath.getTargetLane() != targetLane
-				|| !connector.getPaths().contains(connectorPath)
-				|| this.currentCoord_ == null) {
-			return false;
-		}
-		ArrayList<Coordinate> connectorSuffix =
-				this.nativeConnectorSuffix(connectorPath, targetLane);
-		return connectorSuffix != null
-				&& this.installNativeConnectorSuffix(targetLane, connectorSuffix);
-	}
-
-	private ArrayList<Coordinate> nativeConnectorSuffix(
-			ConnectorRoad.ConnectorPath connectorPath, Lane targetLane) {
-		List<Coordinate> centerLine = connectorPath.getCenterLine();
-		int segment = this.closestConnectorSegment(centerLine, this.currentCoord_);
-		ArrayList<Coordinate> result = new ArrayList<Coordinate>();
-		if (segment < 0) {
-			ContextCreator.logger.warn("PATH_FALLBACK:" + this.ID);
-		}
-		if (segment >= 0) {
-			for (int i = segment + 1; i < centerLine.size(); i++) {
-				Coordinate coordinate = centerLine.get(i);
-				if (coordinate != null && Double.isFinite(coordinate.x)
-						&& Double.isFinite(coordinate.y)) {
-					result.add(new Coordinate(coordinate));
-				}
-			}
-		}
-		Coordinate laneStart = targetLane.getStartCoord();
-		if (laneStart == null || !Double.isFinite(laneStart.x)
-				|| !Double.isFinite(laneStart.y)) return null;
-		this.finishConnectorSuffixAtLaneStart(result, laneStart);
-		return result;
-	}
-
-	private int closestConnectorSegment(
-			List<Coordinate> centerLine, Coordinate pose) {
-		if (centerLine == null || centerLine.size() < 2 || pose == null) return -1;
-		int bestSegment = -1;
-		double bestDistance = Double.POSITIVE_INFINITY;
-		for (int i = 0; i < centerLine.size() - 1; i++) {
-			Coordinate upstream = centerLine.get(i);
-			Coordinate downstream = centerLine.get(i + 1);
-			double candidateDistance =
-					this.distanceToConnectorSegment(pose, upstream, downstream);
-			if (Double.isFinite(candidateDistance)
-					&& candidateDistance < bestDistance) {
-				bestDistance = candidateDistance;
-				bestSegment = i;
-			}
-		}
-		return bestSegment;
-	}
-
-	private double distanceToConnectorSegment(
-			Coordinate pose, Coordinate upstream, Coordinate downstream) {
-		if (upstream == null || downstream == null) return Double.NaN;
-		double dx = downstream.x - upstream.x;
-		double dy = downstream.y - upstream.y;
-		double squaredLength = dx * dx + dy * dy;
-		if (!Double.isFinite(squaredLength) || squaredLength <= 0.0) {
-			return Double.NaN;
-		}
-		double fraction = ((pose.x - upstream.x) * dx
-				+ (pose.y - upstream.y) * dy) / squaredLength;
-		fraction = Math.max(0.0, Math.min(1.0, fraction));
-		Coordinate projection = new Coordinate(
-				upstream.x + fraction * dx, upstream.y + fraction * dy, pose.z);
-		return this.distance(pose, projection);
-	}
-
-	private void finishConnectorSuffixAtLaneStart(
-			ArrayList<Coordinate> suffix, Coordinate laneStart) {
-		if (suffix.isEmpty()) {
-			suffix.add(new Coordinate(laneStart));
-			return;
-		}
-		int lastIndex = suffix.size() - 1;
-		Coordinate last = suffix.get(lastIndex);
-		double endpointError = this.distance(last, laneStart);
-		if (Double.isFinite(endpointError)
-				&& endpointError <= COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
-			suffix.set(lastIndex, new Coordinate(laneStart));
-		} else {
-			suffix.add(new Coordinate(laneStart));
-		}
-	}
-
-	private boolean installNativeConnectorSuffix(
-			Lane targetLane, List<Coordinate> connectorSuffix) {
-		double connectorDistance =
-				this.remainingDistance(this.currentCoord_, connectorSuffix);
-		ConnectorRoad connector = this.currentConnector;
-		Lane connectorLane = connector == null || this.currentConnectorPath == null
-				? null : connector.getLane(this.currentConnectorPath);
-		double laneLength = connectorLane == null ? Double.NaN : connectorLane.getLength();
-		if (!Double.isFinite(connectorDistance) || connectorDistance < 0.0
-				|| !Double.isFinite(laneLength) || laneLength < 0.0
-				|| connectorLane.getCoords() == null
-				|| connectorLane.getCoords().size() < 2) {
-			return false;
-		}
-		Coordinate authoritativePose = new Coordinate(this.currentCoord_);
-		double authoritativeBearing = this.bearing_;
-		this.clearExternalRoadTransitionState(true);
-		this.removeFromCurrentRoad();
-		this.appendToRoad(connector);
-		connector.teleportVehicle(this, connectorLane,
-				Math.min(connectorDistance, laneLength));
-		this.nextLane_ = targetLane;
-		this.setCurrentCoord(authoritativePose);
-		this.bearing_ = authoritativeBearing;
-		this.syncPreviousEpochCoord();
-		this.advanceInMacroList();
-		this.retreatInMacroList();
-		this.updateNativeConnectorMembership();
-		return true;
-	}
-
-	private double remainingDistance(
-			Coordinate start, List<Coordinate> waypoints) {
-		if (start == null || waypoints == null || waypoints.isEmpty()) {
-			return Double.NaN;
-		}
-		double result = 0.0;
-		Coordinate previous = start;
-		for (Coordinate waypoint : waypoints) {
-			if (waypoint == null) return Double.NaN;
-			double segmentDistance = this.distance(previous, waypoint);
-			if (!Double.isFinite(segmentDistance) || segmentDistance < 0.0) {
-				return Double.NaN;
-			}
-			result += segmentDistance;
-			previous = waypoint;
-		}
-		return result;
-	}
-
-	public synchronized void cancelExternalRoadTransition() {
-		this.clearExternalRoadTransitionState();
-	}
-
-	public synchronized double getExternalTransitionProjectedDistance() {
-		if (!this.externalRoadTransition || this.externalTransitionTargetLane == null) {
-			return Double.NaN;
-		}
-		ExternalLaneProjection projection = this.projectExternalPoseToTargetLane();
-		if (projection != null && Double.isFinite(projection.downstreamDistance)) {
-			return projection.downstreamDistance;
-		}
-		double laneLength = this.externalTransitionTargetLane.getLength();
-		return Double.isFinite(laneLength) ? Math.max(0.0, laneLength) : Double.NaN;
-	}
-
-	private synchronized void clearExternalRoadTransitionState() {
-		this.clearExternalRoadTransitionState(false);
-	}
-
-	private synchronized void clearExternalRoadTransitionState(boolean retainConnectorReservation) {
-		if (!this.externalRoadTransition && this.externalTransitionTargetRoad == null
-				&& this.externalTransitionTargetLane == null
-				&& (retainConnectorReservation || this.currentConnector == null)) {
-			return;
-		}
-		if (!retainConnectorReservation && this.currentConnector != null) {
-			this.clearNativeConnectorMembership();
-		}
-		Road targetRoad = this.externalTransitionTargetRoad;
-		Lane targetLane = this.externalTransitionTargetLane;
-		if (targetRoad != null && targetLane != null) {
-			targetRoad.releaseExternalLaneReservation(targetLane, this);
-		}
-		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
-		if (vehicleContext != null) {
-			vehicleContext.unregisterExternalRoadTransition(this);
-		}
-		this.externalRoadTransition = false;
-		this.externalTransitionSourceRoad = null;
-		this.externalTransitionTargetRoad = null;
-		this.externalTransitionTargetLane = null;
-	}
-
-	private ExternalLaneProjection projectExternalPoseToTargetLane() {
-		return this.projectExternalPoseToLane(this.externalTransitionTargetLane);
-	}
-
-	private ExternalLaneProjection projectExternalPoseToLane(Lane targetLane) {
-		return this.projectPoseToLane(this.currentCoord_, targetLane);
-	}
-
 	/**
 	 * Return why this macro-road member cannot safely be handed from native
 	 * stepping to external control, or {@code null} when its representation is
-	 * safe. Pending external connectors are already externally owned and are
-	 * intentionally accepted without a physical target-lane attachment. Native
-	 * connector occupants and vehicles with unfinished route preparation are also
+	 * safe. Connector occupants and vehicles with unfinished route preparation are
+	 * also
 	 * accepted: connector motion and any required lane changing transfer to the
 	 * external simulator with the controlled segment.
 	 */
@@ -5064,16 +4441,6 @@ public class Vehicle {
 		if (pose == null || !Double.isFinite(pose.x) || !Double.isFinite(pose.y)
 				|| !Double.isFinite(pose.z)) {
 			return "Vehicle " + this.ID + " has no finite current pose";
-		}
-		if (this.externalRoadTransition) {
-			if (this.externalTransitionSourceRoad == null
-					|| this.externalTransitionTargetRoad != takeoverRoad
-					|| this.externalTransitionTargetLane == null
-					|| this.externalTransitionTargetLane.getRoad() != takeoverRoad
-					|| this.lane != null || this.onLane) {
-				return "Vehicle " + this.ID + " has malformed pending external-transition state";
-			}
-			return null;
 		}
 		if (this.lane == null) {
 			return "Vehicle " + this.ID + " has no current lane";
@@ -5098,7 +4465,7 @@ public class Vehicle {
 					&& Double.isFinite(this.distance_)
 					&& Math.abs(this.distance_) <= COINCIDENT_WAYPOINT_TOLERANCE_METERS
 					&& Double.isFinite(endpointError)
-					&& endpointError <= EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS;
+					&& endpointError <= AUTHORITATIVE_LANE_ENDPOINT_TOLERANCE_METERS;
 			if (recoverableLaneEnd) return null;
 			return "Vehicle " + this.ID + " has inconsistent off-lane state: distance="
 					+ this.distance_ + ", endpointErrorMeters=" + endpointError;
@@ -5126,8 +4493,7 @@ public class Vehicle {
 	 * distance needed by METS-R bookkeeping; the supplied pose, bearing, and speed
 	 * are retained exactly.
 	 *
-	 * @return true when a connector observation also acquired its target-lane
-	 *         reservation, or for every physical-road observation
+	 * @return true after the observation has been mirrored
 	 */
 	public synchronized boolean synchronizeAuthoritativeCoSimObservation(
 			Road observedSegment, Lane observedLane,
@@ -5154,15 +4520,13 @@ public class Vehicle {
 
 		ConnectorRoad connector = observedSegment instanceof ConnectorRoad
 				? (ConnectorRoad) observedSegment : null;
-		Lane targetLane;
-		Road mirroredRoad;
+		Lane mirroredLane;
 		if (connector == null) {
 			if (observedLane == null || observedLane.getRoad() != observedSegment) {
 				throw new IllegalArgumentException(
 						"Authoritative physical-road observation requires a lane on that road");
 			}
-			targetLane = observedLane;
-			mirroredRoad = observedSegment;
+			mirroredLane = observedLane;
 		} else {
 			if (observedConnectorPath == null
 					|| !connector.getPaths().contains(observedConnectorPath)
@@ -5175,13 +4539,16 @@ public class Vehicle {
 				throw new IllegalArgumentException(
 						"Authoritative connector observation requires a valid connector path");
 			}
-			targetLane = observedConnectorPath.getTargetLane();
-			mirroredRoad = connector.getTargetRoad();
+			mirroredLane = connector.getLane(observedConnectorPath);
+			if (mirroredLane == null || mirroredLane.getRoad() != connector) {
+				throw new IllegalArgumentException(
+						"Authoritative connector observation has no connector lane");
+			}
 		}
 
-		double laneLength = targetLane.getLength();
+		double laneLength = mirroredLane.getLength();
 		if (!Double.isFinite(laneLength) || laneLength < 0.0
-				|| targetLane.getCoords() == null || targetLane.getCoords().size() < 2) {
+				|| mirroredLane.getCoords() == null || mirroredLane.getCoords().size() < 2) {
 			throw new IllegalArgumentException(
 					"Authoritative segment has no usable target-lane geometry");
 		}
@@ -5191,9 +4558,7 @@ public class Vehicle {
 		// CARLA owns the route while this API is active. Remove every retained
 		// route/connector assertion before rebuilding current membership.
 		this.clearShadowImpact();
-		if (this.externalRoadTransition) {
-			this.clearExternalRoadTransitionState();
-		} else if (this.currentConnector != null) {
+		if (this.currentConnector != null) {
 			this.clearNativeConnectorMembership();
 		}
 		this.removeFromCurrentLane();
@@ -5215,7 +4580,7 @@ public class Vehicle {
 		this.resetLaneChangeRuntimeState();
 
 		if (connector == null) {
-			mirroredRoad.teleportVehicle(this, targetLane, mirroredDistance);
+			observedSegment.teleportVehicle(this, mirroredLane, mirroredDistance);
 			this.setCurrentCoord(new Coordinate(authoritativePose));
 			this.setPreviousEpochCoord(authoritativePose);
 			this.bearing_ = authoritativeBearing;
@@ -5223,43 +4588,68 @@ public class Vehicle {
 			return true;
 		}
 
-		this.appendToRoadForTeleport(mirroredRoad);
+		connector.teleportVehicle(this, mirroredLane, mirroredDistance);
 		this.currentConnector = connector;
 		this.currentConnectorPath = observedConnectorPath;
 		this.connectorFrontCleared = false;
-		this.externalRoadTransition = true;
-		this.externalTransitionSourceRoad = connector.getSourceRoad();
-		this.externalTransitionTargetRoad = connector.getTargetRoad();
-		this.externalTransitionTargetLane = targetLane;
-		this.onLane = false;
-		this.distance_ = 0.0;
-		this.nextDistance_ = 0.0;
-		this.currentSegmentIdx_ = 0;
-		this.currentLaneSlope_ = 0.0;
-		this.coordMap.clear();
-		this.coordMap.add(new Coordinate(authoritativePose));
+		this.nextRoad_ = connector.getTargetRoad();
+		this.nextLane_ = observedConnectorPath.getTargetLane();
 		this.setCurrentCoord(new Coordinate(authoritativePose));
 		this.setPreviousEpochCoord(authoritativePose);
 		this.bearing_ = authoritativeBearing;
 		this.currentSpeed_ = authoritativeSpeed;
 
-		boolean targetLaneReserved =
-				mirroredRoad.tryReserveExternalLane(targetLane, this);
 		ContextCreator.getRoadContext()
 				.mirrorAuthoritativeConnectorVehicle(connector, this);
-		VehicleContext vehicleContext = ContextCreator.getVehicleContext();
-		if (vehicleContext != null) {
-			vehicleContext.registerExternalRoadTransition(this);
-		}
-		this.advanceInMacroList();
-		this.retreatInMacroList();
 		ContextCreator.getRoadContext()
 				.updateConnectorVehicleState(connector, this);
-		return targetLaneReserved;
+		return true;
 	}
 
 	/**
-	 * Synchronize the lane-list representation of a non-pending vehicle on a
+	 * Position a newly initialized vehicle on its already-admitted connector lane
+	 * without discarding the trip route prepared on the source road.
+	 */
+	public synchronized void positionInitializedCoSimConnectorVehicle(
+			double projectedDownstreamDistance, Coordinate authoritativePose,
+			double authoritativeBearing, double authoritativeSpeed) {
+		ConnectorRoad connector = this.currentConnector;
+		ConnectorRoad.ConnectorPath connectorPath = this.currentConnectorPath;
+		Lane connectorLane = connector == null || connectorPath == null
+				? null : connector.getLane(connectorPath);
+		if (connector == null || connectorPath == null || connectorLane == null
+				|| this.road != connector || this.lane != connectorLane || !this.onRoad
+				|| !Double.isFinite(projectedDownstreamDistance)
+				|| authoritativePose == null || !Double.isFinite(authoritativePose.x)
+				|| !Double.isFinite(authoritativePose.y)
+				|| !Double.isFinite(authoritativePose.z)
+				|| !Double.isFinite(authoritativeBearing)
+				|| !Double.isFinite(authoritativeSpeed) || authoritativeSpeed < 0.0) {
+			throw new IllegalArgumentException(
+					"Initialized COSIM connector position is inconsistent");
+		}
+		double laneLength = connectorLane.getLength();
+		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
+			throw new IllegalArgumentException("Initialized COSIM connector has no usable length");
+		}
+		double distance = Math.max(0.0,
+				Math.min(laneLength, projectedDownstreamDistance));
+		this.preserveConnectorMembershipOnLaneDetach = true;
+		try {
+			this.removeFromCurrentLane();
+			connector.teleportVehicle(this, connectorLane, distance);
+			this.setCurrentCoord(new Coordinate(authoritativePose));
+			this.setPreviousEpochCoord(authoritativePose);
+			this.bearing_ = authoritativeBearing;
+			this.currentSpeed_ = authoritativeSpeed;
+			this.updateNativeConnectorMembership();
+		} finally {
+			this.preserveConnectorMembershipOnLaneDetach = false;
+		}
+	}
+
+	/**
+	 * Synchronize the lane-list representation of a vehicle on a
 	 * COSIM road with an authoritative external pose. Validation is completed
 	 * before the vehicle is detached, so a rejected observation leaves position,
 	 * lane membership, distance, speed, bearing, and route state unchanged.
@@ -5271,10 +4661,6 @@ public class Vehicle {
 	public synchronized double synchronizeCoSimLaneObservation(Road observedRoad,
 			Lane observedLane, Coordinate authoritativePose, double authoritativeBearing,
 			double authoritativeSpeed) {
-		if (this.externalRoadTransition) {
-			throw new IllegalArgumentException(
-					"Cannot synchronize a lane while an external road transition is pending");
-		}
 		if (this.road == null) {
 			throw new IllegalArgumentException("Vehicle has no current road");
 		}
@@ -5297,7 +4683,7 @@ public class Vehicle {
 			if (!Double.isFinite(this.distance_)
 					|| Math.abs(this.distance_) > COINCIDENT_WAYPOINT_TOLERANCE_METERS
 					|| !Double.isFinite(laneEndDistance)
-					|| laneEndDistance > EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS) {
+					|| laneEndDistance > AUTHORITATIVE_LANE_ENDPOINT_TOLERANCE_METERS) {
 				throw new IllegalArgumentException(
 						"Off-lane vehicle is not at its retained lane endpoint: distance="
 								+ this.distance_ + ", endpointErrorMeters=" + laneEndDistance);
@@ -5340,7 +4726,7 @@ public class Vehicle {
 							+ previousLaneIndex + ", observedLaneIndex=" + observedLaneIndex);
 		}
 
-		ExternalLaneProjection projection = this.projectPoseToLane(authoritativePose, observedLane);
+		LaneProjection projection = this.projectPoseToLane(authoritativePose, observedLane);
 		double configuredLaneWidth = Math.max(0.0, GlobalVariables.LANE_WIDTH);
 		// Near trimmed road ends Town06's topologically matching OpenDRIVE and
 		// SUMO centerlines diverge by nearly one lane width. The external adapter
@@ -5360,7 +4746,7 @@ public class Vehicle {
 				|| projection.lateralDistanceMeters > lateralTolerance
 				|| !Double.isFinite(projection.upstreamOvershootMeters)
 				|| projection.upstreamOvershootMeters
-						> EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS
+						> AUTHORITATIVE_LANE_ENDPOINT_TOLERANCE_METERS
 				|| !Double.isFinite(projection.downstreamOvershootMeters)
 				|| projection.downstreamOvershootMeters
 						> COSIM_LANE_OBSERVATION_DOWNSTREAM_TOLERANCE_METERS
@@ -5377,7 +4763,7 @@ public class Vehicle {
 							+ ", mapSlackMeters=" + COSIM_LANE_OBSERVATION_MAP_SLACK_METERS
 							+ ", upstreamOvershootMeters=" + upstreamOvershoot
 							+ ", upstreamToleranceMeters="
-							+ EXTERNAL_LANE_ENTRY_LONGITUDINAL_TOLERANCE_METERS
+							+ AUTHORITATIVE_LANE_ENDPOINT_TOLERANCE_METERS
 							+ ", downstreamOvershootMeters=" + downstreamOvershoot
 							+ ", downstreamToleranceMeters="
 							+ COSIM_LANE_OBSERVATION_DOWNSTREAM_TOLERANCE_METERS
@@ -5400,7 +4786,7 @@ public class Vehicle {
 		for (Coordinate coordinate : this.coordMap) {
 			previousCoordMap.add(new Coordinate(coordinate));
 		}
-		this.preserveConnectorReservationOnLaneDetach = true;
+		this.preserveConnectorMembershipOnLaneDetach = true;
 		try {
 			this.removeFromCurrentLane();
 			observedRoad.teleportVehicle(this, observedLane, projection.downstreamDistance);
@@ -5441,11 +4827,11 @@ public class Vehicle {
 			}
 			throw ex;
 		} finally {
-			this.preserveConnectorReservationOnLaneDetach = false;
+			this.preserveConnectorMembershipOnLaneDetach = false;
 		}
 	}
 
-	private ExternalLaneProjection projectPoseToLane(Coordinate pose, Lane targetLane) {
+	private LaneProjection projectPoseToLane(Coordinate pose, Lane targetLane) {
 		if (targetLane == null || pose == null) return null;
 		ArrayList<Coordinate> coordinates = targetLane.getCoords();
 		if (coordinates == null || coordinates.size() < 2) return null;
@@ -5541,17 +4927,17 @@ public class Vehicle {
 		double laneLength = Math.max(0.0, targetLane.getLength());
 		bestDownstreamDistance = targetLane.toLogicalDistance(bestDownstreamDistance);
 		bestDownstreamDistance = Math.max(0.0, Math.min(laneLength, bestDownstreamDistance));
-		return new ExternalLaneProjection(bestDownstreamDistance, bestLateralDistance,
+		return new LaneProjection(bestDownstreamDistance, bestLateralDistance,
 				bestUpstreamOvershoot, bestDownstreamOvershoot);
 	}
 
-	private static final class ExternalLaneProjection {
+	private static final class LaneProjection {
 		final double downstreamDistance;
 		final double lateralDistanceMeters;
 		final double upstreamOvershootMeters;
 		final double downstreamOvershootMeters;
 
-		ExternalLaneProjection(double downstreamDistance, double lateralDistanceMeters,
+		LaneProjection(double downstreamDistance, double lateralDistanceMeters,
 				double upstreamOvershootMeters, double downstreamOvershootMeters) {
 			this.downstreamDistance = downstreamDistance;
 			this.lateralDistanceMeters = lateralDistanceMeters;
@@ -6008,7 +5394,6 @@ public class Vehicle {
 	}
 
 	protected void pauseOnRoadWithoutMovement() {
-		this.cancelExternalRoadTransition();
 		this.clearShadowImpact();
 		this.currentSpeed_ = 0.0;
 		this.accRate_ = 0.0;
@@ -6045,7 +5430,6 @@ public class Vehicle {
 	 *  Call when arriving the destination but not leave the network
 	 */
 	public void reachDestButNotLeave() {
-		this.cancelExternalRoadTransition();
 		this.attackVehicle = false;
 		this.onLane = false; // Trigger change road if next trip is scheduled
 		// Reach destination
@@ -6165,7 +5549,7 @@ public class Vehicle {
 	public void removeFromCurrentLane() {
 		if (this.isLaneChanging()) this.cancelLaneChangeManeuver();
 		if (this.currentConnector != null
-				&& !this.preserveConnectorReservationOnLaneDetach) {
+				&& !this.preserveConnectorMembershipOnLaneDetach) {
 			this.clearNativeConnectorMembership();
 		}
 		if (this.lane != null) {
@@ -6200,8 +5584,6 @@ public class Vehicle {
 		if (this.road != null) {
 			// Current road of this vehicle
 			Road pr = this.getRoad();
-			boolean removePendingExternalTransition = this.externalRoadTransition
-					&& pr == this.externalTransitionTargetRoad;
 			pr.changeNumberOfVehicles(-1);
 			// If this is not the first vehicle on the road
 			if (this.macroLeading_ != null) {
@@ -6216,9 +5598,6 @@ public class Vehicle {
 			}
 			this.road = null;
 			ContextCreator.getRoadContext().markRoadActive(pr);
-			if (removePendingExternalTransition) {
-				this.clearExternalRoadTransitionState();
-			}
 		}
 	}
 
@@ -6475,8 +5854,7 @@ public class Vehicle {
 	}
 
 	private int laneChangesNeededOnCurrentRoad(Lane nextRoadLane) {
-		Lane sourceLane = this.externalRoadTransition && this.externalTransitionTargetLane != null
-				? this.externalTransitionTargetLane : this.lane;
+		Lane sourceLane = this.lane;
 		if (sourceLane == null || this.road == null || nextRoadLane == null) {
 			return Integer.MAX_VALUE;
 		}
@@ -6543,11 +5921,7 @@ public class Vehicle {
 	 * Assign the next lane to the vehicle
 	 */
 	public void assignNextLane() {
-		// During an external connector handoff lane intentionally remains null, but
-		// route advancement must choose the following lane from the reserved target
-		// lane rather than falling back to lane 0.
-		Lane curLane = this.externalRoadTransition && this.externalTransitionTargetLane != null
-				? this.externalTransitionTargetLane : this.lane;
+		Lane curLane = this.lane;
 		if (this.nextRoad_ == null) {
 			this.nextLane_ = null;
 			return;
@@ -6645,7 +6019,7 @@ public class Vehicle {
 
 	private boolean performMissedLaneTransitionRecovery(
 			Map<Long, List<Road>> recoveryPathCache) {
-		if (this.externalRoadTransition || this.road == null || this.lane == null
+		if (this.road == null || this.lane == null
 				|| this.lane.getRoad() != this.road
 				|| this.road.getControlType() == Road.COSIM) {
 			return false;
@@ -6801,7 +6175,7 @@ public class Vehicle {
 	}
 
 	private void handleMissedLaneRecoveryLivenessFallback(String reason) {
-		if (this.missedLaneRecoveryFallbackHandled || this.externalRoadTransition) {
+		if (this.missedLaneRecoveryFallbackHandled) {
 			return;
 		}
 		this.missedLaneRecoveryFallbackHandled = true;
@@ -6958,8 +6332,7 @@ public class Vehicle {
 			if (successorRoad == null || successorRoad == excludedRoad) {
 				continue;
 			}
-			if (requireEntranceGap && (this.entranceGap(successor) < requiredGap
-					|| successorRoad.getExternalLaneReservationBlocker(successor, this) != null)) {
+			if (requireEntranceGap && this.entranceGap(successor) < requiredGap) {
 				continue;
 			}
 			Lane current = bestLaneBySuccessorRoad.get(successorRoad.getID());
@@ -7673,8 +7046,8 @@ public class Vehicle {
 	 * assigned physical-road route. An empty receiving lane contributes its full
 	 * logical length. If that is shorter than the normal admission gap, continue
 	 * through the exact connector path reachable from that lane and then through
-	 * its target lane. The scan stops at the first vehicle, external reservation,
-	 * occupied exclusive connector path, or topology mismatch, and stops
+	 * its target lane. The scan stops at the first vehicle, occupied exclusive
+	 * connector path, or topology mismatch, and stops
 	 * immediately once {@code requiredClearance} is available.
 	 *
 	 * <p>Reaching the end of the assigned route without an obstacle is sufficient:
@@ -7701,10 +7074,6 @@ public class Vehicle {
 		Road roadToCheck = receivingRoad;
 		int routeIndex = 1;
 		while (laneToCheck != null && roadToCheck != null) {
-			if (roadToCheck.getExternalLaneReservationBlocker(laneToCheck, this) != null) {
-				return clearance;
-			}
-
 			Vehicle leader = laneToCheck.lastVehicle();
 			if (leader != null) {
 				double laneEntranceGap = laneToCheck.getLength()
@@ -7956,13 +7325,13 @@ public class Vehicle {
 
 	/**
 	 * Whether this vehicle is a genuine active observation for the supplied road.
-	 * Off-lane arrivals, queued departures, external handoffs, and dormant vehicles
+	 * Off-lane arrivals, queued departures, and dormant vehicles
 	 * remain in some linked lists temporarily but are not road traffic.
 	 */
 	public boolean isTravelTimeObservationEligible(Road observedRoad) {
 		return observedRoad != null && this.road == observedRoad
 				&& this.onRoad && this.onLane && !this.isReachDest
-				&& !this.externalRoadTransition && this.lane != null
+				&& this.lane != null
 				&& this.lane.getRoad() == observedRoad
 				&& !this.isDormantOnRoad();
 	}

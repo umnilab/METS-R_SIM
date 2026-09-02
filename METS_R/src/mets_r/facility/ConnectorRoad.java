@@ -150,7 +150,7 @@ public final class ConnectorRoad extends Road {
 		}
 		// Length and speed setters already establish the free-flow prior. Leave the
 		// estimator untouched until this connector becomes active or dirty.
-		// Connectors are internal transition state, never external trip endpoints.
+		// Connectors are traversal-only road segments, never trip endpoints.
 		// canBeTripOrigin()/canBeTripDestination() enforce that endpoint rule.
 		this.setCanBeOrigin(true);
 		this.setCanBeDest(false);
@@ -362,35 +362,7 @@ public final class ConnectorRoad extends Road {
 
 	@Override
 	public synchronized void setControlType(int controlType) {
-		boolean releasing = this.getControlType() == Road.COSIM
-				&& !this.isEffectivelyCoSim(controlType);
-		if (releasing) {
-			for (Vehicle vehicle : this.getActiveVehiclesSnapshot()) {
-				if (vehicle == null || vehicle.getCurrentConnector() != this
-						|| !vehicle.isExternalRoadTransition()) {
-					continue;
-				}
-				if (!vehicle.resumeNativeConnectorTraversal()) {
-					ContextCreator.logger.error(new StringBuilder(
-							ConnectorControlWarning.HAND_BACK_FAILED.name())
-							.append(':').append(this.getID())
-							.append('@').append(vehicle.getID()));
-					return;
-				}
-			}
-		}
 		setControlTypeDirect(controlType);
-	}
-
-	private boolean isEffectivelyCoSim(int requestedControlType) {
-		return this.configuredControlType == Road.COSIM
-				|| requestedControlType == Road.COSIM
-				|| this.sourceRoad.getControlType() == Road.COSIM
-				|| this.targetRoad.getControlType() == Road.COSIM;
-	}
-
-	private enum ConnectorControlWarning {
-		HAND_BACK_FAILED
 	}
 
 	public static boolean sweptFootprintsOverlap(

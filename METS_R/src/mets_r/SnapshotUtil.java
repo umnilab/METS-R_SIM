@@ -566,7 +566,7 @@ public class SnapshotUtil {
 		if (connectorState == null) return;
 		ConnectorRoad connector = connectorState.getConnector();
 		ConnectorRoad.ConnectorPath connectorPath = connectorState.getConnectorPath();
-		target.put("connectorStateVersion", 3);
+		target.put("connectorStateVersion", 4);
 		target.put("connectorActive", true);
 		target.put("connectorOrigID", connector.getOrigID());
 		target.put("connectorPathId", connectorPath.getConnectorPathID());
@@ -580,18 +580,10 @@ public class SnapshotUtil {
 		target.put("connectorTargetRoadID", connector.getTargetRoad().getID());
 		target.put("connectorIntersectionID", connector.getIntersectionID());
 		target.put("connectorFrontCleared", connectorState.isFrontCleared());
-		target.put("connectorExternalTransition", connectorState.isExternalTransition());
-		target.put("connectorTargetLaneID", connectorState.getTargetLane().getID());
 		target.put("connectorDistance", connectorState.getDistance());
 		target.put("connectorNextDistance", connectorState.getNextDistance());
 		target.put("connectorSegmentIndex", connectorState.getSegmentIndex());
 		target.put("connectorLaneSlope", connectorState.getLaneSlope());
-		if (connectorState.isExternalTransition()) {
-			target.put("externalTransitionSourceRoadID",
-					connectorState.getExternalSourceRoad().getID());
-			target.put("externalTransitionTargetRoadID",
-					connectorState.getExternalTargetRoad().getID());
-		}
 		ArrayList<ArrayList<Double>> coordinates = new ArrayList<ArrayList<Double>>();
 		for (Coordinate coordinate : connectorState.getRemainingCoordinates()) {
 			ArrayList<Double> point = new ArrayList<Double>(3);
@@ -1498,25 +1490,17 @@ public class SnapshotUtil {
 			int roadID = toInt(vs.get("roadID"));
 			int laneIndex = toInt(vs.get("laneIndex"));
 			double distance = toDouble(vs.get("distance"));
-			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
-					&& toBool(vs.get("connectorExternalTransition"));
-
 			if (wasOnRoad && roadID != -1) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
-					if (savedExternalConnector) {
-						v.appendToRoadForTeleport(road);
-						v.setOnLane(false);
-					} else {
-						Lane lane = null;
-						if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
-							lane = road.getLane(laneIndex);
-						} else if (road.getNumberOfLanes() > 0) {
-							lane = road.getLane(0);
-						}
-						if (lane != null) {
-							road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
-						}
+					Lane lane = null;
+					if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
+						lane = road.getLane(laneIndex);
+					} else if (road.getNumberOfLanes() > 0) {
+						lane = road.getLane(0);
+					}
+					if (lane != null) {
+						road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
 					}
 				}
 			}
@@ -1696,25 +1680,17 @@ public class SnapshotUtil {
 			int roadID = toInt(vs.get("roadID"));
 			int laneIndex = toInt(vs.get("laneIndex"));
 			double distance = toDouble(vs.get("distance"));
-			boolean savedExternalConnector = toBool(vs.get("connectorActive"))
-					&& toBool(vs.get("connectorExternalTransition"));
-
 			if (wasOnRoad && roadID != -1) {
 				Road road = ContextCreator.getRoadContext().get(roadID);
 				if (road != null) {
-					if (savedExternalConnector) {
-						v.appendToRoadForTeleport(road);
-						v.setOnLane(false);
-					} else {
-						Lane lane = null;
-						if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
-							lane = road.getLane(laneIndex);
-						} else if (road.getNumberOfLanes() > 0) {
-							lane = road.getLane(0);
-						}
-						if (lane != null) {
-							road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
-						}
+					Lane lane = null;
+					if (laneIndex >= 0 && laneIndex < road.getNumberOfLanes()) {
+						lane = road.getLane(laneIndex);
+					} else if (road.getNumberOfLanes() > 0) {
+						lane = road.getLane(0);
+					}
+					if (lane != null) {
+						road.teleportVehicle(v, lane, Math.min(distance, lane.getLength()));
 					}
 				}
 			}
@@ -1894,7 +1870,7 @@ public class SnapshotUtil {
 		for (HashMap<String, Object> vs : vehicleSnapshots) {
 			if (!toBool(vs.get("connectorActive"))) continue;
 			int stateVersion = toInt(vs.get("connectorStateVersion"));
-			if (stateVersion != 3) {
+			if (stateVersion != 4) {
 				throw new IllegalStateException("Unsupported connector snapshot version "
 						+ stateVersion + " for vehicle " + toInt(vs.get("id")));
 			}
@@ -1940,23 +1916,6 @@ public class SnapshotUtil {
 				throw new IllegalStateException("Saved connector intersection does not match "
 						+ "rebuilt topology for vehicle " + vehicle.getID());
 			}
-			Lane targetLane = ContextCreator.getLaneContext().get(
-					toInt(vs.get("connectorTargetLaneID")));
-			if (targetLane == null || targetLane.getRoad() != connector.getTargetRoad()
-					|| connectorPath.getTargetLane() != targetLane) {
-				throw new IllegalStateException("Saved connector target lane is unavailable for vehicle "
-						+ vehicle.getID());
-			}
-
-			boolean external = toBool(vs.get("connectorExternalTransition"));
-			Road externalSourceRoad = null;
-			Road externalTargetRoad = null;
-			if (external) {
-				externalSourceRoad = roadContext.get(
-						toInt(vs.get("externalTransitionSourceRoadID")));
-				externalTargetRoad = roadContext.get(
-						toInt(vs.get("externalTransitionTargetRoadID")));
-			}
 			ArrayList<Coordinate> remainingCoordinates = new ArrayList<Coordinate>();
 			Object rawCoordinates = vs.get("connectorCoordMap");
 			if (rawCoordinates instanceof List<?>) {
@@ -1970,8 +1929,7 @@ public class SnapshotUtil {
 				}
 			}
 			vehicle.restoreConnectorPersistenceState(connector, connectorPath,
-					toBool(vs.get("connectorFrontCleared")), external,
-					externalSourceRoad, externalTargetRoad, targetLane,
+					toBool(vs.get("connectorFrontCleared")),
 					remainingCoordinates, toDouble(vs.get("connectorDistance")),
 					toDouble(vs.get("connectorNextDistance")),
 					toInt(vs.get("connectorSegmentIndex")),
