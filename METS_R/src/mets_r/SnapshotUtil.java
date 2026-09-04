@@ -170,6 +170,28 @@ public class SnapshotUtil {
 	}
 
 	// --------------- Vehicle snapshot ---------------
+	static int restoredStuckTime(Map<String, Object> snapshot) {
+		return snapshot.containsKey("stuckTime")
+				? Math.max(0, toInt(snapshot.get("stuckTime"))) : 0;
+	}
+
+	static boolean restoredStuckFlag(Map<String, Object> snapshot,
+			int restoredStuckTime, int threshold) {
+		boolean savedFlag = snapshot.containsKey("stuckFlag")
+				&& toBool(snapshot.get("stuckFlag"));
+		return savedFlag || restoredStuckTime >= threshold;
+	}
+
+	private static void restoreVehicleStuckState(Vehicle vehicle,
+			Map<String, Object> snapshot) {
+		int stuckTime = restoredStuckTime(snapshot);
+		vehicle.restoreStuckState(stuckTime,
+				restoredStuckFlag(snapshot, stuckTime,
+						GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE),
+				snapshot.containsKey("stopLineWaitTicks")
+						? toInt(snapshot.get("stopLineWaitTicks")) : 0);
+	}
+
 	public static HashMap<String, Object> snapshotVehicle(Vehicle v) {
 		synchronized (v) {
 		HashMap<String, Object> m = new HashMap<>();
@@ -196,7 +218,8 @@ public class SnapshotUtil {
 		m.put("onRoad", v.isOnRoad());
 		m.put("onLane", v.isOnLane());
 		m.put("movingFlag", v.getMovingFlag());
-		m.put("roadTraversalStoppedTicks", v.getRoadTraversalStoppedTicks());
+		m.put("stuckTime", v.getStuckTime());
+		m.put("stuckFlag", v.getStuckFlag());
 		m.put("stopLineWaitTicks", v.getStopLineWaitTicks());
 		m.put("laneChangeActive", v.isLaneChanging());
 		m.put("laneChangeTargetLaneIndex",
@@ -1545,11 +1568,7 @@ public class SnapshotUtil {
 			} else if (v.isOnRoad() && destRoad != null) {
 				v.rerouteAndSetNextRoad();
 			}
-			v.restoreRoadTraversalPatience(
-					vs.containsKey("roadTraversalStoppedTicks")
-							? toInt(vs.get("roadTraversalStoppedTicks")) : 0,
-					vs.containsKey("stopLineWaitTicks")
-							? toInt(vs.get("stopLineWaitTicks")) : 0);
+			restoreVehicleStuckState(v, vs);
 		}
 //		ContextCreator.logger.info("Loaded vehicle snapshots");
 
@@ -1732,11 +1751,7 @@ public class SnapshotUtil {
 			} else if (v.isOnRoad() && destRoad != null) {
 				v.rerouteAndSetNextRoad();
 			}
-			v.restoreRoadTraversalPatience(
-					vs.containsKey("roadTraversalStoppedTicks")
-							? toInt(vs.get("roadTraversalStoppedTicks")) : 0,
-					vs.containsKey("stopLineWaitTicks")
-							? toInt(vs.get("stopLineWaitTicks")) : 0);
+			restoreVehicleStuckState(v, vs);
 		}
 
 		vc.rebuildTaxiRequestMaps();

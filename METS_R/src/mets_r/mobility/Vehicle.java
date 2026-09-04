@@ -251,9 +251,12 @@ public class Vehicle {
 	// For calculating vehicle coordinates
 	GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getLaneGeography().getCRS());
 	
-	// Cumulative stopped time for the current road traversal. This is not cleared
-	// by stop-and-go creeping.
-	private int roadTraversalStoppedTicks;
+	// Consecutive stopped time on the current road segment. Any real movement
+	// clears the timer, matching the original stuck-vehicle semantics.
+	private int stuckTime;
+	// Once the consecutive timer reaches the patience threshold, keep recovery
+	// enabled for the rest of this road segment even if the vehicle creeps forward.
+	private boolean stuckFlag;
 	// Stop-control dwell is deliberately separate: upstream congestion must not
 	// satisfy a stop sign before the vehicle reaches the stop line.
 	private int stopLineWaitTicks;
@@ -865,12 +868,12 @@ public class Vehicle {
 
 	private boolean shouldLogStuckTransferFailure() {
 		if (!GlobalVariables.DEBUG_STUCK_VEHICLE) return false;
-		if (this.roadTraversalStoppedTicks < GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME) return false;
+		if (this.stuckTime < GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME) return false;
 		int interval = Math.max(1, GlobalVariables.DEBUG_STUCK_VEHICLE_LOG_INTERVAL);
 		int firstLogTick = Math.max(0, GlobalVariables.DEBUG_STUCK_VEHICLE_MIN_TIME);
-		return this.roadTraversalStoppedTicks == firstLogTick
-				|| (this.roadTraversalStoppedTicks > firstLogTick
-						&& (this.roadTraversalStoppedTicks - firstLogTick) % interval == 0);
+		return this.stuckTime == firstLogTick
+				|| (this.stuckTime > firstLogTick
+						&& (this.stuckTime - firstLogTick) % interval == 0);
 	}
 
 
@@ -891,7 +894,7 @@ public class Vehicle {
 				+ ":lane=" + laneLabel(vehicle.getLane())
 				+ ":dist=" + formatDebugDouble(vehicle.getDistanceToNextJunction())
 				+ ":speed=" + formatDebugDouble(vehicle.currentSpeed_)
-				+ ":roadStopped=" + vehicle.getRoadTraversalStoppedTicks();
+				+ ":stuck=" + vehicle.getStuckTime();
 	}
 
 	private void logStuckTransferFailure(String reason, Junction junction, Signal signal,
@@ -905,9 +908,9 @@ public class Vehicle {
 				.append(" veh=").append(this.getID())
 				.append(" class=").append(this.vehicleClass)
 				.append(" state=").append(this.vehicleState)
-				.append(" roadStoppedTicks=").append(this.roadTraversalStoppedTicks)
-				.append(" roadStoppedSeconds=").append(formatDebugDouble(
-						this.roadTraversalStoppedTicks * GlobalVariables.SIMULATION_STEP_SIZE))
+				.append(" stuckTicks=").append(this.stuckTime)
+				.append(" stuckSeconds=").append(formatDebugDouble(
+						this.stuckTime * GlobalVariables.SIMULATION_STEP_SIZE))
 				.append(" reason=").append(reason)
 				.append(" originZone=").append(this.originID)
 				.append(" destZone=").append(this.destinationID)
@@ -943,7 +946,7 @@ public class Vehicle {
 		this.clearShadowImpact();
 		this.removeFromCurrentLane();
 		this.removeFromCurrentRoad();
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.onLane = false;
 		this.onRoad = false;
 		this.accRate_ = 0;
@@ -1382,7 +1385,7 @@ public class Vehicle {
 		this.distToTravelReferenceDistance_ = 0.0;
 		this.atOrigin = false;
 		this.isReachDest = false;
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.accRate_ = 0.0;
 		this.accDecided_ = false;
 		this.hasAccelerationPlan_ = false;
@@ -3568,22 +3571,36 @@ public class Vehicle {
 		if (this.distance_ < 0) {
 			this.distance_ = 0;
 		}
+		this.stuckTime = nextStuckTime(this.stuckTime, lastStepMove_);
+		this.stuckFlag = nextStuckFlag(this.stuckFlag, this.stuckTime,
+				GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE);
 		if (lastStepMove_ > 0.001) {
 			this.accummulatedDistance_ += lastStepMove_; // Record the moved distance
 			this.movingFlag = true;
 			this.stopLineWaitTicks = 0;
 		} else {
 			this.movingFlag = false;
-			this.roadTraversalStoppedTicks += 1;
 			this.updateStopLineWaitTicks();
-			this.requestRoadPatienceRecoveryIfNeeded();
 		}
+		this.requestRoadPatienceRecoveryIfNeeded();
 		
 		if (this.isOnLane()) { 
 			this.advanceInMacroList();
 			this.advanceInLaneList();
 		}
 		this.updateNativeConnectorMembership();
+	}
+
+	static int nextStuckTime(int currentStuckTime, double lastStepMove) {
+		if (lastStepMove > 0.001) return 0;
+		int nonNegativeTime = Math.max(0, currentStuckTime);
+		return nonNegativeTime == Integer.MAX_VALUE
+				? Integer.MAX_VALUE : nonNegativeTime + 1;
+	}
+
+	static boolean nextStuckFlag(boolean currentStuckFlag, int currentStuckTime,
+			int threshold) {
+		return currentStuckFlag || currentStuckTime >= threshold;
 	}
 
 	private boolean prepareLaneChangeTarget() {
@@ -3633,9 +3650,7 @@ public class Vehicle {
 	 * or changes control state.
 	 */
 	private boolean isRoadTraversalPatienceDepletedAtLaneFront() {
-		return this.roadTraversalStoppedTicks
-				>= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE
-				&& this.road != null
+		return this.stuckFlag && this.road != null
 				&& (!(this.road instanceof ConnectorRoad)
 						|| (this.currentConnector == this.road
 								&& this.currentConnectorPath != null))
@@ -4571,7 +4586,7 @@ public class Vehicle {
 		this.distToTravelReferenceDistance_ = 0.0;
 		this.atOrigin = false;
 		this.isReachDest = false;
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.accRate_ = 0.0;
 		this.accDecided_ = false;
 		this.hasAccelerationPlan_ = false;
@@ -5052,7 +5067,7 @@ public class Vehicle {
 		}
 		this.resetMissedLaneRecoveryEpisode();
 		this.missedLaneRecoveryQuarantined = false;
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.road = road;
 		this.roadTraversalEpoch++;
 		this.linkTravelTime = 0.0;
@@ -5420,7 +5435,7 @@ public class Vehicle {
 		this.nextLane_ = null;
 		this.roadPath = null;
 		this.movingFlag = false;
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.resetLaneChangeRuntimeState();
 	}
 	
@@ -5464,7 +5479,7 @@ public class Vehicle {
 		this.clearShadowImpact();
 		this.removeFromCurrentLane();
 		this.removeFromCurrentRoad();
-		this.resetRoadTraversalPatience();
+		this.resetStuckStateForSegment();
 		this.onLane = false;
 		this.onRoad = false;
 		this.isReachDest = false; // Reset so a recycled vehicle enters roads normally
@@ -6016,7 +6031,6 @@ public class Vehicle {
 			if (recovered) {
 				this.roadPatienceRecoveryResolved = true;
 				this.latchRoadTraversalRecovery();
-				this.logStuckRecovery("ROAD_PATIENCE_REROUTED", "REROUTED", null);
 			}
 		}
 		if (missedLaneRequested && !recovered) {
@@ -6028,8 +6042,7 @@ public class Vehicle {
 			// The ordinary patience reroute can fail even on a normal departurable
 			// road. Reuse the bounded fallback so such a vehicle cannot remain the
 			// permanent downstream blocker for otherwise healthy upstream lanes.
-			this.handleMissedLaneRecoveryLivenessFallback(
-					"ROAD_PATIENCE_REROUTE_FAILED");
+			this.handleMissedLaneRecoveryLivenessFallback();
 		}
 		return recovered;
 	}
@@ -6102,8 +6115,7 @@ public class Vehicle {
 			return true;
 		}
 		if (finalAttempt && this.isRoadPatienceLivenessFallbackEligible()) {
-			this.handleMissedLaneRecoveryLivenessFallback(
-					"MISSED_LANE_RECOVERY_FAILED");
+			this.handleMissedLaneRecoveryLivenessFallback();
 		}
 		return false;
 	}
@@ -6178,20 +6190,7 @@ public class Vehicle {
 				&& this.distance_ <= recoveryDistance;
 	}
 
-	private void logStuckRecovery(String reason, String action, Road fallbackRoad) {
-		ContextCreator.logger.warn("STUCK_RECOVERED"
-				+ " tick=" + ContextCreator.getCurrentTick()
-				+ " veh=" + this.getID()
-				+ " reason=" + reason
-				+ " action=" + action
-				+ " roadStoppedTicks=" + this.roadTraversalStoppedTicks
-				+ " currentRoad=" + roadLabel(this.road)
-				+ " currentLane=" + laneLabel(this.lane)
-				+ " distToJunction=" + formatDebugDouble(this.distance_)
-				+ " fallbackRoad=" + roadLabel(fallbackRoad));
-	}
-
-	private void handleMissedLaneRecoveryLivenessFallback(String reason) {
+	private void handleMissedLaneRecoveryLivenessFallback() {
 		if (this.missedLaneRecoveryFallbackHandled) {
 			return;
 		}
@@ -6200,7 +6199,6 @@ public class Vehicle {
 		// doing so resets the traversal timer and recreates the identical failure.
 		Road fallbackRoad = this.departurableFallbackRoad(this.road);
 		if (fallbackRoad != null) {
-			this.logStuckRecovery(reason, "REQUEUED", fallbackRoad);
 			this.originRoad_ = fallbackRoad;
 			this.updateLastDeparturableRoad(fallbackRoad);
 			this.isReachDest = false;
@@ -6211,7 +6209,6 @@ public class Vehicle {
 		// No safe road exists from which to retry. Preserve the trip and last pose,
 		// but detach the quarantined vehicle so it cannot remain a permanent
 		// physical blocker. A later explicit departure can safely requeue it.
-		this.logStuckRecovery(reason, "QUARANTINED", null);
 		this.missedLaneRecoveryQuarantined = true;
 		this.clearShadowImpact();
 		this.removeFromCurrentLane();
@@ -7497,16 +7494,23 @@ public class Vehicle {
 		this.prevNextRoad_ = this.nextRoad_;
 	}
 	
-	public int getRoadTraversalStoppedTicks() {
-		return this.roadTraversalStoppedTicks;
+	public int getStuckTime() {
+		return this.stuckTime;
+	}
+
+	public boolean getStuckFlag() {
+		return this.stuckFlag;
 	}
 
 	public int getStopLineWaitTicks() {
 		return this.stopLineWaitTicks;
 	}
 
-	public void restoreRoadTraversalPatience(int stoppedTicks, int restoredStopLineWaitTicks) {
-		this.roadTraversalStoppedTicks = Math.max(0, stoppedTicks);
+	public void restoreStuckState(int restoredStuckTime, boolean restoredStuckFlag,
+			int restoredStopLineWaitTicks) {
+		this.stuckTime = Math.max(0, restoredStuckTime);
+		this.stuckFlag = restoredStuckFlag
+				|| this.stuckTime >= GlobalVariables.MAX_ROAD_TRAVERSAL_PATIENCE;
 		this.stopLineWaitTicks = Math.max(0, restoredStopLineWaitTicks);
 		this.roadPatienceLastRecoveryTick = -1;
 		this.roadPatienceRecoveryResolved = false;
@@ -7515,8 +7519,8 @@ public class Vehicle {
 		this.deferredRoadPatienceRecoveryRequested = false;
 	}
 
-	private void resetRoadTraversalPatience() {
-		this.restoreRoadTraversalPatience(0, 0);
+	private void resetStuckStateForSegment() {
+		this.restoreStuckState(0, false, 0);
 	}
 	
 	/* Getters and setters for save/load support */
