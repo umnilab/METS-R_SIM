@@ -602,7 +602,6 @@ public class SnapshotUtil {
 		target.put("connectorSourceRoadID", connector.getSourceRoad().getID());
 		target.put("connectorTargetRoadID", connector.getTargetRoad().getID());
 		target.put("connectorIntersectionID", connector.getIntersectionID());
-		target.put("connectorFrontCleared", connectorState.isFrontCleared());
 		target.put("connectorDistance", connectorState.getDistance());
 		target.put("connectorNextDistance", connectorState.getNextDistance());
 		target.put("connectorSegmentIndex", connectorState.getSegmentIndex());
@@ -1901,6 +1900,14 @@ public class SnapshotUtil {
 				throw new IllegalStateException("Saved connector topology is unavailable for vehicle "
 						+ vehicle.getID() + ": " + sourceRoadID + " -> " + targetRoadID);
 			}
+			// Older snapshots may retain connector overlap after entering the target
+			// road. The road attachment is already restored; discard that reservation.
+			if (toBool(vs.get("connectorFrontCleared"))
+					&& vehicle.getRoad() == connector.getTargetRoad()
+					&& vehicle.getLane() != null
+					&& vehicle.getLane().getRoad() == vehicle.getRoad()) {
+				continue;
+			}
 			Object savedOrigID = vs.get("connectorOrigID");
 			if (savedOrigID != null && !connector.getOrigID().equals(savedOrigID.toString())) {
 				throw new IllegalStateException("Saved connector ID does not match rebuilt topology for vehicle "
@@ -1944,7 +1951,6 @@ public class SnapshotUtil {
 				}
 			}
 			vehicle.restoreConnectorPersistenceState(connector, connectorPath,
-					toBool(vs.get("connectorFrontCleared")),
 					remainingCoordinates, toDouble(vs.get("connectorDistance")),
 					toDouble(vs.get("connectorNextDistance")),
 					toInt(vs.get("connectorSegmentIndex")),

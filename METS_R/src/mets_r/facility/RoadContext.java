@@ -851,7 +851,7 @@ public class RoadContext extends FacilityContext<Road> {
 		}
 	}
 
-	/** Release connector occupancy after the vehicle's rear clears the junction. */
+	/** Release connector occupancy when the vehicle leaves the connector segment. */
 	public void leaveConnector(ConnectorRoad connector, Vehicle vehicle) {
 		this.connectorTopologyLock.readLock().lock();
 		try {

@@ -674,7 +674,7 @@ public final class ConnectorRoad extends Road {
 	/**
 	 * A connector path shorter than the normal entry headway cannot safely hold
 	 * two vehicle fronts. Treat it as an atomic path: a following vehicle may
-	 * enter only after the prior vehicle's rear has released its admission.
+	 * enter after the prior vehicle leaves the connector segment.
 	 */
 	public boolean requiresClearPathAdmission(ConnectorPath path, double requiredGap) {
 		Lane connectorLane = this.getLane(path);
@@ -1001,7 +1001,7 @@ public final class ConnectorRoad extends Road {
 	}
 
 	/**
-	 * Whether another vehicle still occupies or reserves the selected path. This
+	 * Whether another vehicle still occupies the selected connector path. This
 	 * reads the live membership map directly so clearance lookahead does not need
 	 * to allocate a snapshot on the transition hot path.
 	 */

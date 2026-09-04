@@ -72,6 +72,7 @@ public class QueryMessageHandler extends MessageHandler {
 		messageHandlers.put("vehicle_route", this::getVehicleRoute);
         messageHandlers.put("onRoadVehicles", this::getOnRoadVehicles);
         messageHandlers.put("coSimVehicle", this::getCoSimVehicle);
+        messageHandlers.put("boundaryVehicle", this::queryBoundaryVeh);
         messageHandlers.put("taxi", this::getTaxi);
         messageHandlers.put("bus", this::getBus);
 
@@ -458,9 +459,7 @@ public class QueryMessageHandler extends MessageHandler {
 		}
 		for (ConnectorRoad connector : roadContext.getCoSimConnectorsSnapshot()) {
 			for (Vehicle vehicle : connector.getActiveVehiclesSnapshot()) {
-				// A newly controlled connector also transfers a native vehicle whose
-				// front is still inside it, even when that vehicle is macro-attached to
-				// a native target road. Rear-only connector reservations stay native.
+				// Only vehicles still on the connector belong to CoSim control.
 				// The vehicle-ID map deduplicates connector and physical-road scans.
 				if (vehicle.isOnConnector()) {
 					vehiclesByID.put(vehicle.getID(), vehicle);
@@ -470,11 +469,57 @@ public class QueryMessageHandler extends MessageHandler {
 
 		ArrayList<Object> jsonData = new ArrayList<Object>(vehiclesByID.size());
 		for (Vehicle vehicle : vehiclesByID.values()) {
-			appendCoSimVehicleRecord(jsonData, vehicle);
+			appendBridgeVehicleRecord(jsonData, vehicle);
 		}
 
 		jsonObj.put("data", jsonData);
 
+		return jsonObj;
+	}
+
+	/**
+	 * Native vehicles near the entry of physical roads immediately downstream
+	 * of CoSim-controlled connectors. The bridge can mirror these blockers
+	 * without taking control of them or recreating connector reservations.
+	 *
+	 * <p>No input data is required. Records use the same schema as coSimVehicle,
+	 * with the actual native road/lane and controlMode. Entry distance is measured
+	 * on the current lane and must be strictly less than 1.2 times vehicle length.
+	 */
+	public HashMap<String, Object> queryBoundaryVeh(JSONObject jsonMsg) {
+		LinkedHashMap<Integer, Road> boundaryRoads = new LinkedHashMap<Integer, Road>();
+		RoadContext roadContext = ContextCreator.getRoadContext();
+		for (ConnectorRoad connector : roadContext.getCoSimConnectorsSnapshot()) {
+			Road targetRoad = connector.getTargetRoad();
+			if (targetRoad != null && !(targetRoad instanceof ConnectorRoad)
+					&& targetRoad.getControlType() != Road.COSIM) {
+				boundaryRoads.put(targetRoad.getID(), targetRoad);
+			}
+		}
+
+		ArrayList<Object> jsonData = new ArrayList<Object>();
+		for (Road road : boundaryRoads.values()) {
+			Vehicle vehicle = road.firstVehicle();
+			while (vehicle != null) {
+				Vehicle nextVehicle = vehicle.macroTrailing();
+				Lane lane = vehicle.getLane();
+				if (vehicle.isOnRoad() && vehicle.getRoad() == road
+						&& !vehicle.isOnConnector() && lane != null && lane.getRoad() == road) {
+					double distanceToEnd = vehicle.getDistanceToNextJunction();
+					double distanceFromEntry = lane.getLength() - distanceToEnd;
+					double vehicleLength = vehicle.length();
+					if (Double.isFinite(distanceToEnd) && distanceToEnd >= 0.0
+							&& Double.isFinite(distanceFromEntry) && distanceFromEntry >= 0.0
+							&& Double.isFinite(vehicleLength) && vehicleLength > 0.0
+							&& distanceFromEntry < 1.2 * vehicleLength) {
+						appendBridgeVehicleRecord(jsonData, vehicle);
+					}
+				}
+				vehicle = nextVehicle;
+			}
+		}
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		jsonObj.put("data", jsonData);
 		return jsonObj;
 	}
 
@@ -496,7 +541,7 @@ public class QueryMessageHandler extends MessageHandler {
 		return jsonObj;
 	}
 
-	private void appendCoSimVehicleRecord(ArrayList<Object> jsonData, Vehicle vehicle) {
+	private void appendBridgeVehicleRecord(ArrayList<Object> jsonData, Vehicle vehicle) {
 		if (vehicle == null) return;
 		int bridgeVehicleID;
 		boolean privateVehicle;
@@ -684,7 +729,7 @@ public class QueryMessageHandler extends MessageHandler {
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
 		record.put("onConnector", vehicle.isOnConnector());
-		record.put("connectorOccupancyActive", vehicle.hasActiveConnectorReservation());
+		record.put("connectorOccupancyActive", vehicle.isOnConnector());
 		Road currentRoad = vehicle.isOnRoad() ? vehicle.getRoad() : null;
 		Road queuedRoad = vehicle.isOnRoad() ? null : findEnteringQueueRoad(vehicle);
 		int originRoadID = firstAvailableRoadID(vehicle.getOriginRoad(), vehicle.getLastDeparturableRoad(),

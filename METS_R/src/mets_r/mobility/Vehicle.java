@@ -179,10 +179,10 @@ public class Vehicle {
 	private int currentParkingRoad; // Road-backed parking spot, or -1 when not parked on a road
 	private Road road;
 	private Lane lane;
-	/* Connector identity remains active until the vehicle's rear clears the junction. */
+	/* Connector occupancy exists only while the vehicle is on that segment. */
 	private volatile ConnectorRoad currentConnector;
 	private volatile ConnectorRoad.ConnectorPath currentConnectorPath;
-	private volatile boolean connectorFrontCleared;
+	/* Used only when rebinding a vehicle within the same connector segment. */
 	private boolean preserveConnectorMembershipOnLaneDetach;
 	
 	private double prevDistance;
@@ -695,7 +695,6 @@ public class Vehicle {
 		if (enteringConnector != null) {
 			this.currentConnector = enteringConnector;
 			this.currentConnectorPath = enteringConnectorPath;
-			this.connectorFrontCleared = false;
 		}
 	    this.appendToLane(lane);
 	    this.appendToRoad(road);
@@ -1360,8 +1359,7 @@ public class Vehicle {
 		}
 		ConnectorRoad previousConnector = this.currentConnector;
 		boolean preservePreviousConnector = previousConnector != null
-				&& (observedSegment == previousConnector
-						|| observedSegment == previousConnector.getTargetRoad());
+				&& observedSegment == previousConnector;
 		this.clearShadowImpact();
 		if (previousConnector != null && !preservePreviousConnector) {
 			this.clearNativeConnectorMembership();
@@ -1401,7 +1399,6 @@ public class Vehicle {
 		if (targetConnector != null) {
 			this.currentConnector = targetConnector;
 			this.currentConnectorPath = observedConnectorPath;
-			this.connectorFrontCleared = false;
 			ContextCreator.getRoadContext()
 					.mirrorAuthoritativeConnectorVehicle(targetConnector, this);
 			ContextCreator.getRoadContext()
@@ -1419,9 +1416,6 @@ public class Vehicle {
 					this.assignNextLane();
 				}
 			}
-		}
-		if (targetConnector == null && preservePreviousConnector) {
-			this.updateNativeConnectorMembership();
 		}
 		return releasedFromCoSim;
 	}
@@ -1912,7 +1906,6 @@ public class Vehicle {
 	public boolean changeLane(Lane plane) {
 		if (plane == null || this.lane == null || this.road == null || plane == this.lane
 				|| this.isLaneChanging() || !this.onLane || !this.onRoad
-				|| this.hasActiveConnectorReservation()
 				|| this.road instanceof ConnectorRoad || this.road.getControlType() == Road.COSIM
 				|| plane.getRoad() != this.road
 				|| Math.abs(this.road.getLaneIndex(plane) - this.road.getLaneIndex(this.lane)) != 1) {
@@ -2387,8 +2380,7 @@ public class Vehicle {
 		if (this.lane == null) return;
 		boolean invalidDesiredSpeed = !Double.isFinite(this.desiredSpeed_)
 				|| this.desiredSpeed_ <= 0.0;
-		if (this.road instanceof ConnectorRoad
-				|| this.hasActiveConnectorReservation() || this.isLaneChanging()) {
+		if (this.road instanceof ConnectorRoad || this.isLaneChanging()) {
 			// Connector occupancy and an already active physical maneuver suppress new
 			// lane-changing decisions, but every vehicle still needs a valid target speed.
 			if (invalidDesiredSpeed) {
@@ -4058,18 +4050,14 @@ public class Vehicle {
 				return false;
 			}
 			this.coordMap.clear();
-			this.preserveConnectorMembershipOnLaneDetach = true;
-			try {
-				this.removeFromCurrentLane();
-				this.removeFromCurrentRoad();
-				this.distance_ = 0.0;
-				this.nextDistance_ = 0.0;
-				this.appendToLane(targetLane);
-				this.appendToRoad(targetRoad);
-			} finally {
-				this.preserveConnectorMembershipOnLaneDetach = false;
-			}
-			this.updateNativeConnectorMembership();
+			// Segment exit releases connector occupancy immediately. Rear overlap
+			// must not prevent lane changes on the receiving road.
+			this.removeFromCurrentLane();
+			this.removeFromCurrentRoad();
+			this.distance_ = 0.0;
+			this.nextDistance_ = 0.0;
+			this.appendToLane(targetLane);
+			this.appendToRoad(targetRoad);
 			return true;
 		}
 
@@ -4123,7 +4111,6 @@ public class Vehicle {
 			this.nextLane_ = targetLane;
 			this.currentConnector = connector;
 			this.currentConnectorPath = connectorPath;
-			this.connectorFrontCleared = false;
 			this.currentSpeed_ = Math.max(0.0, handoffSpeed);
 			ContextCreator.getRoadContext().updateConnectorVehicleState(connector, this);
 			transitioned = true;
@@ -4145,41 +4132,14 @@ public class Vehicle {
 	private void updateNativeConnectorMembership() {
 		ConnectorRoad connector = this.currentConnector;
 		if (connector == null) return;
-		if (this.onRoad && this.road == connector) {
-			if (this.currentConnectorPath == null
-					|| this.lane != connector.getLane(this.currentConnectorPath)
-					|| !Double.isFinite(this.distance_)) {
-				this.clearNativeConnectorMembership();
-				return;
-			}
-			this.connectorFrontCleared = false;
-			ContextCreator.getRoadContext().updateConnectorVehicleState(connector, this);
-			return;
-		}
-		if (!this.onRoad || this.road != connector.getTargetRoad()
-				|| this.lane == null || this.lane.getRoad() != this.road
+		if (!this.onRoad || this.road != connector
+				|| this.currentConnectorPath == null
+				|| this.lane != connector.getLane(this.currentConnectorPath)
 				|| !Double.isFinite(this.distance_)) {
 			this.clearNativeConnectorMembership();
 			return;
 		}
-
 		ContextCreator.getRoadContext().updateConnectorVehicleState(connector, this);
-		double laneLength = this.lane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0) {
-			this.clearNativeConnectorMembership();
-			return;
-		}
-		if (!this.connectorFrontCleared
-				&& this.distance_ <= laneLength + COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
-			this.connectorFrontCleared = true;
-		}
-		double rearClearDistance = Math.max(0.0,
-				laneLength - Math.max(0.0, this.length()) - 0.25);
-		if (this.connectorFrontCleared
-				&& this.distance_ <= rearClearDistance
-						+ COINCIDENT_WAYPOINT_TOLERANCE_METERS) {
-			this.clearNativeConnectorMembership();
-		}
 	}
 
 	private void clearNativeConnectorMembership() {
@@ -4191,7 +4151,6 @@ public class Vehicle {
 		ContextCreator.getRoadContext().leaveConnector(connector, this);
 		this.currentConnector = null;
 		this.currentConnectorPath = null;
-		this.connectorFrontCleared = false;
 	}
 
 	public ConnectorRoad getCurrentConnector() {
@@ -4202,27 +4161,15 @@ public class Vehicle {
 		return this.currentConnectorPath;
 	}
 
-	/**
-	 * True while the vehicle's front reference point is physically inside the
-	 * connector. Intersection occupancy may remain reserved briefly afterward
-	 * until the rear of the vehicle clears the junction.
-	 */
+	/** True only while the vehicle is attached to its connector segment. */
 	public boolean isOnConnector() {
-		return this.currentConnector != null
-				&& (this.road == this.currentConnector || !this.connectorFrontCleared);
-	}
-
-	public boolean hasActiveConnectorReservation() {
-		return this.currentConnector != null;
+		return this.onRoad && this.currentConnector != null
+				&& this.road == this.currentConnector;
 	}
 
 	public double getConnectorDistanceRemaining() {
 		if (!this.isOnConnector() || this.lane == null) return Double.NaN;
-		if (this.road == this.currentConnector) {
-			return Double.isFinite(this.distance_) ? Math.max(0.0, this.distance_) : Double.NaN;
-		}
-		double remaining = this.distance_ - this.lane.getLength();
-		return Double.isFinite(remaining) ? Math.max(0.0, remaining) : Double.NaN;
+		return Double.isFinite(this.distance_) ? Math.max(0.0, this.distance_) : Double.NaN;
 	}
 
 	/** Prefer exact connector-lane distance, with a geometry fallback for malformed state. */
@@ -4314,7 +4261,6 @@ public class Vehicle {
 	public static final class ConnectorPersistenceSnapshot {
 		private final ConnectorRoad connector;
 		private final ConnectorRoad.ConnectorPath connectorPath;
-		private final boolean frontCleared;
 		private final ArrayList<Coordinate> remainingCoordinates;
 		private final double distance;
 		private final double nextDistance;
@@ -4323,12 +4269,10 @@ public class Vehicle {
 
 		private ConnectorPersistenceSnapshot(ConnectorRoad connector,
 				ConnectorRoad.ConnectorPath connectorPath,
-				boolean frontCleared,
 				ArrayList<Coordinate> remainingCoordinates, double distance,
 				double nextDistance, int segmentIndex, double laneSlope) {
 			this.connector = connector;
 			this.connectorPath = connectorPath;
-			this.frontCleared = frontCleared;
 			this.remainingCoordinates = remainingCoordinates;
 			this.distance = distance;
 			this.nextDistance = nextDistance;
@@ -4338,7 +4282,6 @@ public class Vehicle {
 
 		public ConnectorRoad getConnector() { return this.connector; }
 		public ConnectorRoad.ConnectorPath getConnectorPath() { return this.connectorPath; }
-		public boolean isFrontCleared() { return this.frontCleared; }
 		public List<Coordinate> getRemainingCoordinates() {
 			return Collections.unmodifiableList(this.remainingCoordinates);
 		}
@@ -4351,7 +4294,7 @@ public class Vehicle {
 	/** Capture connector fields atomically with respect to road transitions. */
 	public synchronized ConnectorPersistenceSnapshot getConnectorPersistenceSnapshot() {
 		ConnectorRoad connector = this.currentConnector;
-		if (connector == null) return null;
+		if (!this.isOnConnector()) return null;
 		ConnectorRoad.ConnectorPath connectorPath = this.currentConnectorPath;
 		if (connectorPath == null || !connector.getPaths().contains(connectorPath)) {
 			throw new IllegalStateException("Vehicle " + this.getID()
@@ -4368,27 +4311,23 @@ public class Vehicle {
 			if (coordinate != null) remaining.add(new Coordinate(coordinate));
 		}
 		return new ConnectorPersistenceSnapshot(connector, connectorPath,
-				this.connectorFrontCleared, remaining, this.distance_, this.nextDistance_,
+				remaining, this.distance_, this.nextDistance_,
 				this.currentSegmentIdx_, this.currentLaneSlope_);
 	}
 
 	/**
-	 * Restore the physical path and reservation for a vehicle attached to its
-	 * saved connector lane, or whose front has entered the target lane while its
-	 * rear still occupies the connector. Normal
-	 * admission checks are bypassed because all occupants share one snapshot.
+	 * Restore the physical path and occupancy on the saved connector lane.
+	 * Normal admission checks are bypassed because all occupants share one snapshot.
 	 */
 	public synchronized void restoreConnectorPersistenceState(
 			ConnectorRoad connector, ConnectorRoad.ConnectorPath connectorPath,
-			boolean frontCleared,
 			List<Coordinate> remainingCoordinates, double restoredDistance,
 			double restoredNextDistance, int restoredSegmentIndex,
 			double restoredLaneSlope, Coordinate restoredPose,
 			double restoredBearing) {
 		boolean validAttachment = connector != null && connectorPath != null
 				&& isValidConnectorPersistenceAttachment(this.road, this.lane,
-						connector, connector.getLane(connectorPath),
-						connector.getTargetRoad(), frontCleared);
+						connector, connector.getLane(connectorPath));
 		if (connector == null || connectorPath == null || restoredPose == null
 				|| !validAttachment
 				|| !connector.getPaths().contains(connectorPath)
@@ -4415,7 +4354,6 @@ public class Vehicle {
 		if (this.coordMap.isEmpty()) this.coordMap.add(new Coordinate(restoredPose));
 		this.currentConnector = connector;
 		this.currentConnectorPath = connectorPath;
-		this.connectorFrontCleared = frontCleared;
 		this.onRoad = true;
 		this.onLane = true;
 
@@ -4424,7 +4362,6 @@ public class Vehicle {
 		} catch (RuntimeException ex) {
 			this.currentConnector = null;
 			this.currentConnectorPath = null;
-			this.connectorFrontCleared = false;
 			throw ex;
 		}
 		this.syncPreviousEpochCoord();
@@ -4465,10 +4402,10 @@ public class Vehicle {
 			return "Vehicle " + this.ID + " has a connector path without connector membership";
 		}
 		if (this.currentConnector != null
-				&& (this.currentConnector.getTargetRoad() != takeoverRoad
+				&& (this.currentConnector != takeoverRoad
 						|| this.currentConnectorPath == null
 						|| !this.currentConnector.getPaths().contains(this.currentConnectorPath)
-						|| this.currentConnectorPath.getTargetLane() != this.lane)) {
+						|| this.currentConnector.getLane(this.currentConnectorPath) != this.lane)) {
 			return "Vehicle " + this.ID + " has malformed native connector membership";
 		}
 		if (!this.onLane) {
@@ -4604,7 +4541,6 @@ public class Vehicle {
 		connector.teleportVehicle(this, mirroredLane, mirroredDistance);
 		this.currentConnector = connector;
 		this.currentConnectorPath = observedConnectorPath;
-		this.connectorFrontCleared = false;
 		this.nextRoad_ = connector.getTargetRoad();
 		this.nextLane_ = observedConnectorPath.getTargetLane();
 		this.setCurrentCoord(new Coordinate(authoritativePose));
@@ -4661,23 +4597,12 @@ public class Vehicle {
 		}
 	}
 
-	/**
-	 * Check the physical attachment represented by a persisted connector
-	 * reservation. Once the front has cleared the connector, an authoritative
-	 * observation may place the vehicle on a different lane of the same target
-	 * road. That is also accepted by {@link #updateNativeConnectorMembership()}.
-	 */
+	/** Connector state can only be restored on the connector's own lane. */
 	static boolean isValidConnectorPersistenceAttachment(
 			Road restoredRoad, Lane restoredLane, Road connectorRoad,
-			Lane connectorLane, Road connectorTargetRoad, boolean frontCleared) {
-		if (connectorRoad == null || connectorTargetRoad == null) return false;
-		boolean onConnector = restoredRoad == connectorRoad
-				&& restoredLane == connectorLane;
-		boolean clearingConnector = frontCleared
-				&& restoredRoad == connectorTargetRoad
-				&& restoredLane != null
-				&& restoredLane.getRoad() == connectorTargetRoad;
-		return onConnector || clearingConnector;
+			Lane connectorLane) {
+		return connectorRoad != null && connectorLane != null
+				&& restoredRoad == connectorRoad && restoredLane == connectorLane;
 	}
 
 	/**
@@ -4818,7 +4743,6 @@ public class Vehicle {
 		for (Coordinate coordinate : this.coordMap) {
 			previousCoordMap.add(new Coordinate(coordinate));
 		}
-		this.preserveConnectorMembershipOnLaneDetach = true;
 		try {
 			this.removeFromCurrentLane();
 			observedRoad.teleportVehicle(this, observedLane, projection.downstreamDistance);
@@ -4858,8 +4782,6 @@ public class Vehicle {
 				ex.addSuppressed(rollbackFailure);
 			}
 			throw ex;
-		} finally {
-			this.preserveConnectorMembershipOnLaneDetach = false;
 		}
 	}
 
