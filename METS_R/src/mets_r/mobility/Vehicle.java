@@ -4370,14 +4370,12 @@ public class Vehicle {
 			double restoredNextDistance, int restoredSegmentIndex,
 			double restoredLaneSlope, Coordinate restoredPose,
 			double restoredBearing) {
-		boolean onConnector = connector != null && connectorPath != null
-				&& this.road == connector
-				&& this.lane == connector.getLane(connectorPath);
-		boolean clearingConnector = connector != null && connectorPath != null
-				&& frontCleared && this.road == connector.getTargetRoad()
-				&& this.lane == connectorPath.getTargetLane();
+		boolean validAttachment = connector != null && connectorPath != null
+				&& isValidConnectorPersistenceAttachment(this.road, this.lane,
+						connector, connector.getLane(connectorPath),
+						connector.getTargetRoad(), frontCleared);
 		if (connector == null || connectorPath == null || restoredPose == null
-				|| (!onConnector && !clearingConnector)
+				|| !validAttachment
 				|| !connector.getPaths().contains(connectorPath)
 				|| connectorPath.getTargetLane() == null
 				|| connectorPath.getTargetLane().getRoad() != connector.getTargetRoad()
@@ -4646,6 +4644,25 @@ public class Vehicle {
 		} finally {
 			this.preserveConnectorMembershipOnLaneDetach = false;
 		}
+	}
+
+	/**
+	 * Check the physical attachment represented by a persisted connector
+	 * reservation. Once the front has cleared the connector, an authoritative
+	 * observation may place the vehicle on a different lane of the same target
+	 * road. That is also accepted by {@link #updateNativeConnectorMembership()}.
+	 */
+	static boolean isValidConnectorPersistenceAttachment(
+			Road restoredRoad, Lane restoredLane, Road connectorRoad,
+			Lane connectorLane, Road connectorTargetRoad, boolean frontCleared) {
+		if (connectorRoad == null || connectorTargetRoad == null) return false;
+		boolean onConnector = restoredRoad == connectorRoad
+				&& restoredLane == connectorLane;
+		boolean clearingConnector = frontCleared
+				&& restoredRoad == connectorTargetRoad
+				&& restoredLane != null
+				&& restoredLane.getRoad() == connectorTargetRoad;
+		return onConnector || clearingConnector;
 	}
 
 	/**
