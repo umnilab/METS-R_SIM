@@ -1322,7 +1322,6 @@ public class ControlMessageHandler extends MessageHandler {
 			return jsonAns;
 		}
 		ArrayList<Object> jsonData = new ArrayList<Object>();
-		int successCount = 0;
 		try {
 			Gson gson = new Gson();
 			TypeToken<Collection<InitializeCoSimVehRequest>> collectionType =
