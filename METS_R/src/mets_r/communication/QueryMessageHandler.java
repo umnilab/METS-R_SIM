@@ -729,7 +729,6 @@ public class QueryMessageHandler extends MessageHandler {
 	private void addVehicleRoadFields(HashMap<String, Object> record, Vehicle vehicle) {
 		record.put("onRoad", vehicle.isOnRoad());
 		record.put("onConnector", vehicle.isOnConnector());
-		record.put("connectorOccupancyActive", vehicle.isOnConnector());
 		Road currentRoad = vehicle.isOnRoad() ? vehicle.getRoad() : null;
 		Road queuedRoad = vehicle.isOnRoad() ? null : findEnteringQueueRoad(vehicle);
 		int originRoadID = firstAvailableRoadID(vehicle.getOriginRoad(), vehicle.getLastDeparturableRoad(),

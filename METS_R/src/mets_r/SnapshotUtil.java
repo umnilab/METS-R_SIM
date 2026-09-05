@@ -1540,6 +1540,15 @@ public class SnapshotUtil {
 			v.setDistToTravel(toDouble(vs.get("distToTravel")));
 
 			// Restore road path
+			// Restore connector routing only after its saved path is attached.
+			// Normal rerouting here can detach the vehicle and requeue it on the
+			// source road before restoreConnectorStates validates its attachment.
+			boolean restoringConnector = toBool(vs.get("connectorActive"))
+					&& v.getRoad() instanceof ConnectorRoad;
+			// A saved idle taxi deliberately has no successor, even if its last
+			// destination is elsewhere. Loading must not start a new trip for it.
+			boolean restoringDormantVehicle = v.isDormantOnRoad()
+					&& vs.containsKey("nextRoadID") && toInt(vs.get("nextRoadID")) == -1;
 			List<?> roadPathData = (List<?>) vs.get("roadPath");
 			if (roadPathData != null && !roadPathData.isEmpty()) {
 				ArrayList<Road> restoredPath = new ArrayList<>();
@@ -1556,15 +1565,17 @@ public class SnapshotUtil {
 				}
 				if (pathValid && !restoredPath.isEmpty()) {
 					v.setRoadPath(restoredPath);
-					if (restoredPath.size() >= 2) {
+					if (restoredPath.size() >= 2 && !restoringConnector && !restoringDormantVehicle) {
 						v.setNextRoadDirectly(restoredPath.get(1));
 						v.assignNextLane();
 					}
 					v.setShadowImpact();
-				} else if (v.isOnRoad() && destRoad != null) {
+				} else if (v.isOnRoad() && destRoad != null
+					&& !restoringConnector && !restoringDormantVehicle) {
 					v.rerouteAndSetNextRoad();
 				}
-			} else if (v.isOnRoad() && destRoad != null) {
+			} else if (v.isOnRoad() && destRoad != null
+					&& !restoringConnector && !restoringDormantVehicle) {
 				v.rerouteAndSetNextRoad();
 			}
 			restoreVehicleStuckState(v, vs);
@@ -1723,6 +1734,15 @@ public class SnapshotUtil {
 			v.setLinkTravelTime(toDouble(vs.get("linkTravelTime")));
 			v.setDistToTravel(toDouble(vs.get("distToTravel")));
 
+			// Restore connector routing only after its saved path is attached.
+			// Normal rerouting here can detach the vehicle and requeue it on the
+			// source road before restoreConnectorStates validates its attachment.
+			boolean restoringConnector = toBool(vs.get("connectorActive"))
+					&& v.getRoad() instanceof ConnectorRoad;
+			// A saved idle taxi deliberately has no successor, even if its last
+			// destination is elsewhere. Loading must not start a new trip for it.
+			boolean restoringDormantVehicle = v.isDormantOnRoad()
+					&& vs.containsKey("nextRoadID") && toInt(vs.get("nextRoadID")) == -1;
 			List<?> roadPathData = (List<?>) vs.get("roadPath");
 			if (roadPathData != null && !roadPathData.isEmpty()) {
 				ArrayList<Road> restoredPath = new ArrayList<>();
@@ -1739,15 +1759,17 @@ public class SnapshotUtil {
 				}
 				if (pathValid && !restoredPath.isEmpty()) {
 					v.setRoadPath(restoredPath);
-					if (restoredPath.size() >= 2) {
+					if (restoredPath.size() >= 2 && !restoringConnector && !restoringDormantVehicle) {
 						v.setNextRoadDirectly(restoredPath.get(1));
 						v.assignNextLane();
 					}
 					v.setShadowImpact();
-				} else if (v.isOnRoad() && destRoad != null) {
+				} else if (v.isOnRoad() && destRoad != null
+					&& !restoringConnector && !restoringDormantVehicle) {
 					v.rerouteAndSetNextRoad();
 				}
-			} else if (v.isOnRoad() && destRoad != null) {
+			} else if (v.isOnRoad() && destRoad != null
+					&& !restoringConnector && !restoringDormantVehicle) {
 				v.rerouteAndSetNextRoad();
 			}
 			restoreVehicleStuckState(v, vs);
@@ -1959,6 +1981,12 @@ public class SnapshotUtil {
 							toDouble(vs.get("coordY")),
 							vs.containsKey("coordZ") ? toDouble(vs.get("coordZ")) : 0.0),
 					toDouble(vs.get("bearing")));
+			// Occupancy and an active trip are independent: an idle native taxi
+			// can retain its connector path while waiting for a new assignment.
+			if (vs.containsKey("nextRoadID") && toInt(vs.get("nextRoadID")) == -1) {
+				vehicle.setNextRoadDirectly(null);
+				vehicle.assignNextLane();
+			}
 		}
 		roadContext.finishConnectorStateRestore();
 	}

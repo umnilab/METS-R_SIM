@@ -4354,6 +4354,8 @@ public class Vehicle {
 		if (this.coordMap.isEmpty()) this.coordMap.add(new Coordinate(restoredPose));
 		this.currentConnector = connector;
 		this.currentConnectorPath = connectorPath;
+		this.nextRoad_ = connector.getTargetRoad();
+		this.nextLane_ = connectorPath.getTargetLane();
 		this.onRoad = true;
 		this.onLane = true;
 
