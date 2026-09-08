@@ -45,7 +45,6 @@ import mets_r.communication.MessageClass.RouteNameZonesRoadsPath;
 import mets_r.communication.MessageClass.VehIDOrigDestNum;
 import mets_r.communication.MessageClass.VehIDOrigRoadDestRoadNum;
 import mets_r.communication.MessageClass.VehIDReqID;
-import mets_r.communication.MessageClass.VehIDZoneID;
 import mets_r.communication.MessageClass.VehIDZoneRoad;
 import mets_r.communication.MessageClass.VehIDVehType;
 import mets_r.communication.MessageClass.VehIDVehTypeAcc;
@@ -2575,19 +2574,23 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	/**
-	* Reposition a taxi to a destination zone.
+	* Reposition a taxi to a destination zone or road.
 	*
-	* <p>Input DATA: list of {@code {vehicleId, zoneId}}. The taxi must
+	* <p>Input DATA: list of {@code {vehicleId, zoneId?, roadId?}}. Road IDs
+	* may be original IDs or internal IDs. If {@code roadId} is omitted, a
+	* destination road is sampled from the zone. If {@code zoneId} is omitted,
+	* it is inferred from the road. When both are supplied, the road must
+	* belong to the zone. The taxi must
 	* currently be idle (state {@code PARKING}, {@code CRUISING_TRIP}, or
 	* {@code NONE_OF_THE_ABOVE}) or already traveling to a reserved parking
 	* road; it is removed from its current zone's available pool / parking
-	* stock and dispatched on an {@code INACCESSIBLE_RELOCATION_TRIP} to a road sampled from the
-	* destination zone. On arrival, {@code reachDest} either parks/cruises
+	* stock and dispatched on an {@code INACCESSIBLE_RELOCATION_TRIP} to the
+	* destination road. On arrival, {@code reachDest} either parks/cruises
 	* normally or, when repositioning is API-controlled, leaves the taxi
 	* idle in state {@code NONE_OF_THE_ABOVE}.
 	*
-	* <p>Output DATA: list of {@code {ID: vehicleId, zoneId, origZone, STATUS,
-	* WARN?}} entries.
+	* <p>Output DATA: list of {@code {vehicleId, zoneId, roadId, originZoneId,
+	* status, parkingReservationReleased?}} entries, with original road IDs.
 	*/
 	private HashMap<String, Object> repositionTaxi(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2598,14 +2601,15 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 		try {
 			Gson gson = new Gson();
-			TypeToken<Collection<VehIDZoneID>> collectionType = new TypeToken<Collection<VehIDZoneID>>() {};
-			Collection<VehIDZoneID> entries = gson.fromJson(jsonMsg.get("data").toString(), collectionType.getType());
+			TypeToken<Collection<VehIDZoneRoad>> collectionType = new TypeToken<Collection<VehIDZoneRoad>>() {};
+			Collection<VehIDZoneRoad> entries = gson.fromJson(jsonMsg.get("data").toString(), collectionType.getType());
 			ArrayList<Object> jsonData = new ArrayList<Object>();
 
-			for(VehIDZoneID entry: entries) {
+			for(VehIDZoneRoad entry: entries) {
 				HashMap<String, Object> record = new HashMap<String, Object>();
 				record.put("vehicleId", entry.vehicleId);
 				record.put("zoneId", entry.zoneId);
+				if (entry.roadId != null) record.put("roadId", entry.roadId);
 
 				ElectricTaxi veh = (ElectricTaxi) ContextCreator.getVehicleContext().getPublicVehicle(entry.vehicleId);
 				if (veh == null) {
@@ -2616,15 +2620,38 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				Zone destZone = ContextCreator.getZoneContext().get(entry.zoneId);
-				if (destZone == null) {
+				Zone destZone = entry.zoneId == null ? null : ContextCreator.getZoneContext().get(entry.zoneId);
+				Road destRoad = entry.roadId == null ? null : findRoadByOrigOrInternalID(entry.roadId);
+				if (entry.zoneId != null && destZone == null) {
 					ContextCreator.logger.warn("repositionTaxi: destination zone " + entry.zoneId + " not found");
 					record.put("status", "error");
 					record.put("message", "destination zone not found");
 					jsonData.add(record);
 					continue;
 				}
-				if (destZone.getClosestRoad(true) == null) {
+				if (entry.roadId != null && destRoad == null) {
+					record.put("status", "error");
+					record.put("message", "destination road not found");
+					jsonData.add(record);
+					continue;
+				}
+				if (destZone == null && destRoad != null) {
+					destZone = parkingZoneForRoad(destRoad);
+				}
+				if (destZone == null) {
+					record.put("status", "error");
+					record.put("message", "destination zone is required or must be inferable from road");
+					jsonData.add(record);
+					continue;
+				}
+				record.put("zoneId", destZone.getID());
+				if (destRoad != null && !roadBelongsToZone(destRoad, destZone)) {
+					record.put("status", "error");
+					record.put("message", "destination road does not belong to destination zone");
+					jsonData.add(record);
+					continue;
+				}
+				if (destRoad == null && destZone.getClosestRoad(true) == null) {
 					ContextCreator.logger.warn("repositionTaxi: destination zone " + entry.zoneId + " has no road assigned yet");
 					record.put("status", "error");
 					record.put("message", "destination zone has no road");
@@ -2646,6 +2673,17 @@ public class ControlMessageHandler extends MessageHandler {
 				int curZoneID = veh.getCurrentZone();
 				Zone origZone = ContextCreator.getZoneContext().get(curZoneID);
 
+				if (destRoad == null) {
+					destRoad = ContextCreator.getRoadContext().get(destZone.sampleRoad(true));
+				}
+				if (destRoad == null || !destRoad.canBeTripDestination()) {
+					record.put("status", "error");
+					record.put("message", "destination road cannot be used as a relocation destination");
+					jsonData.add(record);
+					continue;
+				}
+				record.put("roadId", destRoad.getOrigID());
+
 				removeTaxiFromDispatchPools(veh);
 				boolean releasedParkingReservation = false;
 				if (state == Vehicle.PARKING) {
@@ -2659,7 +2697,7 @@ public class ControlMessageHandler extends MessageHandler {
 
 				// ElectricTaxi.relocation handles stopCruising if needed and
 				// enters INACCESSIBLE_RELOCATION_TRIP state.
-				veh.relocation(destZone.getID(), destZone.sampleRoad(true));
+				veh.relocation(destZone.getID(), destRoad.getID());
 
 				record.put("originZoneId", curZoneID);
 				if (releasedParkingReservation) {

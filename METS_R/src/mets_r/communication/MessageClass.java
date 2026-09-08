@@ -223,7 +223,7 @@ public class MessageClass{
         }
     }
 
-    // For repositionTaxi: send an idle/cruising taxi to a destination zone.
+    // Vehicle and zone pair.
     class VehIDZoneID{
 	int vehicleId;
 	int zoneId;
@@ -234,7 +234,7 @@ public class MessageClass{
 	}
     }
 
-    // For goParking: send an idle taxi to park on a target zone/road.
+    // For repositionTaxi and goParking: send an idle taxi to a target zone/road.
     class VehIDZoneRoad{
         int vehicleId;
         Integer zoneId;
