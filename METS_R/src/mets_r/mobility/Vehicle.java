@@ -4452,19 +4452,20 @@ public class Vehicle {
 
 	/**
 	 * Rebind METS-R's mirrored membership to an externally authoritative COSIM
-	 * observation. Previous route and connector state are deliberately not used
-	 * as admission criteria. Geometry supplies only the lane/path and linked-list
-	 * distance needed by METS-R bookkeeping; the supplied pose, bearing, and speed
-	 * are retained exactly.
+	 * observation without projecting or validating its geometry. A null segment
+	 * retains current membership. Explicit lane/path selections are bookkeeping;
+	 * native lane distance and geometry are rebuilt only at handoff. The supplied
+	 * pose, bearing, and speed are retained exactly.
 	 *
 	 * @return true after the observation has been mirrored
 	 */
 	public synchronized boolean synchronizeAuthoritativeCoSimObservation(
 			Road observedSegment, Lane observedLane,
 			ConnectorRoad.ConnectorPath observedConnectorPath,
-			double projectedDownstreamDistance, Coordinate authoritativePose,
+			Coordinate authoritativePose,
 			double authoritativeBearing, double authoritativeSpeed) {
-		if (observedSegment == null || observedSegment.getControlType() != Road.COSIM) {
+		Road targetSegment = observedSegment == null ? this.road : observedSegment;
+		if (targetSegment == null || targetSegment.getControlType() != Road.COSIM) {
 			throw new IllegalArgumentException(
 					"Authoritative observation requires a controlled COSIM segment");
 		}
@@ -4477,9 +4478,10 @@ public class Vehicle {
 			throw new IllegalArgumentException(
 					"Authoritative observation requires a finite pose, bearing, and non-negative speed");
 		}
-		if (!Double.isFinite(projectedDownstreamDistance)) {
-			throw new IllegalArgumentException(
-					"Authoritative observation has no finite segment projection");
+		if (observedSegment == null) {
+			this.applyAuthoritativeCoSimPose(authoritativePose, authoritativeBearing,
+					authoritativeSpeed);
+			return true;
 		}
 
 		ConnectorRoad connector = observedSegment instanceof ConnectorRoad
@@ -4510,14 +4512,14 @@ public class Vehicle {
 			}
 		}
 
-		double laneLength = mirroredLane.getLength();
-		if (!Double.isFinite(laneLength) || laneLength < 0.0
-				|| mirroredLane.getCoords() == null || mirroredLane.getCoords().size() < 2) {
-			throw new IllegalArgumentException(
-					"Authoritative segment has no usable target-lane geometry");
+		boolean membershipChanged = this.road != observedSegment || this.lane != mirroredLane
+				|| !this.onRoad || !this.onLane || this.currentConnector != connector
+				|| this.currentConnectorPath != observedConnectorPath;
+		if (!membershipChanged) {
+			this.applyAuthoritativeCoSimPose(authoritativePose, authoritativeBearing,
+					authoritativeSpeed);
+			return true;
 		}
-		double mirroredDistance = Math.max(0.0,
-				Math.min(laneLength, projectedDownstreamDistance));
 
 		// CARLA owns the route while this API is active. Remove every retained
 		// route/connector assertion before rebuilding current membership.
@@ -4528,11 +4530,31 @@ public class Vehicle {
 		this.removeFromCurrentLane();
 		this.removeFromCurrentRoad();
 		ContextCreator.getRoadContext().removeVehicleFromEnteringQueues(this);
+		// Distance is only a stable list-ordering placeholder during COSIM.
+		// Native handoff projects the pose afresh onto its explicit target.
+		this.distance_ = 0.0;
+		this.appendToRoadForTeleport(observedSegment);
+		this.insertToLane(mirroredLane);
+		this.advanceInMacroList();
+		this.retreatInMacroList();
+		this.currentConnector = connector;
+		this.currentConnectorPath = observedConnectorPath;
+		this.applyAuthoritativeCoSimPose(authoritativePose, authoritativeBearing,
+				authoritativeSpeed);
+		if (connector != null) {
+			ContextCreator.getRoadContext().mirrorAuthoritativeConnectorVehicle(connector, this);
+			ContextCreator.getRoadContext().updateConnectorVehicleState(connector, this);
+		}
+		return true;
+	}
+
+	private void applyAuthoritativeCoSimPose(Coordinate pose, double bearing, double speed) {
+		this.clearShadowImpact();
 		this.roadPath = null;
-		this.nextRoad_ = null;
-		this.nextLane_ = null;
+		this.nextRoad_ = this.currentConnector == null ? null : this.currentConnector.getTargetRoad();
+		this.nextLane_ = this.currentConnectorPath == null ? null : this.currentConnectorPath.getTargetLane();
 		this.Nshadow = 0;
-		this.futureRoutingRoad = new ArrayList<Road>();
+		this.futureRoutingRoad.clear();
 		this.distToTravel_ = 0.0;
 		this.distToTravelReferenceDistance_ = 0.0;
 		this.atOrigin = false;
@@ -4542,31 +4564,15 @@ public class Vehicle {
 		this.accDecided_ = false;
 		this.hasAccelerationPlan_ = false;
 		this.resetLaneChangeRuntimeState();
-
-		if (connector == null) {
-			observedSegment.teleportVehicle(this, mirroredLane, mirroredDistance);
-			this.setCurrentCoord(new Coordinate(authoritativePose));
-			this.setPreviousEpochCoord(authoritativePose);
-			this.bearing_ = authoritativeBearing;
-			this.currentSpeed_ = authoritativeSpeed;
-			return true;
-		}
-
-		connector.teleportVehicle(this, mirroredLane, mirroredDistance);
-		this.currentConnector = connector;
-		this.currentConnectorPath = observedConnectorPath;
-		this.nextRoad_ = connector.getTargetRoad();
-		this.nextLane_ = observedConnectorPath.getTargetLane();
-		this.setCurrentCoord(new Coordinate(authoritativePose));
-		this.setPreviousEpochCoord(authoritativePose);
-		this.bearing_ = authoritativeBearing;
-		this.currentSpeed_ = authoritativeSpeed;
-
-		ContextCreator.getRoadContext()
-				.mirrorAuthoritativeConnectorVehicle(connector, this);
-		ContextCreator.getRoadContext()
-				.updateConnectorVehicleState(connector, this);
-		return true;
+		this.coordMap.clear();
+		this.coordMap.add(new Coordinate(pose));
+		this.nextDistance_ = 0.0;
+		this.currentSegmentIdx_ = 0;
+		this.currentLaneSlope_ = 0.0;
+		this.bearing_ = bearing;
+		this.currentSpeed_ = speed;
+		this.setPreviousEpochCoord(pose);
+		this.setCurrentCoord(pose);
 	}
 
 	/**

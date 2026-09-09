@@ -368,15 +368,6 @@ final class CoSimMapMatcher {
 			this.score = score;
 		}
 
-		boolean hasGeometryDiscrepancy() {
-			return !Double.isFinite(this.lateralDistanceMeters)
-					|| this.lateralDistanceMeters > lateralToleranceMeters()
-					|| !Double.isFinite(this.headingErrorDegrees)
-					|| this.headingErrorDegrees > MAX_HEADING_ERROR_DEGREES
-					|| !Double.isFinite(this.endpointOvershootMeters)
-					|| this.endpointOvershootMeters > ENDPOINT_TOLERANCE_METERS;
-		}
-
 		boolean isConnector() {
 			return this.segment instanceof ConnectorRoad;
 		}
