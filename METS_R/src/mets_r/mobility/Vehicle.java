@@ -2098,6 +2098,18 @@ public class Vehicle {
 		if (this.coordMap.isEmpty()) this.coordMap.add(targetLane.getEndCoord());
 		this.currentSegmentIdx_ = position.segmentIndex;
 		this.currentLaneSlope_ = targetLane.getSegmentSlope(position.segmentIndex);
+		// A completed lane change can land exactly at the lane endpoint. Its
+		// remaining coordMap then contains only that coincident point, so seed
+		// the full lane's tangent before the forward-waypoint update. Otherwise
+		// the final lateral displacement is retained as a sideways body heading.
+		double[] tangent = new double[2];
+		double tangentLength = this.distance2(
+				geometry.coordinateAt(position.segmentIndex),
+				geometry.coordinateAt(position.segmentIndex + 1), tangent);
+		if (tangentLength > COINCIDENT_WAYPOINT_TOLERANCE_METERS
+				&& Double.isFinite(tangent[1])) {
+			this.bearing_ = tangent[1];
+		}
 		this.updateBearingAndNextDistanceToCoordMap(targetLane);
 	}
 
