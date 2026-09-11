@@ -992,6 +992,12 @@ public final class ConnectorRoad extends Road {
 	void clearRuntimeState() {
 		this.activeVehicles.clear();
 		this.vehicleStates.clear();
+		this.lastTravelTimeLazyReadTick = Integer.MIN_VALUE;
+		// Connector lanes are owned here, outside LaneContext. Drop their old
+		// vehicle lists before snapshot restoration attaches the new vehicles.
+		for (Lane lane : this.getLanes()) {
+			lane.restoreRuntimeState(lane.getSpeed(), null);
+		}
 	}
 
 	public List<Vehicle> getActiveVehiclesSnapshot() {

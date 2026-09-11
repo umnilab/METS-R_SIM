@@ -927,6 +927,7 @@ public class SnapshotUtil {
 		if (snapshot == null) {
 			throw new IllegalArgumentException("Cannot restore a null simulation snapshot");
 		}
+		ContextCreator.getCityContext().resetConnectorTravelTimeRefresh();
 		if (ContextCreator.getRoadContext() != null) {
 			ContextCreator.getRoadContext().resetConnectorRuntimeState();
 		}

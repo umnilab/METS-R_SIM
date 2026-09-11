@@ -1275,6 +1275,11 @@ public class CityContext extends DefaultContext<Object> {
 		}
 	}
 
+	/** Allow the first connector refresh after restoring a previous logical tick. */
+	public void resetConnectorTravelTimeRefresh() {
+		this.lastConnectorTravelTimeRefreshTick = Integer.MIN_VALUE;
+	}
+
 	private boolean connectorTravelTimeRefreshDue(int currentTick) {
 		int refreshInterval = GlobalVariables.SIMULATION_CONNECTOR_TRAVEL_TIME_REFRESH_INTERVAL;
 		if (this.lastConnectorTravelTimeRefreshTick != Integer.MIN_VALUE
