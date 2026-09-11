@@ -78,7 +78,7 @@ public class Road {
 	/* Incremented on every macro-list membership change for sparse link output. */
 	private AtomicInteger vehicleCountStateVersion;
 	private int previousVehicleCountStateVersion;
-	private volatile int parking_capacity; // Maximum number of parked vehicles this road provides
+	private volatile int parking_capacity; // Maximum parked vehicles; -1 means unlimited
 	private boolean parkingCapacityExplicitlySet;
 	private AtomicInteger parked_num; // Number of vehicles currently parked on this road
 	private volatile boolean parkingStateDirty;
@@ -807,9 +807,10 @@ public class Road {
 		return this.parking_capacity;
 	}
 
+	/** Set the parking limit: -1 is unlimited, 0 disables parking. */
 	public synchronized void setParkingCapacity(int parkingCapacity) {
 		this.parkingCapacityExplicitlySet = true;
-		int newCapacity = Math.max(0, parkingCapacity);
+		int newCapacity = parkingCapacity == -1 ? -1 : Math.max(0, parkingCapacity);
 		if (this.parking_capacity != newCapacity) {
 			this.parking_capacity = newCapacity;
 			this.markParkingStateChanged();
@@ -847,13 +848,15 @@ public class Road {
 	}
 
 	public boolean hasParkingSpace() {
-		return this.parked_num.get() < this.parking_capacity;
+		int capacity = this.parking_capacity;
+		return capacity == -1 || this.parked_num.get() < capacity;
 	}
 
 	public boolean tryAddParkedVehicle() {
 		while (true) {
 			int currentParked = this.parked_num.get();
-			if (currentParked >= this.parking_capacity) return false;
+			int capacity = this.parking_capacity;
+			if (capacity != -1 && currentParked >= capacity) return false;
 			if (this.parked_num.compareAndSet(currentParked, currentParked + 1)) {
 				this.markParkingStateChanged();
 				return true;
@@ -949,7 +952,7 @@ public class Road {
 		this.totalFlow = restoredTotalFlow;
 		this.prevFlow = restoredPrevFlow;
 		this.controlType = restoredControlType;
-		this.parking_capacity = Math.max(0, restoredParkingCapacity);
+		this.parking_capacity = restoredParkingCapacity == -1 ? -1 : Math.max(0, restoredParkingCapacity);
 		this.parkingCapacityExplicitlySet = true;
 		this.parked_num.set(Math.max(0, restoredParkedNum));
 		this.prevParkingCapacity = this.parking_capacity;

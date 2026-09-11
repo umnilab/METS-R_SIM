@@ -122,14 +122,14 @@ public class ElectricTaxi extends ElectricVehicle {
 				&& this.getCurrentParkingRoad() < 0) {
 			return true;
 		}
-		if (targetZone.getCapacity() <= 0) {
+		if (!targetZone.hasParkingSpace()) {
 			return false;
 		}
 		Road targetRoad = ContextCreator.getRoadContext().get(targetZone.getClosestRoad(true));
 		if (targetRoad == null || !targetRoad.canBeTripDestination()) {
 			return false;
 		}
-		targetZone.addOneParkingVehicle();
+		if (!targetZone.tryAddParkingVehicle()) return false;
 		if (!this.dispatchToReservedParking(targetZone, targetRoad, RESERVED_ZONE_PARKING)) {
 			targetZone.removeOneParkingVehicle();
 			return false;
@@ -186,7 +186,7 @@ public class ElectricTaxi extends ElectricVehicle {
 		Zone bestZone = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (Zone zone : ContextCreator.getZoneContext().getAll()) {
-			if (zone == null || zone.getCapacity() <= 0 || zone.getClosestRoad(true) == null
+			if (zone == null || !zone.hasParkingSpace() || zone.getClosestRoad(true) == null
 					|| zone.getCoord() == null || this.getCurrentCoord() == null) {
 				continue;
 			}
@@ -640,8 +640,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					}
 					else { 
 						// join the current zone
-						if(z.getCapacity() > 0) { // Has capacity
-							z.addOneParkingVehicle();
+						if(z.tryAddParkingVehicle()) { // Reserve parking
 							this.getParked(z);
 					    }
 		                else {
@@ -703,8 +702,7 @@ public class ElectricTaxi extends ElectricVehicle {
 				}
 				else {
 					if(this.cruisingTime_ <= GlobalVariables.SIMULATION_RH_MAX_CRUISING_TIME) {
-						if(z.getCapacity() > 0) { // Has capacity
-		                	z.addOneParkingVehicle();
+						if(z.tryAddParkingVehicle()) { // Reserve parking
 		                	this.cruisingTime_ = 0;
 		    				this.getParked(z);
 					    }
@@ -758,8 +756,7 @@ public class ElectricTaxi extends ElectricVehicle {
 					this.becomeAvailableForExternalControl(z);
 				}
 				else { // join the current zone
-					if(z.getCapacity() > 0) { // Has capacity
-	                	z.addOneParkingVehicle();
+					if(z.tryAddParkingVehicle()) { // Reserve parking
 	    				this.getParked(z);
 				    }
 	                else {

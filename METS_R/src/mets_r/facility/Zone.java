@@ -43,7 +43,7 @@ public class Zone {
 	
 	/* Private variables */
 	private int zoneType; // 0 for normal zone, 1 for hub
-	private int capacity; // parking space in this zone
+	private int capacity; // total parking spaces; -1 means unlimited
 	private int cachedCapacity; // snapshot for deterministic parallel reads
 	private int nRequestForTaxi; // number of requests for Taxi
 	private int nRequestForBus; // number of requests for Bus
@@ -137,11 +137,8 @@ public class Zone {
 		rand_diffusion_only = new Random(rand.nextInt());
 		rand_relocate_only = new Random(rand.nextInt());
 		this.ID = ID;
-		if(capacity < 0) { // By default, infinite capacity
-			this.capacity = GlobalVariables.NUM_OF_EV;
-		}else {
-			this.capacity = capacity;
-		}
+		// Unlimited parking must also support taxis added after initialization.
+		this.capacity = capacity < 0 ? -1 : capacity;
 		this.cachedCapacity = this.capacity;
 		this.sharableRequestForTaxi = new TreeMap<Integer, Queue<Request>>();
 		this.requestInQueueForBus = new LinkedList<Request>();
@@ -786,7 +783,7 @@ public class Zone {
 			this.lastDemandUpdateHour = this.publicTripTimeIndex;
 		}
 		
-		this.cachedCapacity = this.capacity - this.parkingVehicleStock.get();
+		this.cachedCapacity = this.getRemainingParkingCapacity();
 	}
 
 	// Serve passenger
@@ -1138,7 +1135,7 @@ public class Zone {
 			if (v.getState() != Vehicle.CRUISING_TRIP) continue;
 			
 			for (int z : this.neighboringZones) {
-				if (ContextCreator.getZoneContext().get(z).getCapacity() > 0) {
+				if (ContextCreator.getZoneContext().get(z).hasParkingSpace()) {
 					ContextCreator.getVehicleContext().removeAvailableTaxi(v, this.getID());
 					ContextCreator.getZoneContext().get(z).addFutureSupply();
 					v.addPlan(z, ContextCreator.getZoneContext().get(z).getClosestRoad(true),
@@ -1190,13 +1187,25 @@ public class Zone {
 	public void addOneParkingVehicle() {
 		this.parkingVehicleStock.addAndGet(1);
 	}
+
+	/** Reserve against live occupancy, including other reservations in this tick. */
+	public boolean tryAddParkingVehicle() {
+		while (true) {
+			int parked = this.parkingVehicleStock.get();
+			if (this.capacity != -1 && parked >= this.capacity) return false;
+			if (this.parkingVehicleStock.compareAndSet(parked, parked + 1)) return true;
+		}
+	}
 	
 	public void removeOneParkingVehicle() {
-		if (this.parkingVehicleStock.get() - 1 < 0) {
-			ContextCreator.logger.error(this.ID + " out of stock, vehicle_num: " + this.parkingVehicleStock.get());
-			return;
+		while (true) {
+			int parked = this.parkingVehicleStock.get();
+			if (parked <= 0) {
+				ContextCreator.logger.error(this.ID + " out of stock, vehicle_num: " + parked);
+				return;
+			}
+			if (this.parkingVehicleStock.compareAndSet(parked, parked - 1)) return;
 		}
-		this.addParkingVehicleStock(-1);
 	}
 
 	public int getVehicleStock() {
@@ -1248,7 +1257,7 @@ public class Zone {
 		for (Request request : this.toAddRequestForTaxi) unregisterPendingTaxiRequest(request);
 		this.nRequestForTaxi = 0;
 		this.nRequestForBus = 0;
-		this.parkingVehicleStock.set(0);
+		this.setParkingVehicleStock(0);
 		this.publicTripTimeIndex = -1;
 		this.privateTripTimeIndex = 0;
 		this.invalidateModeSplitCache();
@@ -1340,8 +1349,18 @@ public class Zone {
 		return ID;
 	}
 
+	/** Remaining spaces at the last supply refresh; -1 means unlimited. */
 	public int getCapacity() {
 		return this.cachedCapacity;
+	}
+
+	/** Live remaining spaces for parking admission and API responses. */
+	public int getRemainingParkingCapacity() {
+		return this.capacity == -1 ? -1 : Math.max(0, this.capacity - this.parkingVehicleStock.get());
+	}
+
+	public boolean hasParkingSpace() {
+		return this.capacity == -1 || this.parkingVehicleStock.get() < this.capacity;
 	}
 	
 	public void addNeighboringZone(int z) {
@@ -1454,7 +1473,10 @@ public class Zone {
 	}
 
 	public int getParkingVehicleStock() { return this.parkingVehicleStock.get(); }
-	public void setParkingVehicleStock(int v) { this.parkingVehicleStock.set(v); }
+	public void setParkingVehicleStock(int v) {
+		this.parkingVehicleStock.set(Math.max(0, v));
+		this.cachedCapacity = this.getRemainingParkingCapacity();
+	}
 	public Queue<Request> getTaxiRequestQueue() { return this.requestInQueueForTaxi; }
 	public Queue<Request> getBusRequestQueue() { return this.requestInQueueForBus; }
 	public Map<Integer, Queue<Request>> getSharableRequestForTaxi() { return this.sharableRequestForTaxi; }

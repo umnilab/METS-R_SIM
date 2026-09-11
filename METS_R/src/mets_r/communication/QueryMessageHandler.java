@@ -2222,7 +2222,7 @@ public class QueryMessageHandler extends MessageHandler {
 					HashMap<String, Object> record2 = new HashMap<String, Object>();
 					record2.put("zoneId", zone.getID());
 					record2.put("zoneType", zone.getZoneType());
-					record2.put("capacity", zone.getCapacity());
+					record2.put("capacity", zone.getRemainingParkingCapacity());
 					record2.put("taxiDemand", zone.getTaxiRequestNum());
 					record2.put("busDemand", zone.getBusRequestNum());
 					record2.put("vehicleStock", zone.getVehicleStock());

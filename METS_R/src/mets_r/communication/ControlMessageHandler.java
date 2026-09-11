@@ -2708,7 +2708,9 @@ public class ControlMessageHandler extends MessageHandler {
 	* {@code roadId} is omitted, zone parking is reserved and the taxi routes to
 	* the zone's closest destination road. If {@code zoneId} is omitted, it is
 	* inferred from the target road. When both are supplied, the road must
-	* belong to the zone.
+	* belong to the zone. Explicit road parking uses the road's own capacity,
+	* independently of zone parking. A capacity of -1 means unlimited for either
+	* kind of parking; finite zone capacity in the response is the live remaining space.
 	*/
 	private HashMap<String, Object> goParking(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2832,8 +2834,8 @@ public class ControlMessageHandler extends MessageHandler {
 					jsonData.add(record);
 					continue;
 				}
-				if (!alreadyParkedThere && !roadSpecified && targetZone.getCapacity() <= 0) {
-					record.put("parkingCapacity", targetZone.getCapacity());
+				if (!alreadyParkedThere && !roadSpecified && !targetZone.hasParkingSpace()) {
+					record.put("parkingCapacity", targetZone.getRemainingParkingCapacity());
 					record.put("status", "error");
 					record.put("message", "target zone has no parking capacity");
 					jsonData.add(record);
@@ -2847,7 +2849,7 @@ public class ControlMessageHandler extends MessageHandler {
 						record.put("parkingCapacity", targetRoad.getParkingCapacity());
 						record.put("parkedVehicleCount", targetRoad.getParkedNum());
 					} else {
-						record.put("parkingCapacity", targetZone.getCapacity());
+						record.put("parkingCapacity", targetZone.getRemainingParkingCapacity());
 					}
 					record.put("status", "error");
 					record.put("message", roadSpecified ? "target road has no parking capacity"
@@ -2856,7 +2858,7 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				record.put("parkingCapacity", roadSpecified ? targetRoad.getParkingCapacity() : targetZone.getCapacity());
+				record.put("parkingCapacity", roadSpecified ? targetRoad.getParkingCapacity() : targetZone.getRemainingParkingCapacity());
 				if (roadSpecified) {
 					record.put("parkedVehicleCount", targetRoad.getParkedNum());
 				}
@@ -4613,6 +4615,7 @@ public class ControlMessageHandler extends MessageHandler {
 	* <p>Input DATA: list of {@code {roadId, parking_capacity}}. Aliases
 	* {@code origID}, {@code orig_id}, {@code ID}, {@code parkingCapacity},
 	* and {@code capacity} are accepted.
+	* A capacity of -1 means unlimited parking; 0 disables parking.
 	*/
 	private HashMap<String, Object> updateRoadParkingCapacity(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();

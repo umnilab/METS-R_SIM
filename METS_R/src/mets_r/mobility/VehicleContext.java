@@ -123,15 +123,16 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		// Generate the vehicles in other zones
 		int num_total = vehicle_num;
 		// Distribute by the capacity of the Zone
-		int park_total = 0;
+		long park_total = 0;
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
-			park_total += z.getCapacity();
+			park_total += initialTaxiParkingCapacity(z, vehicle_num);
 		}
 		for (Zone z : ContextCreator.getZoneContext().getAll()) {
 			TreeSet<ElectricTaxi> tmpQueue = new TreeSet<ElectricTaxi>(TAXI_ID_ORDER);
-			if(z.getCapacity()>0) {
-				int vehicle_num_to_generate = (int) Math.ceil(num_total * z.getCapacity()/(park_total + 0.001));
-				vehicle_num_to_generate = vehicle_num_to_generate <= z.getCapacity()? vehicle_num_to_generate: z.getCapacity();
+			int parkingCapacity = initialTaxiParkingCapacity(z, vehicle_num);
+			if(parkingCapacity > 0) {
+				int vehicle_num_to_generate = (int) Math.ceil(num_total * (double) parkingCapacity/(park_total + 0.001));
+				vehicle_num_to_generate = Math.min(num_total, Math.min(vehicle_num_to_generate, parkingCapacity));
 				num_total -= vehicle_num_to_generate;
 				for (int i = 0; i < vehicle_num_to_generate; i++) {
 					ElectricTaxi v = new ElectricTaxi();																	
@@ -151,8 +152,9 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 		
 		if(num_total > 0) { //assign the rest vehicle to zones with additional space
 			for (Zone z : ContextCreator.getZoneContext().getAll()) {
-				if(z.getCapacity()>0) {
-					int vehicle_num_to_generate = num_total <= z.getCapacity()? num_total: z.getCapacity();
+				int parkingCapacity = initialTaxiParkingCapacity(z, vehicle_num);
+				if(parkingCapacity > 0) {
+					int vehicle_num_to_generate = Math.min(num_total, parkingCapacity);
 					num_total -= vehicle_num_to_generate;
 					for (int i = 0; i < vehicle_num_to_generate; i++) {
 						// GeometryFactory fac = new GeometryFactory();
@@ -177,6 +179,12 @@ public class VehicleContext extends DefaultContext<Vehicle> {
 	    }
 
 		ContextCreator.logger.info("Total EV taxis generated " + total_vehicles);
+	}
+
+	private static int initialTaxiParkingCapacity(Zone zone, int fleetSize) {
+		int remaining = zone.getRemainingParkingCapacity();
+		// A finite allocation weight for an unlimited zone, independent of NUM_OF_EV.
+		return remaining == -1 ? fleetSize : remaining;
 	}
 
 	// Initialize buses for each route, if station is assigned to specified
