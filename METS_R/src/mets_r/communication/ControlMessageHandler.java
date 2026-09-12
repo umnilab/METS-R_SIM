@@ -251,16 +251,14 @@ public class ControlMessageHandler extends MessageHandler {
 	}
 
 	/**
-	* Terminate the simulation cleanly, notifying any connected external
-	* controllers that the run is finishing before invoking
-	* {@link ContextCreator#end()}.
+	* Terminate the simulation cleanly. {@link ContextCreator#end()} acknowledges
+	* completion only after buffered output has been written and closed.
 	*/
 	private HashMap<String, Object> endSim(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
 
-		ContextCreator.connection.sendStopMessage();
-
-		// Call the end function, cannot fail
+		// Do not acknowledge here: the controller may stop the container as
+		// soon as it receives a successful end response.
 		ContextCreator.end();
 		jsonAns.put("status", "ok");
 

@@ -1175,7 +1175,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	
 	
 	// Called by sched.executeEndActions()
-	public static void end() {
+	public static synchronized void end() {
 		logger.info("Finished sim: " + (System.currentTimeMillis() - start_time));
 		if (tscheduler != null) {
 			tscheduler.shutdownScheduler();
@@ -1189,6 +1189,12 @@ public class ContextCreator implements ContextBuilder<Object> {
 		}
 		if (travel_demand != null) {
 			travel_demand.close();
+		}
+		// A successful end response is the controller's permission to clean up
+		// the process/container. Send it only after all output is finalized.
+		Connection completedConnection = connection;
+		if (completedConnection != null) {
+			completedConnection.sendStopMessage();
 		}
 		// Close the user interface
 		System.exit(0);

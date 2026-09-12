@@ -52,6 +52,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 	private File outputDirectory;
 	private DataOutputStream writer;
 	private volatile Thread writingThread;
+	private volatile Throwable writingFailure;
 	protected volatile int currentTick;
 	private volatile boolean consuming;
 	private volatile boolean paused;
@@ -105,6 +106,24 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 	@Override
 	public void startConsumer() throws Throwable {
+		try {
+			this.startWriting();
+		} catch (Throwable failure) {
+			this.writingFailure = failure;
+			this.consuming = false;
+			if (this.writer != null) {
+				try {
+					this.writer.close();
+				} catch (Throwable closeFailure) {
+					failure.addSuppressed(closeFailure);
+				}
+				this.writer = null;
+			}
+			throw failure;
+		}
+	}
+
+	private void startWriting() throws Throwable {
 		if (this.consuming) {
 			if (this.paused) {
 				this.paused = false;
@@ -114,6 +133,7 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 
 		this.consuming = true;
 		this.paused = false;
+		this.writingFailure = null;
 		this.fileSeriesNumber = 1;
 		this.ticksWritten = 0;
 		this.currentChunkFirstTick = -1;
@@ -150,7 +170,8 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 							break;
 						}
 
-						if (BinaryTrajectoryOutputWriter.this.paused) {
+						if (BinaryTrajectoryOutputWriter.this.paused
+								&& (ContextCreator.dataCollector.isCollecting() || ContextCreator.dataCollector.isPaused())) {
 							DataCollector.printDebug("BIN", "PAUSED");
 							try {
 								Thread.sleep(GlobalVariables.JSON_BUFFER_REFRESH);
@@ -172,6 +193,11 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 							}
 
 							if (!ContextCreator.dataCollector.isCollecting() && !ContextCreator.dataCollector.isPaused()) {
+								// Recheck after observing collection stop: a final snapshot
+								// may have been published since the first lookup.
+								if (ContextCreator.dataCollector.getNextTick(nextTick) != null) {
+									continue;
+								}
 								break;
 							}
 
@@ -190,26 +216,32 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 							totalCount++;
 							writeCount++;
 						} catch (Throwable t) {
+							BinaryTrajectoryOutputWriter.this.writingFailure = t;
 							ContextCreator.logger.error("Binary trajectory writer failed at tick "
 									+ BinaryTrajectoryOutputWriter.this.currentTick, t);
 							break;
 						}
 
 						try {
-							Thread.sleep(5);
+							if (ContextCreator.dataCollector.isCollecting()) {
+								Thread.sleep(5);
+							}
 						} catch (InterruptedException ie) {
 							break;
 						}
 					}
 				} catch (Throwable t) {
+					BinaryTrajectoryOutputWriter.this.writingFailure = t;
 					ContextCreator.logger.error("Binary trajectory writer failed at tick "
 							+ BinaryTrajectoryOutputWriter.this.currentTick, t);
 				} finally {
 					try {
 						BinaryTrajectoryOutputWriter.this.closeOutputFileWriter();
 					} catch (IOException ioe) {
+						BinaryTrajectoryOutputWriter.this.writingFailure = ioe;
 						ContextCreator.logger.error("Failed to close binary trajectory writer", ioe);
 					} catch (Throwable t) {
+						BinaryTrajectoryOutputWriter.this.writingFailure = t;
 						ContextCreator.logger.error("Failed to close binary trajectory writer", t);
 					}
 
@@ -237,10 +269,13 @@ public class BinaryTrajectoryOutputWriter implements DataConsumer {
 		this.currentTick = Integer.MAX_VALUE;
 	}
 
-	public void awaitCompletion() throws InterruptedException {
+	public void awaitCompletion() throws InterruptedException, IOException {
 		Thread thread = this.writingThread;
 		if (thread != null) {
 			thread.join();
+		}
+		if (this.writingFailure != null) {
+			throw new IOException("Binary trajectory output did not complete", this.writingFailure);
 		}
 	}
 

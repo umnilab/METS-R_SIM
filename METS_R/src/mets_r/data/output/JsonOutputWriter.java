@@ -60,6 +60,7 @@ public class JsonOutputWriter implements DataConsumer {
 
 	/** The thread which periodically reads the buffer for data to process. */
 	private volatile Thread writingThread;
+	private volatile IOException writingFailure;
 
 	/** The simulation tick currently being processed (or just processed). */
 	protected volatile int currentTick;
@@ -202,7 +203,14 @@ public class JsonOutputWriter implements DataConsumer {
 		}
 
 		// Create the data writer
-		this.openOutputFileWriter();
+		this.writingFailure = null;
+		try {
+			this.openOutputFileWriter();
+		} catch (IOException e) {
+			this.writingFailure = e;
+			this.consuming = false;
+			throw e;
+		}
 
 		// Start the data consumption thread
 		Runnable writingRunnable = new Runnable() {
@@ -221,7 +229,8 @@ public class JsonOutputWriter implements DataConsumer {
 					}
 
 					// Check if we are supposed to be paused
-					if (JsonOutputWriter.this.paused) {
+					if (JsonOutputWriter.this.paused
+							&& (ContextCreator.dataCollector.isCollecting() || ContextCreator.dataCollector.isPaused())) {
 						DataCollector.printDebug("JSON", "PAUSED");
 						// We are currently paused, so we will wait our delay
 						// before performing another poll on our running state
@@ -248,6 +257,9 @@ public class JsonOutputWriter implements DataConsumer {
 
 						// Is the data collection process finished?
 						if (!ContextCreator.dataCollector.isCollecting() && !ContextCreator.dataCollector.isPaused()) {
+							if (ContextCreator.dataCollector.getNextTick(nextTick) != null) {
+								continue;
+							}
 							// The collector is stopped so no more are coming
 							break;
 						}
@@ -272,13 +284,17 @@ public class JsonOutputWriter implements DataConsumer {
 					} catch (IOException ioe) {
 						String errMsg = "WRITE ERROR: " + ioe.getMessage();
 						DataCollector.printDebug("JSON" + errMsg);
+						JsonOutputWriter.this.writingFailure = ioe;
+						break;
 					}
 
 					// Wait a short delay (a few ms) to give java's thread
 					// scheduler a chance to switch contexts if necessary
 					// before we loop around and grab the next buffer item
 					try {
-						Thread.sleep(5);
+						if (ContextCreator.dataCollector.isCollecting()) {
+							Thread.sleep(5);
+						}
 					} catch (InterruptedException ie) {
 						// The thread has been told to stop wrting data
 						break;
@@ -289,6 +305,7 @@ public class JsonOutputWriter implements DataConsumer {
 				try {
 					JsonOutputWriter.this.closeOutputFileWriter();
 				} catch (IOException ioe) {
+					JsonOutputWriter.this.writingFailure = ioe;
 				}
 
 				// Set the data consumption flags as finished
@@ -338,10 +355,13 @@ public class JsonOutputWriter implements DataConsumer {
 		this.writer = null;
 	}
 
-	public void awaitCompletion() throws InterruptedException {
+	public void awaitCompletion() throws InterruptedException, IOException {
 		Thread thread = this.writingThread;
 		if (thread != null) {
 			thread.join();
+		}
+		if (this.writingFailure != null) {
+			throw new IOException("JSON trajectory output did not complete", this.writingFailure);
 		}
 	}
 
@@ -468,9 +488,18 @@ public class JsonOutputWriter implements DataConsumer {
 			return;
 		}
 
-		// Close the file writer
-		this.writer.close();
-		this.writer = null;
+		// Full chunks are written by writeTickSnapshot; shutdown must also
+		// serialize the last, partially filled chunk before closing the stream.
+		try {
+			if (this.ticksWritten > 0 && this.ticksWritten < GlobalVariables.JSON_TICK_LIMIT_PER_FILE) {
+				this.writer.write(JSONObject.toJSONString(this.storeJsonObjects));
+			}
+		} finally {
+			this.writer.close();
+			this.writer = null;
+		}
+		this.storeJsonObjects.clear();
+		this.ticksWritten = 0;
 
 		// If this was a default filename, it is intended for a single
 		// use and should be thrown away once it is complete so we cannot
