@@ -482,11 +482,21 @@ public class QueryMessageHandler extends MessageHandler {
 	 * of CoSim-controlled connectors. The bridge can mirror these blockers
 	 * without taking control of them or recreating connector reservations.
 	 *
-	 * <p>No input data is required. Records use the same schema as coSimVehicle,
+	 * <p>Requires a top-level {@code boundaryDist} parameter in meters, which must
+	 * be finite and non-negative. Records use the same schema as coSimVehicle,
 	 * with the actual native road/lane and controlMode. Entry distance is measured
-	 * on the current lane and must be strictly less than 1.2 times vehicle length.
+	 * on the current lane and must be strictly less than {@code boundaryDist}.
 	 */
 	public HashMap<String, Object> queryBoundaryVeh(JSONObject jsonMsg) {
+		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
+		Double boundaryDist = parseDouble(jsonMsg.get("boundaryDist"));
+		if (boundaryDist == null || !Double.isFinite(boundaryDist) || boundaryDist < 0.0) {
+			jsonObj.put("status", "error");
+			jsonObj.put("errorCode", "INVALID_BOUNDARY_DIST");
+			jsonObj.put("message", "boundaryDist is required and must be a finite, non-negative distance in meters");
+			return jsonObj;
+		}
+
 		LinkedHashMap<Integer, Road> boundaryRoads = new LinkedHashMap<Integer, Road>();
 		RoadContext roadContext = ContextCreator.getRoadContext();
 		for (ConnectorRoad connector : roadContext.getCoSimConnectorsSnapshot()) {
@@ -507,18 +517,15 @@ public class QueryMessageHandler extends MessageHandler {
 						&& !vehicle.isOnConnector() && lane != null && lane.getRoad() == road) {
 					double distanceToEnd = vehicle.getDistanceToNextJunction();
 					double distanceFromEntry = lane.getLength() - distanceToEnd;
-					double vehicleLength = vehicle.length();
 					if (Double.isFinite(distanceToEnd) && distanceToEnd >= 0.0
 							&& Double.isFinite(distanceFromEntry) && distanceFromEntry >= 0.0
-							&& Double.isFinite(vehicleLength) && vehicleLength > 0.0
-							&& distanceFromEntry < 1.2 * vehicleLength) {
+							&& distanceFromEntry < boundaryDist) {
 						appendBridgeVehicleRecord(jsonData, vehicle);
 					}
 				}
 				vehicle = nextVehicle;
 			}
 		}
-		HashMap<String, Object> jsonObj = new HashMap<String, Object>();
 		jsonObj.put("data", jsonData);
 		return jsonObj;
 	}
