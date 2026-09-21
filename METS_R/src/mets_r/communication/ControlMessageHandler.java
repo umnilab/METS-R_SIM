@@ -2190,6 +2190,16 @@ public class ControlMessageHandler extends MessageHandler {
 	* taxi's pickup queue and trip plan; if the active pickup is removed, the
 	* taxi advances to its next queued trip with {@link Vehicle#setNextPlan()}.
 	* Occupied taxi requests are not cancellable.
+	*
+	* <p>Optional {@code rematch} (default false) leaves pending taxi requests
+	* untouched and returns matched, uncollected requests to their origin queue.
+	* Their ID, generation time, waiting limit, and activity plan are preserved.
+	* An empty taxi waits in place when repositioning is API-controlled; otherwise
+	* it resumes cruising in its current road's zone. Other assignments continue.
+	* {@code rematch} and optional {@code mode} (taxi/bus) can be specified on the
+	* message or each DATA entry; entry values take precedence. Bus cancellation
+	* is unchanged. Successful taxi rematches emit a rematch event, not a
+	* passenger cancellation. Match counters remain cumulative assignment counts.
 	*/
 	private HashMap<String, Object> cancelRequests(JSONObject jsonMsg) {
 		HashMap<String, Object> jsonAns = new HashMap<String, Object>();
@@ -2232,14 +2242,28 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				PendingTaxiRequestRef pendingTaxi = findAndRemovePendingTaxiRequest(requestId, zoneId);
+				boolean rematch = entry.rematch != null ? entry.rematch
+						: Boolean.TRUE.equals(jsonMsg.get("rematch"));
+				String mode = entry.mode != null ? entry.mode
+						: (jsonMsg.get("mode") == null ? null : jsonMsg.get("mode").toString());
+				if (mode != null && !"taxi".equals(mode) && !"bus".equals(mode)) {
+					record.put("status", "error");
+					record.put("message", "mode must be taxi or bus");
+					jsonData.add(record);
+					continue;
+				}
+				PendingTaxiRequestRef pendingTaxi = "bus".equals(mode) ? null
+						: (rematch ? findPendingTaxiRequest(requestId, zoneId)
+								: findAndRemovePendingTaxiRequest(requestId, zoneId));
 				if (pendingTaxi != null) {
-					recordTaxiRequestLeft(pendingTaxi);
-					SimulationEventJournal.record("cancellation", -1, pendingTaxi.request,
-							pendingTaxi.zone.getID());
+					if (!rematch) {
+						recordTaxiRequestLeft(pendingTaxi);
+						SimulationEventJournal.record("cancellation", -1, pendingTaxi.request,
+								pendingTaxi.zone.getID());
+					}
 					record.put("mode", "taxi");
 					record.put("requestState", "pending");
-					record.put("action", "left");
+					record.put("action", rematch ? "unchanged" : "left");
 					record.put("originZoneId", pendingTaxi.request.getOriginZone());
 					record.put("destinationZoneId", pendingTaxi.request.getDestZone());
 					record.put("status", "ok");
@@ -2247,7 +2271,8 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				PendingBusRequestRef pendingBus = findAndRemovePendingBusRequest(requestId, zoneId);
+				PendingBusRequestRef pendingBus = "taxi".equals(mode) ? null
+						: findAndRemovePendingBusRequest(requestId, zoneId);
 				if (pendingBus != null) {
 					recordBusRequestLeft(pendingBus);
 					record.put("mode", "bus");
@@ -2260,11 +2285,13 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				MatchedTaxiCancelResult matchedTaxi = cancelMatchedTaxiRequest(requestId, zoneId);
+				MatchedTaxiCancelResult matchedTaxi = "bus".equals(mode) ? null
+						: cancelMatchedTaxiRequest(requestId, zoneId, rematch);
 				if (matchedTaxi != null) {
 					if (matchedTaxi.statusOK) {
-						SimulationEventJournal.record("cancellation", matchedTaxi.vehicleID,
+						SimulationEventJournal.record(rematch ? "rematch" : "cancellation", matchedTaxi.vehicleID,
 								matchedTaxi.request, matchedTaxi.request.getOriginZone());
+						if (rematch) record.put("action", "requeued");
 					}
 					record.put("mode", "taxi");
 					record.put("requestState", "matched");
@@ -2287,7 +2314,8 @@ public class ControlMessageHandler extends MessageHandler {
 					continue;
 				}
 
-				MatchedBusCancelResult matchedBus = cancelMatchedBusRequest(requestId, zoneId);
+				MatchedBusCancelResult matchedBus = "taxi".equals(mode) ? null
+						: cancelMatchedBusRequest(requestId, zoneId);
 				if (matchedBus != null) {
 					record.put("mode", "bus");
 					record.put("requestState", "matched");
@@ -2968,6 +2996,24 @@ public class ControlMessageHandler extends MessageHandler {
 		return null;
 	}
 
+	/** Read-only lookup: a pending rematch must not reorder queues or change indexes. */
+	private PendingTaxiRequestRef findPendingTaxiRequest(int requestId, int zoneId) {
+		Zone zone = ContextCreator.getZoneContext().get(zoneId);
+		Request request = findRequestInQueue(zone.getTaxiRequestQueue(), requestId);
+		if (request == null) {
+			for (Queue<Request> queue : zone.getSharableRequestForTaxi().values()) {
+				request = findRequestInQueue(queue, requestId);
+				if (request != null) break;
+			}
+		}
+		if (request == null) request = findRequestInQueue(zone.getToAddTaxiRequestQueue(), requestId);
+		if (request == null) return null;
+		PendingTaxiRequestRef ref = new PendingTaxiRequestRef();
+		ref.zone = zone;
+		ref.request = request;
+		return ref;
+	}
+
 	private PendingTaxiRequestRef findAndRemovePendingTaxiRequestInZone(Zone z, int requestId) {
 		Iterator<Request> it = z.getTaxiRequestQueue().iterator();
 		while (it.hasNext()) {
@@ -3112,6 +3158,8 @@ public class ControlMessageHandler extends MessageHandler {
 	private static class CancelRequestEntry {
 		Integer requestId;
 		Integer zoneId;
+		Boolean rematch;
+		String mode;
 	}
 
 	private ArrayList<CancelRequestEntry> parseCancelRequestEntries(Object data) {
@@ -3127,6 +3175,8 @@ public class ControlMessageHandler extends MessageHandler {
 			CancelRequestEntry cancelEntry = new CancelRequestEntry();
 			cancelEntry.requestId = integerValue(record.get("requestId"));
 			cancelEntry.zoneId = integerValue(record.get("zoneId"));
+			cancelEntry.rematch = record.containsKey("rematch") ? Boolean.TRUE.equals(record.get("rematch")) : null;
+			cancelEntry.mode = record.get("mode") == null ? null : record.get("mode").toString();
 			if (cancelEntry.requestId != null || cancelEntry.zoneId != null) {
 				entries.add(cancelEntry);
 			}
@@ -3213,10 +3263,10 @@ public class ControlMessageHandler extends MessageHandler {
 		int availableZone = -1;
 	}
 
-	private MatchedTaxiCancelResult cancelMatchedTaxiRequest(int requestId, int zoneId) {
+	private MatchedTaxiCancelResult cancelMatchedTaxiRequest(int requestId, int zoneId, boolean rematch) {
 		Vehicle pickupVehicle = ContextCreator.getVehicleContext().getPickupTaxiForRequest(requestId);
 		if (pickupVehicle instanceof ElectricTaxi) {
-			MatchedTaxiCancelResult result = cancelPickupTaxiRequest((ElectricTaxi) pickupVehicle, requestId, zoneId);
+			MatchedTaxiCancelResult result = cancelPickupTaxiRequest((ElectricTaxi) pickupVehicle, requestId, zoneId, rematch);
 			if (result != null) return result;
 		}
 
@@ -3227,7 +3277,7 @@ public class ControlMessageHandler extends MessageHandler {
 		}
 
 		for (ElectricTaxi taxi : ContextCreator.getVehicleContext().getTaxis()) {
-			MatchedTaxiCancelResult result = cancelPickupTaxiRequest(taxi, requestId, zoneId);
+			MatchedTaxiCancelResult result = cancelPickupTaxiRequest(taxi, requestId, zoneId, rematch);
 			if (result != null) return result;
 
 			result = rejectOccupiedTaxiCancellation(taxi, requestId, zoneId);
@@ -3236,7 +3286,7 @@ public class ControlMessageHandler extends MessageHandler {
 		return null;
 	}
 
-	private MatchedTaxiCancelResult cancelPickupTaxiRequest(ElectricTaxi taxi, int requestId, int zoneId) {
+	private MatchedTaxiCancelResult cancelPickupTaxiRequest(ElectricTaxi taxi, int requestId, int zoneId, boolean rematch) {
 		Request request = findRequestInQueue(taxi.getToBoardRequests(), requestId);
 		if (request == null) {
 			ContextCreator.getVehicleContext().removePickupTaxiRequest(requestId);
@@ -3252,6 +3302,13 @@ public class ControlMessageHandler extends MessageHandler {
 			return result;
 		}
 
+		boolean activePickup = taxi.getState() == Vehicle.PICKUP_TRIP
+				&& taxi.getToBoardRequests().peek() == request;
+		int currentZone = rematch && activePickup ? resolveTaxiAvailabilityZone(taxi) : -1;
+		if (rematch && activePickup && currentZone < 0) {
+			result.warn = "taxi current zone not found";
+			return result;
+		}
 		RequestQueueRemoval pickup = removeRequestFromQueue(taxi.getToBoardRequests(), requestId);
 		if (pickup == null) {
 			ContextCreator.getVehicleContext().removePickupTaxiRequest(requestId);
@@ -3261,17 +3318,36 @@ public class ControlMessageHandler extends MessageHandler {
 		ContextCreator.getVehicleContext().removePickupTaxiRequest(requestId);
 		result.request = pickup.request;
 		result.statusOK = true;
+		if (rematch) {
+			// Waiting continues while a previous taxi is approaching. Reuse the
+			// original request without generating demand or resetting its patience.
+			request.waitNextTime(Math.max(0, ContextCreator.getCurrentTick() - request.matchedTime));
+			request.matchedTime = 0;
+			PendingTaxiRequestRef pending = new PendingTaxiRequestRef();
+			pending.zone = ContextCreator.getZoneContext().get(zoneId);
+			pending.request = request;
+			pending.source = request.isShareable() ? "sharable" : "queue";
+			pending.sharableDestination = request.getDestZone();
+			reinsertPendingTaxiRequest(pending);
+			if (activePickup) {
+				taxi.finishCancelledPickup(currentZone);
+				removeVehicleFromEnteringQueues(taxi);
+			}
+		}
 		taxi.setPassNum(Math.max(0, taxi.getPassNum() - pickup.request.getNumPeople()));
 		if (taxi.getState() == Vehicle.PICKUP_TRIP) {
 			result.currentTripRemoved = pickup.index == 0;
 			if (result.currentTripRemoved) {
 				result.removedPickupTrip = true;
-				removeFutureSupplyForRequest(pickup.request);
-				TaxiAdvanceResult advance = advanceTaxiAfterCurrentCancellation(taxi);
+				// During pooled pickups, future supply belongs to the first
+				// onboard dropoff once a passenger has boarded, not this pickup.
+				boolean replaceFutureSupply = !rematch || taxi.getOnBoardRequests().isEmpty();
+				if (replaceFutureSupply) removeFutureSupplyForRequest(pickup.request);
+				TaxiAdvanceResult advance = advanceTaxiAfterCurrentCancellation(taxi, rematch);
 				result.startedNextTrip = advance.advanced;
 				result.availableAfterCancellation = advance.available;
 				result.availableZone = advance.availableZone;
-				if (advance.nextRequest != null) {
+				if (replaceFutureSupply && advance.nextRequest != null) {
 					addFutureSupplyForRequest(advance.nextRequest);
 				}
 			} else {
@@ -3280,7 +3356,7 @@ public class ControlMessageHandler extends MessageHandler {
 		} else {
 			result.removedPickupTrip = removePlanForRequest(taxi, pickup.request, true, pickup.index);
 			if (!taxi.hasPassengerAssignments() && isIdleTaxiState(taxi)) {
-				result.availableZone = makeTaxiAvailableAfterCancellation(taxi);
+				result.availableZone = makeTaxiAvailableAfterCancellation(taxi, rematch);
 				result.availableAfterCancellation = result.availableZone >= 0;
 			}
 		}
@@ -3313,7 +3389,7 @@ public class ControlMessageHandler extends MessageHandler {
 		int availableZone = -1;
 	}
 
-	private TaxiAdvanceResult advanceTaxiAfterCurrentCancellation(ElectricTaxi taxi) {
+	private TaxiAdvanceResult advanceTaxiAfterCurrentCancellation(ElectricTaxi taxi, boolean rematch) {
 		TaxiAdvanceResult result = new TaxiAdvanceResult();
 		Request nextPickup = taxi.getToBoardRequests().peek();
 		if (nextPickup != null) {
@@ -3331,7 +3407,7 @@ public class ControlMessageHandler extends MessageHandler {
 
 		if (result.nextRequest != null && taxi.getPlan().size() >= 2) {
 			taxi.setNextPlan();
-			if (taxi.isOnRoad()) {
+			if (rematch || taxi.isOnRoad()) {
 				taxi.departure();
 			}
 			result.advanced = true;
@@ -3339,13 +3415,13 @@ public class ControlMessageHandler extends MessageHandler {
 			if (!taxi.getPlan().isEmpty()) {
 				taxi.getPlan().remove(0);
 			}
-			result.availableZone = makeTaxiAvailableAfterCancellation(taxi);
+			result.availableZone = makeTaxiAvailableAfterCancellation(taxi, rematch);
 			result.available = result.availableZone >= 0;
 		}
 		return result;
 	}
 
-	private int makeTaxiAvailableAfterCancellation(ElectricTaxi taxi) {
+	private int makeTaxiAvailableAfterCancellation(ElectricTaxi taxi, boolean rematch) {
 		if (taxi == null) return -1;
 		int zoneId = resolveTaxiAvailabilityZone(taxi);
 		if (zoneId < 0) return -1;
@@ -3353,6 +3429,9 @@ public class ControlMessageHandler extends MessageHandler {
 		if (zone == null) return -1;
 		removeVehicleFromEnteringQueues(taxi);
 		taxi.becomeAvailableForExternalControl(zone);
+		if (rematch && !GlobalVariables.REPOSITIONING_CONTROLLED_BY_CONTROL_APIS) {
+			taxi.goCruising(zone);
+		}
 		return zoneId;
 	}
 

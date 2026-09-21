@@ -94,6 +94,46 @@ public class ElectricTaxi extends ElectricVehicle {
 		
 	}
 	
+	/**
+	 * Close an interrupted pickup at its actual endpoint without simulating an
+	 * arrival (which would detach the taxi from its lane or board the passenger).
+	 * EVLog retains the partial pickup distance/energy; the rematch journal event
+	 * distinguishes it from a successful pickup. CSV columns remain unchanged.
+	 */
+	public void finishCancelledPickup(int zoneID) {
+		Road currentRoad = this.getRoad();
+		if (currentRoad == null) {
+			currentRoad = ContextCreator.getRoadContext().get(this.getOriginRoad());
+		}
+		int roadID = currentRoad == null ? this.getOriginRoad() : currentRoad.getID();
+		if (this.getAccummulatedDistance() > 0 || this.getTripConsume() != 0) {
+			String record = ContextCreator.getCurrentTick() + "," + this.getID() + "," + this.getState()
+					+ "," + this.getOriginID() + "," + zoneID + "," + this.getOriginRoad() + "," + roadID
+					+ "," + this.getAccummulatedDistance() + "," + this.getDepTime() + "," + this.getTripConsume()
+					+ "," + this.routeChoice + "," + this.getPassNum() + "," + this.getMatchedRequests()
+					+ "," + this.getMatchedPassengers() + "," + this.getPickupRequests() + ","
+					+ this.getPickupPassengers() + "," + this.getDropoffRequests() + ","
+					+ this.getDropoffPassengers() + "\r\n";
+			if (ContextCreator.agg_logger != null) {
+				try {
+					ContextCreator.agg_logger.ev_logger.write(record);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		this.setAccumulatedDistance(0);
+		this.tripConsume = 0;
+		this.routeChoice = -1;
+		this.setDistToTravel(0);
+		this.setCurrentZone(zoneID);
+		this.setDestID(zoneID);
+		this.setDestRoad(currentRoad);
+		Plan anchor = new Plan(zoneID, roadID, ContextCreator.getNextTick());
+		if (this.getPlan().isEmpty()) this.getPlan().add(anchor);
+		else this.getPlan().set(0, anchor);
+	}
+
 	// Dispatch to the closest parkable zone and reserve a zone parking spot.
 	public boolean goParking() {
 		Zone parkingZone = this.closestParkableZone();
